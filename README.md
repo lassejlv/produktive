@@ -1,21 +1,45 @@
-```txt
-npm install
-npm run dev
+# Produktive
+
+Bun + Hono API for Produktive.
+
+## Setup
+
+```sh
+bun install
+cp .env.example .env
 ```
 
-```txt
-npm run deploy
+Fill in `.env`, then generate Prisma Client:
+
+```sh
+bun run db:generate
 ```
 
-[For generating/synchronizing types based on your Worker configuration run](https://developers.cloudflare.com/workers/wrangler/commands/#types):
+## Development
 
-```txt
-npm run cf-typegen
+```sh
+bun run dev
 ```
 
-Pass the `CloudflareBindings` as generics when instantiation `Hono`:
+The API listens on `http://localhost:3000` by default.
 
-```ts
-// src/index.ts
-const app = new Hono<{ Bindings: CloudflareBindings }>()
+## Docker
+
+```sh
+docker build -t produktive-api .
+docker run --rm -p 3000:3000 --env-file .env produktive-api
+```
+
+## Database
+
+Create and apply local migrations:
+
+```sh
+bun run db:migrate:dev --name init
+```
+
+Apply committed migrations in production:
+
+```sh
+bun run db:migrate:deploy
 ```

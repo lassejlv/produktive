@@ -1,24 +1,22 @@
-# prod
-dist/
-
-# dev
-.yarn/
-!.yarn/releases
-.vscode/*
-!.vscode/launch.json
-!.vscode/*.code-snippets
-.idea/workspace.xml
-.idea/usage.statistics.xml
-.idea/shelf
-
 # deps
 node_modules/
-.wrangler
+**/node_modules/
+
+# build/cache
+dist/
+.wrangler/
+.cache/
 
 # env
 .env
 .env.production
-.dev.vars
+**/.env
+**/.env.production
+!.env.example
+!**/.env.example
+
+# generated
+src/generated/prisma
 
 # logs
 logs/
@@ -31,7 +29,3 @@ lerna-debug.log*
 
 # misc
 .DS_Store
-
-.dev.vars*
-!.dev.vars.example
-!.env.example

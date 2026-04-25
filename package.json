@@ -1,16 +1,25 @@
 {
-	"name": "api",
+	"name": "produktive",
+	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "wrangler dev",
-		"deploy": "wrangler deploy --minify",
-		"cf-typegen": "wrangler types --env-interface CloudflareBindings"
+		"dev": "bun --watch src/index.ts",
+		"start": "bun src/index.ts",
+		"check": "bunx tsc --noEmit",
+		"db:validate": "prisma validate",
+		"db:generate": "prisma generate",
+		"db:migrate:dev": "prisma migrate dev",
+		"db:migrate:deploy": "prisma migrate deploy",
+		"db:migrate:status": "prisma migrate status"
 	},
 	"dependencies": {
-		"hono": "^4.12.15"
+		"@prisma/adapter-pg": "^7.8.0",
+		"@prisma/client": "^7.8.0",
+		"better-auth": "^1.6.9",
+		"hono": "^4.12.15",
+		"prisma": "^7.8.0"
 	},
 	"devDependencies": {
-		"@types/node": "^25.6.0",
-		"wrangler": "^4.85.0"
+		"@types/bun": "latest"
 	}
 }

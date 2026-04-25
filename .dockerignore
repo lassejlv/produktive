@@ -1,0 +1,11 @@
+.git
+node_modules
+**/node_modules
+.env
+**/.env
+dist
+**/dist
+.wrangler
+.cache
+*.log
+.DS_Store
