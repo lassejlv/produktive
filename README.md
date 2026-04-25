@@ -9,7 +9,10 @@ bun install
 cp .env.example .env
 ```
 
-Fill in `.env`, then generate Prisma Client:
+Fill in `.env`. Runtime uses `DATABASE_URL`; Prisma CLI migrations use
+`DATABASE_DIRECT_URL`.
+
+Generate Prisma Client:
 
 ```sh
 bun run db:generate
