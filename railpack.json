@@ -6,11 +6,8 @@
   },
   "steps": {
     "build": {
-      "inputs": [
-        "."
-      ],
       "commands": [
-        "cargo build --release -p produktive-api",
+        "...",
         "cd web && bun install --frozen-lockfile",
         "cd web && bun run build"
       ]
@@ -21,6 +18,7 @@
       "ca-certificates"
     ],
     "inputs": [
+      "...",
       {
         "step": "build",
         "include": [
