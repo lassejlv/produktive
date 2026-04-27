@@ -1,0 +1,21 @@
+model Issue {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?
+  status         String       @default("backlog")
+  priority       String       @default("medium")
+  createdById    String?
+  createdBy      User?        @relation("IssueCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  assignedToId   String?
+  assignedTo     User?        @relation("IssueAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([createdById])
+  @@index([assignedToId])
+  @@index([status])
+  @@map("issue")
+}

@@ -1,5 +1,6 @@
 import { auth } from "./lib/auth";
 import { env } from "./lib/env";
+import { issueRoutes } from "./routes/issue";
 import { Hono } from "hono";
 
 export const app = new Hono();
@@ -11,6 +12,8 @@ app.get("/", (c) => {
 app.on(["GET", "POST"], "/api/auth/*", (c) => {
   return auth.handler(c.req.raw);
 });
+
+app.route("/api/issues", issueRoutes);
 
 const server = Bun.serve({
   port: env.PORT,
