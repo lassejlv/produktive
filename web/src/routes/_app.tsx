@@ -4,13 +4,13 @@ import {
   useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  CaretIcon,
   DotsIcon,
   IssuesIcon,
   PlusIcon,
 } from "@/components/chat/icons";
-import { Button } from "@/components/ui/button";
 import {
   Sidebar,
   SidebarContent,
@@ -34,12 +34,41 @@ function AppLayout() {
     select: (state) => state.location.pathname,
   });
   const { chats, isLoading: chatsLoading } = useChats();
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!session.isPending && !session.data) {
       void navigate({ to: "/login" });
     }
   }, [navigate, session.data, session.isPending]);
+
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (
+        accountMenuRef.current &&
+        !accountMenuRef.current.contains(event.target as Node)
+      ) {
+        setAccountMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAccountMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [accountMenuOpen]);
 
   const currentUser = session.data?.user;
 
@@ -162,34 +191,68 @@ function AppLayout() {
           </div>
         </SidebarContent>
 
-        <SidebarFooter>
-          <div className="flex items-center gap-3">
-            <div className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-surface text-[14px] font-medium text-fg">
-              {currentUser?.name?.slice(0, 2).toUpperCase() ?? "P"}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[15px] font-medium text-fg">
-                {currentUser?.name ?? "User"}
-              </p>
-              <p className="truncate text-[12px] text-fg-muted">
-                {currentUser?.email}
-              </p>
-            </div>
-            <span className="text-fg-muted">
-              <DotsIcon />
-            </span>
+        <SidebarFooter className="relative">
+          <div ref={accountMenuRef}>
+            {accountMenuOpen ? (
+              <div className="absolute bottom-[92px] left-6 right-6 overflow-hidden rounded-[12px] border border-border bg-surface shadow-[0_18px_50px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.04)] animate-fade-up">
+                <div className="border-b border-border-subtle px-4 py-3">
+                  <p className="truncate text-[14px] font-medium text-fg">
+                    {currentUser?.name ?? "User"}
+                  </p>
+                  <p className="mt-0.5 truncate text-[12px] text-fg-muted">
+                    {currentUser?.email}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="flex h-11 w-full items-center justify-between px-4 text-left text-[14px] font-medium text-fg transition-colors hover:bg-surface-2"
+                  onClick={async () => {
+                    setAccountMenuOpen(false);
+                    await signOut();
+                    await navigate({ to: "/login" });
+                  }}
+                >
+                  <span>Sign out</span>
+                  <span className="text-fg-faint">
+                    <SignOutIcon />
+                  </span>
+                </button>
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              aria-expanded={accountMenuOpen}
+              aria-haspopup="menu"
+              className={cn(
+                "flex w-full items-center gap-3 rounded-[12px] border border-transparent p-2 text-left transition-colors",
+                accountMenuOpen
+                  ? "border-border bg-surface"
+                  : "hover:border-border hover:bg-surface/65",
+              )}
+              onClick={() => setAccountMenuOpen((open) => !open)}
+            >
+              <div className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-surface text-[14px] font-medium text-fg">
+                {currentUser?.name?.slice(0, 2).toUpperCase() ?? "P"}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[15px] font-medium text-fg">
+                  {currentUser?.name ?? "User"}
+                </p>
+                <p className="truncate text-[12px] text-fg-muted">
+                  {currentUser?.email}
+                </p>
+              </div>
+              <span
+                className={cn(
+                  "text-fg-muted transition-transform",
+                  accountMenuOpen && "rotate-180",
+                )}
+              >
+                <CaretIcon />
+              </span>
+            </button>
           </div>
-          <Button
-            className="mt-6 h-11 w-full rounded-[8px] text-[14px]"
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              await signOut();
-              await navigate({ to: "/login" });
-            }}
-          >
-            Sign out
-          </Button>
         </SidebarFooter>
       </Sidebar>
 
@@ -197,5 +260,25 @@ function AppLayout() {
         <Outlet />
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+function SignOutIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
   );
 }
