@@ -1,24 +1,24 @@
 @import "tailwindcss";
 
 @theme {
-  --color-background: #f5f2ea;
-  --color-foreground: #191711;
-  --color-card: #fffdf6;
-  --color-card-foreground: #191711;
-  --color-primary: #191711;
-  --color-primary-foreground: #fff8e1;
-  --color-muted: #ebe5d8;
-  --color-muted-foreground: #6d6557;
-  --color-accent: #fff8e1;
-  --color-accent-foreground: #191711;
-  --color-border: #d8d1c2;
-  --color-input: #d8d1c2;
-  --color-ring: #8b5e16;
-  --color-sidebar: #faf8f2;
-  --color-sidebar-foreground: #2b261f;
-  --color-sidebar-accent: #fff1bf;
-  --color-sidebar-accent-foreground: #191711;
-  --color-sidebar-border: #d8d1c2;
+  --color-background: #0f0f0d;
+  --color-foreground: #ede9df;
+  --color-card: #151512;
+  --color-card-foreground: #ede9df;
+  --color-primary: #ede9df;
+  --color-primary-foreground: #11110f;
+  --color-muted: #1d1d19;
+  --color-muted-foreground: #9a9488;
+  --color-accent: #20201c;
+  --color-accent-foreground: #f4f0e7;
+  --color-border: #2b2a25;
+  --color-input: #343229;
+  --color-ring: #d4c8ad;
+  --color-sidebar: #11110f;
+  --color-sidebar-foreground: #e8e2d7;
+  --color-sidebar-accent: #1c1b17;
+  --color-sidebar-accent-foreground: #f2ece1;
+  --color-sidebar-border: #282720;
   --radius-md: 6px;
   --radius-lg: 8px;
 }
@@ -27,7 +27,7 @@
   color: var(--color-foreground);
   background: var(--color-background);
   font-family:
-    "Avenir Next", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    "SF Pro Display", "Geist Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -57,41 +57,45 @@ button {
 .login-page,
 .loading-screen {
   min-height: 100vh;
-  background:
-    linear-gradient(90deg, rgba(25, 23, 17, 0.06) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(25, 23, 17, 0.05) 1px, transparent 1px),
-    var(--color-background);
-  background-size: 48px 48px;
+  background: var(--color-background);
 }
 
 .login-page {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 460px);
-  gap: 48px;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  gap: 56px;
   align-items: center;
   padding: 56px;
 }
 
 .login-copy {
-  max-width: 760px;
+  max-width: 720px;
 }
 
 .login-copy h1 {
-  margin: 16px 0;
-  max-width: 760px;
-  font-size: clamp(52px, 8vw, 112px);
-  line-height: 0.9;
+  margin: 18px 0;
+  max-width: 720px;
+  color: var(--color-foreground);
+  font-family: "Newsreader", "Lyon Text", "Instrument Serif", Georgia, serif;
+  font-size: clamp(48px, 7vw, 96px);
+  letter-spacing: -0.04em;
+  line-height: 0.96;
 }
 
 .login-copy p:not(.eyebrow) {
-  max-width: 540px;
+  max-width: 520px;
   color: var(--color-muted-foreground);
-  font-size: 18px;
-  line-height: 1.6;
+  font-size: 17px;
+  line-height: 1.65;
 }
 
-.login-card {
-  background: rgba(255, 253, 246, 0.95);
+.login-card,
+.issue-panel,
+.detail-panel,
+.selected-card {
+  border: 1px solid var(--color-border);
+  background: var(--color-card);
+  color: var(--color-card-foreground);
 }
 
 .auth-form,
@@ -116,13 +120,13 @@ button {
 
 .form-error,
 .alert {
-  background: #fff0ec;
-  color: #9f2d17;
+  background: #2a1816;
+  color: #e5a09b;
 }
 
 .form-message {
-  background: #eff8ec;
-  color: #246b2a;
+  background: #182017;
+  color: #a7caa6;
 }
 
 .auth-switch {
@@ -140,6 +144,7 @@ button {
   color: var(--color-foreground);
   padding: 0;
   text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
 .loading-screen {
@@ -171,21 +176,31 @@ button {
 .brand-mark,
 .avatar {
   display: grid;
-  width: 38px;
+  width: 36px;
   aspect-ratio: 1;
   place-items: center;
-  border: 1px solid var(--color-foreground);
-  background: var(--color-foreground);
-  color: var(--color-primary-foreground);
+  border: 1px solid var(--color-border);
+  background: #191814;
+  color: var(--color-foreground);
   font-weight: 800;
 }
 
 .avatar {
   width: 34px;
-  border-color: var(--color-border);
   background: var(--color-accent);
-  color: var(--color-foreground);
   font-size: 12px;
+}
+
+.mark {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border: 1px solid #81786a;
+  background: transparent;
+}
+
+.mark-danger {
+  border-color: #bf6c65;
 }
 
 .dashboard-header {
@@ -195,14 +210,17 @@ button {
   justify-content: space-between;
   gap: 20px;
   border-bottom: 1px solid var(--color-border);
-  background: rgba(255, 253, 246, 0.72);
+  background: var(--color-background);
   padding: 20px 28px;
 }
 
 .dashboard-header h1 {
   margin: 0;
-  font-size: clamp(30px, 4vw, 52px);
-  line-height: 0.95;
+  color: var(--color-foreground);
+  font-family: "Newsreader", "Lyon Text", "Instrument Serif", Georgia, serif;
+  font-size: clamp(34px, 4vw, 58px);
+  letter-spacing: -0.04em;
+  line-height: 0.96;
 }
 
 .dashboard-main {
@@ -211,9 +229,10 @@ button {
 
 .eyebrow {
   margin: 0;
-  color: #8b5e16;
-  font-size: 12px;
-  font-weight: 800;
+  color: #b9ad98;
+  font-family: "Geist Mono", "SF Mono", "JetBrains Mono", monospace;
+  font-size: 11px;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -227,15 +246,8 @@ button {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
-  gap: 18px;
-}
-
-.issue-panel,
-.detail-panel,
-.selected-card {
-  border: 1px solid var(--color-border);
-  background: rgba(255, 253, 246, 0.92);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  gap: 16px;
 }
 
 .panel-header {
@@ -251,6 +263,7 @@ button {
 .issue-form h2,
 .selected-card h2 {
   margin: 0;
+  letter-spacing: -0.02em;
 }
 
 .panel-header p,
@@ -263,7 +276,8 @@ button {
   display: flex;
   gap: 8px;
   color: var(--color-muted-foreground);
-  font-size: 13px;
+  font-family: "Geist Mono", "SF Mono", "JetBrains Mono", monospace;
+  font-size: 12px;
 }
 
 .stats span {
@@ -283,6 +297,7 @@ button {
   border: 0;
   border-bottom: 1px solid var(--color-border);
   background: transparent;
+  color: var(--color-foreground);
   padding: 16px 18px;
   text-align: left;
 }
@@ -310,7 +325,7 @@ button {
 .detail-panel {
   display: grid;
   align-content: start;
-  gap: 18px;
+  gap: 16px;
   padding: 18px;
 }
 
@@ -357,7 +372,8 @@ select {
   align-items: center;
   gap: 8px;
   color: var(--color-muted-foreground);
-  font-size: 13px;
+  font-family: "Geist Mono", "SF Mono", "JetBrains Mono", monospace;
+  font-size: 12px;
 }
 
 @media (max-width: 920px) {

@@ -16,5 +16,6 @@ export const env = z
           .map((origin) => origin.trim())
           .filter(Boolean),
       ),
+    AUTH_COOKIE_DOMAIN: z.string().trim().default("produktive.app"),
   })
   .parse(process.env);

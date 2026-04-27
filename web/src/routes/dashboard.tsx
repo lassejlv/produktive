@@ -1,15 +1,4 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import {
-  AlertCircle,
-  CheckCircle2,
-  CircleDot,
-  Inbox,
-  LayoutDashboard,
-  ListFilter,
-  LogOut,
-  Plus,
-  Settings,
-} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +22,7 @@ import {
   listIssues,
   updateIssue,
 } from "@/lib/api";
-import { authClient, signOut, useSession } from "@/lib/auth-client";
+import { signOut, useSession } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/dashboard")({
   component: DashboardPage,
@@ -41,6 +30,11 @@ export const Route = createFileRoute("/dashboard")({
 
 const statusOptions = ["backlog", "todo", "in-progress", "done"];
 const priorityOptions = ["low", "medium", "high", "urgent"];
+const navItems = ["Dashboard", "Inbox", "Views", "Settings"];
+
+function Mark({ className }: { className?: string }) {
+  return <span className={className ?? "mark"} aria-hidden="true" />;
+}
 
 function DashboardPage() {
   const navigate = useNavigate();
@@ -181,30 +175,20 @@ function DashboardPage() {
         </SidebarHeader>
         <SidebarContent>
           <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton className="bg-sidebar-accent text-sidebar-accent-foreground">
-                <LayoutDashboard className="h-4 w-4" />
-                Dashboard
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton>
-                <Inbox className="h-4 w-4" />
-                Inbox
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton>
-                <ListFilter className="h-4 w-4" />
-                Views
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <SidebarMenuItem>
-              <SidebarMenuButton>
-                <Settings className="h-4 w-4" />
-                Settings
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+            {navItems.map((item) => (
+              <SidebarMenuItem key={item}>
+                <SidebarMenuButton
+                  className={
+                    item === "Dashboard"
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : undefined
+                  }
+                >
+                  <Mark />
+                  {item}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
           </SidebarMenu>
         </SidebarContent>
         <SidebarFooter>
@@ -223,7 +207,6 @@ function DashboardPage() {
               await navigate({ to: "/login" });
             }}
           >
-            <LogOut className="h-4 w-4" />
             Sign out
           </Button>
         </SidebarFooter>
@@ -237,7 +220,6 @@ function DashboardPage() {
             <h1>Issues</h1>
           </div>
           <Button form="new-issue-form" type="submit" disabled={isSaving}>
-            <Plus className="h-4 w-4" />
             New issue
           </Button>
         </header>
@@ -245,7 +227,7 @@ function DashboardPage() {
         <main className="dashboard-main">
           {error ? (
             <div className="alert">
-              <AlertCircle className="h-4 w-4" />
+              <Mark className="mark mark-danger" />
               {error}
             </div>
           ) : null}
@@ -272,7 +254,7 @@ function DashboardPage() {
                     onClick={() => setSelectedIssueId(issue.id)}
                     type="button"
                   >
-                    <CircleDot className="h-4 w-4" />
+                    <Mark />
                     <span>
                       <strong>{issue.title}</strong>
                       <small>
@@ -372,7 +354,7 @@ function DashboardPage() {
                     </Button>
                   </div>
                   <div className="status-line">
-                    <CheckCircle2 className="h-4 w-4" />
+                    <Mark />
                     <span>Updated {new Date(selectedIssue.updatedAt).toLocaleDateString()}</span>
                   </div>
                 </div>

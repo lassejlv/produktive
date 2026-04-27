@@ -1,5 +1,4 @@
 import type * as React from "react";
-import { PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -61,7 +60,14 @@ export function SidebarInset({ className, ...props }: React.ComponentProps<"main
 export function SidebarTrigger() {
   return (
     <Button className="md:hidden" size="icon" variant="ghost" aria-label="Open navigation">
-      <PanelLeft className="h-4 w-4" />
+      <svg
+        aria-hidden="true"
+        className="h-4 w-4"
+        fill="none"
+        viewBox="0 0 16 16"
+      >
+        <path d="M3 4.5h10M3 8h10M3 11.5h10" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
     </Button>
   );
 }
