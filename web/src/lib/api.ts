@@ -88,3 +88,34 @@ export const joinWaitlist = (email: string) =>
     method: "POST",
     body: JSON.stringify({ email }),
   });
+
+export type Chat = {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ChatMessageRecord = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+};
+
+export const listChats = () => request<{ chats: Chat[] }>("/api/chats");
+
+export const createChat = () =>
+  request<{ chat: Chat }>("/api/chats", { method: "POST" });
+
+export const getChat = (id: string) =>
+  request<{ chat: Chat; messages: ChatMessageRecord[] }>(`/api/chats/${id}`);
+
+export const deleteChat = (id: string) =>
+  request<{ ok: true }>(`/api/chats/${id}`, { method: "DELETE" });
+
+export const postChatMessage = (id: string, content: string) =>
+  request<{ messages: ChatMessageRecord[] }>(`/api/chats/${id}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });

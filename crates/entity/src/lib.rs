@@ -1,4 +1,6 @@
 pub mod auth_token;
+pub mod chat;
+pub mod chat_message;
 pub mod issue;
 pub mod member;
 pub mod organization;

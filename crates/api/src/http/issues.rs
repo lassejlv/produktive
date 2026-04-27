@@ -1,4 +1,12 @@
-use crate::{auth::require_auth, error::ApiError, state::AppState};
+use crate::{
+    auth::require_auth,
+    error::ApiError,
+    issue_helpers::{
+        non_empty_optional, normalize_assignee, optional_string, required_string,
+        validate_assignee,
+    },
+    state::AppState,
+};
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
@@ -6,7 +14,7 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
-use produktive_entity::{issue, member, user};
+use produktive_entity::{issue, user};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter,
     QueryOrder, Set,
@@ -259,53 +267,3 @@ async fn find_user_response(state: &AppState, id: &str) -> Result<Option<UserRes
         }))
 }
 
-async fn validate_assignee(
-    state: &AppState,
-    organization_id: &str,
-    assigned_to_id: Option<&str>,
-) -> Result<(), ApiError> {
-    let Some(assigned_to_id) = assigned_to_id else {
-        return Ok(());
-    };
-
-    let member = member::Entity::find()
-        .filter(member::Column::OrganizationId.eq(organization_id))
-        .filter(member::Column::UserId.eq(assigned_to_id))
-        .one(&state.db)
-        .await?;
-
-    if member.is_none() {
-        return Err(ApiError::BadRequest(
-            "Assignee is not a member of this organization".to_owned(),
-        ));
-    }
-
-    Ok(())
-}
-
-fn required_string(value: String, label: &str) -> Result<String, ApiError> {
-    let value = value.trim();
-    if value.is_empty() {
-        return Err(ApiError::BadRequest(format!("{label} is required")));
-    }
-    Ok(value.to_owned())
-}
-
-fn optional_string(value: Option<String>, default: &str) -> Result<String, ApiError> {
-    match value {
-        Some(value) => required_string(value, default),
-        None => Ok(default.to_owned()),
-    }
-}
-
-fn non_empty_optional(value: String) -> Result<Option<String>, ApiError> {
-    let value = value.trim();
-    Ok((!value.is_empty()).then(|| value.to_owned()))
-}
-
-fn normalize_assignee(value: Option<String>) -> Result<Option<String>, ApiError> {
-    match value {
-        Some(value) => non_empty_optional(value),
-        None => Ok(None),
-    }
-}

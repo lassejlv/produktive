@@ -44,7 +44,7 @@ function LoginPage() {
       return;
     }
 
-    await navigate({ to: "/dashboard" });
+    await navigate({ to: "/chat" });
   };
 
   const onForgotPassword = async () => {

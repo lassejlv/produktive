@@ -20,6 +20,9 @@ pub struct Config {
     pub app_url: String,
     pub resend_api_key: String,
     pub resend_from_email: String,
+    pub ai_api_key: String,
+    pub ai_base_url: String,
+    pub ai_model: String,
 }
 
 impl Config {
@@ -61,6 +64,9 @@ impl Config {
                 .to_owned(),
             resend_api_key: required_env("RESEND_API_KEY").context("RESEND_API_KEY is required")?,
             resend_from_email: env_or_default("RESEND_FROM_EMAIL", "Produktive <be@produktive.app>"),
+            ai_api_key: required_env("AI_API_KEY").context("AI_API_KEY is required")?,
+            ai_base_url: env_or_default("AI_BASE_URL", "https://ollama.com/v1"),
+            ai_model: env_or_default("AI_MODEL", "kimi-k2.6"),
         })
     }
 }

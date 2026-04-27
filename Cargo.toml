@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/api", "crates/entity", "crates/migration"]
+members = ["crates/ai", "crates/api", "crates/entity", "crates/migration"]
 resolver = "2"
 
 [workspace.package]
@@ -15,6 +15,7 @@ cookie = "0.18"
 hex = "0.4"
 jsonwebtoken = "9"
 rand_core = "0.6"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 resend-rs = { version = "0.24", default-features = false, features = ["rustls-tls"] }
 sea-orm = { version = "1.1", features = ["macros", "runtime-tokio-rustls", "sqlx-postgres", "with-chrono"] }
 sea-orm-migration = { version = "1.1", default-features = false, features = ["cli", "runtime-tokio-rustls", "sqlx-postgres"] }

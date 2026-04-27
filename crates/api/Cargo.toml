@@ -12,6 +12,7 @@ chrono.workspace = true
 cookie.workspace = true
 hex.workspace = true
 jsonwebtoken.workspace = true
+produktive-ai = { path = "../ai" }
 produktive-entity = { path = "../entity" }
 produktive-migration = { path = "../migration" }
 resend-rs.workspace = true
