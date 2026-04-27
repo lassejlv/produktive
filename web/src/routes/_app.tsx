@@ -194,7 +194,7 @@ function AppLayout() {
         <SidebarFooter className="relative">
           <div ref={accountMenuRef}>
             {accountMenuOpen ? (
-              <div className="absolute bottom-[74px] left-4 right-4 overflow-hidden rounded-[9px] border border-border bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.22)] animate-fade-up">
+              <div className="absolute bottom-[74px] left-4 right-4 overflow-hidden rounded-[9px] border border-border bg-surface animate-fade-up">
                 <div className="border-b border-border-subtle px-3 py-2.5">
                   <p className="truncate text-[13px] font-medium text-fg">
                     {currentUser?.name ?? "User"}

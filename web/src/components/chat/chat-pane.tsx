@@ -170,7 +170,6 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
 
   return (
     <div className="relative flex h-screen min-w-0 flex-1 flex-col overflow-hidden bg-bg">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(91,140,255,0.04),transparent_28%)]" />
       <header className="relative z-10 flex min-h-[58px] items-center gap-3 border-b border-border-subtle bg-bg/86 px-6 py-3 backdrop-blur">
         <div className="flex min-w-0 flex-1 items-center gap-3 text-[13px] text-fg-muted">
           <button

@@ -58,7 +58,7 @@ export function ChatMessageItem({
           {message.typing ? (
             <span className="inline-flex items-center gap-2 py-1 text-fg-muted">
               <span className="inline-block size-3 animate-spin rounded-full border-2 border-border border-t-fg" />
-              <span>Thinking...</span>
+              <span className="text-shimmer font-medium">Thinking...</span>
             </span>
           ) : (
             message.content
