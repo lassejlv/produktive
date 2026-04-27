@@ -35,9 +35,14 @@ cargo test
 cd web && bun run check && bun run build
 ```
 
-## Docker
+## Railway / Railpack
 
 ```sh
-docker build -t produktive-api .
-docker run --rm -p 3000:3000 --env-file .env produktive-api
+railway up
 ```
+
+Railway should use Railpack for this repo. `railpack.json` lets the Rust
+provider build `produktive-api`, installs Bun for the nested Vite app, builds
+`web/dist`, and starts the API with `./bin/produktive-api`. The Rust version is
+pinned in `rust-toolchain.toml` so Railway uses the same toolchain as local
+development.

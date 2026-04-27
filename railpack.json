@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "packages": {
+    "bun": "latest"
+  },
+  "steps": {
+    "build": {
+      "commands": [
+        "...",
+        "cd web && bun install --frozen-lockfile",
+        "cd web && bun run build"
+      ]
+    }
+  },
+  "deploy": {
+    "inputs": [
+      "...",
+      {
+        "step": "build",
+        "include": [
+          "web/dist/**"
+        ]
+      }
+    ],
+    "startCommand": "./bin/produktive-api"
+  }
+}

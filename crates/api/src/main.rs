@@ -7,7 +7,7 @@ mod state;
 
 use anyhow::Context;
 use axum::Router;
-use config::Config;
+use config::{Config, DatabaseConfig};
 use http::{auth_routes, cors_layer, issue_routes};
 use sea_orm::Database;
 use sea_orm_migration::MigratorTrait;
@@ -29,17 +29,20 @@ async fn main() -> anyhow::Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let config = Config::from_env()?;
-    let db = Database::connect(&config.database_url)
-        .await
-        .context("failed to connect to database")?;
-    let migration_db = Database::connect(&config.database_direct_url)
+    let database = DatabaseConfig::from_env()?;
+    let migration_db = Database::connect(&database.database_direct_url)
         .await
         .context("failed to connect to migration database")?;
 
     produktive_migration::Migrator::up(&migration_db, None)
         .await
         .context("failed to run migrations")?;
+    drop(migration_db);
+
+    let config = Config::from_env()?;
+    let db = Database::connect(&config.database_url)
+        .await
+        .context("failed to connect to database")?;
 
     let state = AppState::new(db, config.clone());
     let spa_service = ServeDir::new(&config.web_dist_dir).fallback(ServeFile::new(format!(

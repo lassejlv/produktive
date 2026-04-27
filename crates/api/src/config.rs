@@ -1,9 +1,14 @@
 use anyhow::{anyhow, Context};
 
 #[derive(Clone, Debug)]
-pub struct Config {
+pub struct DatabaseConfig {
     pub database_url: String,
     pub database_direct_url: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct Config {
+    pub database_url: String,
     pub port: u16,
     pub jwt_secret: String,
     pub cors_origins: Vec<String>,
@@ -19,8 +24,7 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> anyhow::Result<Self> {
-        let database_url = required_env("DATABASE_URL")?;
-        let database_direct_url = env_or_default("DATABASE_DIRECT_URL", &database_url);
+        let database = DatabaseConfig::from_env()?;
         let jwt_secret = required_env("JWT_SECRET").context("JWT_SECRET is required")?;
 
         if jwt_secret.len() < 32 {
@@ -28,8 +32,7 @@ impl Config {
         }
 
         Ok(Self {
-            database_url,
-            database_direct_url,
+            database_url: database.database_url,
             port: env_or_default("PORT", "3000").parse().context("PORT must be a valid u16")?,
             jwt_secret,
             cors_origins: env_or_default(
@@ -58,6 +61,18 @@ impl Config {
                 .to_owned(),
             resend_api_key: required_env("RESEND_API_KEY").context("RESEND_API_KEY is required")?,
             resend_from_email: env_or_default("RESEND_FROM_EMAIL", "Produktive <be@produktive.app>"),
+        })
+    }
+}
+
+impl DatabaseConfig {
+    pub fn from_env() -> anyhow::Result<Self> {
+        let database_url = required_env("DATABASE_URL")?;
+        let database_direct_url = env_or_default("DATABASE_DIRECT_URL", &database_url);
+
+        Ok(Self {
+            database_url,
+            database_direct_url,
         })
     }
 }
