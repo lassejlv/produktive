@@ -9,7 +9,9 @@ export const env = z
     RESEND_FROM_EMAIL: z.string().min(1).default("Produktive <be@produktive.app>"),
     CORS_ORIGINS: z
       .string()
-      .default("https://produktive.app,http://localhost:5173,http://127.0.0.1:5173")
+      .default(
+        "https://produktive.app,https://*.produktive.app,http://localhost:5173,http://127.0.0.1:5173",
+      )
       .transform((value) =>
         value
           .split(",")
