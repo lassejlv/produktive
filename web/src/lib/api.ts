@@ -1,7 +1,7 @@
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 
 export const apiUrl = trimTrailingSlash(
-  import.meta.env.VITE_API_URL ?? "https://api.produktive.app",
+  import.meta.env.VITE_API_URL ?? globalThis.location?.origin ?? "",
 );
 
 export const apiPath = (path: string) => {

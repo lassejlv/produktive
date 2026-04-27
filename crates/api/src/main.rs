@@ -12,7 +12,10 @@ use sea_orm::Database;
 use sea_orm_migration::MigratorTrait;
 use state::AppState;
 use tokio::net::TcpListener;
-use tower_http::trace::TraceLayer;
+use tower_http::{
+    services::{ServeDir, ServeFile},
+    trace::TraceLayer,
+};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[tokio::main]
@@ -35,10 +38,14 @@ async fn main() -> anyhow::Result<()> {
         .context("failed to run migrations")?;
 
     let state = AppState::new(db, config.clone());
+    let spa_service = ServeDir::new(&config.web_dist_dir).fallback(ServeFile::new(format!(
+        "{}/index.html",
+        config.web_dist_dir
+    )));
     let app = Router::new()
-        .route("/", axum::routing::get(|| async { "Hello Mom!" }))
         .nest("/api/auth", auth_routes())
         .nest("/api/issues", issue_routes())
+        .fallback_service(spa_service)
         .layer(TraceLayer::new_for_http())
         .layer(cors_layer(&config))
         .with_state(state);

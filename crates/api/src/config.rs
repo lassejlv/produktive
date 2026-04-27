@@ -10,6 +10,7 @@ pub struct Config {
     pub cookie_domain: Option<String>,
     pub cookie_secure: bool,
     pub session_days: i64,
+    pub web_dist_dir: String,
 }
 
 impl Config {
@@ -45,6 +46,7 @@ impl Config {
             session_days: env_or_default("AUTH_SESSION_DAYS", "30")
                 .parse()
                 .context("AUTH_SESSION_DAYS must be a number")?,
+            web_dist_dir: env_or_default("WEB_DIST_DIR", "web/dist"),
         })
     }
 }

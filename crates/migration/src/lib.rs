@@ -1,5 +1,6 @@
 pub use sea_orm_migration::prelude::*;
 
+#[path = "../migrations/m20260427_000001_create_app_schema.rs"]
 mod m20260427_000001_create_app_schema;
 
 pub struct Migrator;
