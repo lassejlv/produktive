@@ -9,7 +9,7 @@ import { prisma } from "./prisma";
 import { sendEmail } from "./resend";
 import { env } from "./env";
 
-const createDefaultOrganizationForUser = async (user: {
+export const createDefaultOrganizationForUser = async (user: {
   id: string;
   name?: string | null;
   email?: string | null;
@@ -21,7 +21,19 @@ const createDefaultOrganizationForUser = async (user: {
   });
 
   if (existingMemberships > 0) {
-    return;
+    const membership = await prisma.member.findFirst({
+      where: {
+        userId: user.id,
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+      select: {
+        organizationId: true,
+      },
+    });
+
+    return membership?.organizationId ?? null;
   }
 
   const name = user.name?.trim() || "Personal Organization";
@@ -39,6 +51,20 @@ const createDefaultOrganizationForUser = async (user: {
       userId: user.id,
     },
   });
+
+  const membership = await prisma.member.findFirst({
+    where: {
+      userId: user.id,
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+    select: {
+      organizationId: true,
+    },
+  });
+
+  return membership?.organizationId ?? null;
 };
 
 export const auth = betterAuth({

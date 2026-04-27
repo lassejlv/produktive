@@ -1,5 +1,5 @@
 import { createMiddleware } from "hono/factory";
-import { auth } from "../lib/auth";
+import { auth, createDefaultOrganizationForUser } from "../lib/auth";
 import { prisma } from "../lib/prisma";
 
 type AuthSession = typeof auth.$Infer.Session;
@@ -56,13 +56,17 @@ export const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  const organizationId = await getUserOrganizationId(
+  let organizationId = await getUserOrganizationId(
     session.user.id,
     session.session.activeOrganizationId,
   );
 
   if (!organizationId) {
-    return c.json({ error: "No organization found" }, 403);
+    organizationId = await createDefaultOrganizationForUser(session.user);
+  }
+
+  if (!organizationId) {
+    return c.json({ error: "Unable to create organization" }, 500);
   }
 
   c.set("session", session.session);
