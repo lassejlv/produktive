@@ -41,8 +41,8 @@ cd web && bun run check && bun run build
 railway up
 ```
 
-Railway should use Railpack for this repo. `railpack.json` lets the Rust
-provider build `produktive-api`, installs Bun for the nested Vite app, builds
-`web/dist`, and starts the API with `./bin/produktive-api`. The Rust version is
+Railway should use Railpack for this repo. `railpack.json` builds
+`produktive-api`, installs Bun for the nested Vite app, builds `web/dist`, and
+starts the API with `./target/release/produktive-api`. The Rust version is
 pinned in `rust-toolchain.toml` so Railway uses the same toolchain as local
 development.
