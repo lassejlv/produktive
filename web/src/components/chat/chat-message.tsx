@@ -23,33 +23,21 @@ export type ChatMessage = {
 
 export function ChatMessageItem({
   message,
-  userInitials,
 }: {
   message: ChatMessage;
-  userInitials: string;
 }) {
   const isUser = message.role === "user";
 
   return (
     <div
       className={cn(
-        "group flex gap-3 animate-fade-up",
-        isUser && "flex-row-reverse",
+        "group flex animate-fade-up",
+        isUser ? "justify-end" : "justify-start",
       )}
     >
       <div
         className={cn(
-          "mt-0.5 grid size-8 shrink-0 place-items-center rounded-[8px] text-[12px] font-semibold",
-          isUser
-            ? "border border-border bg-surface-2 text-fg"
-            : "border border-border bg-bg text-fg",
-        )}
-      >
-        {isUser ? userInitials : "P"}
-      </div>
-      <div
-        className={cn(
-          "flex min-w-0 flex-1 flex-col gap-1.5",
+          "flex min-w-0 flex-col gap-1.5",
           isUser && "items-end",
         )}
       >
@@ -64,13 +52,13 @@ export function ChatMessageItem({
             "max-w-full text-[14px] leading-[1.65] text-fg [text-wrap:pretty]",
             isUser &&
               "max-w-[440px] rounded-[8px] border border-border bg-surface/80 px-3.5 py-2.5",
+            !isUser && "max-w-[680px]",
           )}
         >
           {message.typing ? (
-            <span className="inline-flex items-center gap-[3px] py-1">
-              <span className="size-[5px] rounded-full bg-fg-muted animate-typing-bounce" />
-              <span className="size-[5px] rounded-full bg-fg-muted animate-typing-bounce [animation-delay:0.15s]" />
-              <span className="size-[5px] rounded-full bg-fg-muted animate-typing-bounce [animation-delay:0.3s]" />
+            <span className="inline-flex items-center gap-2 py-1 text-fg-muted">
+              <span className="inline-block size-3 animate-spin rounded-full border-2 border-border border-t-fg" />
+              <span>Thinking...</span>
             </span>
           ) : (
             message.content

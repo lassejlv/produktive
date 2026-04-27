@@ -17,7 +17,7 @@ import {
   type ChatMessageRecord,
   createChat,
   getChat,
-  postChatMessage,
+  streamChatMessage,
 } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import { firstName, greetingForNow } from "@/lib/chat-history";
@@ -26,7 +26,6 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   const navigate = useNavigate();
   const session = useSession();
   const userName = session.data?.user?.name ?? "there";
-  const userInitials = userName.slice(0, 2).toUpperCase();
 
   const [chatTitle, setChatTitle] = useState("New conversation");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -75,13 +74,6 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
     stopRef.current = false;
     setBusy(true);
 
-    // Optimistic user bubble + typing indicator.
-    setMessages((prev) => [
-      ...prev,
-      { role: "user", content: text, time: "now" },
-      { role: "assistant", typing: true },
-    ]);
-
     try {
       let activeId = chatId;
       if (!activeId) {
@@ -95,28 +87,68 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
         });
       }
 
-      const response = await postChatMessage(activeId, text);
+      let streamedText = "";
+      let receivedDone = false;
 
-      if (stopRef.current) {
-        // User pressed stop — drop the optimistic placeholder, leave their message in.
-        setMessages((prev) =>
-          prev.filter((m, i) => !(i === prev.length - 1 && m.typing)),
-        );
-        return;
-      }
+      await streamChatMessage(activeId, text, (event) => {
+        if (stopRef.current) return;
 
-      // Replace the optimistic typing placeholder + user bubble with server records.
-      setMessages((prev) => {
-        const withoutOptimistic = prev.slice(0, -2);
-        return [...withoutOptimistic, ...response.messages.map(recordToMessage)];
+        if (event.type === "user") {
+          setMessages((prev) => [
+            ...prev,
+            recordToMessage(event.message),
+            { role: "assistant", typing: true },
+          ]);
+          return;
+        }
+
+        if (event.type === "delta") {
+          streamedText += event.content;
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last?.role === "assistant") {
+              next[next.length - 1] = {
+                role: "assistant",
+                content: <p className="m-0 whitespace-pre-wrap">{streamedText}</p>,
+              };
+            }
+            return next;
+          });
+          return;
+        }
+
+        if (event.type === "done") {
+          receivedDone = true;
+          setMessages((prev) => {
+            const withoutLoading = prev.filter((message) => !message.typing);
+            const last = withoutLoading[withoutLoading.length - 1];
+            const base =
+              last?.role === "assistant"
+                ? withoutLoading.slice(0, -1)
+                : withoutLoading;
+            return [
+              ...base,
+              ...event.messages
+                .filter((record) => record.role === "assistant")
+                .map(recordToMessage),
+            ];
+          });
+          return;
+        }
+
+        if (event.type === "error") {
+          throw new Error(event.error);
+        }
       });
+
+      if (!receivedDone && stopRef.current) {
+        setMessages((prev) => prev.filter((m) => !m.typing));
+      }
 
       // First user message? The server set a title — sync it.
       if (chatTitle === "New conversation") {
-        const firstUser = response.messages.find((m) => m.role === "user");
-        if (firstUser) {
-          setChatTitle(truncateForTab(firstUser.content));
-        }
+        setChatTitle(truncateForTab(text));
       }
     } catch (sendError) {
       setError(
@@ -213,7 +245,6 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
               <ChatMessageItem
                 key={index}
                 message={message}
-                userInitials={userInitials}
               />
             ))}
           </div>

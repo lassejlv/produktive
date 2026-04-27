@@ -119,3 +119,58 @@ export const postChatMessage = (id: string, content: string) =>
     method: "POST",
     body: JSON.stringify({ content }),
   });
+
+export type ChatStreamEvent =
+  | { type: "user"; message: ChatMessageRecord }
+  | { type: "delta"; content: string }
+  | { type: "done"; messages: ChatMessageRecord[] }
+  | { type: "error"; error: string };
+
+export const streamChatMessage = async (
+  id: string,
+  content: string,
+  onEvent: (event: ChatStreamEvent) => void,
+) => {
+  const response = await fetch(apiPath(`/api/chats/${id}/messages/stream`), {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ content }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.error ?? "Request failed");
+  }
+
+  if (!response.body) {
+    throw new Error("Streaming is not supported in this browser");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      onEvent(JSON.parse(trimmed) as ChatStreamEvent);
+    }
+  }
+
+  buffer += decoder.decode();
+  const trimmed = buffer.trim();
+  if (trimmed) {
+    onEvent(JSON.parse(trimmed) as ChatStreamEvent);
+  }
+};

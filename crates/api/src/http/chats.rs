@@ -5,8 +5,10 @@ use crate::{
     state::AppState,
 };
 use axum::{
+    body::Body,
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, Response, StatusCode},
+    response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
@@ -19,6 +21,7 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::convert::Infallible;
 use uuid::Uuid;
 
 const MAX_TOOL_ROUNDS: usize = 5;
@@ -27,11 +30,9 @@ const TITLE_MAX_LEN: usize = 48;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_chats).post(create_chat))
-        .route(
-            "/{id}",
-            get(get_chat_with_messages).delete(delete_chat),
-        )
+        .route("/{id}", get(get_chat_with_messages).delete(delete_chat))
         .route("/{id}/messages", post(post_message))
+        .route("/{id}/messages/stream", post(stream_message))
 }
 
 #[derive(Serialize)]
@@ -93,6 +94,15 @@ struct ChatWithMessages {
 #[derive(Serialize)]
 struct MessagesResponse {
     messages: Vec<WireMessage>,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+enum StreamEvent {
+    User { message: WireMessage },
+    Delta { content: String },
+    Done { messages: Vec<WireMessage> },
+    Error { error: String },
 }
 
 #[derive(Serialize)]
@@ -194,38 +204,104 @@ async fn post_message(
 
     let user_content = payload.content.trim();
     if user_content.is_empty() {
-        return Err(ApiError::BadRequest("Message content is required".to_owned()));
+        return Err(ApiError::BadRequest(
+            "Message content is required".to_owned(),
+        ));
     }
 
+    let user_row = insert_message(&state, &chat_id, "user", user_content, None, None).await?;
+
+    let mut new_rows = vec![user_row];
+    new_rows
+        .extend(finish_assistant_turn(&state, &auth, &chat_model, &chat_id, user_content).await?);
+
+    Ok(Json(MessagesResponse {
+        messages: new_rows
+            .iter()
+            .filter(|m| should_send_to_client(m))
+            .map(WireMessage::from)
+            .collect(),
+    }))
+}
+
+async fn stream_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(chat_id): Path<String>,
+    Json(payload): Json<PostMessageRequest>,
+) -> Result<Response<Body>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    let chat_model = find_chat(&state, &auth, &chat_id).await?;
+
+    let user_content = payload.content.trim().to_owned();
+    if user_content.is_empty() {
+        return Err(ApiError::BadRequest(
+            "Message content is required".to_owned(),
+        ));
+    }
+
+    let user_row = insert_message(&state, &chat_id, "user", &user_content, None, None).await?;
+    let user_event = StreamEvent::User {
+        message: WireMessage::from(&user_row),
+    };
+
+    let stream = async_stream::stream! {
+        yield stream_line(&user_event);
+
+        match finish_assistant_turn(&state, &auth, &chat_model, &chat_id, &user_content).await {
+            Ok(rows) => {
+                if let Some(assistant) = rows.iter().rev().find(|m| m.role == "assistant" && !m.content.is_empty()) {
+                    for chunk in chunk_text(&assistant.content) {
+                        yield stream_line(&StreamEvent::Delta { content: chunk });
+                    }
+                }
+
+                let messages = rows
+                    .iter()
+                    .filter(|m| should_send_to_client(m))
+                    .map(WireMessage::from)
+                    .collect();
+                yield stream_line(&StreamEvent::Done { messages });
+            }
+            Err(error) => {
+                tracing::error!(?error, "streamed chat turn failed");
+                yield stream_line(&StreamEvent::Error {
+                    error: "Failed to send message".to_owned(),
+                });
+            }
+        }
+    };
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/x-ndjson")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .body(Body::from_stream(stream))
+        .expect("valid streaming response")
+        .into_response())
+}
+
+async fn finish_assistant_turn(
+    state: &AppState,
+    auth: &AuthContext,
+    chat_model: &chat::Model,
+    chat_id: &str,
+    user_content: &str,
+) -> Result<Vec<chat_message::Model>, ApiError> {
     let mut new_rows: Vec<chat_message::Model> = Vec::new();
 
-    // Persist the user message.
-    let user_row = insert_message(
-        &state,
-        &chat_id,
-        "user",
-        user_content,
-        None,
-        None,
-    )
-    .await?;
-    new_rows.push(user_row);
-
-    // Pre-compute whether this is the first user message in the chat
-    // (so we can title from it later).
     let is_first_user_message = chat_message::Entity::find()
-        .filter(chat_message::Column::ChatId.eq(&chat_id))
+        .filter(chat_message::Column::ChatId.eq(chat_id))
         .filter(chat_message::Column::Role.eq("user"))
         .count(&state.db)
         .await?
         == 1;
 
-    // Build the AI message history from all rows (including older ones not in new_rows yet).
     let tools = registry();
-    let system_prompt = build_system_prompt(&auth);
+    let system_prompt = build_system_prompt(auth);
 
     for _ in 0..MAX_TOOL_ROUNDS {
-        let history = load_history(&state, &chat_id).await?;
+        let history = load_history(state, chat_id).await?;
         let result = state
             .ai
             .complete(&state.config.ai_model, &system_prompt, &history, &tools)
@@ -237,23 +313,16 @@ async fn post_message(
 
         match result {
             CompletionResult::Text(text) => {
-                let assistant_row = insert_message(
-                    &state,
-                    &chat_id,
-                    "assistant",
-                    &text,
-                    None,
-                    None,
-                )
-                .await?;
+                let assistant_row =
+                    insert_message(state, chat_id, "assistant", &text, None, None).await?;
                 new_rows.push(assistant_row);
                 break;
             }
             CompletionResult::ToolCalls(calls) => {
                 let serialized_calls = serialize_tool_calls(&calls);
                 let placeholder = insert_message(
-                    &state,
-                    &chat_id,
+                    state,
+                    chat_id,
                     "assistant",
                     "",
                     Some(serialized_calls),
@@ -264,12 +333,12 @@ async fn post_message(
 
                 for call in &calls {
                     let result_value =
-                        agent_tools::dispatch(&call.name, &call.arguments, &state, &auth).await?;
-                    let result_str = serde_json::to_string(&result_value)
-                        .unwrap_or_else(|_| "{}".to_owned());
+                        agent_tools::dispatch(&call.name, &call.arguments, state, auth).await?;
+                    let result_str =
+                        serde_json::to_string(&result_value).unwrap_or_else(|_| "{}".to_owned());
                     let tool_row = insert_message(
-                        &state,
-                        &chat_id,
+                        state,
+                        chat_id,
                         "tool",
                         &result_str,
                         None,
@@ -282,15 +351,14 @@ async fn post_message(
         }
     }
 
-    // If we exhausted the tool budget without producing a final text, drop in a fallback.
     if !new_rows
         .last()
         .map(|m| m.role == "assistant" && !m.content.is_empty())
         .unwrap_or(false)
     {
         let fallback = insert_message(
-            &state,
-            &chat_id,
+            state,
+            chat_id,
             "assistant",
             "I hit my tool-call limit before settling on an answer. Try rephrasing or breaking the request into smaller steps.",
             None,
@@ -300,7 +368,6 @@ async fn post_message(
         new_rows.push(fallback);
     }
 
-    // Update chat: set title from first user message if needed; bump updated_at always.
     let now = Utc::now().fixed_offset();
     let mut active = chat_model.clone().into_active_model();
     if is_first_user_message {
@@ -309,13 +376,7 @@ async fn post_message(
     active.updated_at = Set(now);
     active.update(&state.db).await?;
 
-    Ok(Json(MessagesResponse {
-        messages: new_rows
-            .iter()
-            .filter(|m| should_send_to_client(m))
-            .map(WireMessage::from)
-            .collect(),
-    }))
+    Ok(new_rows)
 }
 
 async fn find_chat(
@@ -360,19 +421,17 @@ async fn load_history(state: &AppState, chat_id: &str) -> Result<Vec<AiMessage>,
         .all(&state.db)
         .await?;
 
-    Ok(rows
-        .into_iter()
-        .map(row_to_ai_message)
-        .collect::<Vec<_>>())
+    Ok(rows.into_iter().map(row_to_ai_message).collect::<Vec<_>>())
 }
 
 fn row_to_ai_message(row: chat_message::Model) -> AiMessage {
     match row.role.as_str() {
         "user" => AiMessage::user(row.content),
         "assistant" => {
-            if let Some(calls) = row.tool_calls.and_then(|v| {
-                serde_json::from_value::<Vec<SerializedToolCall>>(v).ok()
-            }) {
+            if let Some(calls) = row
+                .tool_calls
+                .and_then(|v| serde_json::from_value::<Vec<SerializedToolCall>>(v).ok())
+            {
                 if !calls.is_empty() {
                     let mapped = calls
                         .into_iter()
@@ -387,10 +446,7 @@ fn row_to_ai_message(row: chat_message::Model) -> AiMessage {
             }
             AiMessage::assistant_text(row.content)
         }
-        "tool" => AiMessage::tool_result(
-            row.tool_call_id.unwrap_or_default(),
-            row.content,
-        ),
+        "tool" => AiMessage::tool_result(row.tool_call_id.unwrap_or_default(), row.content),
         _ => AiMessage::user(row.content),
     }
 }
@@ -433,6 +489,31 @@ fn truncate_title(text: &str) -> String {
         s.push('…');
         s
     }
+}
+
+fn stream_line(event: &StreamEvent) -> Result<String, Infallible> {
+    let line = serde_json::to_string(event)
+        .unwrap_or_else(|_| "{\"type\":\"error\",\"error\":\"Failed to encode event\"}".to_owned());
+    Ok(format!("{line}\n"))
+}
+
+fn chunk_text(text: &str) -> Vec<String> {
+    const TARGET_CHARS: usize = 18;
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+
+    for ch in text.chars() {
+        current.push(ch);
+        if current.chars().count() >= TARGET_CHARS && ch.is_whitespace() {
+            chunks.push(std::mem::take(&mut current));
+        }
+    }
+
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+
+    chunks
 }
 
 fn build_system_prompt(auth: &AuthContext) -> String {
