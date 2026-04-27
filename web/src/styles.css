@@ -1,35 +1,50 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Geist";
+  font-display: swap;
+  font-style: normal;
+  font-weight: 100 900;
+  src: url("../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  font-display: swap;
+  font-style: normal;
+  font-weight: 100 900;
+  src: url("../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2");
+}
+
 @theme {
-  --color-background: #0f0f0d;
-  --color-foreground: #ede9df;
-  --color-card: #151512;
-  --color-card-foreground: #ede9df;
-  --color-primary: #ede9df;
-  --color-primary-foreground: #11110f;
-  --color-muted: #1d1d19;
-  --color-muted-foreground: #9a9488;
-  --color-accent: #20201c;
-  --color-accent-foreground: #f4f0e7;
-  --color-border: #2b2a25;
-  --color-input: #343229;
-  --color-ring: #d4c8ad;
-  --color-sidebar: #11110f;
-  --color-sidebar-foreground: #e8e2d7;
-  --color-sidebar-accent: #1c1b17;
-  --color-sidebar-accent-foreground: #f2ece1;
-  --color-sidebar-border: #282720;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  --color-background: #000000;
+  --color-foreground: #ededed;
+  --color-card: #050505;
+  --color-card-foreground: #ededed;
+  --color-primary: #ffffff;
+  --color-primary-foreground: #000000;
+  --color-muted: #0a0a0a;
+  --color-muted-foreground: #8f8f8f;
+  --color-accent: #111111;
+  --color-accent-foreground: #ffffff;
+  --color-border: #1f1f1f;
+  --color-input: #2a2a2a;
+  --color-ring: #ffffff;
+  --color-sidebar: #050505;
+  --color-sidebar-foreground: #d8d8d8;
+  --color-sidebar-accent: #111111;
+  --color-sidebar-accent-foreground: #ffffff;
+  --color-sidebar-border: #1b1b1b;
+  --font-sans: "Geist", sans-serif;
+  --font-mono: "Geist Mono", monospace;
 }
 
 :root {
   color: var(--color-foreground);
   background: var(--color-background);
-  font-family:
-    "SF Pro Display", "Geist Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "Geist", sans-serif;
   font-synthesis: none;
-  text-rendering: optimizeLegibility;
+  text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -41,6 +56,9 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background:
+    radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.1), transparent 28rem),
+    #000;
 }
 
 button,
@@ -52,349 +70,4 @@ select {
 
 button {
   cursor: pointer;
-}
-
-.login-page,
-.loading-screen {
-  min-height: 100vh;
-  background: var(--color-background);
-}
-
-.login-page {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
-  gap: 56px;
-  align-items: center;
-  padding: 56px;
-}
-
-.login-copy {
-  max-width: 720px;
-}
-
-.login-copy h1 {
-  margin: 18px 0;
-  max-width: 720px;
-  color: var(--color-foreground);
-  font-family: "Newsreader", "Lyon Text", "Instrument Serif", Georgia, serif;
-  font-size: clamp(48px, 7vw, 96px);
-  letter-spacing: -0.04em;
-  line-height: 0.96;
-}
-
-.login-copy p:not(.eyebrow) {
-  max-width: 520px;
-  color: var(--color-muted-foreground);
-  font-size: 17px;
-  line-height: 1.65;
-}
-
-.login-card,
-.issue-panel,
-.detail-panel,
-.selected-card {
-  border: 1px solid var(--color-border);
-  background: var(--color-card);
-  color: var(--color-card-foreground);
-}
-
-.auth-form,
-.issue-form,
-.field {
-  display: grid;
-  gap: 12px;
-}
-
-.auth-form {
-  gap: 16px;
-}
-
-.form-error,
-.form-message,
-.alert {
-  margin: 0;
-  border: 1px solid var(--color-border);
-  padding: 10px 12px;
-  font-size: 14px;
-}
-
-.form-error,
-.alert {
-  background: #2a1816;
-  color: #e5a09b;
-}
-
-.form-message {
-  background: #182017;
-  color: #a7caa6;
-}
-
-.auth-switch {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  margin-top: 18px;
-  font-size: 14px;
-}
-
-.auth-switch button,
-.auth-switch a {
-  border: 0;
-  background: transparent;
-  color: var(--color-foreground);
-  padding: 0;
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
-
-.loading-screen {
-  display: grid;
-  place-items: center;
-  color: var(--color-muted-foreground);
-}
-
-.sidebar-brand,
-.sidebar-user {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.sidebar-brand strong,
-.sidebar-user strong {
-  display: block;
-  font-size: 14px;
-}
-
-.sidebar-brand span,
-.sidebar-user span {
-  display: block;
-  color: var(--color-muted-foreground);
-  font-size: 12px;
-}
-
-.brand-mark,
-.avatar {
-  display: grid;
-  width: 36px;
-  aspect-ratio: 1;
-  place-items: center;
-  border: 1px solid var(--color-border);
-  background: #191814;
-  color: var(--color-foreground);
-  font-weight: 800;
-}
-
-.avatar {
-  width: 34px;
-  background: var(--color-accent);
-  font-size: 12px;
-}
-
-.mark {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border: 1px solid #81786a;
-  background: transparent;
-}
-
-.mark-danger {
-  border-color: #bf6c65;
-}
-
-.dashboard-header {
-  display: flex;
-  min-height: 88px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-background);
-  padding: 20px 28px;
-}
-
-.dashboard-header h1 {
-  margin: 0;
-  color: var(--color-foreground);
-  font-family: "Newsreader", "Lyon Text", "Instrument Serif", Georgia, serif;
-  font-size: clamp(34px, 4vw, 58px);
-  letter-spacing: -0.04em;
-  line-height: 0.96;
-}
-
-.dashboard-main {
-  padding: 24px;
-}
-
-.eyebrow {
-  margin: 0;
-  color: #b9ad98;
-  font-family: "Geist Mono", "SF Mono", "JetBrains Mono", monospace;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.alert {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
-  gap: 16px;
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  border-bottom: 1px solid var(--color-border);
-  padding: 18px;
-}
-
-.panel-header h2,
-.issue-form h2,
-.selected-card h2 {
-  margin: 0;
-  letter-spacing: -0.02em;
-}
-
-.panel-header p,
-.selected-card p {
-  margin: 4px 0 0;
-  color: var(--color-muted-foreground);
-}
-
-.stats {
-  display: flex;
-  gap: 8px;
-  color: var(--color-muted-foreground);
-  font-family: "Geist Mono", "SF Mono", "JetBrains Mono", monospace;
-  font-size: 12px;
-}
-
-.stats span {
-  border: 1px solid var(--color-border);
-  padding: 6px 8px;
-}
-
-.issue-list {
-  display: grid;
-}
-
-.issue-card {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 12px;
-  border: 0;
-  border-bottom: 1px solid var(--color-border);
-  background: transparent;
-  color: var(--color-foreground);
-  padding: 16px 18px;
-  text-align: left;
-}
-
-.issue-card:hover,
-.issue-card[data-selected="true"] {
-  background: var(--color-accent);
-}
-
-.issue-card strong,
-.issue-card small {
-  display: block;
-}
-
-.issue-card small {
-  margin-top: 3px;
-  color: var(--color-muted-foreground);
-}
-
-.empty-state {
-  padding: 28px;
-  color: var(--color-muted-foreground);
-}
-
-.detail-panel {
-  display: grid;
-  align-content: start;
-  gap: 16px;
-  padding: 18px;
-}
-
-textarea,
-select {
-  width: 100%;
-  border: 1px solid var(--color-input);
-  background: var(--color-background);
-  color: var(--color-foreground);
-  outline: none;
-}
-
-textarea {
-  min-height: 112px;
-  resize: vertical;
-  padding: 10px 12px;
-}
-
-select {
-  min-height: 40px;
-  padding: 0 10px;
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.selected-card {
-  display: grid;
-  gap: 18px;
-  padding: 18px;
-}
-
-.selected-actions {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
-}
-
-.status-line {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--color-muted-foreground);
-  font-family: "Geist Mono", "SF Mono", "JetBrains Mono", monospace;
-  font-size: 12px;
-}
-
-@media (max-width: 920px) {
-  .login-page,
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .login-page {
-    padding: 28px;
-  }
-}
-
-@media (max-width: 640px) {
-  .dashboard-header {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .form-row,
-  .selected-actions {
-    grid-template-columns: 1fr;
-  }
 }

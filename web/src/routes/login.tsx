@@ -55,31 +55,36 @@ function LoginPage() {
   };
 
   return (
-    <main className="login-page">
-      <section className="login-copy">
-        <p className="eyebrow">Produktive.app</p>
-        <h1>Run product work without the enterprise theatre.</h1>
-        <p>
+    <main className="grid min-h-screen grid-cols-1 items-center gap-12 bg-background p-7 md:grid-cols-[minmax(0,1fr)_minmax(340px,400px)] md:p-14">
+      <section className="max-w-[760px]">
+        <p className="font-mono text-[10px] text-muted-foreground">Produktive.app</p>
+        <h1 className="my-4 max-w-[720px] text-[clamp(42px,6vw,88px)] font-semibold leading-[0.94] tracking-[-0.055em] text-white">
+          Run product work without the enterprise theatre.
+        </h1>
+        <p className="max-w-[520px] text-sm leading-relaxed text-muted-foreground">
           A focused, open-source Linear alternative for issues, ownership, and
           small team momentum.
         </p>
       </section>
 
-      <Card className="login-card">
+      <Card className="rounded-none border-border bg-card">
         <CardHeader>
-          <CardTitle>{mode === "signin" ? "Sign in" : "Create account"}</CardTitle>
-          <CardDescription>
+          <CardTitle className="text-base font-medium text-white">
+            {mode === "signin" ? "Sign in" : "Create account"}
+          </CardTitle>
+          <CardDescription className="text-xs">
             {mode === "signin"
               ? "Use your email and password to continue."
               : "Create a workspace account. Email verification is required."}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="auth-form" onSubmit={onSubmit}>
+          <form className="grid gap-3.5" onSubmit={onSubmit}>
             {mode === "signup" ? (
-              <div className="field">
-                <Label htmlFor="name">Name</Label>
+              <div className="grid gap-2.5">
+                <Label className="text-[11px] font-normal text-neutral-300" htmlFor="name">Name</Label>
                 <Input
+                  className="h-8 rounded-none bg-black text-xs"
                   id="name"
                   autoComplete="name"
                   value={name}
@@ -89,9 +94,10 @@ function LoginPage() {
               </div>
             ) : null}
 
-            <div className="field">
-              <Label htmlFor="email">Email</Label>
+            <div className="grid gap-2.5">
+              <Label className="text-[11px] font-normal text-neutral-300" htmlFor="email">Email</Label>
               <Input
+                className="h-8 rounded-none bg-black text-xs"
                 id="email"
                 type="email"
                 autoComplete="email"
@@ -101,9 +107,10 @@ function LoginPage() {
               />
             </div>
 
-            <div className="field">
-              <Label htmlFor="password">Password</Label>
+            <div className="grid gap-2.5">
+              <Label className="text-[11px] font-normal text-neutral-300" htmlFor="password">Password</Label>
               <Input
+                className="h-8 rounded-none bg-black text-xs"
                 id="password"
                 type="password"
                 autoComplete={mode === "signin" ? "current-password" : "new-password"}
@@ -114,10 +121,18 @@ function LoginPage() {
               />
             </div>
 
-            {error ? <p className="form-error">{error}</p> : null}
-            {message ? <p className="form-message">{message}</p> : null}
+            {error ? (
+              <p className="border border-border bg-red-950/30 px-2.5 py-2 text-xs text-red-200">
+                {error}
+              </p>
+            ) : null}
+            {message ? (
+              <p className="border border-border bg-green-950/30 px-2.5 py-2 text-xs text-green-200">
+                {message}
+              </p>
+            ) : null}
 
-            <Button className="w-full" type="submit" disabled={isSubmitting}>
+            <Button className="h-8 w-full text-xs" type="submit" disabled={isSubmitting}>
               {isSubmitting
                 ? "Working..."
                 : mode === "signin"
@@ -126,17 +141,19 @@ function LoginPage() {
             </Button>
           </form>
 
-          <div className="auth-switch">
+          <div className="mt-4 flex justify-between gap-3.5 text-xs text-muted-foreground">
             {mode === "signin" ? (
-              <button type="button" onClick={() => setMode("signup")}>
+              <button className="text-foreground underline underline-offset-4" type="button" onClick={() => setMode("signup")}>
                 Need an account?
               </button>
             ) : (
-              <button type="button" onClick={() => setMode("signin")}>
+              <button className="text-foreground underline underline-offset-4" type="button" onClick={() => setMode("signin")}>
                 Already have an account?
               </button>
             )}
-            <Link to="/dashboard">Go to dashboard</Link>
+            <Link className="text-foreground underline underline-offset-4" to="/dashboard">
+              Go to dashboard
+            </Link>
           </div>
         </CardContent>
       </Card>
