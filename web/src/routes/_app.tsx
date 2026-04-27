@@ -90,43 +90,43 @@ function AppLayout() {
     <SidebarProvider>
       <Sidebar className="bg-sidebar/95">
         <SidebarHeader>
-          <div className="flex items-center gap-3">
-            <div className="grid size-7 place-items-center rounded-[8px] bg-fg text-[13px] font-semibold text-bg shadow-[0_0_0_1px_rgba(255,255,255,0.1),0_8px_22px_rgba(0,0,0,0.35)]">
+          <div className="flex items-center gap-2.5">
+            <div className="grid size-6 place-items-center rounded-[7px] bg-fg text-[12px] font-semibold text-bg">
               P
             </div>
-            <span className="min-w-0 flex-1 truncate text-[16px] font-semibold tracking-[-0.02em] text-fg">
+            <span className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.015em] text-fg">
               Produktive
             </span>
             <button
               type="button"
               aria-label="Open workspace"
-              className="grid size-8 place-items-center rounded-[9px] border border-border bg-surface/70 text-fg-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-colors hover:border-[#33333a] hover:bg-surface-2 hover:text-fg"
+              className="grid size-7 place-items-center rounded-[8px] border border-border bg-surface/50 text-fg-muted transition-colors hover:border-[#33333a] hover:bg-surface-2 hover:text-fg"
             >
               <DotsIcon />
             </button>
           </div>
         </SidebarHeader>
 
-        <SidebarContent className="flex flex-col gap-7 px-6 py-0">
+        <SidebarContent className="flex flex-col gap-5 px-4 py-0">
           <div>
             <button
               type="button"
               onClick={() => void navigate({ to: "/chat" })}
               className={cn(
-                "inline-flex h-11 w-full items-center gap-3 rounded-[10px] border border-border px-4 text-[15px] font-medium text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-[#33333a] hover:bg-surface-2",
+                "inline-flex h-9 w-full items-center gap-2.5 rounded-[8px] border border-border px-3 text-[13px] font-medium text-fg transition-colors hover:border-[#33333a] hover:bg-surface-2",
                 isNewChatActive ? "bg-surface-2" : "bg-surface/50",
               )}
             >
               <PlusIcon />
               <span>New chat</span>
-              <span className="ml-auto rounded-[6px] border border-border bg-surface-3 px-2 py-1 font-mono text-[11px] text-fg-muted">
+              <span className="ml-auto rounded-[5px] border border-border bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] text-fg-muted">
                 ⌘ K
               </span>
             </button>
           </div>
 
           <div>
-            <div className="px-2 pb-2 text-[12px] font-medium uppercase tracking-[0.08em] text-fg-faint">
+            <div className="px-2 pb-1.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
               Workspace
             </div>
             <div className="flex flex-col gap-px">
@@ -134,7 +134,7 @@ function AppLayout() {
                 type="button"
                 onClick={() => void navigate({ to: "/issues" })}
                 className={cn(
-                  "flex h-10 w-full items-center gap-3 rounded-[8px] px-3 text-left text-[15px] transition-colors",
+                  "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors",
                   isIssuesActive
                     ? "bg-surface-2 text-fg [&_svg]:text-fg"
                     : "text-fg-muted hover:bg-surface hover:text-fg [&_svg]:text-fg-faint",
@@ -147,16 +147,16 @@ function AppLayout() {
           </div>
 
           <div>
-            <div className="px-2 pb-2 text-[12px] font-medium uppercase tracking-[0.08em] text-fg-faint">
+            <div className="px-2 pb-1.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
               Recent
             </div>
             <div className="flex flex-col gap-px">
               {chatsLoading ? (
-                <div className="px-3 py-1 text-[14px] text-fg-faint">
+                <div className="px-2.5 py-1 text-[12px] text-fg-faint">
                   Loading…
                 </div>
               ) : chats.length === 0 ? (
-                <div className="px-3 py-1 text-[14px] text-fg-faint">
+                <div className="px-2.5 py-1 text-[12px] text-fg-faint">
                   No chats yet
                 </div>
               ) : (
@@ -173,7 +173,7 @@ function AppLayout() {
                         })
                       }
                       className={cn(
-                        "group flex h-9 w-full items-center gap-2 rounded-[8px] px-3 text-left text-[14px] transition-colors",
+                        "group flex h-8 w-full items-center gap-2 rounded-[7px] px-2.5 text-left text-[13px] transition-colors",
                         isActive
                           ? "bg-surface text-fg"
                           : "text-fg-muted hover:bg-surface hover:text-fg",
@@ -194,18 +194,18 @@ function AppLayout() {
         <SidebarFooter className="relative">
           <div ref={accountMenuRef}>
             {accountMenuOpen ? (
-              <div className="absolute bottom-[92px] left-6 right-6 overflow-hidden rounded-[12px] border border-border bg-surface shadow-[0_18px_50px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(255,255,255,0.04)] animate-fade-up">
-                <div className="border-b border-border-subtle px-4 py-3">
-                  <p className="truncate text-[14px] font-medium text-fg">
+              <div className="absolute bottom-[74px] left-4 right-4 overflow-hidden rounded-[9px] border border-border bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.22)] animate-fade-up">
+                <div className="border-b border-border-subtle px-3 py-2.5">
+                  <p className="truncate text-[13px] font-medium text-fg">
                     {currentUser?.name ?? "User"}
                   </p>
-                  <p className="mt-0.5 truncate text-[12px] text-fg-muted">
+                  <p className="mt-0.5 truncate text-[11px] text-fg-muted">
                     {currentUser?.email}
                   </p>
                 </div>
                 <button
                   type="button"
-                  className="flex h-11 w-full items-center justify-between px-4 text-left text-[14px] font-medium text-fg transition-colors hover:bg-surface-2"
+                  className="flex h-9 w-full items-center justify-between px-3 text-left text-[13px] font-medium text-fg transition-colors hover:bg-surface-2"
                   onClick={async () => {
                     setAccountMenuOpen(false);
                     await signOut();
@@ -225,21 +225,21 @@ function AppLayout() {
               aria-expanded={accountMenuOpen}
               aria-haspopup="menu"
               className={cn(
-                "flex w-full items-center gap-3 rounded-[12px] border border-transparent p-2 text-left transition-colors",
+                "flex w-full items-center gap-2.5 rounded-[9px] border border-transparent p-1.5 text-left transition-colors",
                 accountMenuOpen
                   ? "border-border bg-surface"
                   : "hover:border-border hover:bg-surface/65",
               )}
               onClick={() => setAccountMenuOpen((open) => !open)}
             >
-              <div className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-surface text-[14px] font-medium text-fg">
+              <div className="grid size-8 shrink-0 place-items-center rounded-[8px] border border-border bg-surface text-[12px] font-medium text-fg">
                 {currentUser?.name?.slice(0, 2).toUpperCase() ?? "P"}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[15px] font-medium text-fg">
+                <p className="truncate text-[13px] font-medium text-fg">
                   {currentUser?.name ?? "User"}
                 </p>
-                <p className="truncate text-[12px] text-fg-muted">
+                <p className="truncate text-[11px] text-fg-muted">
                   {currentUser?.email}
                 </p>
               </div>

@@ -9,7 +9,7 @@ export function Sidebar({ className, ...props }: React.ComponentProps<"aside">) 
   return (
     <aside
       className={cn(
-        "hidden w-[300px] shrink-0 flex-col border-r border-border-subtle bg-sidebar text-fg md:flex",
+        "hidden w-[260px] shrink-0 flex-col border-r border-border-subtle bg-sidebar text-fg md:flex",
         className,
       )}
       {...props}
@@ -19,19 +19,19 @@ export function Sidebar({ className, ...props }: React.ComponentProps<"aside">) 
 
 export function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <div className={cn("px-6 pb-7 pt-6", className)} {...props} />
+    <div className={cn("px-4 pb-5 pt-4", className)} {...props} />
   );
 }
 
 export function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <div className={cn("flex-1 overflow-auto p-5", className)} {...props} />
+    <div className={cn("flex-1 overflow-auto p-4", className)} {...props} />
   );
 }
 
 export function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <div className={cn("p-6", className)} {...props} />
+    <div className={cn("p-4", className)} {...props} />
   );
 }
 
