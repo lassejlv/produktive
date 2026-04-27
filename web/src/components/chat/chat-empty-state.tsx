@@ -40,16 +40,16 @@ export function ChatEmptyState({
   onPickSuggestion: (prompt: string) => void;
 }) {
   return (
-    <div className="flex flex-1 items-center justify-center px-6 py-10">
-      <div className="w-full max-w-[680px] text-center animate-fade-up">
-        <div className="mx-auto mb-[18px] grid size-[42px] place-items-center rounded-[10px] bg-fg text-[17px] font-semibold text-bg">
+    <div className="relative z-10 flex flex-1 items-center justify-center px-8 py-12">
+      <div className="w-full max-w-[720px] text-center animate-fade-up">
+        <div className="mx-auto mb-5 grid size-12 place-items-center rounded-[13px] border border-border bg-bg text-[19px] font-semibold text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           P
         </div>
-        <h1 className="m-0 text-[26px] font-semibold tracking-[-0.025em] text-fg text-balance">
+        <h1 className="m-0 text-[30px] font-semibold tracking-[-0.025em] text-fg text-balance">
           {greeting}
           {name ? `, ${name}` : ""}
         </h1>
-        <p className="mx-0 mb-[28px] mt-2 text-sm text-fg-muted">
+        <p className="mx-0 mb-8 mt-2 text-[15px] text-fg-muted">
           What do you want to work on?
         </p>
         {showSuggestions ? (
@@ -59,12 +59,12 @@ export function ChatEmptyState({
                 key={s.text}
                 type="button"
                 onClick={() => onPickSuggestion(`${s.text} ${s.hint}`)}
-                className="flex min-h-[62px] cursor-pointer items-start gap-2.5 rounded-lg border border-border-subtle bg-surface px-[13px] py-[11px] text-left transition-colors hover:border-border hover:bg-surface-2"
+                className="flex min-h-[74px] cursor-pointer items-start gap-3 rounded-[12px] border border-border-subtle bg-surface/75 px-4 py-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.025)] transition-colors hover:border-border hover:bg-surface-2"
               >
                 <span className="mt-px shrink-0 text-fg-muted">{s.icon}</span>
-                <span className="text-[12.5px] leading-[1.5] text-fg">
+                <span className="text-[14px] leading-[1.5] text-fg">
                   {s.text}
-                  <span className="mt-0.5 block text-[11.5px] text-fg-muted">
+                  <span className="mt-1 block text-[12.5px] text-fg-muted">
                     {s.hint}
                   </span>
                 </span>

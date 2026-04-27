@@ -33,16 +33,16 @@ export function ChatMessageItem({
   return (
     <div
       className={cn(
-        "group flex gap-[14px] animate-fade-up",
+        "group flex gap-4 animate-fade-up",
         isUser && "flex-row-reverse",
       )}
     >
       <div
         className={cn(
-          "mt-0.5 grid size-[26px] shrink-0 place-items-center rounded-md text-[10px] font-medium",
+          "mt-0.5 grid size-10 shrink-0 place-items-center rounded-full text-[13px] font-semibold",
           isUser
-            ? "border border-border bg-gradient-to-br from-[#3a3a40] to-surface-2 text-fg"
-            : "bg-fg text-bg",
+            ? "border border-border bg-gradient-to-br from-[#3a3a40] to-surface-2 text-fg shadow-[0_12px_32px_rgba(0,0,0,0.25)]"
+            : "rounded-[10px] border border-border bg-bg text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
         )}
       >
         {isUser ? userInitials : "P"}
@@ -53,17 +53,17 @@ export function ChatMessageItem({
           isUser && "items-end",
         )}
       >
-        <div className="flex items-center gap-[7px] font-mono text-[11px] text-fg-faint">
-          <span className="font-sans text-xs font-medium text-fg-muted">
+        <div className="flex items-center gap-2 text-[14px] text-fg-faint">
+          <span className="font-sans text-[14px] font-medium text-fg-muted">
             {isUser ? "You" : "Produktive"}
           </span>
           {message.time ? <span>{message.time}</span> : null}
         </div>
         <div
           className={cn(
-            "max-w-full text-sm leading-[1.65] text-fg [text-wrap:pretty]",
+            "max-w-full text-[16px] leading-[1.7] text-fg [text-wrap:pretty]",
             isUser &&
-              "max-w-[520px] rounded-[10px] border border-border-subtle bg-surface px-[14px] py-2.5",
+              "max-w-[520px] rounded-[10px] border border-border bg-surface/85 px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]",
           )}
         >
           {message.typing ? (

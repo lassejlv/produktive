@@ -137,30 +137,31 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   const greeting = useMemo(() => greetingForNow(), []);
 
   return (
-    <div className="flex h-screen min-w-0 flex-1 flex-col bg-bg">
-      <header className="flex min-h-12 items-center gap-3 border-b border-border-subtle px-5 py-[11px]">
-        <div className="flex min-w-0 flex-1 items-center gap-2 text-[13px] text-fg-muted">
+    <div className="relative flex h-screen min-w-0 flex-1 flex-col overflow-hidden bg-bg">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_18%,rgba(91,140,255,0.07),transparent_28%),radial-gradient(circle_at_30%_8%,rgba(255,255,255,0.035),transparent_24%)]" />
+      <header className="relative z-10 flex min-h-[86px] items-center gap-3 border-b border-border-subtle bg-bg/72 px-8 py-5 backdrop-blur-xl">
+        <div className="flex min-w-0 flex-1 items-center gap-4 text-[15px] text-fg-muted">
           <button
             type="button"
             aria-label="Toggle sidebar"
-            className="grid size-[30px] place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+            className="hidden size-8 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
           >
             <SidebarIcon />
           </button>
-          <span className="text-fg-faint">Chat</span>
-          <span className="text-fg-faint">/</span>
-          <span className="truncate font-medium text-fg">{chatTitle}</span>
+          <span className="text-fg-muted">Chat</span>
+          <span className="text-fg-muted">/</span>
+          <span className="truncate font-semibold text-fg">{chatTitle}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            className="inline-flex h-7 items-center gap-[7px] rounded-md border border-border bg-surface px-2.5 text-xs text-fg transition-colors hover:border-[#33333a] hover:bg-surface-2"
+            className="inline-flex h-11 items-center gap-2.5 rounded-[11px] border border-border bg-surface/60 px-4 text-[15px] font-medium text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-colors hover:border-[#33333a] hover:bg-surface-2"
           >
             <span className="text-fg-faint">
               <SparkleIcon />
             </span>
             <span>Produktive</span>
-            <span className="font-mono text-[10.5px] text-fg-muted">v0.1</span>
+            <span className="font-mono text-[12px] text-fg-muted">v0.1</span>
             <span className="text-fg-faint">
               <CaretIcon />
             </span>
@@ -168,14 +169,14 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
           <button
             type="button"
             aria-label="Search"
-            className="grid size-[30px] place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+            className="hidden size-10 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
           >
             <SearchIcon />
           </button>
           <button
             type="button"
             aria-label="Settings"
-            className="grid size-[30px] place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+            className="hidden size-10 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
           >
             <SettingsIcon />
           </button>
@@ -183,7 +184,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
       </header>
 
       {error ? (
-        <div className="m-5 flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+        <div className="relative z-10 m-5 flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
           <span>{error}</span>
           <button
             type="button"
@@ -205,9 +206,9 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
       ) : (
         <div
           ref={convoRef}
-          className="flex flex-1 flex-col overflow-y-auto px-6 pb-4 pt-8"
+          className="relative z-10 flex flex-1 flex-col overflow-y-auto px-8 pb-4 pt-10"
         >
-          <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6">
+          <div className="mx-auto flex w-full max-w-[900px] flex-col gap-8">
             {messages.map((message, index) => (
               <ChatMessageItem
                 key={index}

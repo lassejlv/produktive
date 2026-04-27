@@ -59,38 +59,45 @@ function AppLayout() {
 
   return (
     <SidebarProvider>
-      <Sidebar className="w-[248px] bg-sidebar">
+      <Sidebar className="bg-sidebar/95">
         <SidebarHeader>
-          <div className="flex items-center gap-[9px]">
-            <div className="grid size-[22px] place-items-center rounded-[5px] bg-fg text-[10.5px] font-semibold text-bg">
+          <div className="flex items-center gap-3">
+            <div className="grid size-7 place-items-center rounded-[8px] bg-fg text-[13px] font-semibold text-bg shadow-[0_0_0_1px_rgba(255,255,255,0.1),0_8px_22px_rgba(0,0,0,0.35)]">
               P
             </div>
-            <span className="min-w-0 flex-1 truncate text-[13px] font-medium tracking-[-0.005em] text-fg">
+            <span className="min-w-0 flex-1 truncate text-[16px] font-semibold tracking-[-0.02em] text-fg">
               Produktive
             </span>
+            <button
+              type="button"
+              aria-label="Open workspace"
+              className="grid size-8 place-items-center rounded-[9px] border border-border bg-surface/70 text-fg-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-colors hover:border-[#33333a] hover:bg-surface-2 hover:text-fg"
+            >
+              <DotsIcon />
+            </button>
           </div>
         </SidebarHeader>
 
-        <SidebarContent className="flex flex-col gap-3.5 p-2.5">
+        <SidebarContent className="flex flex-col gap-7 px-6 py-0">
           <div>
             <button
               type="button"
               onClick={() => void navigate({ to: "/chat" })}
               className={cn(
-                "mb-1.5 inline-flex h-8 w-full items-center gap-2 rounded-[7px] border border-border px-2.5 text-[12.5px] font-medium text-fg transition-colors hover:border-[#33333a] hover:bg-surface-2",
-                isNewChatActive ? "bg-surface-2" : "bg-surface",
+                "inline-flex h-11 w-full items-center gap-3 rounded-[10px] border border-border px-4 text-[15px] font-medium text-fg shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] transition-colors hover:border-[#33333a] hover:bg-surface-2",
+                isNewChatActive ? "bg-surface-2" : "bg-surface/50",
               )}
             >
               <PlusIcon />
               <span>New chat</span>
-              <span className="ml-auto rounded border border-border bg-bg px-[5px] py-px font-mono text-[10px] text-fg-faint">
+              <span className="ml-auto rounded-[6px] border border-border bg-surface-3 px-2 py-1 font-mono text-[11px] text-fg-muted">
                 ⌘ K
               </span>
             </button>
           </div>
 
           <div>
-            <div className="px-2 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-fg-faint">
+            <div className="px-2 pb-2 text-[12px] font-medium uppercase tracking-[0.08em] text-fg-faint">
               Workspace
             </div>
             <div className="flex flex-col gap-px">
@@ -98,9 +105,9 @@ function AppLayout() {
                 type="button"
                 onClick={() => void navigate({ to: "/issues" })}
                 className={cn(
-                  "flex h-[30px] w-full items-center gap-[9px] rounded-md px-[9px] text-left text-[13px] transition-colors",
+                  "flex h-10 w-full items-center gap-3 rounded-[8px] px-3 text-left text-[15px] transition-colors",
                   isIssuesActive
-                    ? "bg-surface text-fg [&_svg]:text-fg-muted"
+                    ? "bg-surface-2 text-fg [&_svg]:text-fg"
                     : "text-fg-muted hover:bg-surface hover:text-fg [&_svg]:text-fg-faint",
                 )}
               >
@@ -111,16 +118,16 @@ function AppLayout() {
           </div>
 
           <div>
-            <div className="px-2 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-fg-faint">
+            <div className="px-2 pb-2 text-[12px] font-medium uppercase tracking-[0.08em] text-fg-faint">
               Recent
             </div>
             <div className="flex flex-col gap-px">
               {chatsLoading ? (
-                <div className="px-[9px] py-1 text-[12px] text-fg-faint">
+                <div className="px-3 py-1 text-[14px] text-fg-faint">
                   Loading…
                 </div>
               ) : chats.length === 0 ? (
-                <div className="px-[9px] py-1 text-[12px] text-fg-faint">
+                <div className="px-3 py-1 text-[14px] text-fg-faint">
                   No chats yet
                 </div>
               ) : (
@@ -137,7 +144,7 @@ function AppLayout() {
                         })
                       }
                       className={cn(
-                        "group flex h-7 w-full items-center gap-2 rounded-md px-[9px] text-left text-[12.5px] transition-colors",
+                        "group flex h-9 w-full items-center gap-2 rounded-[8px] px-3 text-left text-[14px] transition-colors",
                         isActive
                           ? "bg-surface text-fg"
                           : "text-fg-muted hover:bg-surface hover:text-fg",
@@ -156,21 +163,24 @@ function AppLayout() {
         </SidebarContent>
 
         <SidebarFooter>
-          <div className="flex items-center gap-2.5">
-            <div className="grid size-7 shrink-0 place-items-center rounded-md border border-border bg-surface text-[10px] font-medium text-fg">
+          <div className="flex items-center gap-3">
+            <div className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-surface text-[14px] font-medium text-fg">
               {currentUser?.name?.slice(0, 2).toUpperCase() ?? "P"}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-medium text-fg">
+              <p className="truncate text-[15px] font-medium text-fg">
                 {currentUser?.name ?? "User"}
               </p>
-              <p className="truncate text-[11px] text-fg-muted">
+              <p className="truncate text-[12px] text-fg-muted">
                 {currentUser?.email}
               </p>
             </div>
+            <span className="text-fg-muted">
+              <DotsIcon />
+            </span>
           </div>
           <Button
-            className="mt-3 w-full"
+            className="mt-6 h-11 w-full rounded-[8px] text-[14px]"
             variant="outline"
             size="sm"
             onClick={async () => {

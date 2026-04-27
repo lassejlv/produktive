@@ -2,14 +2,14 @@ import type * as React from "react";
 import { cn } from "@/lib/utils";
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
-  return <div className="flex min-h-screen w-full bg-bg">{children}</div>;
+  return <div className="flex min-h-screen w-full bg-bg text-fg">{children}</div>;
 }
 
 export function Sidebar({ className, ...props }: React.ComponentProps<"aside">) {
   return (
     <aside
       className={cn(
-        "hidden w-60 shrink-0 flex-col border-r border-border-subtle bg-sidebar text-fg md:flex",
+        "hidden w-[300px] shrink-0 flex-col border-r border-border-subtle bg-sidebar text-fg md:flex",
         className,
       )}
       {...props}
@@ -19,25 +19,19 @@ export function Sidebar({ className, ...props }: React.ComponentProps<"aside">) 
 
 export function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <div
-      className={cn("border-b border-border-subtle px-4 py-3", className)}
-      {...props}
-    />
+    <div className={cn("px-6 pb-7 pt-6", className)} {...props} />
   );
 }
 
 export function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <div className={cn("flex-1 overflow-auto p-3", className)} {...props} />
+    <div className={cn("flex-1 overflow-auto p-5", className)} {...props} />
   );
 }
 
 export function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <div
-      className={cn("border-t border-border-subtle p-3", className)}
-      {...props}
-    />
+    <div className={cn("p-6", className)} {...props} />
   );
 }
 
