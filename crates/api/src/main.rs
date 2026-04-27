@@ -8,7 +8,7 @@ mod state;
 use anyhow::Context;
 use axum::Router;
 use config::{Config, DatabaseConfig};
-use http::{auth_routes, cors_layer, issue_routes};
+use http::{auth_routes, cors_layer, issue_routes, waitlist_routes};
 use sea_orm::Database;
 use sea_orm_migration::MigratorTrait;
 use state::AppState;
@@ -52,6 +52,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .nest("/api/auth", auth_routes())
         .nest("/api/issues", issue_routes())
+        .nest("/api/waitlist", waitlist_routes())
         .fallback_service(spa_service)
         .layer(TraceLayer::new_for_http())
         .layer(cors_layer(&config))

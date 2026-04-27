@@ -1,5 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
+import { joinWaitlist } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -134,13 +135,21 @@ function EmailForm({ ctaLabel }: { ctaLabel: string }) {
     }
     setSubmitting(true);
     setStatus({ type: "idle", msg: "" });
-    await new Promise((r) => setTimeout(r, 700));
-    setSubmitting(false);
-    setEmail("");
-    setStatus({
-      type: "success",
-      msg: "Thanks — you're on the list. We'll be in touch.",
-    });
+    try {
+      await joinWaitlist(trimmed);
+      setEmail("");
+      setStatus({
+        type: "success",
+        msg: "Thanks — you're on the list. We'll be in touch.",
+      });
+    } catch (error) {
+      setStatus({
+        type: "error",
+        msg: error instanceof Error ? error.message : "Something went wrong.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (

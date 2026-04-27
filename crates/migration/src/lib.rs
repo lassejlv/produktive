@@ -4,6 +4,8 @@ pub use sea_orm_migration::prelude::*;
 mod m20260427_000001_create_app_schema;
 #[path = "../migrations/m20260427_000002_add_email_auth_flows.rs"]
 mod m20260427_000002_add_email_auth_flows;
+#[path = "../migrations/m20260427_000003_create_waitlist.rs"]
+mod m20260427_000003_create_waitlist;
 
 pub struct Migrator;
 
@@ -13,6 +15,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m20260427_000001_create_app_schema::Migration),
             Box::new(m20260427_000002_add_email_auth_flows::Migration),
+            Box::new(m20260427_000003_create_waitlist::Migration),
         ]
     }
 }

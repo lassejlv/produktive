@@ -82,3 +82,9 @@ export const deleteIssue = (id: string) =>
   request<{ ok: true }>(`/api/issues/${id}`, {
     method: "DELETE",
   });
+
+export const joinWaitlist = (email: string) =>
+  request<{ ok: true }>("/api/waitlist", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
