@@ -1,10 +1,11 @@
 {
-  "name": "produktive",
+  "name": "produktive-api",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/index.ts",
-    "start": "bun db:migrate:deploy && bun src/index.ts",
+    "build": "bun build --compile src/index.ts --outfile dist/produktive-api",
+    "start": "bun db:migrate:deploy && ./dist/produktive-api",
     "check": "bunx tsc --noEmit",
     "db:validate": "prisma validate",
     "db:generate": "prisma generate",
