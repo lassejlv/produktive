@@ -16,6 +16,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIssuesRouteImport } from './routes/_app.issues'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
+import { Route as AppIssuesIssueIdRouteImport } from './routes/_app.issues.$issueId'
 
 const VerifyEmailRoute = VerifyEmailRouteImport.update({
   id: '/verify-email',
@@ -51,6 +52,11 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
+const AppIssuesIssueIdRoute = AppIssuesIssueIdRouteImport.update({
+  id: '/$issueId',
+  path: '/$issueId',
+  getParentRoute: () => AppIssuesRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -58,7 +64,8 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/verify-email': typeof VerifyEmailRoute
   '/dashboard': typeof AppDashboardRoute
-  '/issues': typeof AppIssuesRoute
+  '/issues': typeof AppIssuesRouteWithChildren
+  '/issues/$issueId': typeof AppIssuesIssueIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -66,7 +73,8 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/verify-email': typeof VerifyEmailRoute
   '/dashboard': typeof AppDashboardRoute
-  '/issues': typeof AppIssuesRoute
+  '/issues': typeof AppIssuesRouteWithChildren
+  '/issues/$issueId': typeof AppIssuesIssueIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -76,7 +84,8 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/verify-email': typeof VerifyEmailRoute
   '/_app/dashboard': typeof AppDashboardRoute
-  '/_app/issues': typeof AppIssuesRoute
+  '/_app/issues': typeof AppIssuesRouteWithChildren
+  '/_app/issues/$issueId': typeof AppIssuesIssueIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -87,6 +96,7 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/dashboard'
     | '/issues'
+    | '/issues/$issueId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -95,6 +105,7 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/dashboard'
     | '/issues'
+    | '/issues/$issueId'
   id:
     | '__root__'
     | '/'
@@ -104,6 +115,7 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/_app/dashboard'
     | '/_app/issues'
+    | '/_app/issues/$issueId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -165,17 +177,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/issues/$issueId': {
+      id: '/_app/issues/$issueId'
+      path: '/$issueId'
+      fullPath: '/issues/$issueId'
+      preLoaderRoute: typeof AppIssuesIssueIdRouteImport
+      parentRoute: typeof AppIssuesRoute
+    }
   }
 }
 
+interface AppIssuesRouteChildren {
+  AppIssuesIssueIdRoute: typeof AppIssuesIssueIdRoute
+}
+
+const AppIssuesRouteChildren: AppIssuesRouteChildren = {
+  AppIssuesIssueIdRoute: AppIssuesIssueIdRoute,
+}
+
+const AppIssuesRouteWithChildren = AppIssuesRoute._addFileChildren(
+  AppIssuesRouteChildren,
+)
+
 interface AppRouteChildren {
   AppDashboardRoute: typeof AppDashboardRoute
-  AppIssuesRoute: typeof AppIssuesRoute
+  AppIssuesRoute: typeof AppIssuesRouteWithChildren
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppDashboardRoute: AppDashboardRoute,
-  AppIssuesRoute: AppIssuesRoute,
+  AppIssuesRoute: AppIssuesRouteWithChildren,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

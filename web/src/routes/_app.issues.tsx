@@ -1,7 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { EmptyState } from "@/components/empty-state";
-import { IssueDetailPanel } from "@/components/issue/issue-detail-panel";
 import { IssueList } from "@/components/issue/issue-list";
 import { NewIssueDialog } from "@/components/issue/new-issue-dialog";
 import { DashboardSkeleton } from "@/components/issue-skeleton";
@@ -16,19 +15,9 @@ export const Route = createFileRoute("/_app/issues")({
 const viewKeys = Object.keys(viewLabels) as View[];
 
 function IssuesPage() {
-  const {
-    issues,
-    isLoading,
-    error,
-    dismissError,
-    addIssue,
-    changeStatus,
-    changePriority,
-    remove,
-  } = useIssues();
-
+  const navigate = useNavigate();
+  const { issues, isLoading, error, dismissError, addIssue } = useIssues();
   const [view, setView] = useState<View>("all");
-  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
 
   const filteredIssues = useMemo(() => {
     if (view === "all") return issues;
@@ -53,13 +42,8 @@ function IssuesPage() {
     [issues],
   );
 
-  const selectedIssue = useMemo(
-    () => issues.find((issue) => issue.id === selectedIssueId) ?? null,
-    [issues, selectedIssueId],
-  );
-
   const onSelect = (issueId: string) => {
-    setSelectedIssueId((current) => (current === issueId ? null : issueId));
+    void navigate({ to: "/issues/$issueId", params: { issueId } });
   };
 
   return (
@@ -107,55 +91,38 @@ function IssuesPage() {
         })}
       </nav>
 
-      <div className="flex">
-        <section className="flex-1 min-w-0">
-          {error ? (
-            <div className="m-5 flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
-              <span>{error}</span>
-              <button
-                className="text-fg-muted hover:text-fg transition-colors"
-                onClick={dismissError}
-              >
-                Dismiss
-              </button>
-            </div>
-          ) : null}
-
-          {isLoading ? (
-            <DashboardSkeleton />
-          ) : issues.length === 0 ? (
-            <EmptyState />
-          ) : filteredIssues.length === 0 ? (
-            <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-              <p className="text-sm text-fg">
-                No {viewLabels[view].toLowerCase()}.
-              </p>
-              <p className="mt-1 text-xs text-fg-muted">
-                Try a different view.
-              </p>
-            </div>
-          ) : (
-            <IssueList
-              issues={filteredIssues}
-              selectedId={selectedIssue?.id ?? null}
-              onSelect={onSelect}
-            />
-          )}
-        </section>
-
-        {selectedIssue ? (
-          <IssueDetailPanel
-            issue={selectedIssue}
-            onClose={() => setSelectedIssueId(null)}
-            onStatusChange={(next) => void changeStatus(selectedIssue, next)}
-            onPriorityChange={(next) => void changePriority(selectedIssue, next)}
-            onDelete={() => {
-              setSelectedIssueId(null);
-              void remove(selectedIssue);
-            }}
-          />
+      <section>
+        {error ? (
+          <div className="m-5 flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+            <span>{error}</span>
+            <button
+              className="text-fg-muted hover:text-fg transition-colors"
+              onClick={dismissError}
+            >
+              Dismiss
+            </button>
+          </div>
         ) : null}
-      </div>
+
+        {isLoading ? (
+          <DashboardSkeleton />
+        ) : issues.length === 0 ? (
+          <EmptyState />
+        ) : filteredIssues.length === 0 ? (
+          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+            <p className="text-sm text-fg">
+              No {viewLabels[view].toLowerCase()}.
+            </p>
+            <p className="mt-1 text-xs text-fg-muted">Try a different view.</p>
+          </div>
+        ) : (
+          <IssueList
+            issues={filteredIssues}
+            selectedId={null}
+            onSelect={onSelect}
+          />
+        )}
+      </section>
     </>
   );
 }

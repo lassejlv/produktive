@@ -63,6 +63,9 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
 
 export const listIssues = () => request<{ issues: Issue[] }>("/api/issues");
 
+export const getIssue = (id: string) =>
+  request<{ issue: Issue }>(`/api/issues/${id}`);
+
 export const createIssue = (input: CreateIssueInput) =>
   request<{ issue: Issue }>("/api/issues", {
     method: "POST",
