@@ -62,11 +62,6 @@ function LoginPage() {
       return;
     }
 
-    if (mode === "signup") {
-      setMessage("Account created. Check your email to verify your address.");
-      return;
-    }
-
     await navigate({ to: "/dashboard" });
   };
 

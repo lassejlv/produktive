@@ -4,6 +4,7 @@ node_modules/
 
 # build/cache
 dist/
+target/
 .wrangler/
 .cache/
 
@@ -14,9 +15,6 @@ dist/
 **/.env.production
 !.env.example
 !**/.env.example
-
-# generated
-src/generated/prisma
 
 # logs
 logs/

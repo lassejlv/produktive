@@ -1,0 +1,17 @@
+[package]
+name = "produktive-migration"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "produktive_migration"
+path = "src/lib.rs"
+
+[[bin]]
+name = "produktive-migration"
+path = "src/main.rs"
+
+[dependencies]
+sea-orm-migration.workspace = true
+tokio.workspace = true

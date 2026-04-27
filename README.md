@@ -1,48 +1,40 @@
 # Produktive
 
-Bun + Hono API for Produktive.
+Rust API and Bun/Vite web app for Produktive.
 
-## Setup
+## API Setup
 
 ```sh
-bun install
 cp .env.example .env
+cargo run -p produktive-migration -- up
+cargo run -p produktive-api
 ```
 
-Fill in `.env`. Runtime uses `DATABASE_URL`; Prisma CLI migrations use
-`DATABASE_DIRECT_URL`.
+The API listens on `http://localhost:3000` by default. It uses Axum, Tokio,
+SeaORM, and DB-backed JWT cookies for auth.
 
-Generate Prisma Client:
-
-```sh
-bun run db:generate
-```
-
-## Development
+## Web Development
 
 ```sh
+cd web
+bun install
 bun run dev
 ```
 
-The API listens on `http://localhost:3000` by default.
+The web app expects `VITE_API_URL` to point at the API. See `web/.env.example`.
+
+## Checks
+
+```sh
+cargo fmt --check
+cargo check
+cargo test
+cd web && bun run check && bun run build
+```
 
 ## Docker
 
 ```sh
 docker build -t produktive-api .
 docker run --rm -p 3000:3000 --env-file .env produktive-api
-```
-
-## Database
-
-Create and apply local migrations:
-
-```sh
-bun run db:migrate:dev --name init
-```
-
-Apply committed migrations in production:
-
-```sh
-bun run db:migrate:deploy
 ```

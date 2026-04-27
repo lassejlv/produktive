@@ -1,33 +1,26 @@
-FROM oven/bun:latest AS base
+FROM rust:1.95.0-bookworm AS build
 WORKDIR /app
-ARG DATABASE_URL
-ARG DATABASE_DIRECT_URL
+
+COPY Cargo.toml Cargo.toml
+COPY Cargo.lock Cargo.lock
+COPY crates crates
+RUN cargo build --release -p produktive-api
+
+FROM debian:bookworm-slim AS production
+WORKDIR /app
 ARG PORT
-ARG RESEND_API_KEY
-ARG RESEND_FROM_EMAIL
+ARG DATABASE_URL
+ARG JWT_SECRET
 ARG CORS_ORIGINS
+ARG AUTH_COOKIE_NAME
 ARG AUTH_COOKIE_DOMAIN
+ARG AUTH_COOKIE_SECURE
+ARG AUTH_SESSION_DAYS
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
-FROM base AS install
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+COPY --from=build /app/target/release/produktive-api /usr/local/bin/produktive-api
 
-FROM install AS build
-COPY src src
-COPY tsconfig.json tsconfig.json
-COPY prisma prisma
-COPY prisma.config.ts prisma.config.ts
-RUN bun run db:generate
-RUN bun run db:migrate:deploy
-RUN bun run check
-RUN bun run build
-
-FROM base AS production
-ENV NODE_ENV=production
-COPY --from=build /app/package.json /app/bun.lock ./
-COPY --from=build /app/node_modules node_modules
-COPY --from=build /app/dist dist
-COPY --from=build /app/prisma prisma
-COPY --from=build /app/prisma.config.ts prisma.config.ts
 EXPOSE 3000
-CMD ["bun", "run", "start"]
+CMD ["produktive-api"]
