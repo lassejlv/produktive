@@ -5,6 +5,7 @@ type AuthUser = {
   id: string;
   name: string;
   email: string;
+  emailVerified: boolean;
   image: string | null;
 };
 
@@ -21,6 +22,11 @@ type AuthSession = {
 
 type AuthResult = {
   data: AuthSession | null;
+  error: { message: string } | null;
+};
+
+type EmptyResult = {
+  data: { ok: true } | null;
   error: { message: string } | null;
 };
 
@@ -55,6 +61,31 @@ const requestAuth = async (
   };
 };
 
+const requestEmpty = async (
+  path: string,
+  body: Record<string, unknown>,
+): Promise<EmptyResult> => {
+  const response = await fetch(apiPath(path), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    return {
+      data: null,
+      error: { message: error?.error ?? "Request failed" },
+    };
+  }
+
+  return {
+    data: (await response.json()) as { ok: true },
+    error: null,
+  };
+};
+
 export const authClient = {
   signIn: {
     email: ({ email, password }: EmailCredentials) =>
@@ -62,8 +93,14 @@ export const authClient = {
   },
   signUp: {
     email: ({ email, password, name }: EmailCredentials) =>
-      requestAuth("/api/auth/sign-up", { email, password, name }),
+      requestEmpty("/api/auth/sign-up", { email, password, name }),
   },
+  verifyEmail: ({ token }: { token: string }) =>
+    requestAuth("/api/auth/verify-email", { token }),
+  requestPasswordReset: ({ email }: { email: string }) =>
+    requestEmpty("/api/auth/request-password-reset", { email }),
+  resetPassword: ({ token, password }: { token: string; password: string }) =>
+    requestEmpty("/api/auth/reset-password", { token, password }),
   getSession: () => requestAuth("/api/auth/session"),
 };
 

@@ -7,14 +7,18 @@ use axum::http::{header, HeaderMap, HeaderValue};
 use chrono::{Duration, Utc};
 use cookie::{Cookie, SameSite};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
-use produktive_entity::{member, organization, session, user};
+use produktive_entity::{auth_token, member, organization, session, user};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use time::Duration as CookieDuration;
 use uuid::Uuid;
+
+pub const EMAIL_VERIFICATION_PURPOSE: &str = "email_verification";
+pub const PASSWORD_RESET_PURPOSE: &str = "password_reset";
 
 #[derive(Clone, Debug)]
 pub struct AuthContext {
@@ -45,6 +49,7 @@ pub struct UserResponse {
     pub id: String,
     pub name: String,
     pub email: String,
+    pub email_verified: bool,
     pub image: Option<String>,
 }
 
@@ -62,6 +67,7 @@ impl From<user::Model> for UserResponse {
             id: user.id,
             name: user.name,
             email: user.email,
+            email_verified: user.email_verified,
             image: user.image,
         }
     }
@@ -164,7 +170,7 @@ pub async fn create_signup_records(
     name: String,
     email: String,
     password: String,
-) -> Result<(user::Model, organization::Model, session::Model, String), ApiError> {
+) -> Result<(user::Model, organization::Model), ApiError> {
     let txn = state.db.begin().await?;
 
     let existing = user::Entity::find()
@@ -181,6 +187,7 @@ pub async fn create_signup_records(
         id: Set(Uuid::new_v4().to_string()),
         name: Set(name.clone()),
         email: Set(email),
+        email_verified: Set(false),
         password_hash: Set(hash_password(&password)?),
         image: Set(None),
         created_at: Set(now),
@@ -202,9 +209,7 @@ pub async fn create_signup_records(
 
     txn.commit().await?;
 
-    let (session, token) =
-        create_user_session(&state.db, state, &user.id, &organization.id).await?;
-    Ok((user, organization, session, token))
+    Ok((user, organization))
 }
 
 pub async fn first_or_create_organization(
@@ -248,6 +253,101 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, ApiE
     Ok(Argon2::default()
         .verify_password(password.as_bytes(), &parsed_hash)
         .is_ok())
+}
+
+pub async fn create_auth_token(
+    db: &DatabaseConnection,
+    user_id: &str,
+    purpose: &str,
+    expires_in: Duration,
+) -> Result<String, ApiError> {
+    let token = Uuid::new_v4().to_string();
+    let now = Utc::now().fixed_offset();
+
+    auth_token::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        user_id: Set(user_id.to_owned()),
+        token_hash: Set(hash_token(&token)),
+        purpose: Set(purpose.to_owned()),
+        expires_at: Set((Utc::now() + expires_in).fixed_offset()),
+        used_at: Set(None),
+        created_at: Set(now),
+    }
+    .insert(db)
+    .await?;
+
+    Ok(token)
+}
+
+pub async fn consume_auth_token(
+    db: &DatabaseConnection,
+    token: &str,
+    purpose: &str,
+) -> Result<auth_token::Model, ApiError> {
+    let now = Utc::now().fixed_offset();
+    let auth_token = auth_token::Entity::find()
+        .filter(auth_token::Column::TokenHash.eq(hash_token(token)))
+        .filter(auth_token::Column::Purpose.eq(purpose))
+        .one(db)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("Invalid or expired token".to_owned()))?;
+
+    if auth_token.used_at.is_some() || auth_token.expires_at <= now {
+        return Err(ApiError::BadRequest("Invalid or expired token".to_owned()));
+    }
+
+    let mut active: auth_token::ActiveModel = auth_token.clone().into();
+    active.used_at = Set(Some(now));
+    active.update(db).await?;
+
+    Ok(auth_token)
+}
+
+pub async fn verify_user_email(
+    db: &DatabaseConnection,
+    user_id: &str,
+) -> Result<user::Model, ApiError> {
+    let user = user::Entity::find_by_id(user_id)
+        .one(db)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("Invalid or expired token".to_owned()))?;
+    let mut active: user::ActiveModel = user.into();
+    active.email_verified = Set(true);
+    active.updated_at = Set(Utc::now().fixed_offset());
+    Ok(active.update(db).await?)
+}
+
+pub async fn update_user_password(
+    db: &DatabaseConnection,
+    user_id: &str,
+    password: &str,
+) -> Result<user::Model, ApiError> {
+    let user = user::Entity::find_by_id(user_id)
+        .one(db)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("Invalid or expired token".to_owned()))?;
+    let mut active: user::ActiveModel = user.into();
+    active.password_hash = Set(hash_password(password)?);
+    active.updated_at = Set(Utc::now().fixed_offset());
+    Ok(active.update(db).await?)
+}
+
+pub async fn revoke_user_sessions(db: &DatabaseConnection, user_id: &str) -> Result<(), ApiError> {
+    let now = Utc::now().fixed_offset();
+    let sessions = session::Entity::find()
+        .filter(session::Column::UserId.eq(user_id))
+        .filter(session::Column::RevokedAt.is_null())
+        .all(db)
+        .await?;
+
+    for session in sessions {
+        let mut active: session::ActiveModel = session.into();
+        active.revoked_at = Set(Some(now));
+        active.updated_at = Set(now);
+        active.update(db).await?;
+    }
+
+    Ok(())
 }
 
 pub fn auth_cookie(state: &AppState, token: &str) -> Result<HeaderValue, ApiError> {
@@ -321,6 +421,12 @@ fn hash_password(password: &str) -> Result<String, ApiError> {
         .hash_password(password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(|error| ApiError::Internal(anyhow::anyhow!(error.to_string())))
+}
+
+fn hash_token(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    hex::encode(hasher.finalize())
 }
 
 fn sign_session_token(state: &AppState, session: &session::Model) -> Result<String, ApiError> {

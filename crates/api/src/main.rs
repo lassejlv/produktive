@@ -1,5 +1,6 @@
 mod auth;
 mod config;
+mod email;
 mod error;
 mod http;
 mod state;
@@ -32,8 +33,11 @@ async fn main() -> anyhow::Result<()> {
     let db = Database::connect(&config.database_url)
         .await
         .context("failed to connect to database")?;
+    let migration_db = Database::connect(&config.database_direct_url)
+        .await
+        .context("failed to connect to migration database")?;
 
-    produktive_migration::Migrator::up(&db, None)
+    produktive_migration::Migrator::up(&migration_db, None)
         .await
         .context("failed to run migrations")?;
 

@@ -1,13 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -40,55 +33,56 @@ export const Route = createFileRoute("/dashboard")({
 
 const statusOptions = ["backlog", "todo", "in-progress", "done"];
 const priorityOptions = ["low", "medium", "high", "urgent"];
-const navItems = ["Issues", "Inbox", "Roadmaps", "Settings"];
 
-function StatusDot({ status }: { status: string }) {
-  const color =
-    status === "done"
-      ? "bg-emerald-400"
-      : status === "in-progress"
-        ? "bg-blue-400"
-        : status === "todo"
-          ? "bg-neutral-400"
-          : "bg-amber-400";
+const navItems = [
+  { label: "Issues", glyph: "§", active: true },
+  { label: "Inbox", glyph: "¶", active: false },
+  { label: "Roadmaps", glyph: "※", active: false },
+  { label: "Settings", glyph: "✦", active: false },
+];
 
-  return (
-    <span
-      className={cn("inline-block size-1.5 rounded-full", color)}
-      aria-hidden="true"
-    />
-  );
-}
+const statusGlyph = (status: string) => {
+  switch (status) {
+    case "done":
+      return { mark: "✓", color: "text-moss", border: "border-moss" };
+    case "in-progress":
+      return { mark: "◐", color: "text-storm", border: "border-storm" };
+    case "todo":
+      return { mark: "○", color: "text-ink", border: "border-ink" };
+    case "backlog":
+    default:
+      return { mark: "·", color: "text-gold", border: "border-gold" };
+  }
+};
 
-function PriorityIndicator({ priority }: { priority: string }) {
+function PriorityBars({ priority }: { priority: string }) {
   const level =
-    priority === "urgent" ? 4 : priority === "high" ? 3 : priority === "medium" ? 2 : 1;
+    priority === "urgent"
+      ? 4
+      : priority === "high"
+      ? 3
+      : priority === "medium"
+      ? 2
+      : 1;
+  const isHot = priority === "urgent" || priority === "high";
 
   return (
-    <span className="flex items-center gap-0.5" aria-hidden="true">
-      {Array.from({ length: 4 }).map((_, i) => (
+    <span className="flex items-end gap-[2px]" aria-hidden="true">
+      {[3, 6, 9, 12].map((h, i) => (
         <span
           key={i}
           className={cn(
-            "block h-2.5 w-[3px] rounded-full",
+            "block w-[2px] transition-colors",
             i < level
-              ? priority === "urgent" || priority === "high"
-                ? "bg-red-400/80"
-                : "bg-neutral-500"
-              : "bg-neutral-800",
+              ? isHot
+                ? "bg-vermilion"
+                : "bg-ink"
+              : "bg-ink/20",
           )}
+          style={{ height: `${h}px` }}
         />
       ))}
     </span>
-  );
-}
-
-function Mark({ className }: { className?: string }) {
-  return (
-    <span
-      className={cn("size-1.5 shrink-0 border border-neutral-600 bg-neutral-900", className)}
-      aria-hidden="true"
-    />
   );
 }
 
@@ -97,6 +91,15 @@ const formatDate = (value: string) =>
     month: "short",
     day: "numeric",
   }).format(new Date(value));
+
+const formatLong = (value: string) =>
+  new Intl.DateTimeFormat("en", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  }).format(new Date(value));
+
+const today = formatLong(new Date().toISOString());
 
 function DashboardPage() {
   const navigate = useNavigate();
@@ -149,7 +152,9 @@ function DashboardPage() {
         }
       } catch (loadError) {
         if (isMounted) {
-          setError(loadError instanceof Error ? loadError.message : "Failed to load issues");
+          setError(
+            loadError instanceof Error ? loadError.message : "Failed to load issues",
+          );
         }
       } finally {
         if (isMounted) {
@@ -185,7 +190,9 @@ function DashboardPage() {
       setStatus("backlog");
       setPriority("medium");
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Failed to create issue");
+      setError(
+        createError instanceof Error ? createError.message : "Failed to create issue",
+      );
     } finally {
       setIsSaving(false);
     }
@@ -195,7 +202,9 @@ function DashboardPage() {
     const previousIssues = issues;
     setIssues((currentIssues) =>
       currentIssues.map((currentIssue) =>
-        currentIssue.id === issue.id ? { ...currentIssue, status: nextStatus } : currentIssue,
+        currentIssue.id === issue.id
+          ? { ...currentIssue, status: nextStatus }
+          : currentIssue,
       ),
     );
 
@@ -203,7 +212,9 @@ function DashboardPage() {
       await updateIssue(issue.id, { status: nextStatus });
     } catch (updateError) {
       setIssues(previousIssues);
-      setError(updateError instanceof Error ? updateError.message : "Failed to update issue");
+      setError(
+        updateError instanceof Error ? updateError.message : "Failed to update issue",
+      );
     }
   };
 
@@ -217,7 +228,9 @@ function DashboardPage() {
       await deleteIssue(issue.id);
     } catch (deleteError) {
       setIssues(previousIssues);
-      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete issue");
+      setError(
+        deleteError instanceof Error ? deleteError.message : "Failed to delete issue",
+      );
     }
   };
 
@@ -230,10 +243,10 @@ function DashboardPage() {
 
   if (session.isPending) {
     return (
-      <main className="grid min-h-screen place-items-center bg-background font-mono text-xs text-muted-foreground animate-fade-in">
-        <div className="flex items-center gap-3">
-          <div className="size-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-300" />
-          Loading workspace...
+      <main className="grid min-h-screen place-items-center text-ink animate-ink-bleed">
+        <div className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-muted">
+          <span className="inline-block size-3 animate-mark-spin border-2 border-ink/30 border-t-vermilion" />
+          Opening the workshop…
         </div>
       </main>
     );
@@ -243,100 +256,161 @@ function DashboardPage() {
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader>
-          <div className="flex min-w-0 items-center gap-2.5">
-            <div className="grid size-8 place-items-center rounded-lg border border-neutral-700 bg-neutral-100 text-[11px] font-bold text-black">
-              P
+          <div className="flex min-w-0 items-baseline justify-between gap-2.5">
+            <div>
+              <p className="eyebrow">Workshop</p>
+              <strong
+                className="serif-tight mt-1 block text-[26px] font-medium leading-none tracking-tight text-ink"
+                style={{ fontWeight: 500 }}
+              >
+                Produk
+                <span className="text-vermilion">·</span>
+                <span className="serif-italic">tive</span>
+              </strong>
             </div>
-            <div className="min-w-0">
-              <strong className="block truncate text-xs font-semibold tracking-tight text-white">Produktive</strong>
-              <span className="block truncate text-[11px] text-muted-foreground">
-                Open source Linear
-              </span>
-            </div>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-muted">
+              v.001
+            </span>
           </div>
         </SidebarHeader>
+
         <SidebarContent>
+          <p className="eyebrow mb-2 px-2">Sections</p>
           <SidebarMenu>
-            {navItems.map((item, index) => (
-              <SidebarMenuItem key={item}>
+            {navItems.map((item) => (
+              <SidebarMenuItem key={item.label}>
                 <SidebarMenuButton
                   className={cn(
-                    item === "Issues" &&
-                      "bg-sidebar-accent text-sidebar-accent-foreground shadow-[inset_2px_0_0_#818cf8]",
+                    item.active &&
+                      "bg-paper text-ink before:absolute before:left-0 before:top-1/2 before:h-[60%] before:w-[3px] before:-translate-y-1/2 before:bg-vermilion",
                   )}
-                  style={{
-                    animationDelay: `${index * 50}ms`,
-                  }}
                 >
-                  <Mark
+                  <span
                     className={cn(
-                      item === "Issues" ? "border-indigo-400 bg-indigo-950" : undefined,
+                      "font-serif text-[18px] leading-none",
+                      item.active ? "text-vermilion" : "text-ink-muted",
                     )}
-                  />
-                  {item}
+                    aria-hidden="true"
+                  >
+                    {item.glyph}
+                  </span>
+                  <span className="font-serif italic text-[15px]">{item.label}</span>
+                  {item.active ? (
+                    <span className="ml-auto font-mono text-[10px] tracking-[0.14em] text-ink-muted">
+                      {issues.length.toString().padStart(2, "0")}
+                    </span>
+                  ) : null}
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
+
+          <div className="mt-8 border-t border-ink/15 pt-5">
+            <p className="eyebrow mb-3 px-2">Today's tally</p>
+            <dl className="grid grid-cols-2 gap-px bg-ink/15">
+              {[
+                { label: "Open", value: openCount, color: "text-storm" },
+                { label: "Doing", value: progressCount, color: "text-vermilion" },
+                { label: "Backlog", value: backlogCount, color: "text-gold" },
+                { label: "Shipped", value: doneCount, color: "text-moss" },
+              ].map(({ label, value, color }) => (
+                <div
+                  key={label}
+                  className="flex items-baseline justify-between bg-paper-deep px-3 py-2.5"
+                >
+                  <dt className="font-mono text-[9px] uppercase tracking-[0.18em] text-ink-muted">
+                    {label}
+                  </dt>
+                  <dd
+                    className={cn(
+                      "font-serif text-[22px] tabular-nums leading-none",
+                      color,
+                    )}
+                    style={{ fontVariationSettings: '"opsz" 144, "SOFT" 30' }}
+                  >
+                    {value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         </SidebarContent>
+
         <SidebarFooter>
-          <div className="flex min-w-0 items-center gap-2.5">
-            <div className="grid size-8 place-items-center rounded-lg border border-neutral-800 bg-neutral-950 text-[10px] font-medium text-neutral-200">
+          <div className="flex min-w-0 items-center gap-3 border border-ink/15 bg-paper-soft p-3">
+            <div className="grid size-9 shrink-0 place-items-center border border-ink bg-paper text-[10px] font-medium uppercase tracking-widest text-ink">
               {currentUser?.name?.slice(0, 2).toUpperCase() ?? "P"}
             </div>
             <div className="min-w-0">
-              <strong className="block truncate text-xs font-medium text-white">
+              <strong className="block truncate text-[13px] font-medium text-ink">
                 {currentUser?.name ?? "Produktive user"}
               </strong>
-              <span className="block truncate text-[11px] text-muted-foreground">
+              <span className="block truncate font-mono text-[10px] text-ink-muted">
                 {currentUser?.email}
               </span>
             </div>
           </div>
           <Button
-            className="mt-3 h-8 w-full text-xs"
+            className="mt-3 w-full"
             variant="outline"
+            size="sm"
             onClick={async () => {
               await signOut();
               await navigate({ to: "/login" });
             }}
           >
-            Sign out
+            Sign out ↗
           </Button>
         </SidebarFooter>
       </Sidebar>
 
       <SidebarInset>
-        <header className="sticky top-0 z-10 flex min-h-14 items-center justify-between gap-4 border-b border-border bg-background/80 px-4 py-2.5 backdrop-blur-xl">
-          <div className="flex min-w-0 items-center gap-3">
-            <SidebarTrigger />
-            <div>
-              <p className="font-mono text-[10px] leading-4 text-muted-foreground">produktive.app</p>
-              <h1 className="text-lg font-semibold leading-none tracking-tight text-white">
-                Issues
-              </h1>
+        {/* Newspaper masthead */}
+        <header className="masthead-shadow sticky top-0 z-10 border-b border-ink bg-paper/95 backdrop-blur-sm">
+          <div className="flex min-h-16 items-center justify-between gap-4 px-6 py-3">
+            <div className="flex min-w-0 items-center gap-4">
+              <SidebarTrigger />
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-muted">
+                  {today} · Issues Edition
+                </p>
+                <h1
+                  className="serif-tight text-[28px] font-medium leading-none tracking-tight text-ink"
+                  style={{ fontWeight: 500 }}
+                >
+                  The <span className="serif-italic text-vermilion">Ledger</span>
+                </h1>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <div className="hidden w-[260px] rounded-lg border border-border bg-neutral-950/80 px-2.5 py-2 text-xs leading-none text-neutral-500 md:block transition-colors hover:border-neutral-700 hover:text-neutral-400">
-              Search or jump to...
+            <div className="flex items-center gap-3">
+              <div className="hidden h-9 w-[260px] items-center gap-2 border border-ink/30 bg-paper-soft px-3 text-[12px] text-ink-muted transition-colors hover:border-ink md:flex">
+                <span className="font-mono text-[11px]">⌘K</span>
+                <span className="font-serif italic">Search the ledger…</span>
+              </div>
+              <Button
+                form="new-issue-form"
+                type="submit"
+                disabled={isSaving}
+                size="sm"
+              >
+                {isSaving ? "Setting type…" : "+ New issue"}
+              </Button>
             </div>
-            <Button className="h-8 text-xs shadow-sm" form="new-issue-form" type="submit" disabled={isSaving} size="sm">
-              {isSaving ? "Saving..." : "New issue"}
-            </Button>
           </div>
         </header>
 
         {isLoading ? (
           <DashboardSkeleton />
         ) : (
-          <main className="grid gap-3.5 p-4 animate-fade-in">
+          <main className="animate-ink-bleed grid gap-8 px-6 py-6 lg:px-10 lg:py-8">
             {error ? (
-              <div className="flex items-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 px-3 py-2.5 text-xs text-red-200 animate-fade-in">
-                <Mark className="border-red-400 bg-red-950" />
-                {error}
+              <div className="flex items-center gap-3 border-l-2 border-vermilion bg-vermilion/[0.06] px-4 py-3 text-[12px] text-vermilion animate-ink-bleed">
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em]">
+                  Erratum
+                </span>
+                <span className="font-serif italic text-ink-soft">{error}</span>
                 <button
-                  className="ml-auto text-[11px] text-red-300 underline underline-offset-2 hover:text-red-200"
+                  className="ml-auto font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted underline underline-offset-4 hover:text-vermilion"
                   onClick={() => setError(null)}
                 >
                   Dismiss
@@ -344,211 +418,286 @@ function DashboardPage() {
               </div>
             ) : null}
 
-            <section className="grid grid-cols-2 rounded-xl border border-border bg-card md:grid-cols-4 overflow-hidden" aria-label="Issue metrics">
+            {/* Big tally bar — like newspaper headline stats */}
+            <section
+              className="grid grid-cols-2 border border-ink bg-paper-soft md:grid-cols-4"
+              aria-label="Issue metrics"
+            >
               {[
-                { label: "Total", value: issues.length, color: "text-white" },
-                { label: "Open", value: openCount, color: "text-blue-300" },
-                { label: "In progress", value: progressCount, color: "text-indigo-300" },
-                { label: "Backlog", value: backlogCount, color: "text-amber-300" },
-              ].map(({ label, value, color }, index) => (
+                { label: "Total Issues", value: issues.length, accent: "text-ink" },
+                { label: "Open", value: openCount, accent: "text-storm" },
+                { label: "In progress", value: progressCount, accent: "text-vermilion" },
+                { label: "Backlog", value: backlogCount, accent: "text-gold" },
+              ].map(({ label, value, accent }, index) => (
                 <div
-                  className={cn(
-                    "flex min-w-0 items-center justify-between border-border px-3.5 py-3 transition-colors hover:bg-neutral-900/30",
-                    index < 2 && "border-b md:border-b-0",
-                    index !== 1 && index !== 3 && "border-r",
-                    index === 1 && "md:border-r",
-                  )}
                   key={label}
-                  style={{ animationDelay: `${index * 75}ms` }}
+                  className={cn(
+                    "row-hover relative flex items-baseline justify-between px-5 py-5",
+                    index !== 0 && "md:border-l md:border-ink/15",
+                    index >= 2 && "border-t border-ink/15 md:border-t-0",
+                    index === 1 && "border-l border-ink/15",
+                  )}
                 >
-                  <span className="truncate text-[11px] text-muted-foreground">{label}</span>
-                  <strong className={cn("font-mono text-sm font-semibold tabular-nums", color)}>
-                    {value}
-                  </strong>
+                  <div>
+                    <p className="eyebrow mb-2">{label}</p>
+                    <p
+                      className={cn(
+                        "serif-tight text-[44px] leading-[0.9] tabular-nums",
+                        accent,
+                      )}
+                      style={{ fontWeight: 500 }}
+                    >
+                      {value.toString().padStart(2, "0")}
+                    </p>
+                  </div>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-muted">
+                    №{(index + 1).toString().padStart(2, "0")}
+                  </span>
                 </div>
               ))}
             </section>
 
-            <section className="grid items-start gap-3.5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,392px)]">
-              <Card className="overflow-hidden rounded-xl border-border bg-card transition-shadow hover:shadow-lg hover:shadow-black/20">
-                <CardHeader className="flex-row items-center justify-between gap-4 space-y-0 border-b border-border p-3.5">
+            {/* Two columns — ledger + side panel */}
+            <section className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
+              {/* The Ledger */}
+              <div className="border border-ink bg-paper-soft">
+                <div className="flex items-baseline justify-between gap-4 border-b border-ink/15 px-5 py-4">
                   <div>
-                    <CardTitle className="text-[13px] font-medium tracking-tight text-white">
-                      All issues
-                    </CardTitle>
-                    <CardDescription className="mt-1 text-[11px]">
-                      {`${issues.length} total issues`}
-                    </CardDescription>
+                    <p className="eyebrow mb-1.5">Section A · The Ledger</p>
+                    <h2
+                      className="serif-tight text-[22px] font-medium leading-none tracking-tight text-ink"
+                      style={{ fontWeight: 500 }}
+                    >
+                      All <span className="serif-italic text-vermilion">issues</span>,
+                      set in order.
+                    </h2>
                   </div>
-                  <div className="flex gap-1.5 font-mono text-[10px] text-muted-foreground">
-                    <span className="rounded-md border border-border bg-neutral-950 px-2 py-1 transition-colors hover:border-neutral-700">
-                      {openCount} open
+                  <div className="flex gap-2 font-mono text-[10px] uppercase tracking-[0.16em]">
+                    <span className="border border-ink/40 px-2 py-1 text-ink-muted">
+                      {openCount.toString().padStart(2, "0")} open
                     </span>
-                    <span className="rounded-md border border-border bg-neutral-950 px-2 py-1 transition-colors hover:border-neutral-700">
-                      {doneCount} done
+                    <span className="border border-ink/40 px-2 py-1 text-ink-muted">
+                      {doneCount.toString().padStart(2, "0")} done
                     </span>
                   </div>
-                </CardHeader>
+                </div>
 
-                <CardContent className="p-0">
+                {/* Column headers */}
+                {issues.length > 0 ? (
+                  <div className="grid grid-cols-[40px_84px_minmax(0,1fr)_104px_94px_70px] items-center gap-3 border-b border-ink/15 bg-paper-deep px-4 py-2 font-mono text-[9px] uppercase tracking-[0.18em] text-ink-muted">
+                    <span>Nº</span>
+                    <span>Mark</span>
+                    <span>Title</span>
+                    <span>Status</span>
+                    <span className="hidden lg:inline">Priority</span>
+                    <span className="hidden lg:inline">Updated</span>
+                  </div>
+                ) : null}
+
+                <div>
                   {issues.length === 0 ? (
                     <EmptyState onCreate={scrollToCreate} />
                   ) : (
-                    issues.map((issue, index) => (
-                      <button
-                        className={cn(
-                          "grid w-full grid-cols-[78px_minmax(0,1fr)_98px] items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-left transition-all duration-200 last:border-b-0",
-                          "hover:bg-neutral-950/80 active:scale-[0.998]",
-                          selectedIssue?.id === issue.id
-                            ? "bg-neutral-950 shadow-[inset_2px_0_0_#818cf8]"
-                            : undefined,
-                        )}
-                        data-selected={selectedIssue?.id === issue.id}
-                        key={issue.id}
-                        onClick={() => setSelectedIssueId(issue.id)}
-                        type="button"
-                        style={{ animationDelay: `${index * 30}ms` }}
-                      >
-                        <span className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
-                          <Mark
-                            className={cn(
-                              selectedIssue?.id === issue.id &&
-                                "border-indigo-400 bg-indigo-950",
-                            )}
-                          />
-                          P-{issue.id.slice(0, 4).toUpperCase()}
-                        </span>
-                        <span className="min-w-0">
-                          <strong className="block truncate text-xs font-normal tracking-tight text-neutral-100">
-                            {issue.title}
-                          </strong>
-                          <small className="mt-0.5 block truncate text-[11px] text-neutral-500">
-                            {issue.description ?? "No description"}
-                          </small>
-                        </span>
-                        <span className="flex items-center gap-1.5 w-fit rounded-md border border-border bg-neutral-950 px-2 py-1 font-mono text-[10px] leading-none text-muted-foreground">
-                          <StatusDot status={issue.status} />
-                          {issue.status}
-                        </span>
-                        <span className="hidden items-center gap-1.5 lg:flex">
-                          <PriorityIndicator priority={issue.priority} />
-                          <span className="rounded-md border border-border bg-neutral-950 px-2 py-1 font-mono text-[10px] leading-none text-muted-foreground">
-                            {issue.priority}
-                          </span>
-                        </span>
-                        <span className="hidden font-mono text-[10px] text-muted-foreground lg:inline">
-                          {formatDate(issue.updatedAt)}
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </CardContent>
-              </Card>
+                    issues.map((issue, index) => {
+                      const meta = statusGlyph(issue.status);
+                      const isSelected = selectedIssue?.id === issue.id;
+                      return (
+                        <button
+                          key={issue.id}
+                          type="button"
+                          data-selected={isSelected}
+                          onClick={() => setSelectedIssueId(issue.id)}
+                          className={cn(
+                            "row-hover relative grid w-full grid-cols-[40px_84px_minmax(0,1fr)_104px_94px_70px] items-center gap-3 border-b border-ink/10 px-4 py-3 text-left last:border-b-0",
+                            isSelected && "bg-paper-deep",
+                          )}
+                        >
+                          {/* Selection indicator stroke */}
+                          {isSelected ? (
+                            <span className="absolute left-0 top-0 h-full w-[3px] bg-vermilion" />
+                          ) : null}
 
-              <aside id="create-issue-panel" className="sticky top-[72px] grid gap-3.5 rounded-xl border border-border bg-card p-3.5 max-lg:static animate-slide-in-left">
-                <form id="new-issue-form" className="grid gap-3" onSubmit={handleCreateIssue}>
-                  <div className="flex items-center justify-between gap-2.5">
-                    <h2 className="text-[13px] font-medium tracking-tight text-white">Create issue</h2>
-                    <span className="rounded-md border border-border bg-neutral-950 px-1.5 py-1 font-mono text-[10px] text-muted-foreground">
-                      cmd K
+                          <span className="font-mono text-[10px] tabular-nums text-ink-muted">
+                            {(index + 1).toString().padStart(3, "0")}
+                          </span>
+
+                          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-muted">
+                            P-{issue.id.slice(0, 4).toUpperCase()}
+                          </span>
+
+                          <span className="min-w-0">
+                            <strong className="block truncate font-serif text-[16px] font-normal leading-snug tracking-tight text-ink">
+                              {issue.title}
+                            </strong>
+                            <small className="mt-0.5 block truncate text-[12px] italic text-ink-muted">
+                              {issue.description ?? "— no description —"}
+                            </small>
+                          </span>
+
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-2 border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]",
+                              meta.border,
+                              meta.color,
+                            )}
+                          >
+                            <span aria-hidden="true">{meta.mark}</span>
+                            {issue.status}
+                          </span>
+
+                          <span className="hidden items-center gap-2 lg:flex">
+                            <PriorityBars priority={issue.priority} />
+                            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-muted">
+                              {issue.priority}
+                            </span>
+                          </span>
+
+                          <span className="hidden font-mono text-[10px] uppercase tracking-[0.12em] text-ink-muted lg:inline">
+                            {formatDate(issue.updatedAt)}
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Side panel — composing room + selection */}
+              <aside
+                id="create-issue-panel"
+                className="grid gap-6 lg:sticky lg:top-[88px]"
+              >
+                {/* Composing room */}
+                <div className="border border-ink bg-paper-soft">
+                  <div className="flex items-baseline justify-between border-b border-ink/15 px-5 py-4">
+                    <div>
+                      <p className="eyebrow mb-1.5">Section B · Composing Room</p>
+                      <h2
+                        className="serif-tight text-[20px] font-medium leading-none tracking-tight text-ink"
+                        style={{ fontWeight: 500 }}
+                      >
+                        File a <span className="serif-italic text-vermilion">new</span>{" "}
+                        issue
+                      </h2>
+                    </div>
+                    <span className="border border-ink/40 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-muted">
+                      ⌘K
                     </span>
                   </div>
-                  <div className="grid gap-2">
-                    <Label className="text-[11px] font-normal text-neutral-300" htmlFor="issue-title">
-                      Title
-                    </Label>
-                    <Input
-                      className="h-9 text-xs"
-                      id="issue-title"
-                      value={title}
-                      onChange={(event) => setTitle(event.target.value)}
-                      placeholder="Something that should exist"
-                      required
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label className="text-[11px] font-normal text-neutral-300" htmlFor="issue-description">
-                      Description
-                    </Label>
-                    <textarea
-                      className="min-h-24 w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-xs leading-relaxed text-foreground outline-none transition-all duration-200 placeholder:text-neutral-600 focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-neutral-500 hover:border-neutral-600"
-                      id="issue-description"
-                      value={description}
-                      onChange={(event) => setDescription(event.target.value)}
-                      placeholder="Context, constraints, notes"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <div className="grid gap-2">
-                      <Label className="text-[11px] font-normal text-neutral-300" htmlFor="issue-status">
-                        Status
-                      </Label>
-                      <select
-                        className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-[11px] text-neutral-200 outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-neutral-500 hover:border-neutral-600"
-                        id="issue-status"
-                        value={status}
-                        onChange={(event) => setStatus(event.target.value)}
-                      >
-                        {statusOptions.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label className="text-[11px] font-normal text-neutral-300" htmlFor="issue-priority">
-                        Priority
-                      </Label>
-                      <select
-                        className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-[11px] text-neutral-200 outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-neutral-500 hover:border-neutral-600"
-                        id="issue-priority"
-                        value={priority}
-                        onChange={(event) => setPriority(event.target.value)}
-                      >
-                        {priorityOptions.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </form>
 
-                {selectedIssue ? (
-                  <Card className="rounded-xl border-border bg-card overflow-hidden">
-                    <CardHeader className="p-3.5 pb-2">
-                      <div className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground mb-1">
-                        <Mark className="border-indigo-400/50 bg-indigo-950/50" />
-                        P-{selectedIssue.id.slice(0, 4).toUpperCase()}
+                  <form
+                    id="new-issue-form"
+                    className="grid gap-5 px-5 py-5"
+                    onSubmit={handleCreateIssue}
+                  >
+                    <div className="grid gap-2">
+                      <Label htmlFor="issue-title">Title</Label>
+                      <Input
+                        id="issue-title"
+                        value={title}
+                        onChange={(event) => setTitle(event.target.value)}
+                        placeholder="Something that should exist"
+                        required
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="issue-description">Description</Label>
+                      <textarea
+                        id="issue-description"
+                        value={description}
+                        onChange={(event) => setDescription(event.target.value)}
+                        placeholder="Context, constraints, notes…"
+                        className="min-h-28 w-full resize-y border border-ink/30 bg-paper-soft px-3 py-2.5 font-serif text-[14px] italic leading-relaxed text-ink outline-none transition-all duration-200 placeholder:text-ink-faint hover:border-ink focus-visible:border-vermilion focus-visible:ring-1 focus-visible:ring-vermilion"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="issue-status">Status</Label>
+                        <select
+                          id="issue-status"
+                          value={status}
+                          onChange={(event) => setStatus(event.target.value)}
+                          className="h-10 w-full rounded-none border-0 border-b border-ink/40 bg-transparent px-1 font-mono text-[12px] uppercase tracking-[0.1em] text-ink outline-none transition-all duration-200 focus-visible:border-b-2 focus-visible:border-b-vermilion hover:border-b-ink"
+                        >
+                          {statusOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                      <CardTitle className="text-base font-medium leading-snug tracking-tight text-white">
+                      <div className="grid gap-2">
+                        <Label htmlFor="issue-priority">Priority</Label>
+                        <select
+                          id="issue-priority"
+                          value={priority}
+                          onChange={(event) => setPriority(event.target.value)}
+                          className="h-10 w-full rounded-none border-0 border-b border-ink/40 bg-transparent px-1 font-mono text-[12px] uppercase tracking-[0.1em] text-ink outline-none transition-all duration-200 focus-visible:border-b-2 focus-visible:border-b-vermilion hover:border-b-ink"
+                        >
+                          {priorityOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Selected issue card */}
+                {selectedIssue ? (
+                  <div className="border border-ink bg-paper-soft">
+                    <div className="border-b border-ink/15 px-5 py-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-muted">
+                          Selected · P-{selectedIssue.id.slice(0, 4).toUpperCase()}
+                        </span>
+                        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-muted">
+                          Folio
+                        </span>
+                      </div>
+                      <h3
+                        className="serif-tight text-[24px] font-medium leading-snug tracking-tight text-ink"
+                        style={{ fontWeight: 500 }}
+                      >
                         {selectedIssue.title}
-                      </CardTitle>
-                      <CardDescription className="text-[11px] leading-relaxed mt-1.5">
-                        {selectedIssue.description ?? "No description yet."}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="grid gap-3 p-3.5 pt-0">
+                      </h3>
+                      <p className="mt-2 font-serif text-[14px] italic leading-relaxed text-ink-muted">
+                        {selectedIssue.description ?? "No description recorded yet."}
+                      </p>
+                    </div>
+
+                    <div className="grid gap-4 px-5 py-5">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-neutral-950 px-2 py-1 font-mono text-[10px] text-muted-foreground">
-                          <StatusDot status={selectedIssue.status} />
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-2 border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]",
+                            statusGlyph(selectedIssue.status).border,
+                            statusGlyph(selectedIssue.status).color,
+                          )}
+                        >
+                          <span aria-hidden="true">
+                            {statusGlyph(selectedIssue.status).mark}
+                          </span>
                           {selectedIssue.status}
                         </span>
-                        <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-neutral-950 px-2 py-1 font-mono text-[10px] text-muted-foreground">
-                          <PriorityIndicator priority={selectedIssue.priority} />
+                        <span className="inline-flex items-center gap-2 border border-ink/40 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-muted">
+                          <PriorityBars priority={selectedIssue.priority} />
                           {selectedIssue.priority}
                         </span>
                       </div>
-                      <div className="grid grid-cols-[1fr_auto] gap-2.5 max-sm:grid-cols-1">
+
+                      <div className="grid grid-cols-[1fr_auto] gap-3 max-sm:grid-cols-1">
                         <select
                           aria-label="Selected issue status"
-                          className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-[11px] text-neutral-200 outline-none transition-all duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-neutral-500 hover:border-neutral-600"
                           value={selectedIssue.status}
                           onChange={(event) =>
                             void handleStatusChange(selectedIssue, event.target.value)
                           }
+                          className="h-10 w-full border border-ink/30 bg-paper px-3 font-mono text-[12px] uppercase tracking-[0.1em] text-ink outline-none transition-all duration-200 hover:border-ink focus-visible:border-vermilion focus-visible:ring-1 focus-visible:ring-vermilion"
                         >
                           {statusOptions.map((option) => (
                             <option key={option} value={option}>
@@ -557,23 +706,32 @@ function DashboardPage() {
                           ))}
                         </select>
                         <Button
-                          className="h-9 text-xs"
-                          type="button"
                           variant="outline"
+                          size="default"
+                          type="button"
                           onClick={() => void handleDeleteIssue(selectedIssue)}
                         >
                           Delete
                         </Button>
                       </div>
-                      <div className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
-                        <Mark />
-                        <span>Updated {formatDate(selectedIssue.updatedAt)}</span>
+
+                      <div className="ornament-rule pt-1">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.18em]">
+                          Updated {formatDate(selectedIssue.updatedAt)}
+                        </span>
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </div>
                 ) : null}
               </aside>
             </section>
+
+            {/* Colophon at the bottom */}
+            <footer className="ornament-rule pt-2">
+              <span className="font-serif italic text-[13px]">
+                End of edition. Tomorrow's ledger reads itself.
+              </span>
+            </footer>
           </main>
         )}
       </SidebarInset>

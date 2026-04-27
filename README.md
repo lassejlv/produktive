@@ -11,8 +11,10 @@ cargo run -p produktive-api
 ```
 
 The API listens on `http://localhost:3000` by default. It uses Axum, Tokio,
-SeaORM, and DB-backed JWT cookies for auth. It also serves the built web app
-from `WEB_DIST_DIR`, which defaults to `web/dist`.
+SeaORM, DB-backed JWT cookies, and Resend email for auth. Runtime database
+traffic uses `DATABASE_URL`; migrations prefer `DATABASE_DIRECT_URL` and fall
+back to `DATABASE_URL`. It also serves the built web app from `WEB_DIST_DIR`,
+which defaults to `web/dist`.
 
 ## Web Development
 

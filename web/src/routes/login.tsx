@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
-import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -12,24 +11,32 @@ export const Route = createFileRoute("/login")({
 
 type AuthMode = "signin" | "signup";
 
-function AuthError({ message }: { message: string }) {
-  return (
-    <div className="flex items-start gap-2.5 rounded-lg border border-red-900/30 bg-red-950/20 px-3 py-2.5 text-xs text-red-200 animate-fade-in">
-      <svg className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-      </svg>
-      <span className="leading-relaxed">{message}</span>
-    </div>
-  );
-}
+const cardNumber = String(Math.floor(10000 + Math.random() * 89999));
 
-function AuthSuccess({ message }: { message: string }) {
+function FormNotice({
+  tone,
+  children,
+}: {
+  tone: "error" | "info";
+  children: React.ReactNode;
+}) {
+  const isError = tone === "error";
   return (
-    <div className="flex items-start gap-2.5 rounded-lg border border-emerald-900/30 bg-emerald-950/20 px-3 py-2.5 text-xs text-emerald-200 animate-fade-in">
-      <svg className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-      <span className="leading-relaxed">{message}</span>
+    <div
+      role={isError ? "alert" : "status"}
+      className="animate-ink-bleed flex items-start gap-3 border-l-2 px-3 py-2.5 text-[12px] leading-relaxed"
+      style={{
+        borderLeftColor: isError ? "var(--color-vermilion)" : "var(--color-moss)",
+        background: isError
+          ? "rgba(192, 48, 28, 0.06)"
+          : "rgba(79, 98, 64, 0.08)",
+        color: isError ? "var(--color-vermilion)" : "var(--color-moss)",
+      }}
+    >
+      <span className="font-mono text-[10px] uppercase tracking-[0.18em]">
+        {isError ? "Note" : "OK"}
+      </span>
+      <span className="font-serif italic text-ink-soft">{children}</span>
     </div>
   );
 }
@@ -62,7 +69,31 @@ function LoginPage() {
       return;
     }
 
+    if (mode === "signup") {
+      setMessage("Check your email to verify your address.");
+      return;
+    }
+
     await navigate({ to: "/dashboard" });
+  };
+
+  const onForgotPassword = async () => {
+    setError(null);
+    setMessage(null);
+
+    if (!email.trim()) {
+      setError("Enter your email address first.");
+      return;
+    }
+
+    const result = await authClient.requestPasswordReset({ email });
+
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+
+    setMessage("If that email exists, a reset link is on the way.");
   };
 
   const switchMode = (newMode: AuthMode) => {
@@ -72,41 +103,100 @@ function LoginPage() {
   };
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-12">
-      {/* Ambient background */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/2 top-1/3 size-[700px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-500/[0.06] blur-[140px]" />
-        <div className="absolute bottom-1/4 right-1/4 size-[500px] rounded-full bg-blue-500/[0.04] blur-[120px]" />
-        <div className="absolute left-1/4 top-1/2 size-[300px] rounded-full bg-violet-500/[0.03] blur-[100px]" />
-      </div>
+    <main className="relative grid min-h-screen w-full grid-cols-1 lg:grid-cols-[1.1fr_minmax(440px,1fr)]">
+      {/* Left — editorial column */}
+      <section className="relative hidden flex-col justify-between border-r border-ink bg-paper-deep p-10 lg:flex lg:p-16">
+        <div className="flex items-center justify-between">
+          <Link to="/" className="ink-link font-mono text-[10px] uppercase tracking-[0.2em]">
+            ← Produktive
+          </Link>
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+            Members' Entrance
+          </span>
+        </div>
 
-      <div className="relative z-10 w-full max-w-[420px] animate-fade-in-scale">
-        {/* Logo */}
-        <div className="mb-10 flex flex-col items-center text-center">
-          <div className="mb-5 grid size-12 place-items-center rounded-2xl border border-neutral-800 bg-neutral-900/60 backdrop-blur-sm shadow-lg shadow-black/20">
-            <span className="text-lg font-bold text-white">P</span>
-          </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">
-            {mode === "signin" ? "Welcome back" : "Create your account"}
-          </h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            {mode === "signin"
-              ? "Sign in to continue to your workspace"
-              : "Get started with your new workspace"}
+        <div className="animate-type-rise">
+          <p className="eyebrow mb-6">A note from the editors</p>
+          <h2
+            className="serif-tight text-[60px] font-medium leading-[0.92] text-ink xl:text-[78px]"
+            style={{ fontWeight: 500 }}
+          >
+            Pick up the
+            <br />
+            <span className="serif-italic text-vermilion">key</span>, leave
+            <br />
+            the door propped.
+          </h2>
+          <p
+            className="mt-8 max-w-[420px] font-serif text-[18px] leading-[1.55] text-ink-soft"
+            style={{ fontVariationSettings: '"opsz" 144, "SOFT" 80' }}
+          >
+            We keep the workshop quiet on purpose. Your account is the latch
+            that turns notes into shipped work — nothing more, nothing less.
           </p>
         </div>
 
-        {/* Card */}
-        <div className="rounded-2xl border border-neutral-800/80 bg-card/80 backdrop-blur-xl shadow-2xl shadow-black/30">
-          <div className="p-6">
-            <form className="grid gap-4" onSubmit={onSubmit}>
+        <div className="flex items-end justify-between">
+          <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-muted">
+            Card · {cardNumber}
+          </div>
+          <svg width="60" height="20" viewBox="0 0 60 20" className="text-ink/30">
+            <path
+              d="M0 10 H22 M38 10 H60 M26 10 L30 4 L34 10 L30 16 Z"
+              stroke="currentColor"
+              strokeWidth="1"
+              fill="none"
+            />
+          </svg>
+        </div>
+      </section>
+
+      {/* Right — auth form, designed like a library card */}
+      <section className="relative flex items-center justify-center px-6 py-12 lg:px-12">
+        <div className="w-full max-w-[440px] animate-ink-bleed">
+          {/* Card border with corner brackets */}
+          <div className="relative border border-ink bg-paper-soft">
+            {/* corner brackets */}
+            <span className="absolute -left-px -top-px h-3 w-3 border-l-2 border-t-2 border-vermilion" />
+            <span className="absolute -right-px -top-px h-3 w-3 border-r-2 border-t-2 border-vermilion" />
+            <span className="absolute -bottom-px -left-px h-3 w-3 border-b-2 border-l-2 border-vermilion" />
+            <span className="absolute -bottom-px -right-px h-3 w-3 border-b-2 border-r-2 border-vermilion" />
+
+            {/* Card header */}
+            <div className="border-b border-ink/15 px-7 py-6">
+              <div className="mb-4 flex items-center justify-between">
+                <span className="eyebrow-ink">Workshop · Form 02</span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-muted">
+                  Rev. 04 · 26
+                </span>
+              </div>
+              <h1
+                className="serif-tight text-[34px] font-medium leading-[1] tracking-tight text-ink"
+                style={{ fontWeight: 500 }}
+              >
+                {mode === "signin" ? (
+                  <>
+                    Welcome <span className="serif-italic text-vermilion">back</span>.
+                  </>
+                ) : (
+                  <>
+                    Open an <span className="serif-italic text-vermilion">account</span>.
+                  </>
+                )}
+              </h1>
+              <p className="mt-2 font-serif text-[14px] italic leading-snug text-ink-muted">
+                {mode === "signin"
+                  ? "Slide your credentials across the counter."
+                  : "Tell us where to send the keys."}
+              </p>
+            </div>
+
+            {/* Form */}
+            <form className="grid gap-5 p-7" onSubmit={onSubmit}>
               {mode === "signup" ? (
-                <div className="grid gap-2 animate-fade-in">
-                  <Label className="text-[11px] font-medium text-neutral-300" htmlFor="name">
-                    Full name
-                  </Label>
+                <div className="grid gap-2 animate-ink-bleed">
+                  <Label htmlFor="name">Full name</Label>
                   <Input
-                    className="h-10 text-sm bg-neutral-950/50"
                     id="name"
                     autoComplete="name"
                     value={name}
@@ -118,41 +208,37 @@ function LoginPage() {
               ) : null}
 
               <div className="grid gap-2">
-                <Label className="text-[11px] font-medium text-neutral-300" htmlFor="email">
-                  Email address
-                </Label>
+                <Label htmlFor="email">Correspondence address</Label>
                 <Input
-                  className="h-10 text-sm bg-neutral-950/50"
                   id="email"
                   type="email"
                   autoComplete="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@company.com"
+                  placeholder="you@studio.com"
                   required
                 />
               </div>
 
               <div className="grid gap-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-[11px] font-medium text-neutral-300" htmlFor="password">
-                    Password
-                  </Label>
+                  <Label htmlFor="password">Pass phrase</Label>
                   {mode === "signin" ? (
                     <button
                       type="button"
-                      className="text-[11px] text-indigo-400 transition-colors hover:text-indigo-300"
-                      onClick={() => setMessage("Contact support to reset your password.")}
+                      className="font-mono text-[10px] uppercase tracking-[0.16em] text-vermilion underline-offset-4 hover:underline"
+                      onClick={() => void onForgotPassword()}
                     >
-                      Forgot password?
+                      Forgot
                     </button>
                   ) : null}
                 </div>
                 <Input
-                  className="h-10 text-sm bg-neutral-950/50"
                   id="password"
                   type="password"
-                  autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                  autoComplete={
+                    mode === "signin" ? "current-password" : "new-password"
+                  }
                   minLength={8}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
@@ -161,69 +247,60 @@ function LoginPage() {
                 />
               </div>
 
-              {error ? <AuthError message={error} /> : null}
-              {message ? <AuthSuccess message={message} /> : null}
+              {error ? <FormNotice tone="error">{error}</FormNotice> : null}
+              {message ? <FormNotice tone="info">{message}</FormNotice> : null}
 
               <Button
-                className="mt-1 h-10 w-full text-sm font-medium shadow-lg shadow-indigo-500/10 transition-all hover:shadow-indigo-500/20"
+                className="mt-2 w-full"
+                size="lg"
                 type="submit"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (
-                  <span className="flex items-center gap-2">
-                    <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-neutral-400 border-t-white" />
-                    {mode === "signin" ? "Signing in..." : "Creating account..."}
+                  <span className="flex items-center gap-2.5">
+                    <span className="inline-block size-3 animate-mark-spin border-2 border-paper-soft/40 border-t-paper-soft" />
+                    {mode === "signin" ? "Opening…" : "Issuing card…"}
                   </span>
                 ) : mode === "signin" ? (
-                  "Sign in"
+                  "Sign in →"
                 ) : (
-                  "Create account"
+                  "Issue my card →"
                 )}
               </Button>
             </form>
-          </div>
 
-          {/* Footer */}
-          <div className="border-t border-border px-6 py-4">
-            <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
-              {mode === "signin" ? (
-                <>
-                  <span>Don't have an account?</span>
-                  <button
-                    className="font-medium text-indigo-400 transition-colors hover:text-indigo-300"
-                    type="button"
-                    onClick={() => switchMode("signup")}
-                  >
-                    Sign up
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span>Already have an account?</span>
-                  <button
-                    className="font-medium text-indigo-400 transition-colors hover:text-indigo-300"
-                    type="button"
-                    onClick={() => switchMode("signin")}
-                  >
-                    Sign in
-                  </button>
-                </>
-              )}
+            <div className="border-t border-ink/15 px-7 py-4">
+              <div className="flex items-center justify-between">
+                <span className="font-serif italic text-[13px] text-ink-muted">
+                  {mode === "signin"
+                    ? "First time at the workshop?"
+                    : "Already a card-holder?"}
+                </span>
+                <button
+                  className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink underline underline-offset-4 hover:text-vermilion hover:decoration-vermilion"
+                  type="button"
+                  onClick={() => switchMode(mode === "signin" ? "signup" : "signin")}
+                >
+                  {mode === "signin" ? "Open account →" : "Sign in →"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Bottom links */}
-        <div className="mt-6 flex items-center justify-center gap-4 text-[11px] text-muted-foreground">
-          <Link className="transition-colors hover:text-foreground" to="/">
-            Back to home
-          </Link>
-          <span className="h-3 w-px bg-border" />
-          <Link className="transition-colors hover:text-foreground" to="/dashboard">
-            Go to dashboard
-          </Link>
+          {/* Footer links beneath the card */}
+          <div className="mt-6 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.18em] text-ink-muted lg:hidden">
+            <Link className="ink-link" to="/">
+              ← Home
+            </Link>
+            <Link className="ink-link" to="/dashboard">
+              Dashboard →
+            </Link>
+          </div>
+          <p className="mt-6 hidden text-center font-serif text-[12px] italic text-ink-muted lg:block">
+            By signing in you agree to keep the door propped for the next reader.
+          </p>
         </div>
-      </div>
+      </section>
     </main>
   );
 }

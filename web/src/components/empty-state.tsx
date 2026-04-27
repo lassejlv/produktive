@@ -2,33 +2,36 @@ import { Button } from "@/components/ui/button";
 
 export function EmptyState({ onCreate }: { onCreate?: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center px-6 py-12 text-center animate-fade-in-scale">
-      <div className="mb-4 grid size-12 place-items-center rounded-xl border border-border bg-neutral-900/50">
+    <div className="animate-ink-bleed flex flex-col items-center justify-center px-6 py-16 text-center">
+      <div className="mb-6 grid size-14 place-items-center border border-ink bg-paper">
         <svg
-          className="h-5 w-5 text-neutral-500"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={1.5}
+          aria-hidden="true"
+          width="22"
+          height="22"
+          viewBox="0 0 22 22"
+          className="text-vermilion"
         >
           <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M12 4.5v15m7.5-7.5h-15"
+            d="M11 3 v16 M3 11 h16"
+            stroke="currentColor"
+            strokeWidth="1.5"
           />
         </svg>
       </div>
-      <h3 className="text-sm font-medium text-neutral-200">No issues yet</h3>
-      <p className="mt-1 max-w-[280px] text-xs leading-relaxed text-muted-foreground">
-        Create your first issue to start tracking work. Issues help you organize tasks and priorities.
+      <p className="eyebrow mb-2">A blank ledger</p>
+      <h3
+        className="serif-tight text-[28px] font-medium leading-[1] tracking-tight text-ink"
+        style={{ fontWeight: 500 }}
+      >
+        No issues filed <span className="serif-italic text-vermilion">yet</span>.
+      </h3>
+      <p className="mt-3 max-w-[320px] font-serif text-[14px] italic leading-relaxed text-ink-muted">
+        Set the first piece of type. Every shipped product begins with a single
+        line in the margin.
       </p>
       {onCreate ? (
-        <Button
-          className="mt-4 h-8 text-xs"
-          variant="outline"
-          onClick={onCreate}
-        >
-          Create first issue
+        <Button className="mt-6" variant="outline" onClick={onCreate}>
+          Compose first issue →
         </Button>
       ) : null}
     </div>

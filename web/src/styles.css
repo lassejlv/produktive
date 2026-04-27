@@ -17,68 +17,250 @@
 }
 
 @theme {
-  --color-background: #0a0a0a;
-  --color-foreground: #ededed;
-  --color-card: #0f0f0f;
-  --color-card-foreground: #ededed;
-  --color-primary: #e5e5e5;
-  --color-primary-foreground: #0a0a0a;
-  --color-muted: #141414;
-  --color-muted-foreground: #8f8f8f;
-  --color-accent: #1a1a1a;
-  --color-accent-foreground: #ffffff;
-  --color-border: #262626;
-  --color-input: #2a2a2a;
-  --color-ring: #e5e5e5;
-  --color-sidebar: #0c0c0c;
-  --color-sidebar-foreground: #d8d8d8;
-  --color-sidebar-accent: #1a1a1a;
-  --color-sidebar-accent-foreground: #ffffff;
-  --color-sidebar-border: #1f1f1f;
-  --color-indigo: #818cf8;
-  --color-indigo-muted: #312e81;
-  --font-sans: "Geist", sans-serif;
-  --font-mono: "Geist Mono", monospace;
+  /* Paper & ink palette — warm, analog, editorial */
+  --color-paper: #f1ebde;
+  --color-paper-deep: #e8dfcb;
+  --color-paper-soft: #f6f1e6;
+  --color-ink: #1a1410;
+  --color-ink-soft: #3a312a;
+  --color-ink-muted: #6b6052;
+  --color-ink-faint: #968b7c;
+  --color-rule: #1a1410;
+  --color-rule-soft: #c9bfa8;
+  --color-rule-faint: #ddd2bb;
+
+  /* The single sharp accent — printer's vermilion */
+  --color-vermilion: #c0301c;
+  --color-vermilion-soft: #e8c8be;
+
+  /* Earth tones for status — moss, storm, gold, ochre */
+  --color-moss: #4f6240;
+  --color-storm: #2f4257;
+  --color-gold: #a07a26;
+  --color-ochre: #b85a1e;
+
+  /* Aliased to keep tailwind utilities working */
+  --color-background: #f1ebde;
+  --color-foreground: #1a1410;
+  --color-card: #f6f1e6;
+  --color-card-foreground: #1a1410;
+  --color-primary: #1a1410;
+  --color-primary-foreground: #f6f1e6;
+  --color-muted: #ece4d0;
+  --color-muted-foreground: #6b6052;
+  --color-accent: #c0301c;
+  --color-accent-foreground: #f6f1e6;
+  --color-border: #1a1410;
+  --color-input: #1a1410;
+  --color-ring: #c0301c;
+  --color-sidebar: #ece4d0;
+  --color-sidebar-foreground: #1a1410;
+  --color-sidebar-accent: #ddd2bb;
+  --color-sidebar-accent-foreground: #1a1410;
+  --color-sidebar-border: #1a1410;
+
+  --font-sans: "Geist", -apple-system, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", monospace;
+  --font-serif: "Fraunces", "Iowan Old Style", "Hoefler Text", Georgia, serif;
 }
 
-:root {
-  color: var(--color-foreground);
-  background: var(--color-background);
-  font-family: "Geist", sans-serif;
-  font-synthesis: none;
-  text-rendering: geometricPrecision;
-  -webkit-font-smoothing: antialiased;
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  :root {
+    color: var(--color-ink);
+    background: var(--color-paper);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    font-synthesis: none;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    background-color: var(--color-paper);
+    background-image:
+      /* fine fibre noise */
+      radial-gradient(circle at 20% 12%, rgba(120, 90, 50, 0.03) 0, transparent 25%),
+      radial-gradient(circle at 78% 80%, rgba(60, 40, 20, 0.025) 0, transparent 30%),
+      radial-gradient(circle at 50% 50%, rgba(192, 48, 28, 0.012) 0, transparent 60%);
+    background-attachment: fixed;
+  }
+
+  /* Paper grain overlay — applied to every page */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.55;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.45  0 0 0 0 0.35  0 0 0 0 0.18  0 0 0 0.09 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  }
+
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    background:
+      linear-gradient(to bottom, rgba(26, 20, 16, 0.04), transparent 8%, transparent 92%, rgba(26, 20, 16, 0.05));
+  }
+
+  #root {
+    position: relative;
+    z-index: 2;
+    min-height: 100vh;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  ::selection {
+    background: var(--color-vermilion);
+    color: var(--color-paper-soft);
+  }
 }
 
-* {
-  box-sizing: border-box;
+/* Display serif — the editorial voice */
+.font-serif,
+.serif {
+  font-family: var(--font-serif);
+  font-feature-settings: "ss01", "ss02", "ss03";
+  font-variation-settings: "opsz" 144, "SOFT" 50;
+  letter-spacing: -0.018em;
 }
 
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.12), transparent),
-    radial-gradient(ellipse 60% 40% at 80% 50%, rgba(99, 102, 241, 0.04), transparent),
-    #0a0a0a;
+.serif-tight {
+  font-family: var(--font-serif);
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+  letter-spacing: -0.038em;
 }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
+.serif-italic {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-variation-settings: "opsz" 144, "SOFT" 100;
 }
 
-button {
-  cursor: pointer;
+/* Tiny editorial label — small caps with ink-pressed letter spacing */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--color-ink-muted);
 }
 
-@keyframes fade-in {
+.eyebrow-ink {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+/* Hard ink rule — the workhorse divider */
+.rule {
+  border-color: var(--color-ink);
+}
+
+/* Drop cap helper for editorial paragraphs */
+.dropcap::first-letter {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 3.6em;
+  line-height: 0.85;
+  float: left;
+  margin: 0.04em 0.08em 0 0;
+  color: var(--color-vermilion);
+  font-variation-settings: "opsz" 144, "SOFT" 30;
+}
+
+/* Underlined link with hand-drawn feel */
+.ink-link {
+  position: relative;
+  color: var(--color-ink);
+  text-decoration: none;
+  background-image: linear-gradient(to right, var(--color-ink), var(--color-ink));
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 100% 1px;
+  transition: background-size 240ms cubic-bezier(0.7, 0, 0.3, 1);
+}
+.ink-link:hover {
+  background-size: 100% 2px;
+  color: var(--color-vermilion);
+  background-image: linear-gradient(to right, var(--color-vermilion), var(--color-vermilion));
+}
+
+/* Decorative ornament rule with a center mark */
+.ornament-rule {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--color-ink-muted);
+}
+.ornament-rule::before,
+.ornament-rule::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.45;
+}
+
+/* Hover lift for ledger rows */
+.row-hover {
+  transition:
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+.row-hover:hover {
+  background-color: var(--color-paper-deep);
+}
+
+/* Subtle inset shadow under the masthead */
+.masthead-shadow {
+  box-shadow: 0 1px 0 0 var(--color-ink), 0 6px 12px -8px rgba(26, 20, 16, 0.18);
+}
+
+/* Animations — restrained, paper-like */
+@keyframes ink-bleed-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    filter: blur(2px);
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+@keyframes type-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
   }
   to {
     opacity: 1;
@@ -86,65 +268,71 @@ button {
   }
 }
 
-@keyframes fade-in-scale {
+@keyframes underline-grow {
   from {
-    opacity: 0;
-    transform: scale(0.97);
+    transform: scaleX(0);
   }
   to {
-    opacity: 1;
-    transform: scale(1);
+    transform: scaleX(1);
   }
 }
 
-@keyframes slide-in-left {
-  from {
-    opacity: 0;
-    transform: translateX(-12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes pulse-subtle {
-  0%, 100% {
+@keyframes pulse-ink {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
-    opacity: 0.6;
+    opacity: 0.55;
   }
 }
 
-.animate-fade-in {
-  animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+@keyframes mark-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-.animate-fade-in-scale {
-  animation: fade-in-scale 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.animate-ink-bleed {
+  animation: ink-bleed-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-type-rise {
+  animation: type-rise 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.animate-underline-grow {
+  transform-origin: left center;
+  animation: underline-grow 0.6s cubic-bezier(0.7, 0, 0.3, 1) 0.2s both;
+}
+.animate-pulse-ink {
+  animation: pulse-ink 1.8s ease-in-out infinite;
+}
+.animate-mark-spin {
+  animation: mark-spin 1.2s linear infinite;
 }
 
-.animate-slide-in-left {
-  animation: slide-in-left 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
+.delay-50 { animation-delay: 50ms; }
+.delay-100 { animation-delay: 100ms; }
+.delay-150 { animation-delay: 150ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
+.delay-600 { animation-delay: 600ms; }
+.delay-700 { animation-delay: 700ms; }
 
-.animate-pulse-subtle {
-  animation: pulse-subtle 2s ease-in-out infinite;
+/* Custom thin scrollbars on Webkit */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
 }
-
-.animation-delay-100 {
-  animation-delay: 100ms;
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
-
-.animation-delay-200 {
-  animation-delay: 200ms;
+*::-webkit-scrollbar-thumb {
+  background: var(--color-rule-soft);
+  border: 2px solid var(--color-paper);
+  border-radius: 999px;
 }
-
-.animation-delay-300 {
-  animation-delay: 300ms;
-}
-
-.animation-delay-400 {
-  animation-delay: 400ms;
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-faint);
 }

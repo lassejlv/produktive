@@ -1,3 +1,4 @@
+pub mod auth_token;
 pub mod issue;
 pub mod member;
 pub mod organization;

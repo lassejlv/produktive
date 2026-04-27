@@ -1,16 +1,15 @@
 import type * as React from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
-  return <div className="flex min-h-screen w-full bg-background">{children}</div>;
+  return <div className="flex min-h-screen w-full">{children}</div>;
 }
 
 export function Sidebar({ className, ...props }: React.ComponentProps<"aside">) {
   return (
     <aside
       className={cn(
-        "hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex md:flex-col",
+        "hidden w-72 shrink-0 flex-col border-r border-ink bg-paper-deep text-ink md:flex",
         className,
       )}
       {...props}
@@ -19,19 +18,34 @@ export function Sidebar({ className, ...props }: React.ComponentProps<"aside">) 
 }
 
 export function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("border-b border-sidebar-border p-4", className)} {...props} />;
+  return (
+    <div
+      className={cn("border-b border-ink p-5", className)}
+      {...props}
+    />
+  );
 }
 
 export function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("flex-1 overflow-auto p-3", className)} {...props} />;
+  return (
+    <div
+      className={cn("flex-1 overflow-auto p-4", className)}
+      {...props}
+    />
+  );
 }
 
 export function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("border-t border-sidebar-border p-3", className)} {...props} />;
+  return (
+    <div
+      className={cn("border-t border-ink p-4", className)}
+      {...props}
+    />
+  );
 }
 
 export function SidebarMenu({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("grid gap-0.5", className)} {...props} />;
+  return <div className={cn("grid", className)} {...props} />;
 }
 
 export function SidebarMenuItem({ className, ...props }: React.ComponentProps<"div">) {
@@ -45,7 +59,7 @@ export function SidebarMenuButton({
   return (
     <button
       className={cn(
-        "flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm font-medium text-sidebar-foreground transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:scale-[0.98]",
+        "group relative flex w-full items-center gap-3 border-b border-ink/10 px-2 py-3 text-left text-[13px] font-medium text-ink transition-all duration-200 last:border-b-0 hover:bg-paper hover:pl-3",
         className,
       )}
       {...props}
@@ -54,20 +68,21 @@ export function SidebarMenuButton({
 }
 
 export function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
-  return <main className={cn("min-w-0 flex-1", className)} {...props} />;
+  return (
+    <main className={cn("min-w-0 flex-1 bg-paper", className)} {...props} />
+  );
 }
 
 export function SidebarTrigger() {
   return (
-    <Button className="md:hidden" size="icon" variant="ghost" aria-label="Open navigation">
-      <svg
-        aria-hidden="true"
-        className="h-4 w-4"
-        fill="none"
-        viewBox="0 0 16 16"
-      >
-        <path d="M3 4.5h10M3 8h10M3 11.5h10" stroke="currentColor" strokeWidth="1.8" />
+    <button
+      className="grid size-9 place-items-center border border-ink bg-paper-soft text-ink transition-all hover:bg-ink hover:text-paper-soft md:hidden"
+      aria-label="Open navigation"
+      type="button"
+    >
+      <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 16 16">
+        <path d="M3 4.5h10M3 8h10M3 11.5h10" stroke="currentColor" strokeWidth="1.6" />
       </svg>
-    </Button>
+    </button>
   );
 }
