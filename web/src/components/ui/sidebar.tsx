@@ -10,7 +10,7 @@ export function Sidebar({ className, ...props }: React.ComponentProps<"aside">) 
   return (
     <aside
       className={cn(
-        "hidden w-72 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex md:flex-col",
+        "hidden w-64 shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex md:flex-col",
         className,
       )}
       {...props}
@@ -31,7 +31,7 @@ export function SidebarFooter({ className, ...props }: React.ComponentProps<"div
 }
 
 export function SidebarMenu({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("grid gap-1", className)} {...props} />;
+  return <div className={cn("grid gap-0.5", className)} {...props} />;
 }
 
 export function SidebarMenuItem({ className, ...props }: React.ComponentProps<"div">) {
@@ -45,7 +45,7 @@ export function SidebarMenuButton({
   return (
     <button
       className={cn(
-        "flex h-9 w-full items-center gap-2 rounded-md px-3 text-left text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+        "flex h-9 w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm font-medium text-sidebar-foreground transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:scale-[0.98]",
         className,
       )}
       {...props}

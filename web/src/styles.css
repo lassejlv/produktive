@@ -17,24 +17,26 @@
 }
 
 @theme {
-  --color-background: #000000;
+  --color-background: #0a0a0a;
   --color-foreground: #ededed;
-  --color-card: #050505;
+  --color-card: #0f0f0f;
   --color-card-foreground: #ededed;
-  --color-primary: #ffffff;
-  --color-primary-foreground: #000000;
-  --color-muted: #0a0a0a;
+  --color-primary: #e5e5e5;
+  --color-primary-foreground: #0a0a0a;
+  --color-muted: #141414;
   --color-muted-foreground: #8f8f8f;
-  --color-accent: #111111;
+  --color-accent: #1a1a1a;
   --color-accent-foreground: #ffffff;
-  --color-border: #1f1f1f;
+  --color-border: #262626;
   --color-input: #2a2a2a;
-  --color-ring: #ffffff;
-  --color-sidebar: #050505;
+  --color-ring: #e5e5e5;
+  --color-sidebar: #0c0c0c;
   --color-sidebar-foreground: #d8d8d8;
-  --color-sidebar-accent: #111111;
+  --color-sidebar-accent: #1a1a1a;
   --color-sidebar-accent-foreground: #ffffff;
-  --color-sidebar-border: #1b1b1b;
+  --color-sidebar-border: #1f1f1f;
+  --color-indigo: #818cf8;
+  --color-indigo-muted: #312e81;
   --font-sans: "Geist", sans-serif;
   --font-mono: "Geist Mono", monospace;
 }
@@ -57,8 +59,9 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.1), transparent 28rem),
-    #000;
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 119, 198, 0.12), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 50%, rgba(99, 102, 241, 0.04), transparent),
+    #0a0a0a;
 }
 
 button,
@@ -70,4 +73,78 @@ select {
 
 button {
   cursor: pointer;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in-scale {
+  animation: fade-in-scale 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+.animation-delay-100 {
+  animation-delay: 100ms;
+}
+
+.animation-delay-200 {
+  animation-delay: 200ms;
+}
+
+.animation-delay-300 {
+  animation-delay: 300ms;
+}
+
+.animation-delay-400 {
+  animation-delay: 400ms;
 }
