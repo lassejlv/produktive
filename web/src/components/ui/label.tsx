@@ -7,10 +7,7 @@ export function Label({
 }: React.ComponentProps<"label">) {
   return (
     <label
-      className={cn(
-        "font-mono text-[10px] font-medium uppercase leading-none tracking-[0.18em] text-ink-muted",
-        className,
-      )}
+      className={cn("text-xs font-medium text-fg-muted", className)}
       {...props}
     />
   );

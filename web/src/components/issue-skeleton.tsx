@@ -2,40 +2,35 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export function IssueSkeleton() {
   return (
-    <div className="grid grid-cols-[40px_84px_minmax(0,1fr)_104px_94px_70px] items-center gap-3 border-b border-ink/10 px-4 py-3">
-      <Skeleton className="h-3 w-6" />
-      <Skeleton className="h-3 w-14" />
-      <div className="min-w-0 space-y-1.5">
-        <Skeleton className="h-4 w-full max-w-[300px]" />
-        <Skeleton className="h-3 w-full max-w-[200px]" />
-      </div>
-      <Skeleton className="h-6 w-20" />
-      <Skeleton className="hidden h-3 w-16 lg:block" />
-      <Skeleton className="hidden h-3 w-12 lg:block" />
+    <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-2.5 last:border-b-0">
+      <Skeleton className="size-1.5 shrink-0 rounded-full" />
+      <Skeleton className="h-3 w-14 shrink-0" />
+      <Skeleton className="h-3 flex-1" />
+      <Skeleton className="hidden h-3 w-12 sm:block" />
     </div>
   );
 }
 
 export function DashboardSkeleton() {
   return (
-    <div className="animate-ink-bleed grid gap-8 px-6 py-6 lg:px-10 lg:py-8">
-      <section className="grid grid-cols-2 border border-ink bg-paper-soft md:grid-cols-4">
+    <div className="animate-fade-in p-5">
+      <section className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <div
             key={index}
-            className="space-y-3 border-ink/15 px-5 py-5 md:[&:not(:first-child)]:border-l"
+            className="space-y-2 rounded-lg border border-border-subtle bg-surface px-4 py-3"
           >
-            <Skeleton className="h-2 w-16" />
-            <Skeleton className="h-9 w-12" />
+            <Skeleton className="h-3 w-12" />
+            <Skeleton className="h-5 w-8" />
           </div>
         ))}
       </section>
 
-      <section className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
-        <div className="border border-ink bg-paper-soft">
-          <div className="space-y-2 border-b border-ink/15 px-5 py-4">
-            <Skeleton className="h-2 w-28" />
-            <Skeleton className="h-5 w-48" />
+      <section className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="rounded-lg border border-border bg-surface">
+          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2.5">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="h-3 w-20" />
           </div>
           <div>
             {Array.from({ length: 6 }).map((_, index) => (
@@ -44,29 +39,16 @@ export function DashboardSkeleton() {
           </div>
         </div>
 
-        <div className="border border-ink bg-paper-soft">
-          <div className="space-y-2 border-b border-ink/15 px-5 py-4">
-            <Skeleton className="h-2 w-32" />
-            <Skeleton className="h-5 w-40" />
+        <div className="rounded-lg border border-border bg-surface">
+          <div className="border-b border-border-subtle px-4 py-2.5">
+            <Skeleton className="h-3 w-16" />
           </div>
-          <div className="space-y-5 px-5 py-5">
-            <div className="space-y-2">
-              <Skeleton className="h-2 w-12" />
+          <div className="space-y-3 p-4">
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-20 w-full" />
+            <div className="grid grid-cols-2 gap-3">
               <Skeleton className="h-9 w-full" />
-            </div>
-            <div className="space-y-2">
-              <Skeleton className="h-2 w-20" />
-              <Skeleton className="h-24 w-full" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Skeleton className="h-2 w-12" />
-                <Skeleton className="h-9 w-full" />
-              </div>
-              <div className="space-y-2">
-                <Skeleton className="h-2 w-14" />
-                <Skeleton className="h-9 w-full" />
-              </div>
+              <Skeleton className="h-9 w-full" />
             </div>
           </div>
         </div>

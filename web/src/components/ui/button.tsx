@@ -4,28 +4,23 @@ import type * as React from "react";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-none font-medium uppercase tracking-[0.14em] text-[11px] transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-vermilion focus-visible:ring-offset-2 focus-visible:ring-offset-paper active:translate-y-[1px]",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
   {
     variants: {
       variant: {
-        default:
-          "bg-ink text-paper-soft hover:bg-vermilion shadow-[3px_3px_0_0_var(--color-ink)] hover:shadow-[3px_3px_0_0_var(--color-vermilion)] hover:-translate-x-[1px] hover:-translate-y-[1px]",
+        default: "bg-fg text-bg hover:bg-fg/90",
         outline:
-          "bg-transparent text-ink border border-ink hover:bg-ink hover:text-paper-soft",
-        ghost:
-          "bg-transparent text-ink hover:bg-paper-deep tracking-[0.1em]",
-        secondary:
-          "bg-paper-deep text-ink border border-ink/15 hover:border-ink hover:bg-paper",
-        vermilion:
-          "bg-vermilion text-paper-soft hover:bg-ink shadow-[3px_3px_0_0_var(--color-ink)]",
-        link:
-          "bg-transparent text-ink underline underline-offset-4 decoration-1 hover:text-vermilion hover:decoration-vermilion px-0",
+          "border border-border bg-transparent text-fg hover:bg-surface",
+        ghost: "bg-transparent text-fg hover:bg-surface",
+        secondary: "bg-surface text-fg hover:bg-surface-2 border border-border",
+        danger: "bg-danger text-white hover:bg-danger/90",
+        link: "bg-transparent text-accent hover:underline underline-offset-4 px-0",
       },
       size: {
-        default: "h-10 px-5",
-        sm: "h-8 px-3.5 text-[10px]",
-        lg: "h-12 px-7 text-[12px]",
-        icon: "h-10 w-10",
+        default: "h-9 px-4",
+        sm: "h-8 px-3 text-xs",
+        lg: "h-10 px-5",
+        icon: "h-9 w-9",
       },
     },
     defaultVariants: {

@@ -4,10 +4,7 @@ import { cn } from "@/lib/utils";
 export function Card({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn(
-        "rounded-none border border-ink bg-paper-soft text-ink",
-        className,
-      )}
+      className={cn("rounded-lg border border-border bg-surface", className)}
       {...props}
     />
   );
@@ -16,10 +13,7 @@ export function Card({ className, ...props }: React.ComponentProps<"div">) {
 export function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn(
-        "flex flex-col space-y-2 border-b border-ink/15 p-5",
-        className,
-      )}
+      className={cn("flex flex-col gap-1 border-b border-border-subtle p-4", className)}
       {...props}
     />
   );
@@ -28,11 +22,7 @@ export function CardHeader({ className, ...props }: React.ComponentProps<"div">)
 export function CardTitle({ className, ...props }: React.ComponentProps<"h3">) {
   return (
     <h3
-      className={cn(
-        "font-serif text-[22px] font-medium leading-[1.05] tracking-[-0.02em] text-ink",
-        className,
-      )}
-      style={{ fontVariationSettings: '"opsz" 144, "SOFT" 30' }}
+      className={cn("text-sm font-medium text-fg", className)}
       {...props}
     />
   );
@@ -43,16 +33,10 @@ export function CardDescription({
   ...props
 }: React.ComponentProps<"p">) {
   return (
-    <p
-      className={cn(
-        "font-serif italic text-[13px] leading-relaxed text-ink-muted",
-        className,
-      )}
-      {...props}
-    />
+    <p className={cn("text-xs text-fg-muted", className)} {...props} />
   );
 }
 
 export function CardContent({ className, ...props }: React.ComponentProps<"div">) {
-  return <div className={cn("p-5 pt-0", className)} {...props} />;
+  return <div className={cn("p-4", className)} {...props} />;
 }
