@@ -1,25 +1,26 @@
 {
-	"name": "produktive",
-	"private": true,
-	"type": "module",
-	"scripts": {
-		"dev": "bun --watch src/index.ts",
-		"start": "bun src/index.ts",
-		"check": "bunx tsc --noEmit",
-		"db:validate": "prisma validate",
-		"db:generate": "prisma generate",
-		"db:migrate:dev": "prisma migrate dev",
-		"db:migrate:deploy": "prisma migrate deploy",
-		"db:migrate:status": "prisma migrate status"
-	},
-	"dependencies": {
-		"@prisma/adapter-pg": "^7.8.0",
-		"@prisma/client": "^7.8.0",
-		"better-auth": "^1.6.9",
-		"hono": "^4.12.15",
-		"prisma": "^7.8.0"
-	},
-	"devDependencies": {
-		"@types/bun": "latest"
-	}
+  "name": "produktive",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun db:migrate:deploy && bun src/index.ts",
+    "check": "bunx tsc --noEmit",
+    "db:validate": "prisma validate",
+    "db:generate": "prisma generate",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "better-auth": "^1.6.9",
+    "hono": "^4.12.15",
+    "prisma": "^7.8.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
 }
