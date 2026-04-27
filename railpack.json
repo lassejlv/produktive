@@ -8,6 +8,7 @@
     "build": {
       "commands": [
         "...",
+        "mkdir -p bin && cp target/release/produktive-api bin/produktive-api",
         "cd web && bun install --frozen-lockfile",
         "cd web && bun run build"
       ]
@@ -22,11 +23,11 @@
       {
         "step": "build",
         "include": [
-          "target/release/produktive-api",
+          "bin/produktive-api",
           "web/dist/**"
         ]
       }
     ],
-    "startCommand": "./target/release/produktive-api"
+    "startCommand": "./bin/produktive-api"
   }
 }
