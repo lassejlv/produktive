@@ -19,6 +19,7 @@
     "better-auth": "^1.6.9",
     "hono": "^4.12.15",
     "prisma": "^7.8.0",
+    "resend": "^6.12.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {
