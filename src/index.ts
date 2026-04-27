@@ -2,8 +2,19 @@ import { auth } from "./lib/auth";
 import { env } from "./lib/env";
 import { issueRoutes } from "./routes/issue";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 
 export const app = new Hono();
+
+app.use(
+  "/api/*",
+  cors({
+    origin: (origin) => (env.CORS_ORIGINS.includes(origin) ? origin : env.CORS_ORIGINS[0]),
+    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  }),
+);
 
 app.get("/", (c) => {
   return c.text("Hello Mom!");

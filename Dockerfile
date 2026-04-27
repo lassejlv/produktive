@@ -11,6 +11,7 @@ COPY tsconfig.json tsconfig.json
 COPY prisma prisma
 COPY prisma.config.ts prisma.config.ts
 RUN bun run db:generate
+RUN bun run db:migrate:deploy
 RUN bun run check
 RUN bun run build
 

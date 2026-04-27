@@ -1,7 +1,13 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { organization } from "better-auth/plugins";
+import {
+  renderPasswordResetEmail,
+  renderVerifyEmail,
+} from "../emails/auth";
 import { prisma } from "./prisma";
+import { sendEmail } from "./resend";
+import { env } from "./env";
 
 const createDefaultOrganizationForUser = async (user: {
   id: string;
@@ -39,6 +45,43 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
+  trustedOrigins: env.CORS_ORIGINS,
+
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: true,
+    minPasswordLength: 8,
+    resetPasswordTokenExpiresIn: 60 * 60,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, url }) => {
+      const email = await renderPasswordResetEmail({
+        name: user.name,
+        resetUrl: url,
+      });
+
+      await sendEmail({
+        to: user.email,
+        subject: "Reset your Produktive password",
+        ...email,
+      });
+    },
+  },
+
+  emailVerification: {
+    sendOnSignUp: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      const email = await renderVerifyEmail({
+        name: user.name,
+        verificationUrl: url,
+      });
+
+      await sendEmail({
+        to: user.email,
+        subject: "Verify your Produktive email",
+        ...email,
+      });
+    },
+  },
 
   databaseHooks: {
     user: {
