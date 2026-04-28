@@ -211,13 +211,7 @@ function PricingCard({
 
 function CheckIcon() {
   return (
-    <svg
-      width="9"
-      height="9"
-      viewBox="0 0 12 12"
-      fill="none"
-      aria-hidden
-    >
+    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" aria-hidden>
       <path
         d="M2.5 6l2.4 2.4 4.6-5"
         stroke="currentColor"
@@ -231,13 +225,7 @@ function CheckIcon() {
 
 function DashIcon() {
   return (
-    <svg
-      width="9"
-      height="9"
-      viewBox="0 0 12 12"
-      fill="none"
-      aria-hidden
-    >
+    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" aria-hidden>
       <path
         d="M3 6h6"
         stroke="currentColor"

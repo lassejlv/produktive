@@ -204,9 +204,7 @@ function AppLayout() {
             <button
               type="button"
               onClick={() =>
-                window.dispatchEvent(
-                  new CustomEvent("produktive:open-cmdk"),
-                )
+                window.dispatchEvent(new CustomEvent("produktive:open-cmdk"))
               }
               aria-label="Search"
               className="grid size-7 shrink-0 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface hover:text-fg"
@@ -223,9 +221,7 @@ function AppLayout() {
                   await navigate({ to: "/issues" });
                 }
                 setTimeout(() => {
-                  window.dispatchEvent(
-                    new CustomEvent("produktive:new-issue"),
-                  );
+                  window.dispatchEvent(new CustomEvent("produktive:new-issue"));
                 }, 50);
               }}
               aria-label="New issue"
@@ -402,21 +398,13 @@ function AppLayout() {
                 <IssuesIcon />
                 <span className="flex-1 truncate">Issues</span>
               </button>
-              <button
-                type="button"
-                onClick={() => toast("Views coming soon")}
-                className="flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] text-fg-muted transition-colors hover:bg-surface hover:text-fg [&_svg]:text-fg-faint"
-              >
-                <ViewsIcon />
-                <span className="flex-1 truncate">Views</span>
-              </button>
+
               <button
                 type="button"
                 onClick={() => void navigate({ to: "/projects" })}
                 className={cn(
                   "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
-                  pathname === "/projects" ||
-                    pathname.startsWith("/projects/")
+                  pathname === "/projects" || pathname.startsWith("/projects/")
                     ? "bg-surface-2 text-fg [&_svg]:text-fg"
                     : "text-fg-muted hover:bg-surface hover:text-fg",
                 )}
@@ -548,9 +536,7 @@ function AppLayout() {
                           >
                             {isFavorite("chat", entry.id) ? "Unpin" : "Pin"}
                           </ChatMenuItem>
-                          <ChatMenuItem
-                            onClick={() => void exportChat(entry)}
-                          >
+                          <ChatMenuItem onClick={() => void exportChat(entry)}>
                             Export JSON
                           </ChatMenuItem>
                           <ChatMenuItem
@@ -578,7 +564,7 @@ function AppLayout() {
         <SidebarFooter className="relative">
           <div ref={accountMenuRef}>
             {accountMenuOpen ? (
-              <div className="absolute bottom-[74px] left-4 right-4 overflow-hidden rounded-[9px] border border-border bg-surface animate-fade-up">
+              <div className="absolute bottom-18.5 left-4 right-4 overflow-hidden rounded-[9px] border border-border bg-surface animate-fade-up">
                 <div className="border-b border-border-subtle px-3 py-2.5">
                   <p className="truncate text-[13px] font-medium text-fg">
                     {currentUser?.name ?? "User"}
@@ -682,7 +668,9 @@ function ChatMenuItem({
 }
 
 function displayChatTitle(chat: Chat) {
-  return parseMessageWithAttachments(chat.title).text.trim() || "Attached files";
+  return (
+    parseMessageWithAttachments(chat.title).text.trim() || "Attached files"
+  );
 }
 
 function displayFavoriteTitle(title: string) {
@@ -690,11 +678,13 @@ function displayFavoriteTitle(title: string) {
 }
 
 function safeFilename(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48) || "chat";
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "chat"
+  );
 }
 
 function SignOutIcon() {
@@ -753,20 +743,8 @@ function MyIssuesIcon() {
 
 function SearchSidebarIcon() {
   return (
-    <svg
-      width="13"
-      height="13"
-      viewBox="0 0 14 14"
-      fill="none"
-      aria-hidden
-    >
-      <circle
-        cx="6"
-        cy="6"
-        r="3.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <circle cx="6" cy="6" r="3.5" stroke="currentColor" strokeWidth="1.5" />
       <path
         d="M11 11l-2.4-2.4"
         stroke="currentColor"
@@ -779,37 +757,12 @@ function SearchSidebarIcon() {
 
 function ComposeIcon() {
   return (
-    <svg
-      width="13"
-      height="13"
-      viewBox="0 0 14 14"
-      fill="none"
-      aria-hidden
-    >
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
       <path
         d="M2.5 11.5h9M3 9.5l5.6-5.6 1.5 1.5L4.5 11l-2 .5.5-2z"
         stroke="currentColor"
         strokeWidth="1.5"
         strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ViewsIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path
-        d="M2 4.5l5-2.5 5 2.5-5 2.5-5-2.5z"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M2 7.5l5 2.5 5-2.5M2 10.5l5 2.5 5-2.5"
-        stroke="currentColor"
-        strokeWidth="1.4"
         strokeLinejoin="round"
       />
     </svg>
@@ -842,8 +795,7 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
               })
             }
             onDragOver={(event) => {
-              if (!event.dataTransfer.types.includes(ISSUE_DRAG_MIME))
-                return;
+              if (!event.dataTransfer.types.includes(ISSUE_DRAG_MIME)) return;
               event.preventDefault();
               event.dataTransfer.dropEffect = "move";
               event.currentTarget.classList.add(
@@ -925,7 +877,13 @@ function MembersIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
       <circle cx="5" cy="5" r="2" stroke="currentColor" strokeWidth="1.4" />
-      <circle cx="10.5" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.4" />
+      <circle
+        cx="10.5"
+        cy="6"
+        r="1.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
       <path
         d="M1.5 12c.5-1.8 2-2.7 3.5-2.7s3 .9 3.5 2.7M9 12c.4-1.4 1.4-2 2.5-2 .9 0 1.7.5 2 1.5"
         stroke="currentColor"
@@ -986,7 +944,13 @@ function TrySection() {
           aria-label="Dismiss"
           className="text-fg-faint transition-colors hover:text-fg"
         >
-          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden>
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 12 12"
+            fill="none"
+            aria-hidden
+          >
             <path
               d="M3 3l6 6M9 3l-6 6"
               stroke="currentColor"
@@ -996,33 +960,6 @@ function TrySection() {
           </svg>
         </button>
       </div>
-      <div className="flex flex-col gap-px">
-        <TryItem
-          label="Import issues"
-          onClick={() => toast("Import coming soon")}
-        />
-        <TryItem
-          label="Invite people"
-          onClick={() => toast("Invite coming soon")}
-        />
-        <TryItem
-          label="Connect GitHub"
-          onClick={() => toast("GitHub integration coming soon")}
-        />
-      </div>
     </div>
-  );
-}
-
-function TryItem({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
-    >
-      <span className="grid size-4 place-items-center text-fg-faint">+</span>
-      <span className="flex-1 truncate">{label}</span>
-    </button>
   );
 }
