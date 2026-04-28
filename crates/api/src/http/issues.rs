@@ -15,7 +15,7 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
-use produktive_entity::{issue, issue_event, user};
+use produktive_entity::{issue, issue_comment, issue_event, user};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter,
     QueryOrder, Set,
@@ -34,6 +34,7 @@ pub fn routes() -> Router<AppState> {
             get(get_issue).patch(update_issue).delete(delete_issue),
         )
         .route("/{id}/history", get(get_issue_history))
+        .route("/{id}/comments", get(list_comments).post(create_comment))
         .route(
             "/{id}/attachments",
             post(upload_attachment)
@@ -66,6 +67,12 @@ struct UpdateIssueRequest {
     assigned_to_id: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateCommentRequest {
+    body: String,
+}
+
 #[derive(Serialize)]
 struct IssuesResponse {
     issues: Vec<IssueResponse>,
@@ -79,6 +86,16 @@ struct IssueEnvelope {
 #[derive(Serialize)]
 struct IssueHistoryResponse {
     events: Vec<IssueEventResponse>,
+}
+
+#[derive(Serialize)]
+struct IssueCommentsResponse {
+    comments: Vec<IssueCommentResponse>,
+}
+
+#[derive(Serialize)]
+struct IssueCommentEnvelope {
+    comment: IssueCommentResponse,
 }
 
 #[derive(Serialize)]
@@ -130,6 +147,16 @@ struct IssueEventResponse {
     changes: Vec<IssueChange>,
     created_at: String,
     actor: Option<UserResponse>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct IssueCommentResponse {
+    id: String,
+    body: String,
+    created_at: String,
+    updated_at: String,
+    author: Option<UserResponse>,
 }
 
 async fn list_issues(
@@ -363,6 +390,64 @@ async fn get_issue_history(
     Ok(Json(IssueHistoryResponse { events: response }))
 }
 
+async fn list_comments(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<IssueCommentsResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    find_issue(&state, &auth.organization.id, &id).await?;
+
+    let comments = issue_comment::Entity::find()
+        .filter(issue_comment::Column::OrganizationId.eq(&auth.organization.id))
+        .filter(issue_comment::Column::IssueId.eq(&id))
+        .order_by_asc(issue_comment::Column::CreatedAt)
+        .all(&state.db)
+        .await?;
+
+    let mut response = Vec::with_capacity(comments.len());
+    for comment in comments {
+        response.push(issue_comment_response(&state, comment).await?);
+    }
+
+    Ok(Json(IssueCommentsResponse { comments: response }))
+}
+
+async fn create_comment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(payload): Json<CreateCommentRequest>,
+) -> Result<(StatusCode, Json<IssueCommentEnvelope>), ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    let issue = find_issue(&state, &auth.organization.id, &id).await?;
+    let body = required_string(payload.body, "Comment")?;
+    let now = Utc::now().fixed_offset();
+
+    let comment = issue_comment::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        organization_id: Set(auth.organization.id.clone()),
+        issue_id: Set(issue.id.clone()),
+        author_id: Set(Some(auth.user.id.clone())),
+        body: Set(body),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(&state.db)
+    .await?;
+
+    let mut active = issue.into_active_model();
+    active.updated_at = Set(Utc::now().fixed_offset());
+    active.update(&state.db).await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(IssueCommentEnvelope {
+            comment: issue_comment_response(&state, comment).await?,
+        }),
+    ))
+}
+
 async fn upload_attachment(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -520,6 +605,24 @@ async fn issue_event_response(
         changes,
         created_at: event.created_at.to_rfc3339(),
         actor,
+    })
+}
+
+async fn issue_comment_response(
+    state: &AppState,
+    comment: issue_comment::Model,
+) -> Result<IssueCommentResponse, ApiError> {
+    let author = match &comment.author_id {
+        Some(id) => find_user_response(state, id).await?,
+        None => None,
+    };
+
+    Ok(IssueCommentResponse {
+        id: comment.id,
+        body: comment.body,
+        created_at: comment.created_at.to_rfc3339(),
+        updated_at: comment.updated_at.to_rfc3339(),
+        author,
     })
 }
 

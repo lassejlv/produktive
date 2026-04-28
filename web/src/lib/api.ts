@@ -56,6 +56,19 @@ export type IssueHistoryEvent = {
   } | null;
 };
 
+export type IssueComment = {
+  id: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  author?: {
+    id: string;
+    name: string;
+    email: string;
+    image: string | null;
+  } | null;
+};
+
 export type IssueHistoryChange = {
   field: string;
   before: unknown;
@@ -131,6 +144,15 @@ export const getIssue = (id: string) =>
 
 export const getIssueHistory = (id: string) =>
   request<{ events: IssueHistoryEvent[] }>(`/api/issues/${id}/history`);
+
+export const listIssueComments = (id: string) =>
+  request<{ comments: IssueComment[] }>(`/api/issues/${id}/comments`);
+
+export const createIssueComment = (id: string, body: string) =>
+  request<{ comment: IssueComment }>(`/api/issues/${id}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
 
 export const getMemberProfile = (id: string) =>
   request<{ member: MemberProfile }>(`/api/members/${id}`);

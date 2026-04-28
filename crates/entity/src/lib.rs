@@ -3,6 +3,7 @@ pub mod chat;
 pub mod chat_message;
 pub mod favorite;
 pub mod issue;
+pub mod issue_comment;
 pub mod issue_event;
 pub mod member;
 pub mod organization;

@@ -210,3 +210,31 @@
 *::-webkit-scrollbar-thumb:hover {
   background: var(--color-fg-faint);
 }
+
+.produktive-diff {
+  --diffs-dark-bg: var(--color-bg);
+  --diffs-dark: var(--color-fg);
+  --diffs-header-font-family: var(--font-sans);
+  --diffs-font-family: var(--font-mono);
+  --diffs-font-size: 12px;
+  --diffs-line-height: 19px;
+  --diffs-gap-inline: 10px;
+  --diffs-gap-block: 7px;
+  --diffs-gap-style: 1px solid transparent;
+  --diffs-addition-color-override: #4fb899;
+  --diffs-deletion-color-override: #d46a68;
+  --diffs-modified-color-override: var(--color-fg-muted);
+  --diffs-bg-context-override: var(--color-bg);
+  --diffs-bg-hover-override: var(--color-surface);
+  --diffs-bg-separator-override: var(--color-border-subtle);
+  --diffs-bg-addition-override: color-mix(in srgb, #4fb899 13%, var(--color-bg));
+  --diffs-bg-addition-number-override: color-mix(in srgb, #4fb899 18%, var(--color-bg));
+  --diffs-bg-addition-hover-override: color-mix(in srgb, #4fb899 17%, var(--color-bg));
+  --diffs-bg-addition-emphasis-override: color-mix(in srgb, #4fb899 24%, transparent);
+  --diffs-bg-deletion-override: color-mix(in srgb, #d46a68 12%, var(--color-bg));
+  --diffs-bg-deletion-number-override: color-mix(in srgb, #d46a68 16%, var(--color-bg));
+  --diffs-bg-deletion-hover-override: color-mix(in srgb, #d46a68 16%, var(--color-bg));
+  --diffs-bg-deletion-emphasis-override: color-mix(in srgb, #d46a68 22%, transparent);
+  display: block;
+  color-scheme: dark;
+}

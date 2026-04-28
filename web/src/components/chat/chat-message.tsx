@@ -1,9 +1,7 @@
-import { useState } from "react";
 import {
   CopyIcon,
   PlayIcon,
   RefreshIcon,
-  SendIcon,
   ThumbsUpIcon,
 } from "@/components/chat/icons";
 import { type ChatAttachment, formatBytes } from "@/lib/chat-attachments";
@@ -240,89 +238,41 @@ function aggregateSummary(calls: ChatToolCall[]): string | null {
 
 function AskUserCard({
   call,
-  onAnswer,
   submittedAnswer,
 }: {
   call: ChatToolCall;
   onAnswer?: (answer: string) => void;
   submittedAnswer?: string | null;
 }) {
-  const args = parseAskUserPayload(call.arguments);
-  const result = call.result as
-    | { question?: string; options?: string[] }
-    | undefined;
-  const question = result?.question ?? args.question ?? "";
-  const options =
-    (result?.options && result.options.length > 0
-      ? result.options
-      : args.options) ?? [];
-  const answered = Boolean(submittedAnswer);
-  const [draft, setDraft] = useState("");
+  if (!submittedAnswer) {
+    // Unanswered questions are rendered docked above the composer (see
+    // chat-pane.tsx). Don't render an inline duplicate here.
+    return null;
+  }
 
-  const submit = (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed || answered || !onAnswer) return;
-    onAnswer(trimmed);
-  };
+  const question = readAskUserQuestion(call);
 
   return (
-    <div className="my-3 rounded-[10px] border border-accent/30 bg-accent/[0.06] p-3.5">
-      <div className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-accent">
-        <span aria-hidden="true">?</span>
-        Question
-      </div>
-      <p className="m-0 mb-3 text-[14px] leading-snug text-fg">{question}</p>
-
-      {answered ? (
-        <div className="rounded-[7px] border border-border-subtle bg-surface/60 px-2.5 py-2 text-[13px] text-fg-muted">
-          <span className="mr-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-fg-faint">
-            You
-          </span>
-          {submittedAnswer}
-        </div>
-      ) : options.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {options.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => submit(option)}
-              disabled={!onAnswer}
-              className="inline-flex h-8 items-center rounded-[7px] border border-border bg-surface px-2.5 text-[12.5px] text-fg transition-colors hover:border-accent/40 hover:bg-accent/10 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit(draft);
-          }}
-          className="flex items-center gap-1.5"
-        >
-          <input
-            type="text"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            disabled={!onAnswer}
-            placeholder="Type your answer…"
-            className="h-9 min-w-0 flex-1 rounded-[7px] border border-border bg-bg px-2.5 text-[13px] text-fg placeholder:text-fg-faint outline-none transition-colors focus:border-accent/60 disabled:cursor-not-allowed disabled:opacity-50"
-            autoFocus
-          />
-          <button
-            type="submit"
-            disabled={!onAnswer || !draft.trim()}
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-[7px] bg-accent text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Send answer"
-          >
-            <SendIcon size={12} />
-          </button>
-        </form>
-      )}
-    </div>
+    <p className="my-2 text-[13px] leading-snug text-fg-muted">
+      <span className="mr-1.5 font-mono text-fg-faint" aria-hidden="true">
+        ?
+      </span>
+      {question}
+    </p>
   );
+}
+
+export function readAskUserQuestion(call: ChatToolCall): string {
+  const args = parseAskUserPayload(call.arguments);
+  const result = call.result as { question?: string } | undefined;
+  return result?.question ?? args.question ?? "";
+}
+
+export function readAskUserOptions(call: ChatToolCall): string[] {
+  const args = parseAskUserPayload(call.arguments);
+  const result = call.result as { options?: string[] } | undefined;
+  if (result?.options && result.options.length > 0) return result.options;
+  return args.options ?? [];
 }
 
 function parseAskUserPayload(raw: string): {

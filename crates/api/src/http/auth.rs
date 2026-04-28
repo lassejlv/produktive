@@ -15,7 +15,7 @@ use axum::{
     extract::State,
     http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use produktive_entity::{member, organization, user};
@@ -36,6 +36,7 @@ pub fn routes() -> Router<AppState> {
             get(list_organizations).post(create_organization),
         )
         .route("/switch-organization", post(switch_organization))
+        .route("/account", delete(delete_account))
 }
 
 #[derive(Deserialize)]
@@ -333,5 +334,35 @@ async fn create_organization(
         Json(OrganizationEnvelope {
             organization: organization.into(),
         }),
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeleteAccountRequest {
+    confirm: String,
+}
+
+async fn delete_account(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<DeleteAccountRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+
+    if payload.confirm.trim() != auth.user.email {
+        return Err(ApiError::BadRequest(
+            "Type your email exactly to confirm account deletion".to_owned(),
+        ));
+    }
+
+    user::Entity::delete_by_id(&auth.user.id)
+        .exec(&state.db)
+        .await?;
+
+    Ok((
+        StatusCode::OK,
+        [(header::SET_COOKIE, clear_auth_cookie(&state)?)],
+        Json(EmptyResponse { ok: true }),
     ))
 }

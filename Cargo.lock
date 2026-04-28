@@ -2091,6 +2091,7 @@ dependencies = [
  "axum",
  "chrono",
  "cookie",
+ "futures-core",
  "hex",
  "hmac",
  "jsonwebtoken",

@@ -118,7 +118,6 @@ function AppLayout() {
 
   const isIssuesActive =
     pathname === "/issues" || pathname.startsWith("/issues/");
-  const isNewChatActive = pathname === "/chat";
   const recentChats = chats.slice(0, 8);
 
   const openChat = async (id: string) => {
@@ -419,6 +418,17 @@ function AppLayout() {
                 </div>
                 <button
                   type="button"
+                  className="flex h-9 w-full items-center justify-between px-3 text-left text-[13px] text-fg transition-colors hover:bg-surface-2"
+                  onClick={async () => {
+                    setAccountMenuOpen(false);
+                    await navigate({ to: "/account" });
+                  }}
+                >
+                  <span>Account settings</span>
+                </button>
+                <div className="h-px bg-border-subtle" />
+                <button
+                  type="button"
                   className="flex h-9 w-full items-center justify-between px-3 text-left text-[13px] font-medium text-fg transition-colors hover:bg-surface-2"
                   onClick={async () => {
                     setAccountMenuOpen(false);
@@ -472,21 +482,6 @@ function AppLayout() {
 
       <SidebarInset>
         <Outlet />
-        <div className="pointer-events-none absolute bottom-2 right-3 z-30 flex items-center gap-0.5">
-          <button
-            type="button"
-            onClick={() => void navigate({ to: "/chat" })}
-            className={cn(
-              "pointer-events-auto inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[12px] transition-colors",
-              isNewChatActive
-                ? "text-accent"
-                : "text-fg-muted hover:bg-surface/80 hover:text-fg",
-            )}
-          >
-            <SparkleIcon size={12} />
-            <span>Ask Produktive</span>
-          </button>
-        </div>
       </SidebarInset>
     </SidebarProvider>
   );

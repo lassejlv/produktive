@@ -2,13 +2,18 @@ import { MultiFileDiff, type FileContents } from "@pierre/diffs/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ChatComposer } from "@/components/chat/chat-composer";
+import {
+  ChatComposer,
+  type PendingQuestion,
+} from "@/components/chat/chat-composer";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatMarkdown } from "@/components/chat/chat-markdown";
 import {
   ChatMessageItem,
   type ChatMessage,
   type ChatToolCall,
+  readAskUserOptions,
+  readAskUserQuestion,
 } from "@/components/chat/chat-message";
 import { ChatSkeleton } from "@/components/chat/chat-skeleton";
 import { SidebarIcon } from "@/components/chat/icons";
@@ -258,6 +263,11 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   const greeting = useMemo(() => greetingForNow(), []);
   const changes = useMemo(() => chatChangesFromMessages(messages), [messages]);
   const renderedMessages = useMemo(() => collapseToolMessages(messages), [messages]);
+  const pendingQuestion = useMemo(
+    () => findPendingQuestion(renderedMessages, (answer) => void handleSend(answer)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [renderedMessages],
+  );
 
   return (
     <div className="flex h-screen min-w-0 flex-1 overflow-hidden bg-bg md:h-full">
@@ -343,6 +353,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
           onOpenChanges={() => setChangesOpen((current) => !current)}
           changesCount={changes.length}
           changesOpen={changesOpen}
+          pendingQuestion={pendingQuestion}
         />
       </div>
       <ChatChangesPanel
@@ -376,32 +387,32 @@ function ChatChangesPanel({
     <aside
       className={cn(
         "flex h-full shrink-0 flex-col overflow-hidden bg-bg transition-[width] duration-300 ease-out",
-        open ? "w-[408px]" : "w-0",
+        open ? "w-[392px]" : "w-0",
       )}
       aria-hidden={!open}
     >
       <div
         className={cn(
-          "flex h-full w-[408px] flex-col p-3 pl-2 transition-[opacity,transform] duration-300 ease-out",
+          "flex h-full w-[392px] flex-col p-3 pl-2 transition-[opacity,transform] duration-300 ease-out",
           open
             ? "translate-x-0 opacity-100"
             : "pointer-events-none translate-x-3 opacity-0",
         )}
       >
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-border-subtle bg-bg">
-          <div className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-3.5">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg">
+          <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-4">
             <div className="min-w-0">
               <h2 className="text-[13px] font-medium leading-tight text-fg">
                 Changes
               </h2>
-              <p className="mt-0.5 font-mono text-[10px] leading-none text-fg-faint">
+              <p className="mt-0.5 text-[11px] leading-none text-fg-faint">
                 {changes.length} in this chat
               </p>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="grid size-7 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+              className="grid size-7 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg active:scale-[0.98]"
               aria-label="Close changes panel"
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -421,28 +432,34 @@ function ChatChangesPanel({
               </p>
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto p-2.5">
-              <div className="grid gap-2">
+            <div className="flex-1 overflow-y-auto px-3 py-3">
+              <div className="grid gap-3">
                 {changes.map((change) => (
                   <article
                     key={change.id}
-                    className="overflow-hidden rounded-lg border border-border-subtle bg-bg"
+                    className="overflow-hidden rounded-lg border border-border-subtle bg-bg transition-colors duration-200 hover:border-border"
                   >
-                    <div className="border-b border-border-subtle px-3 py-2.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate font-mono text-[12px] text-fg">
-                            {change.title}
-                          </p>
-                          <p className="mt-1 font-mono text-[11px] text-fg-faint">
-                            {change.fields.length} {change.fields.length === 1 ? "change" : "changes"}
+                    <div className="px-3.5 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="shrink-0 rounded-[4px] border border-border-subtle px-1.5 py-0.5 text-[10px] capitalize leading-none text-fg-muted">
+                              {change.action}
+                            </span>
+                            <p className="min-w-0 truncate text-[13px] font-medium text-fg">
+                              {change.title}
+                            </p>
+                          </div>
+                          <p className="mt-1.5 text-[11px] text-fg-faint">
+                            {change.fields.length}{" "}
+                            {change.fields.length === 1 ? "field" : "fields"}
                           </p>
                         </div>
                         {change.issueId ? (
                           <Link
                             to="/issues/$issueId"
                             params={{ issueId: change.issueId }}
-                            className="shrink-0 rounded-[5px] border border-border-subtle px-2 py-1 font-mono text-[10px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+                            className="shrink-0 rounded-md border border-border-subtle px-2.5 py-1.5 text-[11px] text-fg-muted transition-colors hover:bg-surface hover:text-fg active:scale-[0.98]"
                             onClick={onClose}
                           >
                             Open
@@ -451,7 +468,7 @@ function ChatChangesPanel({
                       </div>
                     </div>
                     {change.fields.length > 0 ? (
-                      <div className="grid gap-px bg-border-subtle">
+                      <div className="grid border-t border-border-subtle">
                         {change.fields.map((field) => (
                           <ChatChangeField key={field.name} field={field} />
                         ))}
@@ -486,7 +503,7 @@ function ChatChangeField({
   };
 
   return (
-    <div className="bg-bg">
+    <div className="border-b border-border-subtle bg-bg last:border-b-0">
       <MultiFileDiff
         oldFile={oldFile}
         newFile={newFile}
@@ -495,7 +512,7 @@ function ChatChangeField({
           theme: "pierre-dark",
           themeType: "dark",
           diffStyle: "unified",
-          diffIndicators: "classic",
+          diffIndicators: "bars",
           disableLineNumbers: true,
           hunkSeparators: "simple",
           lineDiffType: "word-alt",
@@ -577,16 +594,17 @@ function toolCallToChange(toolCall: ChatToolCall): ChatChange {
   return {
     id: toolCall.id,
     action: toolCall.name === "create_issue" ? "created" : "updated",
-    title,
+    title: title.replace(/^(Created|Updated)\s+/i, ""),
     issueId,
-    fields:
+    fields: filterMeaningfulChanges(
       resultChanges ??
-      Object.entries(args)
-        .filter(([key]) => key !== "id")
-        .map(([name, value]) => ({
-          name,
-          after: value,
-        })),
+        Object.entries(args)
+          .filter(([key]) => key !== "id")
+          .map(([name, value]) => ({
+            name,
+            after: value,
+          })),
+    ),
     result: toolCall.result,
   };
 }
@@ -654,15 +672,57 @@ function displayChangeValue(value: unknown) {
 }
 
 function diffFileValue(value: unknown) {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return JSON.stringify(value, null, 2);
+  if (isEmptyChangeValue(value)) return "";
+  const text =
+    typeof value === "string"
+      ? value
+      : typeof value === "number" || typeof value === "boolean"
+        ? String(value)
+        : JSON.stringify(value, null, 2);
+  return text.endsWith("\n") ? text : `${text}\n`;
+}
+
+function filterMeaningfulChanges(
+  fields: Array<{ name: string; before?: unknown; after: unknown }>,
+) {
+  return fields.filter((field) => {
+    if (field.name === "id") return false;
+    const before = normalizeChangeValue(field.before);
+    const after = normalizeChangeValue(field.after);
+    return before !== after;
+  });
+}
+
+function normalizeChangeValue(value: unknown) {
+  if (isEmptyChangeValue(value)) return "";
+  if (typeof value === "string") return value.trim();
+  return JSON.stringify(value);
+}
+
+function isEmptyChangeValue(value: unknown) {
+  return value === null || value === undefined || value === "";
 }
 
 function truncateForTab(text: string, max = 48) {
   const normalized = text.trim() || "Attached files";
   return normalized.length > max ? `${normalized.slice(0, max)}…` : normalized;
+}
+
+function findPendingQuestion(
+  messages: ChatMessage[],
+  onAnswer: (answer: string) => void,
+): PendingQuestion | null {
+  if (messages.length === 0) return null;
+  const last = messages[messages.length - 1];
+  if (last.role !== "assistant") return null;
+  if (last.typing) return null;
+  const askUser = last.toolCalls?.find((tc) => tc.name === "ask_user");
+  if (!askUser) return null;
+  return {
+    question: readAskUserQuestion(askUser),
+    options: readAskUserOptions(askUser),
+    onAnswer,
+  };
 }
 
 // Merge a run of assistant messages whose content is empty (intermediate

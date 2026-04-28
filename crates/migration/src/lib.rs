@@ -14,6 +14,8 @@ mod m20260428_000005_add_issue_attachments;
 mod m20260428_000006_create_issue_events;
 #[path = "../migrations/m20260428_000007_create_favorites.rs"]
 mod m20260428_000007_create_favorites;
+#[path = "../migrations/m20260428_000008_create_issue_comments.rs"]
+mod m20260428_000008_create_issue_comments;
 
 pub struct Migrator;
 
@@ -28,6 +30,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260428_000005_add_issue_attachments::Migration),
             Box::new(m20260428_000006_create_issue_events::Migration),
             Box::new(m20260428_000007_create_favorites::Migration),
+            Box::new(m20260428_000008_create_issue_comments::Migration),
         ]
     }
 }

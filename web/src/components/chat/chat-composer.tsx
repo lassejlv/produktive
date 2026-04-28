@@ -21,6 +21,12 @@ import {
 } from "@/lib/chat-attachments";
 import { cn } from "@/lib/utils";
 
+export type PendingQuestion = {
+  question: string;
+  options: string[];
+  onAnswer: (answer: string) => void;
+};
+
 export function ChatComposer({
   busy,
   onSend,
@@ -28,6 +34,7 @@ export function ChatComposer({
   onOpenChanges,
   changesCount = 0,
   changesOpen = false,
+  pendingQuestion,
 }: {
   busy: boolean;
   onSend: (value: string, attachments: ChatAttachmentDraft[]) => void;
@@ -35,6 +42,7 @@ export function ChatComposer({
   onOpenChanges?: () => void;
   changesCount?: number;
   changesOpen?: boolean;
+  pendingQuestion?: PendingQuestion | null;
 }) {
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
@@ -74,6 +82,10 @@ export function ChatComposer({
     setIssues([]);
     requestAnimationFrame(() => autoresize(taRef.current));
   };
+
+  const placeholder = pendingQuestion
+    ? "Answer the question above…"
+    : "Ask Produktive, or type / for commands…";
 
   const toggleIssue = (issue: PickableIssue) => {
     setIssues((current) => {
@@ -120,7 +132,14 @@ export function ChatComposer({
 
   return (
     <div className="relative z-10 px-6 pb-3 pt-2">
-      <div className="mx-auto w-full max-w-[760px] overflow-hidden rounded-[14px] border border-border bg-surface/80 transition-colors focus-within:border-[#4a4a52] focus-within:bg-surface-2">
+      <div
+        className={cn(
+          "mx-auto w-full max-w-[760px] overflow-hidden rounded-[14px] border bg-surface/80 transition-colors focus-within:bg-surface-2",
+          pendingQuestion
+            ? "border-accent/40 focus-within:border-accent/60"
+            : "border-border focus-within:border-[#4a4a52]",
+        )}
+      >
         <input
           ref={fileRef}
           type="file"
@@ -128,6 +147,32 @@ export function ChatComposer({
           className="sr-only"
           onChange={(event) => void handleFiles(event.target.files)}
         />
+        {pendingQuestion ? (
+          <div className="border-b border-accent/25 bg-accent/[0.06] px-3.5 py-3">
+            <div className="mb-1 flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-accent">
+              <span aria-hidden="true">?</span>
+              Question
+            </div>
+            <p className="m-0 text-[13.5px] leading-snug text-fg">
+              {pendingQuestion.question}
+            </p>
+            {pendingQuestion.options.length > 0 ? (
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {pendingQuestion.options.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => pendingQuestion.onAnswer(option)}
+                    disabled={busy}
+                    className="inline-flex h-7 items-center rounded-[6px] border border-border bg-surface px-2 text-[12px] text-fg transition-colors hover:border-accent/40 hover:bg-accent/15 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {attachments.length > 0 || issues.length > 0 ? (
           <div className="border-b border-border-subtle px-3 py-2">
             <div className="flex flex-wrap gap-1.5">
@@ -178,7 +223,7 @@ export function ChatComposer({
           onChange={handleChange}
           onKeyDown={handleKey}
           rows={1}
-          placeholder="Ask Produktive, or type / for commands…"
+          placeholder={placeholder}
           className="block min-h-[46px] w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3.5 text-[14px] leading-[1.55] text-fg outline-none placeholder:text-fg-muted"
           style={{ maxHeight: 240 }}
         />

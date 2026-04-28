@@ -14,7 +14,7 @@ use axum::Router;
 use config::{Config, DatabaseConfig};
 use http::{
     auth_routes, chat_routes, cors_layer, favorite_routes, issue_routes, member_routes,
-    waitlist_routes,
+    realtime_routes, waitlist_routes,
 };
 use produktive_ai::AiClient;
 use sea_orm::Database;
@@ -66,6 +66,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/chats", chat_routes())
         .nest("/api/favorites", favorite_routes())
         .nest("/api/members", member_routes())
+        .nest("/api/realtime", realtime_routes())
         .fallback_service(spa_service)
         .layer(TraceLayer::new_for_http())
         .layer(cors_layer(&config))

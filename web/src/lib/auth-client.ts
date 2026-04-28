@@ -134,6 +134,12 @@ export const createOrganization = (name: string) =>
     body: JSON.stringify({ name }),
   });
 
+export const deleteAccount = (confirm: string) =>
+  requestJson<{ ok: true }>("/api/auth/account", {
+    method: "DELETE",
+    body: JSON.stringify({ confirm }),
+  });
+
 export const authClient = {
   signIn: {
     email: ({ email, password }: EmailCredentials) =>

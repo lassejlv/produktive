@@ -4,6 +4,7 @@ mod cors;
 mod favorites;
 mod issues;
 mod members;
+mod realtime;
 mod waitlist;
 
 pub use auth::routes as auth_routes;
@@ -12,4 +13,5 @@ pub use cors::cors_layer;
 pub use favorites::routes as favorite_routes;
 pub use issues::routes as issue_routes;
 pub use members::routes as member_routes;
+pub use realtime::routes as realtime_routes;
 pub use waitlist::routes as waitlist_routes;
