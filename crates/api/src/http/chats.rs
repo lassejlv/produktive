@@ -3,10 +3,11 @@ use crate::{
     auth::{require_auth, AuthContext},
     error::ApiError,
     state::AppState,
+    storage,
 };
 use axum::{
     body::Body,
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Multipart, Path, State},
     http::{header, HeaderMap, Response, StatusCode},
     response::IntoResponse,
     routing::{get, post},
@@ -26,11 +27,17 @@ use uuid::Uuid;
 
 const MAX_TOOL_ROUNDS: usize = 5;
 const TITLE_MAX_LEN: usize = 48;
+const MAX_ATTACHMENT_BYTES: usize = 10 * 1024 * 1024;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_chats).post(create_chat))
         .route("/{id}", get(get_chat_with_messages).delete(delete_chat))
+        .route(
+            "/{id}/attachments",
+            post(upload_attachment)
+                .layer(DefaultBodyLimit::max(MAX_ATTACHMENT_BYTES + 1024 * 1024)),
+        )
         .route("/{id}/messages", post(post_message))
         .route("/{id}/messages/stream", post(stream_message))
 }
@@ -62,6 +69,8 @@ struct WireMessage {
     role: String,
     content: String,
     created_at: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tool_calls: Vec<WireToolCall>,
 }
 
 impl From<&chat_message::Model> for WireMessage {
@@ -71,8 +80,18 @@ impl From<&chat_message::Model> for WireMessage {
             role: m.role.clone(),
             content: m.content.clone(),
             created_at: m.created_at.to_rfc3339(),
+            tool_calls: wire_tool_calls(m, &[]),
         }
     }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WireToolCall {
+    id: String,
+    name: String,
+    arguments: String,
+    result: Option<Value>,
 }
 
 #[derive(Serialize)]
@@ -94,6 +113,17 @@ struct ChatWithMessages {
 #[derive(Serialize)]
 struct MessagesResponse {
     messages: Vec<WireMessage>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AttachmentResponse {
+    id: String,
+    name: String,
+    content_type: String,
+    size: usize,
+    key: String,
+    url: String,
 }
 
 #[derive(Serialize)]
@@ -165,11 +195,7 @@ async fn get_chat_with_messages(
         .all(&state.db)
         .await?;
 
-    let messages = rows
-        .iter()
-        .filter(|m| should_send_to_client(m))
-        .map(WireMessage::from)
-        .collect();
+    let messages = wire_messages_from_rows(&rows);
 
     Ok(Json(ChatWithMessages {
         chat: ChatSummary::from(&chat),
@@ -186,6 +212,67 @@ async fn delete_chat(
     let chat = find_chat(&state, &auth, &id).await?;
     chat.delete(&state.db).await?;
     Ok(Json(OkResponse { ok: true }))
+}
+
+async fn upload_attachment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(chat_id): Path<String>,
+    mut multipart: Multipart,
+) -> Result<Json<AttachmentResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    let chat = find_chat(&state, &auth, &chat_id).await?;
+    let storage_config = state
+        .config
+        .storage
+        .as_ref()
+        .ok_or_else(|| ApiError::BadRequest("File storage is not configured".to_owned()))?;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| ApiError::BadRequest("Invalid multipart upload".to_owned()))?
+    {
+        if field.name() != Some("file") {
+            continue;
+        }
+
+        let filename = field.file_name().unwrap_or("attachment").to_owned();
+        let content_type = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_owned();
+        let bytes = field
+            .bytes()
+            .await
+            .map_err(|_| ApiError::BadRequest("Invalid uploaded file".to_owned()))?;
+
+        if bytes.is_empty() {
+            return Err(ApiError::BadRequest("Uploaded file is empty".to_owned()));
+        }
+
+        if bytes.len() > MAX_ATTACHMENT_BYTES {
+            return Err(ApiError::BadRequest(format!(
+                "Attachments must be {} MB or smaller",
+                MAX_ATTACHMENT_BYTES / 1024 / 1024
+            )));
+        }
+
+        let key = storage::safe_object_key(&auth.organization.id, &chat.id, &filename);
+        let stored =
+            storage::put_object(storage_config, &key, &content_type, bytes.to_vec()).await?;
+
+        return Ok(Json(AttachmentResponse {
+            id: Uuid::new_v4().to_string(),
+            name: filename,
+            content_type,
+            size: bytes.len(),
+            key: stored.key,
+            url: stored.url,
+        }));
+    }
+
+    Err(ApiError::BadRequest("No file was uploaded".to_owned()))
 }
 
 #[derive(Deserialize)]
@@ -216,11 +303,7 @@ async fn post_message(
         .extend(finish_assistant_turn(&state, &auth, &chat_model, &chat_id, user_content).await?);
 
     Ok(Json(MessagesResponse {
-        messages: new_rows
-            .iter()
-            .filter(|m| should_send_to_client(m))
-            .map(WireMessage::from)
-            .collect(),
+        messages: wire_messages_from_rows(&new_rows),
     }))
 }
 
@@ -256,11 +339,7 @@ async fn stream_message(
                     }
                 }
 
-                let messages = rows
-                    .iter()
-                    .filter(|m| should_send_to_client(m))
-                    .map(WireMessage::from)
-                    .collect();
+                let messages = wire_messages_from_rows(&rows);
                 yield stream_line(&StreamEvent::Done { messages });
             }
             Err(error) => {
@@ -331,6 +410,7 @@ async fn finish_assistant_turn(
                 .await?;
                 new_rows.push(placeholder);
 
+                let mut hit_terminal_tool = false;
                 for call in &calls {
                     let result_value =
                         agent_tools::dispatch(&call.name, &call.arguments, state, auth).await?;
@@ -346,16 +426,38 @@ async fn finish_assistant_turn(
                     )
                     .await?;
                     new_rows.push(tool_row);
+
+                    if agent_tools::is_terminal_tool(&call.name) {
+                        hit_terminal_tool = true;
+                    }
+                }
+
+                if hit_terminal_tool {
+                    // Stop the round — the user needs to respond before we
+                    // continue. The assistant message with the ask_user tool
+                    // call is the visible "turn".
+                    break;
                 }
             }
         }
     }
 
-    if !new_rows
+    let last_is_text_response = new_rows
         .last()
         .map(|m| m.role == "assistant" && !m.content.is_empty())
-        .unwrap_or(false)
-    {
+        .unwrap_or(false);
+    let last_was_terminal_tool = new_rows.iter().rev().any(|row| {
+        row.role == "assistant"
+            && row.content.is_empty()
+            && row
+                .tool_calls
+                .as_ref()
+                .and_then(|v| serde_json::from_value::<Vec<SerializedToolCall>>(v.clone()).ok())
+                .map(|calls| calls.iter().any(|c| agent_tools::is_terminal_tool(&c.name)))
+                .unwrap_or(false)
+    });
+
+    if !last_is_text_response && !last_was_terminal_tool {
         let fallback = insert_message(
             state,
             chat_id,
@@ -475,9 +577,72 @@ fn serialize_tool_calls(calls: &[AiToolCall]) -> Value {
 fn should_send_to_client(m: &chat_message::Model) -> bool {
     match m.role.as_str() {
         "user" => true,
-        "assistant" => !m.content.is_empty(),
+        "assistant" => !m.content.is_empty() || m.tool_calls.is_some(),
         _ => false, // hide "tool" rows from the client
     }
+}
+
+fn wire_messages_from_rows(rows: &[chat_message::Model]) -> Vec<WireMessage> {
+    rows.iter()
+        .filter(|m| should_send_to_client(m))
+        .map(|m| {
+            let result_rows = tool_result_rows_for_message(m, rows);
+            WireMessage {
+                id: m.id.clone(),
+                role: m.role.clone(),
+                content: m.content.clone(),
+                created_at: m.created_at.to_rfc3339(),
+                tool_calls: wire_tool_calls(m, &result_rows),
+            }
+        })
+        .collect()
+}
+
+fn tool_result_rows_for_message<'a>(
+    message: &chat_message::Model,
+    rows: &'a [chat_message::Model],
+) -> Vec<&'a chat_message::Model> {
+    let Some(calls) = message
+        .tool_calls
+        .as_ref()
+        .and_then(|v| serde_json::from_value::<Vec<SerializedToolCall>>(v.clone()).ok())
+    else {
+        return Vec::new();
+    };
+
+    calls
+        .iter()
+        .filter_map(|call| {
+            rows.iter()
+                .find(|row| row.role == "tool" && row.tool_call_id.as_deref() == Some(&call.id))
+        })
+        .collect()
+}
+
+fn wire_tool_calls(
+    message: &chat_message::Model,
+    result_rows: &[&chat_message::Model],
+) -> Vec<WireToolCall> {
+    message
+        .tool_calls
+        .as_ref()
+        .and_then(|v| serde_json::from_value::<Vec<SerializedToolCall>>(v.clone()).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|call| {
+            let result = result_rows
+                .iter()
+                .find(|row| row.tool_call_id.as_deref() == Some(&call.id))
+                .and_then(|row| serde_json::from_str::<Value>(&row.content).ok());
+
+            WireToolCall {
+                id: call.id,
+                name: call.name,
+                arguments: call.arguments,
+                result,
+            }
+        })
+        .collect()
 }
 
 fn truncate_title(text: &str) -> String {

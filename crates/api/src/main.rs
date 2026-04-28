@@ -5,12 +5,17 @@ mod email;
 mod error;
 mod http;
 mod issue_helpers;
+mod issue_history;
 mod state;
+mod storage;
 
 use anyhow::Context;
 use axum::Router;
 use config::{Config, DatabaseConfig};
-use http::{auth_routes, chat_routes, cors_layer, issue_routes, waitlist_routes};
+use http::{
+    auth_routes, chat_routes, cors_layer, favorite_routes, issue_routes, member_routes,
+    waitlist_routes,
+};
 use produktive_ai::AiClient;
 use sea_orm::Database;
 use sea_orm_migration::MigratorTrait;
@@ -59,6 +64,8 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/issues", issue_routes())
         .nest("/api/waitlist", waitlist_routes())
         .nest("/api/chats", chat_routes())
+        .nest("/api/favorites", favorite_routes())
+        .nest("/api/members", member_routes())
         .fallback_service(spa_service)
         .layer(TraceLayer::new_for_http())
         .layer(cors_layer(&config))

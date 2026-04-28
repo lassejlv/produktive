@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiPath } from "./api";
 
 type AuthUser = {
@@ -13,6 +13,13 @@ type AuthOrganization = {
   id: string;
   name: string;
   slug: string;
+};
+
+export type OrganizationMembership = {
+  id: string;
+  name: string;
+  slug: string;
+  role: string;
 };
 
 type AuthSession = {
@@ -86,6 +93,47 @@ const requestEmpty = async (
   };
 };
 
+type OrganizationsListResponse = {
+  organizations: OrganizationMembership[];
+  activeOrganizationId: string;
+};
+
+const requestJson = async <T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> => {
+  const response = await fetch(apiPath(path), {
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...init?.headers,
+    },
+    ...init,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.error ?? "Request failed");
+  }
+
+  return response.json() as Promise<T>;
+};
+
+export const listOrganizations = () =>
+  requestJson<OrganizationsListResponse>("/api/auth/organizations");
+
+export const switchOrganization = (organizationId: string) =>
+  requestJson<AuthSession>("/api/auth/switch-organization", {
+    method: "POST",
+    body: JSON.stringify({ organizationId }),
+  });
+
+export const createOrganization = (name: string) =>
+  requestJson<{ organization: AuthOrganization }>("/api/auth/organizations", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+
 export const authClient = {
   signIn: {
     email: ({ email, password }: EmailCredentials) =>
@@ -149,4 +197,46 @@ export const useSession = () => {
   }, []);
 
   return { data, error, isPending };
+};
+
+export const useOrganizations = (enabled: boolean) => {
+  const [organizations, setOrganizations] = useState<OrganizationMembership[]>(
+    [],
+  );
+  const [activeOrganizationId, setActiveOrganizationId] = useState<string | null>(
+    null,
+  );
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await listOrganizations();
+      setOrganizations(result.organizations);
+      setActiveOrganizationId(result.activeOrganizationId);
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Failed to load organizations",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    void refresh();
+  }, [enabled, refresh]);
+
+  return {
+    organizations,
+    activeOrganizationId,
+    isLoading,
+    error,
+    refresh,
+  };
 };

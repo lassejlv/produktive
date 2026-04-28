@@ -1,4 +1,9 @@
-import { useEffect, type ReactNode } from "react";
+import {
+  useEffect,
+  type CSSProperties,
+  type HTMLAttributes,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
@@ -7,11 +12,13 @@ export function Dialog({
   onClose,
   children,
   className,
+  style,
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
   className?: string;
+  style?: CSSProperties;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -46,6 +53,7 @@ export function Dialog({
           "relative z-10 mt-[8vh] w-full max-w-lg rounded-lg border border-border bg-surface shadow-2xl animate-fade-in",
           className,
         )}
+        style={style}
       >
         {children}
       </div>
@@ -57,16 +65,15 @@ export function Dialog({
 export function DialogHeader({
   children,
   className,
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
+  ...props
+}: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
         "flex items-center justify-between gap-4 border-b border-border-subtle px-4 py-3",
         className,
       )}
+      {...props}
     >
       {children}
     </div>

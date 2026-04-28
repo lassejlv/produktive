@@ -75,20 +75,6 @@ function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center px-6 py-12">
       <div className="w-full max-w-sm animate-fade-in">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <div className="grid size-9 place-items-center rounded-md bg-fg text-sm font-semibold text-bg">
-            P
-          </div>
-          <h1 className="mt-5 text-xl font-semibold tracking-tight text-fg">
-            {mode === "signin" ? "Sign in to Produktive" : "Create your account"}
-          </h1>
-          <p className="mt-1.5 text-sm text-fg-muted">
-            {mode === "signin"
-              ? "Welcome back."
-              : "Get started in less than a minute."}
-          </p>
-        </div>
-
         <form className="grid gap-4" onSubmit={onSubmit}>
           {mode === "signup" ? (
             <div className="grid gap-1.5">
@@ -112,7 +98,7 @@ function LoginPage() {
               autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@company.com"
+              placeholder="john@doe.gg"
               required
             />
           </div>
@@ -133,7 +119,9 @@ function LoginPage() {
             <Input
               id="password"
               type="password"
-              autoComplete={mode === "signin" ? "current-password" : "new-password"}
+              autoComplete={
+                mode === "signin" ? "current-password" : "new-password"
+              }
               minLength={8}
               value={password}
               onChange={(event) => setPassword(event.target.value)}

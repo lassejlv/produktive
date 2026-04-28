@@ -8,6 +8,12 @@ mod m20260427_000002_add_email_auth_flows;
 mod m20260427_000003_create_waitlist;
 #[path = "../migrations/m20260427_000004_create_chats_and_messages.rs"]
 mod m20260427_000004_create_chats_and_messages;
+#[path = "../migrations/m20260428_000005_add_issue_attachments.rs"]
+mod m20260428_000005_add_issue_attachments;
+#[path = "../migrations/m20260428_000006_create_issue_events.rs"]
+mod m20260428_000006_create_issue_events;
+#[path = "../migrations/m20260428_000007_create_favorites.rs"]
+mod m20260428_000007_create_favorites;
 
 pub struct Migrator;
 
@@ -19,6 +25,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20260427_000002_add_email_auth_flows::Migration),
             Box::new(m20260427_000003_create_waitlist::Migration),
             Box::new(m20260427_000004_create_chats_and_messages::Migration),
+            Box::new(m20260428_000005_add_issue_attachments::Migration),
+            Box::new(m20260428_000006_create_issue_events::Migration),
+            Box::new(m20260428_000007_create_favorites::Migration),
         ]
     }
 }

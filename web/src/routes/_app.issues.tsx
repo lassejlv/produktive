@@ -1,12 +1,30 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { EmptyState } from "@/components/empty-state";
-import { IssueList } from "@/components/issue/issue-list";
+import {
+  ISSUE_DRAG_MIME,
+  IssueList,
+} from "@/components/issue/issue-list";
 import { NewIssueDialog } from "@/components/issue/new-issue-dialog";
 import { DashboardSkeleton } from "@/components/issue-skeleton";
-import { type View, viewLabels } from "@/lib/issue-constants";
+import { IssueDetail } from "@/routes/_app.issues.$issueId";
+import { updateIssue } from "@/lib/api";
+import { statusLabel, type View, viewLabels } from "@/lib/issue-constants";
+import { useFavorites } from "@/lib/use-favorites";
 import { useIssues } from "@/lib/use-issues";
 import { cn } from "@/lib/utils";
+
+const viewDropStatus: Record<View, string | null> = {
+  all: null,
+  active: "todo",
+  backlog: "backlog",
+  done: "done",
+};
 
 export const Route = createFileRoute("/_app/issues")({
   component: IssuesPage,
@@ -16,8 +34,41 @@ const viewKeys = Object.keys(viewLabels) as View[];
 
 function IssuesPage() {
   const navigate = useNavigate();
-  const { issues, isLoading, error, dismissError, addIssue } = useIssues();
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
+  const issueId = pathname.startsWith("/issues/")
+    ? decodeURIComponent(pathname.slice("/issues/".length))
+    : null;
+  const {
+    issues,
+    isLoading,
+    error,
+    dismissError,
+    addIssue,
+    updateIssueLocal,
+  } = useIssues();
   const [view, setView] = useState<View>("all");
+  const [dragOverView, setDragOverView] = useState<View | null>(null);
+  const { isFavorite, toggleFavorite } = useFavorites();
+
+  const handleToggleFavorite = (id: string) => {
+    void (async () => {
+      const wasFavorite = isFavorite("issue", id);
+      try {
+        await toggleFavorite("issue", id);
+        toast.success(
+          wasFavorite ? "Removed from favorites" : "Pinned to sidebar",
+        );
+      } catch {
+        toast.error("Failed to update favorite");
+      }
+    })();
+  };
+
+  if (issueId) {
+    return <IssueDetail key={issueId} issueId={issueId} />;
+  }
 
   const filteredIssues = useMemo(() => {
     if (view === "all") return issues;
@@ -46,6 +97,23 @@ function IssuesPage() {
     void navigate({ to: "/issues/$issueId", params: { issueId } });
   };
 
+  const handleMoveToStatus = async (movingId: string, nextStatus: string) => {
+    const previous = issues.find((issue) => issue.id === movingId)?.status;
+    if (!previous || previous === nextStatus) return;
+
+    updateIssueLocal(movingId, { status: nextStatus });
+    try {
+      const response = await updateIssue(movingId, { status: nextStatus });
+      updateIssueLocal(movingId, response.issue);
+      toast.success(`Moved to ${statusLabel[nextStatus] ?? nextStatus}`);
+    } catch (moveError) {
+      updateIssueLocal(movingId, { status: previous });
+      toast.error(
+        moveError instanceof Error ? moveError.message : "Failed to move issue",
+      );
+    }
+  };
+
   return (
     <>
       <header className="sticky top-0 z-10 flex h-12 items-center justify-between gap-3 border-b border-border-subtle bg-bg/80 px-5 backdrop-blur">
@@ -70,20 +138,54 @@ function IssuesPage() {
       <nav className="flex items-center gap-1 border-b border-border-subtle bg-bg px-5 py-2">
         {viewKeys.map((key) => {
           const isActive = view === key;
+          const dropStatus = viewDropStatus[key];
+          const isDropping = dragOverView === key;
           return (
             <button
               key={key}
               type="button"
               onClick={() => setView(key)}
+              onDragOver={(event) => {
+                if (!dropStatus) return;
+                if (!event.dataTransfer.types.includes(ISSUE_DRAG_MIME)) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                if (dragOverView !== key) setDragOverView(key);
+              }}
+              onDragLeave={(event) => {
+                if (
+                  event.currentTarget.contains(
+                    event.relatedTarget as Node | null,
+                  )
+                ) {
+                  return;
+                }
+                if (dragOverView === key) setDragOverView(null);
+              }}
+              onDrop={(event) => {
+                if (!dropStatus) return;
+                const issueId = event.dataTransfer.getData(ISSUE_DRAG_MIME);
+                setDragOverView(null);
+                if (!issueId) return;
+                event.preventDefault();
+                void handleMoveToStatus(issueId, dropStatus);
+              }}
               className={cn(
                 "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors",
-                isActive
-                  ? "bg-surface text-fg"
-                  : "text-fg-muted hover:bg-surface hover:text-fg",
+                isDropping
+                  ? "bg-accent/15 text-accent ring-1 ring-accent/40"
+                  : isActive
+                    ? "bg-surface text-fg"
+                    : "text-fg-muted hover:bg-surface hover:text-fg",
               )}
             >
               <span>{viewLabels[key]}</span>
-              <span className="text-[11px] tabular-nums text-fg-faint">
+              <span
+                className={cn(
+                  "text-[11px] tabular-nums",
+                  isDropping ? "text-accent" : "text-fg-faint",
+                )}
+              >
                 {counts[key]}
               </span>
             </button>
@@ -120,6 +222,9 @@ function IssuesPage() {
             issues={filteredIssues}
             selectedId={null}
             onSelect={onSelect}
+            onMoveToStatus={handleMoveToStatus}
+            isFavorite={(id) => isFavorite("issue", id)}
+            onToggleFavorite={handleToggleFavorite}
           />
         )}
       </section>

@@ -2,14 +2,18 @@ import type * as React from "react";
 import { cn } from "@/lib/utils";
 
 export function SidebarProvider({ children }: { children: React.ReactNode }) {
-  return <div className="flex min-h-screen w-full bg-bg text-fg">{children}</div>;
+  return (
+    <div className="flex min-h-screen w-full bg-sidebar text-fg md:h-screen md:overflow-hidden">
+      {children}
+    </div>
+  );
 }
 
 export function Sidebar({ className, ...props }: React.ComponentProps<"aside">) {
   return (
     <aside
       className={cn(
-        "hidden w-[260px] shrink-0 flex-col border-r border-border-subtle bg-sidebar text-fg md:flex",
+        "hidden w-[260px] shrink-0 flex-col bg-sidebar text-fg md:flex",
         className,
       )}
       {...props}
@@ -60,7 +64,14 @@ export function SidebarMenuButton({
 
 export function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
   return (
-    <main className={cn("min-w-0 flex-1 bg-bg", className)} {...props} />
+    <main
+      className={cn(
+        "relative min-w-0 flex-1 bg-bg",
+        "md:my-1.5 md:mr-1.5 md:overflow-auto md:rounded-xl md:border md:border-border-subtle md:shadow-[0_2px_12px_rgba(0,0,0,0.25)]",
+        className,
+      )}
+      {...props}
+    />
   );
 }
 

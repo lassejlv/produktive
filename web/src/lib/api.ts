@@ -30,6 +30,69 @@ export type Issue = {
     email: string;
     image: string | null;
   } | null;
+  attachments: IssueAttachment[];
+};
+
+export type IssueAttachment = {
+  id: string;
+  name: string;
+  contentType: string;
+  size: number;
+  key: string;
+  url: string;
+  createdAt: string;
+};
+
+export type IssueHistoryEvent = {
+  id: string;
+  action: "created" | "updated" | "attachment_added" | string;
+  changes: IssueHistoryChange[];
+  createdAt: string;
+  actor?: {
+    id: string;
+    name: string;
+    email: string;
+    image: string | null;
+  } | null;
+};
+
+export type IssueHistoryChange = {
+  field: string;
+  before: unknown;
+  after: unknown;
+};
+
+export type MemberIssue = {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  updatedAt: string;
+};
+
+export type MemberActivity = {
+  id: string;
+  action: string;
+  changes: IssueHistoryChange[];
+  createdAt: string;
+  issue: MemberIssue | null;
+};
+
+export type MemberProfile = {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  role: string;
+  joinedAt: string;
+  stats: {
+    assignedIssues: number;
+    createdIssues: number;
+    activityEvents: number;
+  };
+  assignedIssues: MemberIssue[];
+  createdIssues: MemberIssue[];
+  activity: MemberActivity[];
 };
 
 type CreateIssueInput = {
@@ -66,6 +129,12 @@ export const listIssues = () => request<{ issues: Issue[] }>("/api/issues");
 export const getIssue = (id: string) =>
   request<{ issue: Issue }>(`/api/issues/${id}`);
 
+export const getIssueHistory = (id: string) =>
+  request<{ events: IssueHistoryEvent[] }>(`/api/issues/${id}/history`);
+
+export const getMemberProfile = (id: string) =>
+  request<{ member: MemberProfile }>(`/api/members/${id}`);
+
 export const createIssue = (input: CreateIssueInput) =>
   request<{ issue: Issue }>("/api/issues", {
     method: "POST",
@@ -83,10 +152,76 @@ export const deleteIssue = (id: string) =>
     method: "DELETE",
   });
 
+export const uploadIssueAttachment = async (id: string, file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+
+  const response = await fetch(apiPath(`/api/issues/${id}/attachments`), {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.error ?? "Failed to upload attachment");
+  }
+
+  return response.json() as Promise<{ issue: Issue }>;
+};
+
 export const joinWaitlist = (email: string) =>
   request<{ ok: true }>("/api/waitlist", {
     method: "POST",
     body: JSON.stringify({ email }),
+  });
+
+export type FavoriteTarget = "chat" | "issue";
+
+export type Favorite =
+  | {
+      type: "chat";
+      id: string;
+      favoriteId: string;
+      title: string;
+      position: number;
+    }
+  | {
+      type: "issue";
+      id: string;
+      favoriteId: string;
+      title: string;
+      status: string;
+      priority: string;
+      position: number;
+    };
+
+export const listFavorites = () =>
+  request<{ favorites: Favorite[] }>("/api/favorites");
+
+export const addFavorite = (targetType: FavoriteTarget, targetId: string) =>
+  request<{
+    favorite: {
+      id: string;
+      targetType: FavoriteTarget;
+      targetId: string;
+      position: number;
+    };
+  }>("/api/favorites", {
+    method: "POST",
+    body: JSON.stringify({ targetType, targetId }),
+  });
+
+export const removeFavorite = (targetType: FavoriteTarget, targetId: string) =>
+  request<{ ok: true }>(
+    `/api/favorites/by/${targetType}/${encodeURIComponent(targetId)}`,
+    { method: "DELETE" },
+  );
+
+export const reorderFavorites = (favoriteIds: string[]) =>
+  request<{ ok: true }>("/api/favorites/reorder", {
+    method: "POST",
+    body: JSON.stringify({ favoriteIds }),
   });
 
 export type Chat = {
@@ -101,6 +236,23 @@ export type ChatMessageRecord = {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  toolCalls?: ChatToolCallRecord[];
+};
+
+export type ChatToolCallRecord = {
+  id: string;
+  name: string;
+  arguments: string;
+  result?: unknown;
+};
+
+export type UploadedChatAttachment = {
+  id: string;
+  name: string;
+  contentType: string;
+  size: number;
+  key: string;
+  url: string;
 };
 
 export const listChats = () => request<{ chats: Chat[] }>("/api/chats");
@@ -119,6 +271,24 @@ export const postChatMessage = (id: string, content: string) =>
     method: "POST",
     body: JSON.stringify({ content }),
   });
+
+export const uploadChatAttachment = async (id: string, file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+
+  const response = await fetch(apiPath(`/api/chats/${id}/attachments`), {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.error ?? "Failed to upload attachment");
+  }
+
+  return response.json() as Promise<UploadedChatAttachment>;
+};
 
 export type ChatStreamEvent =
   | { type: "user"; message: ChatMessageRecord }

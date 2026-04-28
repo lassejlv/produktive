@@ -8,14 +8,16 @@ license.workspace = true
 anyhow.workspace = true
 async-stream.workspace = true
 argon2.workspace = true
-axum.workspace = true
+axum = { workspace = true, features = ["multipart"] }
 chrono.workspace = true
 cookie.workspace = true
 hex.workspace = true
+hmac.workspace = true
 jsonwebtoken.workspace = true
 produktive-ai = { path = "../ai" }
 produktive-entity = { path = "../entity" }
 produktive-migration = { path = "../migration" }
+reqwest.workspace = true
 resend-rs.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true

@@ -16,6 +16,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppIssuesRouteImport } from './routes/_app.issues'
 import { Route as AppChatRouteImport } from './routes/_app.chat'
+import { Route as AppMembersMemberIdRouteImport } from './routes/_app.members.$memberId'
 import { Route as AppIssuesIssueIdRouteImport } from './routes/_app.issues.$issueId'
 import { Route as AppChatChatIdRouteImport } from './routes/_app.chat.$chatId'
 
@@ -53,6 +54,11 @@ const AppChatRoute = AppChatRouteImport.update({
   path: '/chat',
   getParentRoute: () => AppRoute,
 } as any)
+const AppMembersMemberIdRoute = AppMembersMemberIdRouteImport.update({
+  id: '/members/$memberId',
+  path: '/members/$memberId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppIssuesIssueIdRoute = AppIssuesIssueIdRouteImport.update({
   id: '/$issueId',
   path: '/$issueId',
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/issues': typeof AppIssuesRouteWithChildren
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/issues/$issueId': typeof AppIssuesIssueIdRoute
+  '/members/$memberId': typeof AppMembersMemberIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/issues': typeof AppIssuesRouteWithChildren
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/issues/$issueId': typeof AppIssuesIssueIdRoute
+  '/members/$memberId': typeof AppMembersMemberIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/_app/issues': typeof AppIssuesRouteWithChildren
   '/_app/chat/$chatId': typeof AppChatChatIdRoute
   '/_app/issues/$issueId': typeof AppIssuesIssueIdRoute
+  '/_app/members/$memberId': typeof AppMembersMemberIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/issues'
     | '/chat/$chatId'
     | '/issues/$issueId'
+    | '/members/$memberId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
     | '/issues'
     | '/chat/$chatId'
     | '/issues/$issueId'
+    | '/members/$memberId'
   id:
     | '__root__'
     | '/'
@@ -128,6 +139,7 @@ export interface FileRouteTypes {
     | '/_app/issues'
     | '/_app/chat/$chatId'
     | '/_app/issues/$issueId'
+    | '/_app/members/$memberId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -189,6 +201,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppChatRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/members/$memberId': {
+      id: '/_app/members/$memberId'
+      path: '/members/$memberId'
+      fullPath: '/members/$memberId'
+      preLoaderRoute: typeof AppMembersMemberIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/issues/$issueId': {
       id: '/_app/issues/$issueId'
       path: '/$issueId'
@@ -232,11 +251,13 @@ const AppIssuesRouteWithChildren = AppIssuesRoute._addFileChildren(
 interface AppRouteChildren {
   AppChatRoute: typeof AppChatRouteWithChildren
   AppIssuesRoute: typeof AppIssuesRouteWithChildren
+  AppMembersMemberIdRoute: typeof AppMembersMemberIdRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppChatRoute: AppChatRouteWithChildren,
   AppIssuesRoute: AppIssuesRouteWithChildren,
+  AppMembersMemberIdRoute: AppMembersMemberIdRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

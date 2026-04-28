@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { ChatPane } from "@/components/chat/chat-pane";
 
 export const Route = createFileRoute("/_app/chat")({
@@ -6,5 +6,12 @@ export const Route = createFileRoute("/_app/chat")({
 });
 
 function ChatIndex() {
-  return <ChatPane chatId={null} />;
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
+  const chatId = pathname.startsWith("/chat/")
+    ? decodeURIComponent(pathname.slice("/chat/".length))
+    : null;
+
+  return <ChatPane key={chatId ?? "new"} chatId={chatId} />;
 }

@@ -11,12 +11,7 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Chats::Table)
                     .if_not_exists()
-                    .col(
-                        ColumnDef::new(Chats::Id)
-                            .string()
-                            .not_null()
-                            .primary_key(),
-                    )
+                    .col(ColumnDef::new(Chats::Id).string().not_null().primary_key())
                     .col(ColumnDef::new(Chats::OrganizationId).string().not_null())
                     .col(ColumnDef::new(Chats::CreatedById).string().null())
                     .col(ColumnDef::new(Chats::Title).string().not_null())

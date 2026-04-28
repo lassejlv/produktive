@@ -1,23 +1,52 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   AttachIcon,
+  ChangesIcon,
   HashIcon,
   SendIcon,
   SlashIcon,
   StopIcon,
 } from "@/components/chat/icons";
+import {
+  IssuePicker,
+  type PickableIssue,
+} from "@/components/chat/issue-picker";
+import { StatusIcon } from "@/components/issue/status-icon";
+import {
+  type ChatAttachmentDraft,
+  type ReferencedIssue,
+  formatBytes,
+  formatIssueReferences,
+  prepareChatAttachments,
+} from "@/lib/chat-attachments";
+import { cn } from "@/lib/utils";
 
 export function ChatComposer({
   busy,
   onSend,
   onStop,
+  onOpenChanges,
+  changesCount = 0,
+  changesOpen = false,
 }: {
   busy: boolean;
-  onSend: (value: string) => void;
+  onSend: (value: string, attachments: ChatAttachmentDraft[]) => void;
   onStop: () => void;
+  onOpenChanges?: () => void;
+  changesCount?: number;
+  changesOpen?: boolean;
 }) {
   const [value, setValue] = useState("");
+  const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [issues, setIssues] = useState<ReferencedIssue[]>([]);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const selectedIssueIds = useMemo(
+    () => new Set(issues.map((issue) => issue.id)),
+    [issues],
+  );
 
   const autoresize = (el: HTMLTextAreaElement | null) => {
     if (!el) return;
@@ -32,10 +61,50 @@ export function ChatComposer({
 
   const trySend = () => {
     const trimmed = value.trim();
-    if (!trimmed || busy) return;
-    onSend(trimmed);
+    if ((!trimmed && attachments.length === 0 && issues.length === 0) || busy) {
+      return;
+    }
+    const fallback = attachments.length > 0 ? "Review the attached files." : "";
+    const baseText = trimmed || fallback;
+    const outgoing = `${baseText}${formatIssueReferences(issues)}`.trim();
+    onSend(outgoing, attachments);
     setValue("");
+    setAttachments([]);
+    setAttachmentError(null);
+    setIssues([]);
     requestAnimationFrame(() => autoresize(taRef.current));
+  };
+
+  const toggleIssue = (issue: PickableIssue) => {
+    setIssues((current) => {
+      if (current.some((existing) => existing.id === issue.id)) {
+        return current.filter((existing) => existing.id !== issue.id);
+      }
+      return [...current, issue];
+    });
+  };
+
+  const removeIssue = (id: string) => {
+    setIssues((current) => current.filter((issue) => issue.id !== id));
+  };
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    const result = prepareChatAttachments(files, attachments.length);
+    if (result.attachments.length > 0) {
+      setAttachments((current) => [...current, ...result.attachments]);
+    }
+    setAttachmentError(result.errors[0] ?? null);
+
+    if (fileRef.current) {
+      fileRef.current.value = "";
+    }
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments((current) => current.filter((file) => file.id !== id));
+    setAttachmentError(null);
   };
 
   const handleKey = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -45,11 +114,64 @@ export function ChatComposer({
     }
   };
 
-  const canSend = value.trim().length > 0 && !busy;
+  const canSend =
+    (value.trim().length > 0 || attachments.length > 0 || issues.length > 0) &&
+    !busy;
 
   return (
-    <div className="relative z-10 bg-bg/92 px-6 pb-5 pt-3">
+    <div className="relative z-10 px-6 pb-3 pt-2">
       <div className="mx-auto w-full max-w-[760px] overflow-hidden rounded-[14px] border border-border bg-surface/80 transition-colors focus-within:border-[#4a4a52] focus-within:bg-surface-2">
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          className="sr-only"
+          onChange={(event) => void handleFiles(event.target.files)}
+        />
+        {attachments.length > 0 || issues.length > 0 ? (
+          <div className="border-b border-border-subtle px-3 py-2">
+            <div className="flex flex-wrap gap-1.5">
+              {issues.map((issue) => (
+                <div
+                  key={issue.id}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-[6px] border border-border bg-bg px-2 py-1 text-[11px] text-fg-muted"
+                >
+                  <StatusIcon status={issue.status} />
+                  <span className="max-w-[220px] truncate text-fg">
+                    {issue.title}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-fg-faint transition-colors hover:text-fg"
+                    onClick={() => removeIssue(issue.id)}
+                    aria-label={`Remove ${issue.title}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {attachments.map((file) => (
+                <div
+                  key={file.id}
+                  className="inline-flex max-w-full items-center gap-2 rounded-[6px] border border-border bg-bg px-2 py-1 font-mono text-[11px] text-fg-muted"
+                >
+                  <span className="max-w-[220px] truncate text-fg">
+                    {file.file.name}
+                  </span>
+                  <span>{formatBytes(file.file.size)}</span>
+                  <button
+                    type="button"
+                    className="text-fg-faint transition-colors hover:text-fg"
+                    onClick={() => removeAttachment(file.id)}
+                    aria-label={`Remove ${file.file.name}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <textarea
           ref={taRef}
           value={value}
@@ -60,18 +182,51 @@ export function ChatComposer({
           className="block min-h-[46px] w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3.5 text-[14px] leading-[1.55] text-fg outline-none placeholder:text-fg-muted"
           style={{ maxHeight: 240 }}
         />
-        <div className="flex items-center gap-1.5 px-3 pb-3 pt-1.5">
-          <ToolButton title="Attach">
-            <AttachIcon />
+        {attachmentError ? (
+          <p className="border-t border-border-subtle px-3 py-2 text-[12px] text-danger">
+            {attachmentError}
+          </p>
+        ) : null}
+        <div className="flex items-center gap-0.5 px-2 pb-2 pt-1">
+          <ToolButton
+            title="Attach files"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+          >
+            <AttachIcon size={11} />
             Attach
           </ToolButton>
-          <ToolButton title="Reference issue">
-            <HashIcon />
-            Issue
-          </ToolButton>
+          <IssuePicker
+            selectedIds={selectedIssueIds}
+            onToggle={toggleIssue}
+            trigger={({ open, onClick }) => (
+              <ToolButton
+                title="Reference issue"
+                onClick={onClick}
+                disabled={busy}
+                active={open}
+              >
+                <HashIcon size={11} />
+                Issue
+              </ToolButton>
+            )}
+          />
           <ToolButton title="Slash command">
-            <SlashIcon />
+            <SlashIcon size={11} />
             Command
+          </ToolButton>
+          <ToolButton
+            title="View changes"
+            onClick={onOpenChanges}
+            active={changesOpen}
+          >
+            <ChangesIcon size={11} />
+            Changes
+            {changesCount > 0 ? (
+              <span className="ml-0.5 rounded-[4px] bg-surface-3 px-1 font-mono text-[10px] text-fg">
+                {changesCount}
+              </span>
+            ) : null}
           </ToolButton>
           <span className="flex-1" />
           {busy ? (
@@ -96,10 +251,6 @@ export function ChatComposer({
           )}
         </div>
       </div>
-      <p className="mt-2 text-center text-[11px] text-fg-faint">
-        <Kbd>Enter</Kbd> to send · <Kbd>⇧ Enter</Kbd> for newline · <Kbd>/</Kbd> for
-        commands
-      </p>
     </div>
   );
 }
@@ -107,15 +258,28 @@ export function ChatComposer({
 function ToolButton({
   children,
   title,
+  onClick,
+  disabled,
+  active,
 }: {
   children: React.ReactNode;
   title: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  active?: boolean;
 }) {
   return (
     <button
       type="button"
       title={title}
-      className="inline-flex h-8 items-center gap-1.5 rounded-[7px] border border-border bg-surface/50 px-2.5 text-[12px] text-fg-muted transition-colors hover:bg-surface-3 hover:text-fg"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "inline-flex h-6 items-center gap-1 rounded-[5px] px-1.5 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        active
+          ? "bg-surface-2 text-fg"
+          : "text-fg-muted hover:bg-surface hover:text-fg",
+      )}
     >
       {children}
     </button>

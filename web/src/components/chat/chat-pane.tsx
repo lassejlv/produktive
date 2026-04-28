@@ -1,26 +1,34 @@
-import { useNavigate } from "@tanstack/react-router";
+import { MultiFileDiff, type FileContents } from "@pierre/diffs/react";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
+import { ChatMarkdown } from "@/components/chat/chat-markdown";
 import {
   ChatMessageItem,
   type ChatMessage,
+  type ChatToolCall,
 } from "@/components/chat/chat-message";
-import {
-  CaretIcon,
-  SearchIcon,
-  SettingsIcon,
-  SidebarIcon,
-  SparkleIcon,
-} from "@/components/chat/icons";
+import { ChatSkeleton } from "@/components/chat/chat-skeleton";
+import { SidebarIcon } from "@/components/chat/icons";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   type ChatMessageRecord,
   createChat,
   getChat,
   streamChatMessage,
+  uploadChatAttachment,
 } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
+import {
+  type ChatAttachment,
+  type ChatAttachmentDraft,
+  buildMessageWithAttachments,
+  parseMessageWithAttachments,
+} from "@/lib/chat-attachments";
 import { firstName, greetingForNow } from "@/lib/chat-history";
+import { cn } from "@/lib/utils";
 
 export function ChatPane({ chatId }: { chatId: string | null }) {
   const navigate = useNavigate();
@@ -30,7 +38,13 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   const [chatTitle, setChatTitle] = useState("New conversation");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
+  const [isLoadingChat, setIsLoadingChat] = useState(Boolean(chatId));
   const [error, setError] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [changesOpen, setChangesOpen] = useState(false);
+  const [likedMessageIds, setLikedMessageIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const convoRef = useRef<HTMLDivElement | null>(null);
   const stopRef = useRef(false);
@@ -40,9 +54,11 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
     if (!chatId) {
       setChatTitle("New conversation");
       setMessages([]);
+      setIsLoadingChat(false);
       return;
     }
 
+    setIsLoadingChat(true);
     let isMounted = true;
     void (async () => {
       try {
@@ -52,9 +68,12 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
         setMessages(response.messages.map(recordToMessage));
       } catch (loadError) {
         if (!isMounted) return;
-        setError(
-          loadError instanceof Error ? loadError.message : "Failed to load chat",
-        );
+        const message =
+          loadError instanceof Error ? loadError.message : "Failed to load chat";
+        setError(message);
+        toast.error(message);
+      } finally {
+        if (isMounted) setIsLoadingChat(false);
       }
     })();
 
@@ -69,28 +88,33 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
     }
   }, [messages]);
 
-  const handleSend = async (text: string) => {
+  const handleSend = async (
+    text: string,
+    attachmentDrafts: ChatAttachmentDraft[] = [],
+  ) => {
     setError(null);
     stopRef.current = false;
     setBusy(true);
 
     try {
       let activeId = chatId;
+      let createdChatId: string | null = null;
       if (!activeId) {
         const created = await createChat();
         activeId = created.chat.id;
+        createdChatId = created.chat.id;
         setChatTitle(created.chat.title);
-        await navigate({
-          to: "/chat/$chatId",
-          params: { chatId: activeId },
-          replace: true,
-        });
       }
 
+      const uploadedAttachments = await uploadAttachments(
+        activeId,
+        attachmentDrafts,
+      );
+      const messageText = buildOutgoingMessage(text, uploadedAttachments);
       let streamedText = "";
       let receivedDone = false;
 
-      await streamChatMessage(activeId, text, (event) => {
+      await streamChatMessage(activeId, messageText, (event) => {
         if (stopRef.current) return;
 
         if (event.type === "user") {
@@ -110,7 +134,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
             if (last?.role === "assistant") {
               next[next.length - 1] = {
                 role: "assistant",
-                content: <p className="m-0 whitespace-pre-wrap">{streamedText}</p>,
+                content: <ChatMarkdown content={streamedText} />,
               };
             }
             return next;
@@ -148,17 +172,82 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
 
       // First user message? The server set a title — sync it.
       if (chatTitle === "New conversation") {
-        setChatTitle(truncateForTab(text));
+        const parsed = parseMessageWithAttachments(messageText);
+        setChatTitle(truncateForTab(parsed.text));
+      }
+
+      if (createdChatId) {
+        await navigate({
+          to: "/chat/$chatId",
+          params: { chatId: createdChatId },
+          replace: true,
+        });
       }
     } catch (sendError) {
-      setError(
-        sendError instanceof Error ? sendError.message : "Failed to send message",
-      );
+      const message =
+        sendError instanceof Error ? sendError.message : "Failed to send message";
+      setError(message);
+      toast.error(message);
       // Drop the typing placeholder so the UI doesn't get stuck.
       setMessages((prev) => prev.filter((m) => !m.typing));
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleCopy = async (message: ChatMessage) => {
+    const text = message.rawContent?.trim();
+    if (!text) return;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Copied response");
+      setCopiedMessageId(message.id ?? null);
+      window.setTimeout(() => {
+        setCopiedMessageId((current) =>
+          current === message.id ? null : current,
+        );
+      }, 1400);
+    } catch {
+      toast.error("Failed to copy message");
+      setError("Failed to copy message");
+    }
+  };
+
+  const handleRegenerate = (index: number) => {
+    if (busy) return;
+
+    const previousUser = [...messages]
+      .slice(0, index)
+      .reverse()
+      .find((message) => message.role === "user" && message.rawContent);
+
+    if (!previousUser?.rawContent) {
+      toast.error("No user message found to regenerate from");
+      setError("No user message found to regenerate from");
+      return;
+    }
+
+    setMessages((current) =>
+      current.filter((_, messageIndex) => messageIndex !== index),
+    );
+    toast.message("Regenerating response");
+    void handleSend(previousUser.rawContent);
+  };
+
+  const handleGoodResponse = (message: ChatMessage) => {
+    if (!message.id) return;
+    setLikedMessageIds((current) => {
+      const next = new Set(current);
+      if (next.has(message.id!)) {
+        next.delete(message.id!);
+        toast.message("Feedback removed");
+      } else {
+        next.add(message.id!);
+        toast.success("Marked as good response");
+      }
+      return next;
+    });
   };
 
   const handleStop = () => {
@@ -167,105 +256,456 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
 
   const isEmpty = messages.length === 0;
   const greeting = useMemo(() => greetingForNow(), []);
+  const changes = useMemo(() => chatChangesFromMessages(messages), [messages]);
+  const renderedMessages = useMemo(() => collapseToolMessages(messages), [messages]);
 
   return (
-    <div className="relative flex h-screen min-w-0 flex-1 flex-col overflow-hidden bg-bg">
-      <header className="relative z-10 flex min-h-[58px] items-center gap-3 border-b border-border-subtle bg-bg/86 px-6 py-3 backdrop-blur">
-        <div className="flex min-w-0 flex-1 items-center gap-3 text-[13px] text-fg-muted">
-          <button
-            type="button"
-            aria-label="Toggle sidebar"
-            className="hidden size-8 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
-          >
-            <SidebarIcon />
-          </button>
-          <span className="text-fg-muted">Chat</span>
-          <span className="text-fg-muted">/</span>
-          <span className="truncate font-medium text-fg">{chatTitle}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            className="inline-flex h-8 items-center gap-2 rounded-[8px] border border-border bg-surface/50 px-2.5 text-[13px] font-medium text-fg transition-colors hover:border-[#33333a] hover:bg-surface-2"
-          >
-            <span className="text-fg-faint">
-              <SparkleIcon />
-            </span>
-            <span>Produktive</span>
-            <span className="font-mono text-[10.5px] text-fg-muted">v0.1</span>
-            <span className="text-fg-faint">
-              <CaretIcon />
-            </span>
-          </button>
-          <button
-            type="button"
-            aria-label="Search"
-            className="hidden size-10 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
-          >
-            <SearchIcon />
-          </button>
-          <button
-            type="button"
-            aria-label="Settings"
-            className="hidden size-10 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
-          >
-            <SettingsIcon />
-          </button>
-        </div>
-      </header>
-
-      {error ? (
-        <div className="relative z-10 m-5 flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
-          <span>{error}</span>
-          <button
-            type="button"
-            className="text-fg-muted transition-colors hover:text-fg"
-            onClick={() => setError(null)}
-          >
-            Dismiss
-          </button>
-        </div>
-      ) : null}
-
-      {isEmpty ? (
-        <ChatEmptyState
-          greeting={greeting}
-          name={firstName(userName) ?? null}
-          showSuggestions
-          onPickSuggestion={(prompt) => void handleSend(prompt)}
-        />
-      ) : (
-        <div
-          ref={convoRef}
-          className="relative z-10 flex flex-1 flex-col overflow-y-auto px-6 pb-4 pt-8"
-        >
-          <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6">
-            {messages.map((message, index) => (
-              <ChatMessageItem
-                key={index}
-                message={message}
-              />
-            ))}
+    <div className="flex h-screen min-w-0 flex-1 overflow-hidden bg-bg md:h-full">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="relative z-10 flex min-h-[58px] items-center gap-3 border-b border-border-subtle bg-bg/86 px-6 py-3 backdrop-blur">
+          <div className="flex min-w-0 flex-1 items-center gap-3 text-[13px] text-fg-muted">
+            <button
+              type="button"
+              aria-label="Toggle sidebar"
+              className="hidden size-8 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+            >
+              <SidebarIcon />
+            </button>
+            <span className="text-fg-muted">Chat</span>
+            <span className="text-fg-muted">/</span>
+            {isLoadingChat ? (
+              <Skeleton className="h-3.5 w-40" />
+            ) : (
+              <span className="truncate font-medium text-fg">{chatTitle}</span>
+            )}
           </div>
-        </div>
-      )}
+        </header>
 
-      <ChatComposer
-        busy={busy}
-        onSend={(text) => void handleSend(text)}
-        onStop={handleStop}
+        {error ? (
+          <div className="relative z-10 m-5 flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+            <span>{error}</span>
+            <button
+              type="button"
+              className="text-fg-muted transition-colors hover:text-fg"
+              onClick={() => setError(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        ) : null}
+
+        {isLoadingChat ? (
+          <ChatSkeleton />
+        ) : isEmpty ? (
+          <ChatEmptyState
+            greeting={greeting}
+            name={firstName(userName) ?? null}
+            showSuggestions
+            onPickSuggestion={(prompt) => void handleSend(prompt)}
+          />
+        ) : (
+          <div
+            ref={convoRef}
+            className="relative z-10 flex flex-1 flex-col overflow-y-auto px-6 pb-4 pt-8"
+          >
+            <div className="mx-auto flex w-full max-w-[760px] flex-col gap-6">
+              {renderedMessages.map((message, index) => {
+                const followingUser = renderedMessages
+                  .slice(index + 1)
+                  .find((m) => m.role === "user");
+                return (
+                  <ChatMessageItem
+                    key={message.id ?? index}
+                    message={message}
+                    onCopy={() => void handleCopy(message)}
+                    onRegenerate={() => handleRegenerate(index)}
+                    onGood={() => handleGoodResponse(message)}
+                    onAnswerQuestion={(answer) => void handleSend(answer)}
+                    pendingAnswer={followingUser?.rawContent ?? null}
+                    actionState={
+                      copiedMessageId === message.id
+                        ? "copied"
+                        : message.id && likedMessageIds.has(message.id)
+                          ? "liked"
+                          : null
+                    }
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <ChatComposer
+          busy={busy}
+          onSend={(text, attachments) => void handleSend(text, attachments)}
+          onStop={handleStop}
+          onOpenChanges={() => setChangesOpen((current) => !current)}
+          changesCount={changes.length}
+          changesOpen={changesOpen}
+        />
+      </div>
+      <ChatChangesPanel
+        open={changesOpen}
+        changes={changes}
+        onClose={() => setChangesOpen(false)}
       />
     </div>
   );
 }
 
+type ChatChange = {
+  id: string;
+  action: "created" | "updated" | "changed";
+  title: string;
+  issueId?: string;
+  fields: Array<{ name: string; before?: unknown; after: unknown }>;
+  result?: unknown;
+};
+
+function ChatChangesPanel({
+  open,
+  changes,
+  onClose,
+}: {
+  open: boolean;
+  changes: ChatChange[];
+  onClose: () => void;
+}) {
+  return (
+    <aside
+      className={cn(
+        "flex h-full shrink-0 flex-col overflow-hidden bg-bg transition-[width] duration-300 ease-out",
+        open ? "w-[408px]" : "w-0",
+      )}
+      aria-hidden={!open}
+    >
+      <div
+        className={cn(
+          "flex h-full w-[408px] flex-col p-3 pl-2 transition-[opacity,transform] duration-300 ease-out",
+          open
+            ? "translate-x-0 opacity-100"
+            : "pointer-events-none translate-x-3 opacity-0",
+        )}
+      >
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[10px] border border-border-subtle bg-bg">
+          <div className="flex h-13 shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-3.5">
+            <div className="min-w-0">
+              <h2 className="text-[13px] font-medium leading-tight text-fg">
+                Changes
+              </h2>
+              <p className="mt-0.5 font-mono text-[10px] leading-none text-fg-faint">
+                {changes.length} in this chat
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="grid size-7 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+              aria-label="Close changes panel"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path
+                  d="M3 3l8 8M11 3l-8 8"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </div>
+          {changes.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center px-6 text-center">
+              <p className="max-w-60 text-sm leading-relaxed text-fg-muted">
+                No issue changes have been made from this chat yet.
+              </p>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto p-2.5">
+              <div className="grid gap-2">
+                {changes.map((change) => (
+                  <article
+                    key={change.id}
+                    className="overflow-hidden rounded-lg border border-border-subtle bg-bg"
+                  >
+                    <div className="border-b border-border-subtle px-3 py-2.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-mono text-[12px] text-fg">
+                            {change.title}
+                          </p>
+                          <p className="mt-1 font-mono text-[11px] text-fg-faint">
+                            {change.fields.length} {change.fields.length === 1 ? "change" : "changes"}
+                          </p>
+                        </div>
+                        {change.issueId ? (
+                          <Link
+                            to="/issues/$issueId"
+                            params={{ issueId: change.issueId }}
+                            className="shrink-0 rounded-[5px] border border-border-subtle px-2 py-1 font-mono text-[10px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+                            onClick={onClose}
+                          >
+                            Open
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                    {change.fields.length > 0 ? (
+                      <div className="grid gap-px bg-border-subtle">
+                        {change.fields.map((field) => (
+                          <ChatChangeField key={field.name} field={field} />
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function ChatChangeField({
+  field,
+}: {
+  field: { name: string; before?: unknown; after: unknown };
+}) {
+  const name = `${fieldLabel(field.name)}.md`;
+  const oldFile: FileContents = {
+    name,
+    contents: diffFileValue(field.before),
+    lang: "markdown",
+  };
+  const newFile: FileContents = {
+    name,
+    contents: diffFileValue(field.after),
+    lang: "markdown",
+  };
+
+  return (
+    <div className="bg-bg">
+      <MultiFileDiff
+        oldFile={oldFile}
+        newFile={newFile}
+        disableWorkerPool
+        options={{
+          theme: "pierre-dark",
+          themeType: "dark",
+          diffStyle: "unified",
+          diffIndicators: "classic",
+          disableLineNumbers: true,
+          hunkSeparators: "simple",
+          lineDiffType: "word-alt",
+          overflow: "wrap",
+        }}
+        className="produktive-diff"
+      />
+    </div>
+  );
+}
+
+async function uploadAttachments(
+  chatId: string,
+  drafts: ChatAttachmentDraft[],
+): Promise<ChatAttachment[]> {
+  return Promise.all(
+    drafts.map(async ({ file }) => {
+      const uploaded = await uploadChatAttachment(chatId, file);
+      return {
+        id: uploaded.id,
+        name: uploaded.name,
+        type: uploaded.contentType,
+        size: uploaded.size,
+        key: uploaded.key,
+        url: uploaded.url,
+      };
+    }),
+  );
+}
+
+function buildOutgoingMessage(text: string, attachments: ChatAttachment[]) {
+  if (attachments.length === 0) return text.trim();
+
+  const visibleText = text.trim() || "Review the attached files.";
+  return buildMessageWithAttachments(visibleText, attachments);
+}
+
 function recordToMessage(record: ChatMessageRecord): ChatMessage {
+  const parsed = parseMessageWithAttachments(record.content);
+  const content =
+    record.role === "assistant" ? (
+      <ChatMarkdown content={parsed.text} />
+    ) : (
+      <p className="m-0 whitespace-pre-wrap">{parsed.text}</p>
+    );
+
   return {
+    id: record.id,
     role: record.role,
-    content: <p className="m-0 whitespace-pre-wrap">{record.content}</p>,
+    content,
+    rawContent: record.role === "user" ? record.content : parsed.text,
+    attachments: parsed.attachments,
+    toolCalls: record.toolCalls ?? [],
   };
 }
 
+function chatChangesFromMessages(messages: ChatMessage[]): ChatChange[] {
+  return messages.flatMap((message) =>
+    (message.toolCalls ?? [])
+      .filter((toolCall) => isChangeTool(toolCall.name))
+      .map((toolCall) => toolCallToChange(toolCall)),
+  );
+}
+
+function isChangeTool(name: string) {
+  return name === "create_issue" || name === "update_issue";
+}
+
+function toolCallToChange(toolCall: ChatToolCall): ChatChange {
+  const args = parsePayload(toolCall.arguments);
+  const resultIssue = issueFromResult(toolCall.result);
+  const resultChanges = changesFromResult(toolCall.result);
+  const issueId = resultIssue?.id ?? stringField(args, "id");
+  const title =
+    toolCall.name === "create_issue"
+      ? `Created ${resultIssue?.title ?? stringField(args, "title") ?? "issue"}`
+      : `Updated ${resultIssue?.title ?? issueId ?? "issue"}`;
+
+  return {
+    id: toolCall.id,
+    action: toolCall.name === "create_issue" ? "created" : "updated",
+    title,
+    issueId,
+    fields:
+      resultChanges ??
+      Object.entries(args)
+        .filter(([key]) => key !== "id")
+        .map(([name, value]) => ({
+          name,
+          after: value,
+        })),
+    result: toolCall.result,
+  };
+}
+
+function parsePayload(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function issueFromResult(value: unknown) {
+  if (!value || typeof value !== "object" || !("issue" in value)) return null;
+  const issue = (value as { issue?: unknown }).issue;
+  if (!issue || typeof issue !== "object") return null;
+  return issue as Record<string, unknown> & { id?: string; title?: string };
+}
+
+function changesFromResult(value: unknown) {
+  if (!value || typeof value !== "object" || !("changes" in value)) return null;
+  const changes = (value as { changes?: unknown }).changes;
+  if (!Array.isArray(changes)) return null;
+
+  return changes
+    .filter(
+      (change): change is { field: string; before?: unknown; after: unknown } =>
+        Boolean(change) &&
+        typeof change === "object" &&
+        typeof (change as { field?: unknown }).field === "string" &&
+        "after" in change,
+    )
+    .map((change) => ({
+      name: change.field,
+      before: change.before,
+      after: change.after,
+    }));
+}
+
+function stringField(value: Record<string, unknown>, key: string) {
+  const field = value[key];
+  return typeof field === "string" ? field : undefined;
+}
+
+function fieldLabel(field: string) {
+  const labels: Record<string, string> = {
+    title: "Title",
+    description: "Body",
+    status: "Status",
+    priority: "Priority",
+    assigned_to_id: "Assignee",
+    assignedToId: "Assignee",
+  };
+  return labels[field] ?? field;
+}
+
+function displayChangeValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "None";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
+}
+
+function diffFileValue(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value, null, 2);
+}
+
 function truncateForTab(text: string, max = 48) {
-  return text.length > max ? `${text.slice(0, max)}…` : text;
+  const normalized = text.trim() || "Attached files";
+  return normalized.length > max ? `${normalized.slice(0, max)}…` : normalized;
+}
+
+// Merge a run of assistant messages whose content is empty (intermediate
+// tool-call rounds) into the next assistant message that actually replies, so
+// the UI shows one consolidated tool-call trace above the answer.
+function collapseToolMessages(messages: ChatMessage[]): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  let pendingToolCalls: ChatToolCall[] = [];
+
+  const flushAsStandalone = () => {
+    if (pendingToolCalls.length === 0) return;
+    out.push({ role: "assistant", toolCalls: pendingToolCalls });
+    pendingToolCalls = [];
+  };
+
+  for (const message of messages) {
+    const isToolOnlyAssistant =
+      message.role === "assistant" &&
+      !message.typing &&
+      !message.rawContent &&
+      (message.toolCalls?.length ?? 0) > 0;
+
+    if (isToolOnlyAssistant) {
+      pendingToolCalls.push(...(message.toolCalls ?? []));
+      continue;
+    }
+
+    if (message.role === "assistant" && pendingToolCalls.length > 0) {
+      out.push({
+        ...message,
+        toolCalls: [...pendingToolCalls, ...(message.toolCalls ?? [])],
+      });
+      pendingToolCalls = [];
+      continue;
+    }
+
+    if (message.role === "user") {
+      flushAsStandalone();
+    }
+
+    out.push(message);
+  }
+
+  flushAsStandalone();
+  return out;
 }

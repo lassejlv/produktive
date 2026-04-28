@@ -14,11 +14,9 @@ impl AiClient {
         let mut headers = HeaderMap::new();
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {api_key}")).map_err(|_| {
-                AiError::Upstream {
-                    status: 0,
-                    body: "invalid AI_API_KEY characters".to_owned(),
-                }
+            HeaderValue::from_str(&format!("Bearer {api_key}")).map_err(|_| AiError::Upstream {
+                status: 0,
+                body: "invalid AI_API_KEY characters".to_owned(),
             })?,
         );
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));

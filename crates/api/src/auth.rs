@@ -246,6 +246,76 @@ pub async fn first_or_create_organization(
     Ok(organization)
 }
 
+pub async fn create_organization_for_user(
+    db: &DatabaseConnection,
+    user: &user::Model,
+    name: &str,
+) -> Result<organization::Model, ApiError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(ApiError::BadRequest(
+            "Organization name is required".to_owned(),
+        ));
+    }
+    if name.chars().count() > 64 {
+        return Err(ApiError::BadRequest(
+            "Organization name must be 64 characters or fewer".to_owned(),
+        ));
+    }
+
+    let now = Utc::now().fixed_offset();
+    let txn = db.begin().await?;
+    let organization = organization::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        name: Set(name.to_owned()),
+        slug: Set(build_organization_slug(name)),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(&txn)
+    .await?;
+    member::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        organization_id: Set(organization.id.clone()),
+        user_id: Set(user.id.clone()),
+        role: Set("owner".to_owned()),
+        created_at: Set(now),
+    }
+    .insert(&txn)
+    .await?;
+    txn.commit().await?;
+
+    Ok(organization)
+}
+
+pub async fn set_session_active_organization(
+    db: &DatabaseConnection,
+    state: &AppState,
+    session: session::Model,
+    organization_id: String,
+) -> Result<(session::Model, String), ApiError> {
+    let now = Utc::now().fixed_offset();
+    let mut active: session::ActiveModel = session.into();
+    active.active_organization_id = Set(organization_id);
+    active.updated_at = Set(now);
+    let session = active.update(db).await?;
+    let token = sign_session_token(state, &session)?;
+    Ok((session, token))
+}
+
+pub async fn user_is_member(
+    db: &DatabaseConnection,
+    user_id: &str,
+    organization_id: &str,
+) -> Result<bool, ApiError> {
+    Ok(member::Entity::find()
+        .filter(member::Column::UserId.eq(user_id))
+        .filter(member::Column::OrganizationId.eq(organization_id))
+        .one(db)
+        .await?
+        .is_some())
+}
+
 pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, ApiError> {
     let parsed_hash = PasswordHash::new(password_hash)
         .map_err(|_| ApiError::Internal(anyhow::anyhow!("invalid password hash")))?;
@@ -460,19 +530,7 @@ async fn create_default_organization(
     user: &user::Model,
 ) -> Result<organization::Model, ApiError> {
     let now = Utc::now().fixed_offset();
-    let slug_base = user
-        .name
-        .to_lowercase()
-        .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
-        .chars()
-        .take(48)
-        .collect::<String>();
+    let slug_base = slugify(&user.name);
     let user_prefix: String = user.id.chars().take(8).collect();
     let slug = format!(
         "{}-{}",
@@ -497,4 +555,34 @@ async fn create_default_organization(
     }
     .insert(txn)
     .await?)
+}
+
+fn slugify(value: &str) -> String {
+    value
+        .to_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+        .chars()
+        .take(48)
+        .collect()
+}
+
+fn build_organization_slug(name: &str) -> String {
+    let base = slugify(name);
+    let suffix: String = Uuid::new_v4()
+        .simple()
+        .to_string()
+        .chars()
+        .take(8)
+        .collect();
+    if base.is_empty() {
+        format!("org-{suffix}")
+    } else {
+        format!("{base}-{suffix}")
+    }
 }

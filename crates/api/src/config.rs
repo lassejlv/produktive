@@ -23,6 +23,17 @@ pub struct Config {
     pub ai_api_key: String,
     pub ai_base_url: String,
     pub ai_model: String,
+    pub storage: Option<StorageConfig>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StorageConfig {
+    pub endpoint: String,
+    pub region: String,
+    pub bucket: String,
+    pub access_key_id: String,
+    pub secret_access_key: String,
+    pub public_url: Option<String>,
 }
 
 impl Config {
@@ -67,7 +78,38 @@ impl Config {
             ai_api_key: required_env("AI_API_KEY").context("AI_API_KEY is required")?,
             ai_base_url: env_or_default("AI_BASE_URL", "https://ollama.com/v1"),
             ai_model: env_or_default("AI_MODEL", "kimi-k2.6"),
+            storage: StorageConfig::from_env()?,
         })
+    }
+}
+
+impl StorageConfig {
+    fn from_env() -> anyhow::Result<Option<Self>> {
+        let bucket = optional_env("S3_BUCKET");
+        let endpoint = optional_env("S3_ENDPOINT");
+        let access_key_id = optional_env("S3_ACCESS_KEY_ID");
+        let secret_access_key = optional_env("S3_SECRET_ACCESS_KEY");
+
+        if bucket.is_none()
+            && endpoint.is_none()
+            && access_key_id.is_none()
+            && secret_access_key.is_none()
+        {
+            return Ok(None);
+        }
+
+        Ok(Some(Self {
+            endpoint: endpoint.ok_or_else(|| anyhow!("S3_ENDPOINT is required"))?,
+            region: env_or_default("S3_REGION", "auto"),
+            bucket: bucket.ok_or_else(|| anyhow!("S3_BUCKET is required"))?,
+            access_key_id: access_key_id.ok_or_else(|| anyhow!("S3_ACCESS_KEY_ID is required"))?,
+            secret_access_key: secret_access_key
+                .ok_or_else(|| anyhow!("S3_SECRET_ACCESS_KEY is required"))?,
+            public_url: Some(env_or_default(
+                "S3_PUBLIC_URL",
+                "https://cdn.produktive.app",
+            )),
+        }))
     }
 }
 
@@ -89,6 +131,13 @@ fn required_env(key: &str) -> anyhow::Result<String> {
         .ok()
         .filter(|value| !value.is_empty())
         .ok_or_else(|| anyhow!("{key} is required"))
+}
+
+fn optional_env(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
 }
 
 fn env_or_default(key: &str, default: &str) -> String {

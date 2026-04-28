@@ -38,6 +38,14 @@ export function useIssues() {
     setIssues((current) => [issue, ...current]);
   };
 
+  const updateIssueLocal = (id: string, patch: Partial<Issue>) => {
+    setIssues((current) =>
+      current.map((issue) =>
+        issue.id === id ? { ...issue, ...patch } : issue,
+      ),
+    );
+  };
+
   const dismissError = () => setError(null);
 
   return {
@@ -46,5 +54,6 @@ export function useIssues() {
     error,
     dismissError,
     addIssue,
+    updateIssueLocal,
   };
 }

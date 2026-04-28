@@ -2,9 +2,9 @@ use crate::{
     auth::AuthContext,
     error::ApiError,
     issue_helpers::{
-        non_empty_optional, normalize_assignee, optional_string, required_string,
-        validate_assignee,
+        non_empty_optional, normalize_assignee, optional_string, required_string, validate_assignee,
     },
+    issue_history::{record_issue_event, string_change, IssueChange},
     state::AppState,
 };
 use chrono::Utc;
@@ -91,7 +91,30 @@ pub fn registry() -> Vec<Tool> {
                 "properties": {}
             }),
         },
+        Tool {
+            name: "ask_user".to_owned(),
+            description: "Ask the user a clarifying question when you genuinely need more information to proceed. After calling this tool, STOP — do not call other tools and do not generate any further text. The user will respond and you'll continue on the next turn.".to_owned(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The question to ask the user. Be concise and specific."
+                    },
+                    "options": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Optional list of suggested answers the user can pick from. Omit for free-form text answers."
+                    }
+                },
+                "required": ["question"]
+            }),
+        },
     ]
+}
+
+pub fn is_terminal_tool(name: &str) -> bool {
+    name == "ask_user"
 }
 
 /// Dispatch a tool call. Returns either the structured success value, or
@@ -118,6 +141,7 @@ pub async fn dispatch(
         "create_issue" => create_issue(parsed_args, state, auth).await,
         "update_issue" => update_issue(parsed_args, state, auth).await,
         "list_members" => list_members(state, auth).await,
+        "ask_user" => ask_user(parsed_args).await,
         other => return Ok(json!({ "error": format!("Unknown tool: {other}") })),
     };
 
@@ -145,7 +169,10 @@ async fn list_issues(args: Value, state: &AppState, auth: &AuthContext) -> Resul
         .order_by_desc(issue::Column::CreatedAt)
         .limit(50);
 
-    if let Some(status) = args.status.and_then(|v| non_empty_optional(v).ok().flatten()) {
+    if let Some(status) = args
+        .status
+        .and_then(|v| non_empty_optional(v).ok().flatten())
+    {
         select = select.filter(issue::Column::Status.eq(status));
     }
     if let Some(priority) = args
@@ -191,7 +218,11 @@ struct CreateIssueArgs {
     assigned_to_id: Option<String>,
 }
 
-async fn create_issue(args: Value, state: &AppState, auth: &AuthContext) -> Result<Value, ApiError> {
+async fn create_issue(
+    args: Value,
+    state: &AppState,
+    auth: &AuthContext,
+) -> Result<Value, ApiError> {
     let args: CreateIssueArgs = serde_json::from_value(args)
         .map_err(|e| ApiError::BadRequest(format!("Invalid arguments for create_issue: {e}")))?;
 
@@ -208,13 +239,60 @@ async fn create_issue(args: Value, state: &AppState, auth: &AuthContext) -> Resu
         priority: Set(optional_string(args.priority, "medium")?),
         created_by_id: Set(Some(auth.user.id.clone())),
         assigned_to_id: Set(assigned_to_id),
+        attachments: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     }
     .insert(&state.db)
     .await?;
 
-    Ok(json!({ "issue": issue_full(state, &issue).await? }))
+    let changes = vec![
+        IssueChange {
+            field: "title".to_owned(),
+            before: Value::Null,
+            after: json!(issue.title),
+        },
+        IssueChange {
+            field: "description".to_owned(),
+            before: Value::Null,
+            after: issue
+                .description
+                .as_ref()
+                .map(|value| json!(value))
+                .unwrap_or(Value::Null),
+        },
+        IssueChange {
+            field: "status".to_owned(),
+            before: Value::Null,
+            after: json!(issue.status),
+        },
+        IssueChange {
+            field: "priority".to_owned(),
+            before: Value::Null,
+            after: json!(issue.priority),
+        },
+        IssueChange {
+            field: "assignedToId".to_owned(),
+            before: Value::Null,
+            after: issue
+                .assigned_to_id
+                .as_ref()
+                .map(|value| json!(value))
+                .unwrap_or(Value::Null),
+        },
+    ];
+
+    record_issue_event(
+        state,
+        &auth.organization.id,
+        &issue.id,
+        Some(&auth.user.id),
+        "created",
+        changes.clone(),
+    )
+    .await?;
+
+    Ok(json!({ "issue": issue_full(state, &issue).await?, "changes": changes }))
 }
 
 #[derive(Deserialize)]
@@ -227,7 +305,11 @@ struct UpdateIssueArgs {
     assigned_to_id: Option<String>,
 }
 
-async fn update_issue(args: Value, state: &AppState, auth: &AuthContext) -> Result<Value, ApiError> {
+async fn update_issue(
+    args: Value,
+    state: &AppState,
+    auth: &AuthContext,
+) -> Result<Value, ApiError> {
     let args: UpdateIssueArgs = serde_json::from_value(args)
         .map_err(|e| ApiError::BadRequest(format!("Invalid arguments for update_issue: {e}")))?;
 
@@ -240,26 +322,90 @@ async fn update_issue(args: Value, state: &AppState, auth: &AuthContext) -> Resu
         validate_assignee(state, &auth.organization.id, Some(value)).await?;
     }
 
+    let before = issue.clone();
+    let mut changes = Vec::new();
     let mut active = issue.into_active_model();
     if let Some(title) = args.title {
-        active.title = Set(required_string(title, "Title")?);
+        let next = required_string(title, "Title")?;
+        if let Some(change) = string_change("title", Some(&before.title), Some(&next)) {
+            changes.push(change);
+        }
+        active.title = Set(next);
     }
     if let Some(description) = args.description {
-        active.description = Set(non_empty_optional(description)?);
+        let next = non_empty_optional(description)?;
+        if let Some(change) = string_change(
+            "description",
+            before.description.as_deref(),
+            next.as_deref(),
+        ) {
+            changes.push(change);
+        }
+        active.description = Set(next);
     }
     if let Some(status) = args.status {
-        active.status = Set(required_string(status, "Status")?);
+        let next = required_string(status, "Status")?;
+        if let Some(change) = string_change("status", Some(&before.status), Some(&next)) {
+            changes.push(change);
+        }
+        active.status = Set(next);
     }
     if let Some(priority) = args.priority {
-        active.priority = Set(required_string(priority, "Priority")?);
+        let next = required_string(priority, "Priority")?;
+        if let Some(change) = string_change("priority", Some(&before.priority), Some(&next)) {
+            changes.push(change);
+        }
+        active.priority = Set(next);
     }
     if let Some(value) = assigned_to_id {
+        if let Some(change) = string_change(
+            "assignedToId",
+            before.assigned_to_id.as_deref(),
+            value.as_deref(),
+        ) {
+            changes.push(change);
+        }
         active.assigned_to_id = Set(value);
     }
     active.updated_at = Set(Utc::now().fixed_offset());
 
     let updated = active.update(&state.db).await?;
-    Ok(json!({ "issue": issue_full(state, &updated).await? }))
+    let response_changes = changes.clone();
+    if !changes.is_empty() {
+        record_issue_event(
+            state,
+            &auth.organization.id,
+            &updated.id,
+            Some(&auth.user.id),
+            "updated",
+            changes,
+        )
+        .await?;
+    }
+    Ok(json!({ "issue": issue_full(state, &updated).await?, "changes": response_changes }))
+}
+
+#[derive(Deserialize)]
+struct AskUserArgs {
+    question: String,
+    #[serde(default)]
+    options: Option<Vec<String>>,
+}
+
+async fn ask_user(args: Value) -> Result<Value, ApiError> {
+    let args: AskUserArgs = serde_json::from_value(args)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid arguments for ask_user: {e}")))?;
+    let question = args.question.trim();
+    if question.is_empty() {
+        return Err(ApiError::BadRequest(
+            "ask_user requires a non-empty question".to_owned(),
+        ));
+    }
+    Ok(json!({
+        "asked": true,
+        "question": question,
+        "options": args.options.unwrap_or_default(),
+    }))
 }
 
 async fn list_members(state: &AppState, auth: &AuthContext) -> Result<Value, ApiError> {
@@ -327,6 +473,7 @@ async fn issue_full(state: &AppState, issue: &issue::Model) -> Result<Value, Api
         "status": issue.status,
         "priority": issue.priority,
         "assigned_to": assigned_to,
+        "attachments": issue.attachments.clone().unwrap_or_else(|| json!([])),
         "created_at": issue.created_at.to_rfc3339(),
         "updated_at": issue.updated_at.to_rfc3339(),
     }))

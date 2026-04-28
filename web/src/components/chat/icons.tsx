@@ -89,6 +89,38 @@ export function SendIcon({ size = 13, ...rest }: IconProps) {
   );
 }
 
+export function StarIcon({ size = 13, filled = false, ...rest }: IconProps & { filled?: boolean }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...rest}
+    >
+      <polygon points="12 2 15.1 8.6 22 9.5 17 14.4 18.2 21.4 12 18 5.8 21.4 7 14.4 2 9.5 8.9 8.6 12 2" />
+    </svg>
+  );
+}
+
+export function PlayIcon({ size = 9, ...rest }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 10 10"
+      fill="currentColor"
+      {...rest}
+    >
+      <path d="M2.4 1.4 L8 5 L2.4 8.6 Z" />
+    </svg>
+  );
+}
+
 export function StopIcon({ size = 11, ...rest }: IconProps) {
   return (
     <svg
@@ -126,6 +158,25 @@ export function HashIcon({ size = 13, ...rest }: IconProps) {
       <line x1="4" y1="15" x2="20" y2="15" />
       <line x1="10" y1="3" x2="8" y2="21" />
       <line x1="16" y1="3" x2="14" y2="21" />
+    </svg>
+  );
+}
+
+export function ChangesIcon({ size = 13, ...rest }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...baseProps} {...rest}>
+      <path d="M4 7h10" />
+      <path d="M4 17h10" />
+      <path d="M17 4l3 3-3 3" />
+      <path d="M17 14l3 3-3 3" />
+    </svg>
+  );
+}
+
+export function CheckIcon({ size = 13, ...rest }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...baseProps} {...rest}>
+      <polyline points="20 6 9 17 4 12" />
     </svg>
   );
 }
