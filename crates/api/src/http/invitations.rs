@@ -1,7 +1,6 @@
 use crate::{
     auth::{
-        auth_cookie, require_auth, set_session_active_organization, validate_email,
-        AuthResponse,
+        auth_cookie, require_auth, set_session_active_organization, validate_email, AuthResponse,
     },
     email,
     error::ApiError,
@@ -17,7 +16,8 @@ use axum::{
 use chrono::{Duration, Utc};
 use produktive_entity::{invitation, member, organization, user};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, Set,
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter,
+    QueryOrder, Set,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -32,8 +32,14 @@ pub fn public_routes() -> Router<AppState> {
 
 pub fn org_routes() -> Router<AppState> {
     Router::new()
-        .route("/invitations", get(list_invitations).post(create_invitation))
-        .route("/invitations/{id}", axum::routing::delete(revoke_invitation))
+        .route(
+            "/invitations",
+            get(list_invitations).post(create_invitation),
+        )
+        .route(
+            "/invitations/{id}",
+            axum::routing::delete(revoke_invitation),
+        )
         .route("/invitations/{id}/resend", post(resend_invitation))
 }
 
@@ -172,13 +178,9 @@ async fn accept_invitation(
         .ok_or_else(|| ApiError::NotFound("Organization not found".to_owned()))?;
 
     // Switch active org so the next request lands in the right workspace
-    let (_, token) = set_session_active_organization(
-        &state.db,
-        &state,
-        auth.session,
-        organization.id.clone(),
-    )
-    .await?;
+    let (_, token) =
+        set_session_active_organization(&state.db, &state, auth.session, organization.id.clone())
+            .await?;
     let cookie = auth_cookie(&state, &token)?;
 
     let _ = invitation_id; // currently unused; placeholder for audit logs
@@ -283,28 +285,25 @@ async fn create_invitation(
         }
     }
 
-    // Reject duplicate pending invite
-    let pending = invitation::Entity::find()
+    let now = Utc::now().fixed_offset();
+
+    // Reject duplicate active pending invite
+    let has_active_invite = invitation::Entity::find()
         .filter(invitation::Column::OrganizationId.eq(&auth.organization.id))
         .filter(invitation::Column::Email.eq(&email))
         .filter(invitation::Column::AcceptedAt.is_null())
         .filter(invitation::Column::RevokedAt.is_null())
-        .one(&state.db)
-        .await?;
-    if let Some(existing) = pending {
-        if existing.expires_at >= Utc::now().fixed_offset() {
-            return Err(ApiError::BadRequest(
-                "An invitation is already pending for this email".to_owned(),
-            ));
-        }
+        .filter(invitation::Column::ExpiresAt.gte(now.clone()))
+        .count(&state.db)
+        .await?
+        > 0;
+    if has_active_invite {
+        return Err(ApiError::BadRequest(
+            "An invitation is already pending for this email".to_owned(),
+        ));
     }
 
-    let token = format!(
-        "{}{}",
-        Uuid::new_v4().simple(),
-        Uuid::new_v4().simple()
-    );
-    let now = Utc::now().fixed_offset();
+    let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
     let expires = now + Duration::days(INVITE_TTL_DAYS);
     let row = invitation::ActiveModel {
         id: Set(Uuid::new_v4().to_string()),
@@ -330,7 +329,19 @@ async fn create_invitation(
     )
     .await
     {
+        let invitation_id = row.id.clone();
+        if let Err(delete_error) = invitation::Entity::delete_by_id(invitation_id.clone())
+            .exec(&state.db)
+            .await
+        {
+            tracing::error!(
+                %delete_error,
+                invitation_id,
+                "failed to delete invitation after email delivery failure"
+            );
+        }
         tracing::warn!("failed to send invitation email to {}: {}", email, error);
+        return Err(error);
     }
 
     Ok((
@@ -398,9 +409,7 @@ async fn resend_invitation(
         return Err(ApiError::NotFound("Invitation not found".to_owned()));
     }
     if row.accepted_at.is_some() {
-        return Err(ApiError::BadRequest(
-            "Already accepted".to_owned(),
-        ));
+        return Err(ApiError::BadRequest("Already accepted".to_owned()));
     }
     if row.revoked_at.is_some() {
         return Err(ApiError::BadRequest("Revoked invitation".to_owned()));
@@ -435,7 +444,11 @@ async fn resend_invitation(
     )
     .await
     {
-        tracing::warn!("failed to resend invitation email to {}: {}", email_addr, error);
+        tracing::warn!(
+            "failed to resend invitation email to {}: {}",
+            email_addr,
+            error
+        );
     }
 
     Ok(Json(InvitationResponse {
