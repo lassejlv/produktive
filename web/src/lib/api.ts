@@ -17,6 +17,12 @@ export type ProjectSummary = {
   icon: string | null;
 };
 
+export type LabelSummary = {
+  id: string;
+  name: string;
+  color: string;
+};
+
 export type Issue = {
   id: string;
   title: string;
@@ -40,6 +46,7 @@ export type Issue = {
   parentId?: string | null;
   projectId?: string | null;
   project?: ProjectSummary | null;
+  labels?: LabelSummary[];
   attachments: IssueAttachment[];
 };
 
@@ -125,11 +132,13 @@ type CreateIssueInput = {
   priority?: string;
   parentId?: string | null;
   projectId?: string | null;
+  labelIds?: string[];
 };
 
 type UpdateIssueInput = Partial<CreateIssueInput> & {
   assignedToId?: string | null;
   projectId?: string | null;
+  labelIds?: string[];
 };
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
@@ -145,6 +154,10 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   if (!response.ok) {
     const error = await response.json().catch(() => null);
     throw new Error(error?.error ?? "Request failed");
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return response.json() as Promise<T>;
@@ -371,6 +384,50 @@ export const updateProject = (id: string, patch: UpdateProjectInput) =>
 
 export const deleteProject = (id: string) =>
   request<void>(`/api/projects/${id}`, { method: "DELETE" });
+
+export type Label = {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  issueCount: number;
+};
+
+export type CreateLabelInput = {
+  name: string;
+  description?: string;
+  color?: string;
+};
+
+export type UpdateLabelInput = Partial<CreateLabelInput> & {
+  archived?: boolean;
+};
+
+export const listLabels = (includeArchived = false) => {
+  const qs = includeArchived ? "?include_archived=true" : "";
+  return request<{ labels: Label[] }>(`/api/labels${qs}`);
+};
+
+export const getLabel = (id: string) =>
+  request<{ label: Label }>(`/api/labels/${id}`);
+
+export const createLabel = (input: CreateLabelInput) =>
+  request<{ label: Label }>("/api/labels", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const updateLabel = (id: string, patch: UpdateLabelInput) =>
+  request<{ label: Label }>(`/api/labels/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+
+export const deleteLabel = (id: string) =>
+  request<void>(`/api/labels/${id}`, { method: "DELETE" });
 
 export const getMemberProfile = (id: string) =>
   request<{ member: MemberProfile }>(`/api/members/${id}`);

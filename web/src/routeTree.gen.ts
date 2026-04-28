@@ -17,6 +17,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as AppProjectsRouteImport } from './routes/_app.projects'
 import { Route as AppMembersRouteImport } from './routes/_app.members'
+import { Route as AppLabelsRouteImport } from './routes/_app.labels'
 import { Route as AppIssuesRouteImport } from './routes/_app.issues'
 import { Route as AppInboxRouteImport } from './routes/_app.inbox'
 import { Route as AppChatRouteImport } from './routes/_app.chat'
@@ -63,6 +64,11 @@ const AppProjectsRoute = AppProjectsRouteImport.update({
 const AppMembersRoute = AppMembersRouteImport.update({
   id: '/members',
   path: '/members',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppLabelsRoute = AppLabelsRouteImport.update({
+  id: '/labels',
+  path: '/labels',
   getParentRoute: () => AppRoute,
 } as any)
 const AppIssuesRoute = AppIssuesRouteImport.update({
@@ -115,6 +121,7 @@ export interface FileRoutesByFullPath {
   '/chat': typeof AppChatRouteWithChildren
   '/inbox': typeof AppInboxRoute
   '/issues': typeof AppIssuesRouteWithChildren
+  '/labels': typeof AppLabelsRoute
   '/members': typeof AppMembersRouteWithChildren
   '/projects': typeof AppProjectsRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
@@ -132,6 +139,7 @@ export interface FileRoutesByTo {
   '/chat': typeof AppChatRouteWithChildren
   '/inbox': typeof AppInboxRoute
   '/issues': typeof AppIssuesRouteWithChildren
+  '/labels': typeof AppLabelsRoute
   '/members': typeof AppMembersRouteWithChildren
   '/projects': typeof AppProjectsRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
@@ -151,6 +159,7 @@ export interface FileRoutesById {
   '/_app/chat': typeof AppChatRouteWithChildren
   '/_app/inbox': typeof AppInboxRoute
   '/_app/issues': typeof AppIssuesRouteWithChildren
+  '/_app/labels': typeof AppLabelsRoute
   '/_app/members': typeof AppMembersRouteWithChildren
   '/_app/projects': typeof AppProjectsRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
@@ -170,6 +179,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/inbox'
     | '/issues'
+    | '/labels'
     | '/members'
     | '/projects'
     | '/invite/$token'
@@ -187,6 +197,7 @@ export interface FileRouteTypes {
     | '/chat'
     | '/inbox'
     | '/issues'
+    | '/labels'
     | '/members'
     | '/projects'
     | '/invite/$token'
@@ -205,6 +216,7 @@ export interface FileRouteTypes {
     | '/_app/chat'
     | '/_app/inbox'
     | '/_app/issues'
+    | '/_app/labels'
     | '/_app/members'
     | '/_app/projects'
     | '/invite/$token'
@@ -279,6 +291,13 @@ declare module '@tanstack/react-router' {
       path: '/members'
       fullPath: '/members'
       preLoaderRoute: typeof AppMembersRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/labels': {
+      id: '/_app/labels'
+      path: '/labels'
+      fullPath: '/labels'
+      preLoaderRoute: typeof AppLabelsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/issues': {
@@ -392,6 +411,7 @@ interface AppRouteChildren {
   AppChatRoute: typeof AppChatRouteWithChildren
   AppInboxRoute: typeof AppInboxRoute
   AppIssuesRoute: typeof AppIssuesRouteWithChildren
+  AppLabelsRoute: typeof AppLabelsRoute
   AppMembersRoute: typeof AppMembersRouteWithChildren
   AppProjectsRoute: typeof AppProjectsRouteWithChildren
 }
@@ -401,6 +421,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppChatRoute: AppChatRouteWithChildren,
   AppInboxRoute: AppInboxRoute,
   AppIssuesRoute: AppIssuesRouteWithChildren,
+  AppLabelsRoute: AppLabelsRoute,
   AppMembersRoute: AppMembersRouteWithChildren,
   AppProjectsRoute: AppProjectsRouteWithChildren,
 }

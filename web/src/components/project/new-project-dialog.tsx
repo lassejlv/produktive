@@ -36,6 +36,8 @@ export function NewProjectDialog({
   const nameRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
+    if (!headless) return;
+
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ name?: string }>).detail;
       if (detail?.name) setName(detail.name);
@@ -47,7 +49,7 @@ export function NewProjectDialog({
         "produktive:new-project",
         handler as EventListener,
       );
-  }, []);
+  }, [headless]);
 
   useEffect(() => {
     if (!open) return;

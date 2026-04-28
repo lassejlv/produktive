@@ -1,4 +1,9 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import {
+  Outlet,
+  createFileRoute,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/issue/avatar";
@@ -28,6 +33,9 @@ export const Route = createFileRoute("/_app/projects")({
 
 function ProjectsPage() {
   const navigate = useNavigate();
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
   const [view, setView] = useState<ViewKey>("active");
   const includeArchived = view === "archived" || view === "all";
   const {
@@ -68,6 +76,10 @@ function ProjectsPage() {
     }),
     [projects],
   );
+
+  if (pathname.startsWith("/projects/")) {
+    return <Outlet />;
+  }
 
   const handleArchiveToggle = async (project: Project) => {
     const next = project.archivedAt === null;

@@ -138,6 +138,11 @@ function IssuesPage() {
           filters.projectIds.includes(issue.projectId),
       );
     }
+    if (filters.labelIds.length > 0) {
+      pool = pool.filter((issue) =>
+        (issue.labels ?? []).some((l) => filters.labelIds.includes(l.id)),
+      );
+    }
     return pool;
   }, [issues, view, filters]);
 

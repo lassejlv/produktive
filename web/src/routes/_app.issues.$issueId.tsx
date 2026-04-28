@@ -296,6 +296,28 @@ export function IssueDetail({
     }
   };
 
+  const handleLabels = async (labelIds: string[]) => {
+    if (!issue) return;
+    const previous = issue;
+    const cachedLabels = issue.labels ?? [];
+    const optimistic = labelIds
+      .map((id) => cachedLabels.find((l) => l.id === id))
+      .filter((value): value is NonNullable<typeof value> => Boolean(value));
+    setIssue({ ...issue, labels: optimistic });
+    try {
+      const response = await updateIssue(issue.id, { labelIds });
+      setIssue(response.issue);
+      await reloadAfterChange();
+    } catch (updateError) {
+      setIssue(previous);
+      toast.error(
+        updateError instanceof Error
+          ? updateError.message
+          : "Failed to update labels",
+      );
+    }
+  };
+
   const handleProject = async (projectId: string | null) => {
     if (!issue) return;
     const previous = issue;
@@ -546,10 +568,12 @@ export function IssueDetail({
                   : null
               }
               project={issue.project ?? null}
+              labels={issue.labels ?? []}
               onChangeStatus={(next) => void handleStatus(next)}
               onChangePriority={(next) => void handlePriority(next)}
               onChangeAssignee={(id) => void handleAssignee(id)}
               onChangeProject={(id) => void handleProject(id)}
+              onChangeLabels={(ids) => void handleLabels(ids)}
             />
           </div>
 

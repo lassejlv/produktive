@@ -30,6 +30,10 @@ mod m20260428_000013_create_invitations;
 mod m20260428_000014_create_projects;
 #[path = "../migrations/m20260428_000015_add_issue_project.rs"]
 mod m20260428_000015_add_issue_project;
+#[path = "../migrations/m20260428_000016_create_labels.rs"]
+mod m20260428_000016_create_labels;
+#[path = "../migrations/m20260428_000017_create_issue_labels.rs"]
+mod m20260428_000017_create_issue_labels;
 
 pub struct Migrator;
 
@@ -52,6 +56,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260428_000013_create_invitations::Migration),
             Box::new(m20260428_000014_create_projects::Migration),
             Box::new(m20260428_000015_add_issue_project::Migration),
+            Box::new(m20260428_000016_create_labels::Migration),
+            Box::new(m20260428_000017_create_issue_labels::Migration),
         ]
     }
 }

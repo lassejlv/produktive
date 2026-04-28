@@ -3,6 +3,7 @@ import type * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { StarIcon } from "@/components/chat/icons";
+import { LabelChip } from "@/components/label/label-chip";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { Avatar } from "@/components/issue/avatar";
 import { PriorityIcon } from "@/components/issue/priority-icon";
@@ -365,6 +366,28 @@ export function IssueList({
                             <span className="hidden max-w-[100px] truncate sm:inline">
                               {issue.project.name}
                             </span>
+                          </span>
+                        ) : null}
+                        {properties.labels && (issue.labels?.length ?? 0) > 0 ? (
+                          <span
+                            className="hidden items-center gap-1 sm:flex"
+                            title={(issue.labels ?? [])
+                              .map((l) => l.name)
+                              .join(", ")}
+                          >
+                            {(issue.labels ?? []).slice(0, 2).map((label) => (
+                              <LabelChip
+                                key={label.id}
+                                name={label.name}
+                                color={label.color}
+                                size="sm"
+                              />
+                            ))}
+                            {(issue.labels?.length ?? 0) > 2 ? (
+                              <span className="text-[10.5px] tabular-nums text-fg-faint">
+                                +{(issue.labels?.length ?? 0) - 2}
+                              </span>
+                            ) : null}
                           </span>
                         ) : null}
                         {properties.assignee ? (

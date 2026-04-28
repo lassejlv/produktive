@@ -30,6 +30,7 @@ import { signOut, useSession } from "@/lib/auth-client";
 import { parseMessageWithAttachments } from "@/lib/chat-attachments";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { ISSUE_DRAG_MIME } from "@/components/issue/issue-list";
+import { NewLabelDialog } from "@/components/label/new-label-dialog";
 import { NewProjectDialog } from "@/components/project/new-project-dialog";
 import { updateIssue } from "@/lib/api";
 import { useChats } from "@/lib/use-chats";
@@ -193,6 +194,7 @@ function AppLayout() {
           });
         }}
       />
+      <NewLabelDialog headless />
       <Sidebar className="bg-sidebar/95">
         <SidebarHeader>
           <div className="flex items-center gap-1">
@@ -291,21 +293,31 @@ function AppLayout() {
                   </div>
                 ) : (
                   favorites.map((fav) => {
-                    const targetPath =
-                      fav.type === "chat"
-                        ? `/chat/${fav.id}`
-                        : `/issues/${fav.id}`;
+                    let targetPath = `/issues/${fav.id}`;
+                    if (fav.type === "chat") {
+                      targetPath = `/chat/${fav.id}`;
+                    } else if (fav.type === "project") {
+                      targetPath = `/projects/${fav.id}`;
+                    }
                     const isActive = pathname === targetPath;
-                    const goTo = () =>
-                      fav.type === "chat"
-                        ? navigate({
-                            to: "/chat/$chatId",
-                            params: { chatId: fav.id },
-                          })
-                        : navigate({
-                            to: "/issues/$issueId",
-                            params: { issueId: fav.id },
-                          });
+                    const goTo = () => {
+                      if (fav.type === "chat") {
+                        return navigate({
+                          to: "/chat/$chatId",
+                          params: { chatId: fav.id },
+                        });
+                      }
+                      if (fav.type === "project") {
+                        return navigate({
+                          to: "/projects/$projectId",
+                          params: { projectId: fav.id },
+                        });
+                      }
+                      return navigate({
+                        to: "/issues/$issueId",
+                        params: { issueId: fav.id },
+                      });
+                    };
                     return (
                       <button
                         key={fav.favoriteId}
@@ -321,6 +333,13 @@ function AppLayout() {
                         <span className="shrink-0 text-fg-faint group-hover:text-fg-muted">
                           {fav.type === "issue" ? (
                             <StatusIcon status={fav.status} />
+                          ) : fav.type === "project" ? (
+                            <ProjectIcon
+                              color={fav.color}
+                              icon={fav.icon}
+                              name={fav.title}
+                              size="sm"
+                            />
                           ) : (
                             <SparkleIcon size={11} />
                           )}
@@ -406,6 +425,19 @@ function AppLayout() {
                 <span className="flex-1 truncate">Projects</span>
               </button>
               <SidebarRecentProjects pathname={pathname} />
+              <button
+                type="button"
+                onClick={() => void navigate({ to: "/labels" })}
+                className={cn(
+                  "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
+                  pathname === "/labels"
+                    ? "bg-surface-2 text-fg [&_svg]:text-fg"
+                    : "text-fg-muted hover:bg-surface hover:text-fg",
+                )}
+              >
+                <SidebarLabelsIcon />
+                <span className="flex-1 truncate">Labels</span>
+              </button>
             </div>
           </div>
 
@@ -872,6 +904,20 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
         );
       })}
     </div>
+  );
+}
+
+function SidebarLabelsIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <path
+        d="M7.5 1.5h4a1 1 0 011 1v4l-6 6a1 1 0 01-1.4 0L1.5 8.4a1 1 0 010-1.4l6-6z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <circle cx="9.5" cy="4.5" r="0.9" fill="currentColor" />
+    </svg>
   );
 }
 

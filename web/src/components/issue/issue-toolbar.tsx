@@ -4,6 +4,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { labelColorHex } from "@/lib/label-constants";
+import { useLabels } from "@/lib/use-labels";
 import {
   priorityOptions,
   statusLabel,
@@ -26,6 +28,7 @@ export type IssueFilters = {
   priorities: string[];
   assigneeIds: string[];
   projectIds: string[];
+  labelIds: string[];
 };
 
 export const emptyFilters: IssueFilters = {
@@ -33,6 +36,7 @@ export const emptyFilters: IssueFilters = {
   priorities: [],
   assigneeIds: [],
   projectIds: [],
+  labelIds: [],
 };
 
 export function filterCount(filters: IssueFilters) {
@@ -40,7 +44,8 @@ export function filterCount(filters: IssueFilters) {
     filters.statuses.length +
     filters.priorities.length +
     filters.assigneeIds.length +
-    filters.projectIds.length
+    filters.projectIds.length +
+    filters.labelIds.length
   );
 }
 
@@ -70,6 +75,7 @@ const propertyOptions: { key: keyof ShownProperties; label: string }[] = [
   { key: "status", label: "Status" },
   { key: "assignee", label: "Assignee" },
   { key: "project", label: "Project" },
+  { key: "labels", label: "Labels" },
   { key: "updated", label: "Updated" },
 ];
 
@@ -168,7 +174,16 @@ function FilterPopoverBody({
         : [...filters.projectIds, value],
     });
   };
+  const toggleLabel = (value: string) => {
+    onChange({
+      ...filters,
+      labelIds: filters.labelIds.includes(value)
+        ? filters.labelIds.filter((v) => v !== value)
+        : [...filters.labelIds, value],
+    });
+  };
   const { projects } = useProjects(false);
+  const { labels } = useLabels(false);
   return (
     <div className="text-[12.5px]">
       <Section label="Status">
@@ -201,6 +216,42 @@ function FilterPopoverBody({
           })}
         </div>
       </Section>
+      {labels.filter((l) => l.archivedAt === null).length > 0 ? (
+        <Section label="Label">
+          <div className="flex flex-wrap gap-1">
+            {labels
+              .filter((l) => l.archivedAt === null)
+              .map((label) => {
+                const active = filters.labelIds.includes(label.id);
+                return (
+                  <button
+                    key={label.id}
+                    type="button"
+                    onClick={() => toggleLabel(label.id)}
+                    className={cn(
+                      "inline-flex h-6 items-center gap-1.5 rounded-md border px-2 text-[11.5px] transition-colors",
+                      active
+                        ? "border-border bg-surface text-fg"
+                        : "border-border-subtle bg-transparent text-fg-faint hover:text-fg-muted",
+                    )}
+                  >
+                    <span
+                      aria-hidden
+                      className="size-1.5 rounded-full"
+                      style={{
+                        backgroundColor:
+                          labelColorHex[label.color] ?? labelColorHex.gray,
+                      }}
+                    />
+                    <span className="max-w-[120px] truncate">
+                      {label.name}
+                    </span>
+                  </button>
+                );
+              })}
+          </div>
+        </Section>
+      ) : null}
       {projects.filter((p) => p.archivedAt === null).length > 0 ? (
         <Section label="Project">
           <div className="flex flex-wrap gap-1">
@@ -335,6 +386,17 @@ export function IssueFilterChips({
           }
         />
       ) : null}
+      {filters.labelIds.length > 0 ? (
+        <LabelFilterChips
+          ids={filters.labelIds}
+          onRemove={(id) =>
+            onChange({
+              ...filters,
+              labelIds: filters.labelIds.filter((v) => v !== id),
+            })
+          }
+        />
+      ) : null}
       <button
         type="button"
         onClick={() => onChange(emptyFilters)}
@@ -343,6 +405,32 @@ export function IssueFilterChips({
         Clear
       </button>
     </div>
+  );
+}
+
+function LabelFilterChips({
+  ids,
+  onRemove,
+}: {
+  ids: string[];
+  onRemove: (id: string) => void;
+}) {
+  const { labels } = useLabels(false);
+  const map = new Map(labels.map((l) => [l.id, l]));
+  return (
+    <>
+      {ids.map((id) => {
+        const label = map.get(id);
+        return (
+          <Chip
+            key={`label:${id}`}
+            label={label?.name ?? id.slice(0, 6)}
+            group="label"
+            onRemove={() => onRemove(id)}
+          />
+        );
+      })}
+    </>
   );
 }
 

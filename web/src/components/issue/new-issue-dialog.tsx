@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { PillSelect } from "@/components/issue/pill-select";
 import { PriorityIcon } from "@/components/issue/priority-icon";
 import { StatusIcon } from "@/components/issue/status-icon";
+import { LabelPicker } from "@/components/label/label-picker";
 import { type Issue, createIssue, uploadIssueAttachment } from "@/lib/api";
 import {
   type ChatAttachmentDraft,
@@ -48,6 +49,7 @@ export function NewIssueDialog({
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<string>("backlog");
   const [priority, setPriority] = useState<string>("medium");
+  const [labelIds, setLabelIds] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -126,6 +128,7 @@ export function NewIssueDialog({
     setDescription("");
     setStatus("backlog");
     setPriority("medium");
+    setLabelIds([]);
     setAttachments([]);
   };
 
@@ -145,6 +148,7 @@ export function NewIssueDialog({
         description: description || undefined,
         status,
         priority,
+        labelIds: labelIds.length > 0 ? labelIds : undefined,
       });
 
       for (const attachment of attachments) {
@@ -256,6 +260,10 @@ export function NewIssueDialog({
                 options={priorityOptions}
                 icon={<PriorityIcon priority={priority} />}
               />
+              <NewIssueLabels
+                selectedIds={labelIds}
+                onChange={setLabelIds}
+              />
               <Button
                 type="button"
                 variant="outline"
@@ -340,5 +348,43 @@ export function NewIssueDialog({
         </form>
       </Dialog>
     </>
+  );
+}
+
+function NewIssueLabels({
+  selectedIds,
+  onChange,
+}: {
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  return (
+    <LabelPicker
+      selectedIds={selectedIds}
+      onChange={onChange}
+      trigger={({ onClick }) => (
+        <button
+          type="button"
+          onClick={onClick}
+          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border-subtle bg-surface/40 px-2 text-[12px] text-fg-muted transition-colors hover:border-border hover:text-fg"
+        >
+          <LabelTagIcon />
+          {selectedIds.length > 0 ? `${selectedIds.length} labels` : "Labels"}
+        </button>
+      )}
+    />
+  );
+}
+
+function LabelTagIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <path
+        d="M7.5 1.5h4a1 1 0 011 1v4l-6 6a1 1 0 01-1.4 0L1.5 8.4a1 1 0 010-1.4l6-6z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

@@ -17,6 +17,7 @@ export type ShownProperties = {
   status: boolean;
   assignee: boolean;
   project: boolean;
+  labels: boolean;
   updated: boolean;
 };
 
@@ -39,6 +40,7 @@ export const defaultDisplayOptions: DisplayOptions = {
     status: true,
     assignee: true,
     project: true,
+    labels: true,
     updated: true,
   },
 };

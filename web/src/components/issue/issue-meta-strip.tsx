@@ -2,9 +2,11 @@ import { Avatar } from "@/components/issue/avatar";
 import { MemberPicker } from "@/components/issue/member-picker";
 import { PriorityIcon } from "@/components/issue/priority-icon";
 import { StatusIcon } from "@/components/issue/status-icon";
+import { LabelChip } from "@/components/label/label-chip";
+import { LabelPicker } from "@/components/label/label-picker";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { ProjectPicker } from "@/components/project/project-picker";
-import { type ProjectSummary } from "@/lib/api";
+import { type LabelSummary, type ProjectSummary } from "@/lib/api";
 import {
   priorityOptions,
   statusLabel,
@@ -18,19 +20,23 @@ export function IssueMetaStrip({
   priority,
   assignee,
   project,
+  labels,
   onChangeStatus,
   onChangePriority,
   onChangeAssignee,
   onChangeProject,
+  onChangeLabels,
 }: {
   status: string;
   priority: string;
   assignee: Assignee | null;
   project: ProjectSummary | null;
+  labels: LabelSummary[];
   onChangeStatus: (next: string) => void;
   onChangePriority: (next: string) => void;
   onChangeAssignee: (id: string | null) => void;
   onChangeProject: (id: string | null) => void;
+  onChangeLabels: (ids: string[]) => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-x-1 gap-y-1.5 text-[13px] text-fg-muted">
@@ -94,6 +100,33 @@ export function IssueMetaStrip({
               </>
             ) : (
               <span className="text-fg-faint">Unassigned</span>
+            )}
+          </button>
+        )}
+      />
+      <Separator />
+      <LabelPicker
+        selectedIds={labels.map((l) => l.id)}
+        onChange={onChangeLabels}
+        trigger={({ onClick }) => (
+          <button
+            type="button"
+            onClick={onClick}
+            className="inline-flex h-6 items-center gap-1.5 rounded-[5px] px-1 transition-colors hover:bg-surface/60 hover:text-fg"
+          >
+            {labels.length > 0 ? (
+              <span className="flex flex-wrap items-center gap-1">
+                {labels.map((label) => (
+                  <LabelChip
+                    key={label.id}
+                    name={label.name}
+                    color={label.color}
+                    size="md"
+                  />
+                ))}
+              </span>
+            ) : (
+              <span className="text-fg-faint">+ Add label</span>
             )}
           </button>
         )}

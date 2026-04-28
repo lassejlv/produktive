@@ -54,6 +54,7 @@ pub fn routes() -> Router<AppState> {
 struct ListIssuesQuery {
     status: Option<String>,
     project_id: Option<String>,
+    label_ids: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -66,6 +67,7 @@ struct CreateIssueRequest {
     assigned_to_id: Option<String>,
     parent_id: Option<String>,
     project_id: Option<String>,
+    label_ids: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -78,6 +80,8 @@ struct UpdateIssueRequest {
     assigned_to_id: Option<String>,
     /// Empty string clears the assignment.
     project_id: Option<String>,
+    /// When `Some(...)`, replaces the issue's labels with this exact set.
+    label_ids: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -131,6 +135,7 @@ struct IssueResponse {
     parent_id: Option<String>,
     project_id: Option<String>,
     project: Option<ProjectSummary>,
+    labels: Vec<LabelSummary>,
     attachments: Vec<AttachmentResponse>,
 }
 
@@ -141,6 +146,14 @@ struct ProjectSummary {
     name: String,
     color: String,
     icon: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LabelSummary {
+    id: String,
+    name: String,
+    color: String,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -208,6 +221,26 @@ async fn list_issues(
         select = select.filter(issue::Column::ProjectId.eq(project_id));
     }
 
+    if let Some(raw) = query.label_ids {
+        let ids: Vec<String> = raw
+            .split(',')
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !ids.is_empty() {
+            let join_rows = produktive_entity::issue_label::Entity::find()
+                .filter(produktive_entity::issue_label::Column::LabelId.is_in(ids))
+                .all(&state.db)
+                .await?;
+            let issue_ids: Vec<String> =
+                join_rows.into_iter().map(|j| j.issue_id).collect();
+            if issue_ids.is_empty() {
+                return Ok(Json(IssuesResponse { issues: Vec::new() }));
+            }
+            select = select.filter(issue::Column::Id.is_in(issue_ids));
+        }
+    }
+
     let issues = select.all(&state.db).await?;
     let mut response = Vec::with_capacity(issues.len());
     for issue in issues {
@@ -259,6 +292,14 @@ async fn create_issue(
         crate::http::projects::find_project(&state, &organization_id, pid).await?;
     }
 
+    let label_ids: Vec<String> = payload
+        .label_ids
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|s| !s.trim().is_empty())
+        .collect();
+    crate::http::labels::validate_labels(&state, &organization_id, &label_ids).await?;
+
     let issue = issue::ActiveModel {
         id: Set(Uuid::new_v4().to_string()),
         organization_id: Set(organization_id.clone()),
@@ -276,6 +317,10 @@ async fn create_issue(
     }
     .insert(&state.db)
     .await?;
+
+    if !label_ids.is_empty() {
+        crate::http::labels::replace_issue_labels(&state, &issue.id, &label_ids).await?;
+    }
 
     record_issue_event(
         &state,
@@ -430,9 +475,23 @@ async fn update_issue(
         }
         issue.project_id = Set(next);
     }
+    let label_replacement: Option<Vec<String>> = if let Some(ids) = payload.label_ids {
+        let cleaned: Vec<String> = ids
+            .into_iter()
+            .filter(|s| !s.trim().is_empty())
+            .collect();
+        crate::http::labels::validate_labels(&state, &auth.organization.id, &cleaned)
+            .await?;
+        Some(cleaned)
+    } else {
+        None
+    };
     issue.updated_at = Set(Utc::now().fixed_offset());
 
     let issue = issue.update(&state.db).await?;
+    if let Some(ids) = label_replacement {
+        crate::http::labels::replace_issue_labels(&state, &issue.id, &ids).await?;
+    }
     if !changes.is_empty() {
         record_issue_event(
             &state,
@@ -719,6 +778,17 @@ async fn issue_response(state: &AppState, issue: issue::Model) -> Result<IssueRe
         None => None,
     };
 
+    let label_rows =
+        crate::http::labels::labels_for_issue(state, &issue.id).await?;
+    let labels: Vec<LabelSummary> = label_rows
+        .into_iter()
+        .map(|row| LabelSummary {
+            id: row.id,
+            name: row.name,
+            color: row.color,
+        })
+        .collect();
+
     Ok(IssueResponse {
         id: issue.id,
         title: issue.title,
@@ -732,6 +802,7 @@ async fn issue_response(state: &AppState, issue: issue::Model) -> Result<IssueRe
         parent_id: issue.parent_id,
         project_id: issue.project_id,
         project,
+        labels,
         attachments: issue_attachments(&issue.attachments),
     })
 }
