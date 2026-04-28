@@ -296,6 +296,27 @@ export function IssueDetail({
     }
   };
 
+  const handleProject = async (projectId: string | null) => {
+    if (!issue) return;
+    const previous = issue;
+    setIssue({ ...issue, projectId, project: null });
+    try {
+      const response = await updateIssue(issue.id, {
+        projectId: projectId ?? "",
+      });
+      setIssue(response.issue);
+      await reloadAfterChange();
+      toast.success(projectId ? "Project updated" : "Project cleared");
+    } catch (updateError) {
+      setIssue(previous);
+      toast.error(
+        updateError instanceof Error
+          ? updateError.message
+          : "Failed to update project",
+      );
+    }
+  };
+
   const handleDelete = async () => {
     if (!issue) return;
     if (!window.confirm("Delete this issue? This can't be undone.")) return;
@@ -524,9 +545,11 @@ export function IssueDetail({
                     }
                   : null
               }
+              project={issue.project ?? null}
               onChangeStatus={(next) => void handleStatus(next)}
               onChangePriority={(next) => void handlePriority(next)}
               onChangeAssignee={(id) => void handleAssignee(id)}
+              onChangeProject={(id) => void handleProject(id)}
             />
           </div>
 

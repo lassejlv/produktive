@@ -10,6 +10,13 @@ export const apiPath = (path: string) => {
   return `${apiUrl}${normalizedPath}`;
 };
 
+export type ProjectSummary = {
+  id: string;
+  name: string;
+  color: string;
+  icon: string | null;
+};
+
 export type Issue = {
   id: string;
   title: string;
@@ -31,6 +38,8 @@ export type Issue = {
     image: string | null;
   } | null;
   parentId?: string | null;
+  projectId?: string | null;
+  project?: ProjectSummary | null;
   attachments: IssueAttachment[];
 };
 
@@ -115,10 +124,12 @@ type CreateIssueInput = {
   status?: string;
   priority?: string;
   parentId?: string | null;
+  projectId?: string | null;
 };
 
 type UpdateIssueInput = Partial<CreateIssueInput> & {
   assignedToId?: string | null;
+  projectId?: string | null;
 };
 
 const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
@@ -291,6 +302,76 @@ export const acceptInvitation = (token: string) =>
     body: JSON.stringify({ token }),
   });
 
+export type ProjectLead = {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+};
+
+export type ProjectStatusBreakdown = {
+  backlog: number;
+  todo: number;
+  inProgress: number;
+  done: number;
+};
+
+export type Project = {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  color: string;
+  icon: string | null;
+  leadId: string | null;
+  lead: ProjectLead | null;
+  targetDate: string | null;
+  sortOrder: number;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  issueCount: number;
+  doneCount: number;
+  statusBreakdown: ProjectStatusBreakdown;
+};
+
+export type CreateProjectInput = {
+  name: string;
+  description?: string;
+  status?: string;
+  color?: string;
+  icon?: string | null;
+  leadId?: string | null;
+  targetDate?: string | null;
+};
+
+export type UpdateProjectInput = Partial<CreateProjectInput> & {
+  archived?: boolean;
+};
+
+export const listProjects = (includeArchived = false) => {
+  const qs = includeArchived ? "?include_archived=true" : "";
+  return request<{ projects: Project[] }>(`/api/projects${qs}`);
+};
+
+export const getProject = (id: string) =>
+  request<{ project: Project }>(`/api/projects/${id}`);
+
+export const createProject = (input: CreateProjectInput) =>
+  request<{ project: Project }>("/api/projects", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const updateProject = (id: string, patch: UpdateProjectInput) =>
+  request<{ project: Project }>(`/api/projects/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+
+export const deleteProject = (id: string) =>
+  request<void>(`/api/projects/${id}`, { method: "DELETE" });
+
 export const getMemberProfile = (id: string) =>
   request<{ member: MemberProfile }>(`/api/members/${id}`);
 
@@ -346,7 +427,7 @@ export const joinWaitlist = (email: string) =>
     body: JSON.stringify({ email }),
   });
 
-export type FavoriteTarget = "chat" | "issue";
+export type FavoriteTarget = "chat" | "issue" | "project";
 
 export type Favorite =
   | {
@@ -363,6 +444,16 @@ export type Favorite =
       title: string;
       status: string;
       priority: string;
+      position: number;
+    }
+  | {
+      type: "project";
+      id: string;
+      favoriteId: string;
+      title: string;
+      color: string;
+      icon: string | null;
+      status: string;
       position: number;
     };
 

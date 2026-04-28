@@ -130,6 +130,14 @@ function IssuesPage() {
           filters.assigneeIds.includes(issue.assignedTo.id),
       );
     }
+    if (filters.projectIds.length > 0) {
+      pool = pool.filter(
+        (issue) =>
+          issue.projectId !== null &&
+          issue.projectId !== undefined &&
+          filters.projectIds.includes(issue.projectId),
+      );
+    }
     return pool;
   }, [issues, view, filters]);
 

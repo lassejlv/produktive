@@ -6,7 +6,7 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
-use produktive_entity::{chat, favorite, issue};
+use produktive_entity::{chat, favorite, issue, project};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, Set,
 };
@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 const TARGET_CHAT: &str = "chat";
 const TARGET_ISSUE: &str = "issue";
+const TARGET_PROJECT: &str = "project";
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -49,6 +50,16 @@ enum FavoriteItem {
         title: String,
         status: String,
         priority: String,
+        position: i32,
+    },
+    #[serde(rename = "project")]
+    Project {
+        id: String,
+        favorite_id: String,
+        title: String,
+        color: String,
+        icon: Option<String>,
+        status: String,
         position: i32,
     },
 }
@@ -128,6 +139,23 @@ async fn list_favorites(
                         title: issue.title,
                         status: issue.status,
                         priority: issue.priority,
+                        position: row.position,
+                    });
+                }
+            }
+            TARGET_PROJECT => {
+                if let Some(project) = project::Entity::find_by_id(&row.target_id)
+                    .filter(project::Column::OrganizationId.eq(&auth.organization.id))
+                    .one(&state.db)
+                    .await?
+                {
+                    out.push(FavoriteItem::Project {
+                        id: project.id,
+                        favorite_id: row.id,
+                        title: project.name,
+                        color: project.color,
+                        icon: project.icon,
+                        status: project.status,
                         position: row.position,
                     });
                 }
@@ -253,7 +281,7 @@ async fn noop() -> Result<Json<OkResponse>, ApiError> {
 
 fn normalize_target_type(value: &str) -> Result<String, ApiError> {
     match value {
-        TARGET_CHAT | TARGET_ISSUE => Ok(value.to_owned()),
+        TARGET_CHAT | TARGET_ISSUE | TARGET_PROJECT => Ok(value.to_owned()),
         other => Err(ApiError::BadRequest(format!(
             "Unsupported target type: {other}"
         ))),
@@ -280,6 +308,13 @@ async fn verify_target_exists(
                 .one(&state.db)
                 .await?
                 .ok_or_else(|| ApiError::NotFound("Issue not found".to_owned()))?;
+        }
+        TARGET_PROJECT => {
+            project::Entity::find_by_id(target_id)
+                .filter(project::Column::OrganizationId.eq(organization_id))
+                .one(&state.db)
+                .await?
+                .ok_or_else(|| ApiError::NotFound("Project not found".to_owned()))?;
         }
         _ => {
             return Err(ApiError::BadRequest(format!(

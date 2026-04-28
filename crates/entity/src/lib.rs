@@ -9,6 +9,7 @@ pub mod invitation;
 pub mod issue_subscriber;
 pub mod notification;
 pub mod notification_preference;
+pub mod project;
 pub mod member;
 pub mod organization;
 pub mod session;

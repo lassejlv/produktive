@@ -1,3 +1,4 @@
+import { ProjectIcon } from "@/components/project/project-icon";
 import {
   Popover,
   PopoverContent,
@@ -17,25 +18,29 @@ import {
   type ViewMode,
   priorityLabels,
 } from "@/lib/issue-display";
+import { useProjects } from "@/lib/use-projects";
 import { cn } from "@/lib/utils";
 
 export type IssueFilters = {
   statuses: string[];
   priorities: string[];
   assigneeIds: string[];
+  projectIds: string[];
 };
 
 export const emptyFilters: IssueFilters = {
   statuses: [],
   priorities: [],
   assigneeIds: [],
+  projectIds: [],
 };
 
 export function filterCount(filters: IssueFilters) {
   return (
     filters.statuses.length +
     filters.priorities.length +
-    filters.assigneeIds.length
+    filters.assigneeIds.length +
+    filters.projectIds.length
   );
 }
 
@@ -43,6 +48,7 @@ const groupOptions: { value: GroupBy; label: string }[] = [
   { value: "status", label: "Status" },
   { value: "priority", label: "Priority" },
   { value: "assignee", label: "Assignee" },
+  { value: "project", label: "Project" },
   { value: "none", label: "None" },
 ];
 
@@ -63,6 +69,7 @@ const propertyOptions: { key: keyof ShownProperties; label: string }[] = [
   { key: "id", label: "ID" },
   { key: "status", label: "Status" },
   { key: "assignee", label: "Assignee" },
+  { key: "project", label: "Project" },
   { key: "updated", label: "Updated" },
 ];
 
@@ -153,6 +160,15 @@ function FilterPopoverBody({
         : [...filters.priorities, value],
     });
   };
+  const toggleProject = (value: string) => {
+    onChange({
+      ...filters,
+      projectIds: filters.projectIds.includes(value)
+        ? filters.projectIds.filter((v) => v !== value)
+        : [...filters.projectIds, value],
+    });
+  };
+  const { projects } = useProjects(false);
   return (
     <div className="text-[12.5px]">
       <Section label="Status">
@@ -185,6 +201,40 @@ function FilterPopoverBody({
           })}
         </div>
       </Section>
+      {projects.filter((p) => p.archivedAt === null).length > 0 ? (
+        <Section label="Project">
+          <div className="flex flex-wrap gap-1">
+            {projects
+              .filter((p) => p.archivedAt === null)
+              .map((project) => {
+                const active = filters.projectIds.includes(project.id);
+                return (
+                  <button
+                    key={project.id}
+                    type="button"
+                    onClick={() => toggleProject(project.id)}
+                    className={cn(
+                      "inline-flex h-6 items-center gap-1 rounded-md border px-2 text-[11.5px] transition-colors",
+                      active
+                        ? "border-border bg-surface text-fg"
+                        : "border-border-subtle bg-transparent text-fg-faint hover:text-fg-muted",
+                    )}
+                  >
+                    <ProjectIcon
+                      color={project.color}
+                      icon={project.icon}
+                      name={project.name}
+                      size="sm"
+                    />
+                    <span className="max-w-[120px] truncate">
+                      {project.name}
+                    </span>
+                  </button>
+                );
+              })}
+          </div>
+        </Section>
+      ) : null}
       {filterCount(filters) > 0 ? (
         <div className="border-t border-border-subtle px-3 py-2">
           <button
@@ -274,6 +324,17 @@ export function IssueFilterChips({
           }
         />
       ))}
+      {filters.projectIds.length > 0 ? (
+        <ProjectChips
+          ids={filters.projectIds}
+          onRemove={(id) =>
+            onChange({
+              ...filters,
+              projectIds: filters.projectIds.filter((v) => v !== id),
+            })
+          }
+        />
+      ) : null}
       <button
         type="button"
         onClick={() => onChange(emptyFilters)}
@@ -282,6 +343,32 @@ export function IssueFilterChips({
         Clear
       </button>
     </div>
+  );
+}
+
+function ProjectChips({
+  ids,
+  onRemove,
+}: {
+  ids: string[];
+  onRemove: (id: string) => void;
+}) {
+  const { projects } = useProjects(false);
+  const map = new Map(projects.map((p) => [p.id, p]));
+  return (
+    <>
+      {ids.map((id) => {
+        const project = map.get(id);
+        return (
+          <Chip
+            key={`project:${id}`}
+            label={project?.name ?? id.slice(0, 6)}
+            group="project"
+            onRemove={() => onRemove(id)}
+          />
+        );
+      })}
+    </>
   );
 }
 

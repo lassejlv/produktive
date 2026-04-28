@@ -1,12 +1,27 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { listIssues, type Issue } from "@/lib/api";
+import { ProjectIcon } from "@/components/project/project-icon";
+import {
+  listIssues,
+  listProjects,
+  type Issue,
+  type Project,
+} from "@/lib/api";
 import { signOut } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
 type CommandResult =
   | { type: "issue"; id: string; title: string; statusKey: string }
+  | {
+      type: "project";
+      id: string;
+      title: string;
+      color: string;
+      icon: string | null;
+      issueCount: number;
+      doneCount: number;
+    }
   | { type: "action"; key: string; label: string; hint?: string; run: () => Promise<void> | void };
 
 export function CommandPalette() {
@@ -14,6 +29,7 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [issues, setIssues] = useState<Issue[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -53,8 +69,11 @@ export function CommandPalette() {
     setQuery("");
     setActiveIndex(0);
     requestAnimationFrame(() => inputRef.current?.focus());
-    void listIssues()
-      .then((response) => setIssues(response.issues))
+    void Promise.all([listIssues(), listProjects(false)])
+      .then(([issuesResponse, projectsResponse]) => {
+        setIssues(issuesResponse.issues);
+        setProjects(projectsResponse.projects);
+      })
       .catch(() => {
         /* ignore */
       });
@@ -70,7 +89,7 @@ export function CommandPalette() {
           issue.title.toLowerCase().includes(q) || id.includes(q)
         );
       })
-      .slice(0, 8)
+      .slice(0, 6)
       .map((issue) => ({
         type: "issue" as const,
         id: issue.id,
@@ -78,7 +97,37 @@ export function CommandPalette() {
         statusKey: issue.status,
       }));
 
+    const projectResults: CommandResult[] = projects
+      .filter((project) => {
+        if (!q) return true;
+        return project.name.toLowerCase().includes(q);
+      })
+      .slice(0, 6)
+      .map((project) => ({
+        type: "project" as const,
+        id: project.id,
+        title: project.name,
+        color: project.color,
+        icon: project.icon,
+        issueCount: project.issueCount,
+        doneCount: project.doneCount,
+      }));
+
     const actions: CommandResult[] = [
+      {
+        type: "action" as const,
+        key: "go-projects",
+        label: "Go to Projects",
+        run: () => navigate({ to: "/projects" }),
+      },
+      {
+        type: "action" as const,
+        key: "new-project",
+        label: "New project",
+        run: () => {
+          window.dispatchEvent(new CustomEvent("produktive:new-project"));
+        },
+      },
       {
         type: "action" as const,
         key: "go-issues",
@@ -125,8 +174,8 @@ export function CommandPalette() {
       return action.label.toLowerCase().includes(q);
     });
 
-    return [...issueResults, ...actions];
-  }, [query, issues, navigate]);
+    return [...projectResults, ...issueResults, ...actions];
+  }, [query, issues, projects, navigate]);
 
   // Clamp activeIndex
   useEffect(() => {
@@ -141,6 +190,11 @@ export function CommandPalette() {
       await navigate({
         to: "/issues/$issueId",
         params: { issueId: result.id },
+      });
+    } else if (result.type === "project") {
+      await navigate({
+        to: "/projects/$projectId",
+        params: { projectId: result.id },
       });
     } else {
       try {
@@ -215,7 +269,9 @@ export function CommandPalette() {
                 key={
                   result.type === "issue"
                     ? `issue:${result.id}`
-                    : `action:${result.key}`
+                    : result.type === "project"
+                      ? `project:${result.id}`
+                      : `action:${result.key}`
                 }
                 type="button"
                 data-result-index={index}
@@ -231,6 +287,13 @@ export function CommandPalette() {
                 <span className="grid size-5 shrink-0 place-items-center text-fg-faint">
                   {result.type === "issue" ? (
                     <IssueGlyph />
+                  ) : result.type === "project" ? (
+                    <ProjectIcon
+                      color={result.color}
+                      icon={result.icon}
+                      name={result.title}
+                      size="sm"
+                    />
                   ) : (
                     <ActionGlyph />
                   )}
@@ -242,6 +305,15 @@ export function CommandPalette() {
                         P-{result.id.slice(0, 4).toUpperCase()}
                       </span>{" "}
                       <span>{result.title}</span>
+                    </>
+                  ) : result.type === "project" ? (
+                    <>
+                      <span>{result.title}</span>
+                      {result.issueCount > 0 ? (
+                        <span className="ml-2 text-[11px] tabular-nums text-fg-faint">
+                          {result.doneCount}/{result.issueCount}
+                        </span>
+                      ) : null}
                     </>
                   ) : (
                     result.label

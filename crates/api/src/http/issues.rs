@@ -16,7 +16,7 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
-use produktive_entity::{issue, issue_comment, issue_event, issue_subscriber, user};
+use produktive_entity::{issue, issue_comment, issue_event, issue_subscriber, project, user};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter,
     QueryOrder, Set,
@@ -50,8 +50,10 @@ pub fn routes() -> Router<AppState> {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ListIssuesQuery {
     status: Option<String>,
+    project_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -63,6 +65,7 @@ struct CreateIssueRequest {
     priority: Option<String>,
     assigned_to_id: Option<String>,
     parent_id: Option<String>,
+    project_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -73,6 +76,8 @@ struct UpdateIssueRequest {
     status: Option<String>,
     priority: Option<String>,
     assigned_to_id: Option<String>,
+    /// Empty string clears the assignment.
+    project_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -124,7 +129,18 @@ struct IssueResponse {
     created_by: Option<UserResponse>,
     assigned_to: Option<UserResponse>,
     parent_id: Option<String>,
+    project_id: Option<String>,
+    project: Option<ProjectSummary>,
     attachments: Vec<AttachmentResponse>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectSummary {
+    id: String,
+    name: String,
+    color: String,
+    icon: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -185,6 +201,13 @@ async fn list_issues(
         select = select.filter(issue::Column::Status.eq(status));
     }
 
+    if let Some(project_id) = query
+        .project_id
+        .and_then(|value| non_empty_optional(value).ok().flatten())
+    {
+        select = select.filter(issue::Column::ProjectId.eq(project_id));
+    }
+
     let issues = select.all(&state.db).await?;
     let mut response = Vec::with_capacity(issues.len());
     for issue in issues {
@@ -221,6 +244,21 @@ async fn create_issue(
         find_issue(&state, &organization_id, parent).await?;
     }
 
+    let project_id = payload
+        .project_id
+        .as_deref()
+        .and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_owned())
+            }
+        });
+    if let Some(ref pid) = project_id {
+        crate::http::projects::find_project(&state, &organization_id, pid).await?;
+    }
+
     let issue = issue::ActiveModel {
         id: Set(Uuid::new_v4().to_string()),
         organization_id: Set(organization_id.clone()),
@@ -231,6 +269,7 @@ async fn create_issue(
         created_by_id: Set(Some(actor_id.clone())),
         assigned_to_id: Set(assigned_to_id.clone()),
         parent_id: Set(parent_id),
+        project_id: Set(project_id),
         attachments: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
@@ -368,6 +407,28 @@ async fn update_issue(
             }
         }
         issue.assigned_to_id = Set(value);
+    }
+    if let Some(project_value) = payload.project_id {
+        let trimmed = project_value.trim();
+        let next: Option<String> = if trimmed.is_empty() {
+            None
+        } else {
+            crate::http::projects::find_project(
+                &state,
+                &auth.organization.id,
+                trimmed,
+            )
+            .await?;
+            Some(trimmed.to_owned())
+        };
+        if let Some(change) = string_change(
+            "projectId",
+            before.project_id.as_deref(),
+            next.as_deref(),
+        ) {
+            changes.push(change);
+        }
+        issue.project_id = Set(next);
     }
     issue.updated_at = Set(Utc::now().fixed_offset());
 
@@ -645,6 +706,19 @@ async fn issue_response(state: &AppState, issue: issue::Model) -> Result<IssueRe
         None => None,
     };
 
+    let project = match &issue.project_id {
+        Some(pid) => project::Entity::find_by_id(pid)
+            .one(&state.db)
+            .await?
+            .map(|p| ProjectSummary {
+                id: p.id,
+                name: p.name,
+                color: p.color,
+                icon: p.icon,
+            }),
+        None => None,
+    };
+
     Ok(IssueResponse {
         id: issue.id,
         title: issue.title,
@@ -656,6 +730,8 @@ async fn issue_response(state: &AppState, issue: issue::Model) -> Result<IssueRe
         created_by,
         assigned_to,
         parent_id: issue.parent_id,
+        project_id: issue.project_id,
+        project,
         attachments: issue_attachments(&issue.attachments),
     })
 }

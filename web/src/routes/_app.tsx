@@ -28,9 +28,14 @@ import { LoadingTip } from "@/components/ui/loading-tip";
 import { deleteChat, getChat, type Chat } from "@/lib/api";
 import { signOut, useSession } from "@/lib/auth-client";
 import { parseMessageWithAttachments } from "@/lib/chat-attachments";
+import { ProjectIcon } from "@/components/project/project-icon";
+import { ISSUE_DRAG_MIME } from "@/components/issue/issue-list";
+import { NewProjectDialog } from "@/components/project/new-project-dialog";
+import { updateIssue } from "@/lib/api";
 import { useChats } from "@/lib/use-chats";
 import { useFavorites } from "@/lib/use-favorites";
 import { useInbox } from "@/lib/use-inbox";
+import { useProjects } from "@/lib/use-projects";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app")({
@@ -179,6 +184,15 @@ function AppLayout() {
   return (
     <SidebarProvider>
       <CommandPalette />
+      <NewProjectDialog
+        headless
+        onCreated={(project) => {
+          void navigate({
+            to: "/projects/$projectId",
+            params: { projectId: project.id },
+          });
+        }}
+      />
       <Sidebar className="bg-sidebar/95">
         <SidebarHeader>
           <div className="flex items-center gap-1">
@@ -379,12 +393,24 @@ function AppLayout() {
               </button>
               <button
                 type="button"
-                onClick={() => toast("Projects coming soon")}
-                className="flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] text-fg-muted transition-colors hover:bg-surface hover:text-fg [&_svg]:text-fg-faint"
+                onClick={() => void navigate({ to: "/projects" })}
+                className={cn(
+                  "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
+                  pathname === "/projects" ||
+                    pathname.startsWith("/projects/")
+                    ? "bg-surface-2 text-fg [&_svg]:text-fg"
+                    : "text-fg-muted hover:bg-surface hover:text-fg",
+                )}
               >
                 <ProjectsIcon />
                 <span className="flex-1 truncate">Projects</span>
               </button>
+              <SidebarRecentProjects pathname={pathname} />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex flex-col gap-px">
               <button
                 type="button"
                 onClick={() => void navigate({ to: "/members" })}
@@ -755,6 +781,97 @@ function ViewsIcon() {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+function SidebarRecentProjects({ pathname }: { pathname: string }) {
+  const navigate = useNavigate();
+  const { projects } = useProjects(false);
+  const recent = projects
+    .filter((p) => p.archivedAt === null && p.status !== "cancelled")
+    .slice(0, 5);
+
+  if (recent.length === 0) return null;
+
+  return (
+    <div className="ml-3 mt-0.5 flex flex-col gap-px border-l border-border-subtle/60 pl-2">
+      {recent.map((project) => {
+        const isActive =
+          pathname === `/projects/${project.id}` ||
+          pathname.startsWith(`/projects/${project.id}`);
+        return (
+          <button
+            key={project.id}
+            type="button"
+            onClick={() =>
+              void navigate({
+                to: "/projects/$projectId",
+                params: { projectId: project.id },
+              })
+            }
+            onDragOver={(event) => {
+              if (!event.dataTransfer.types.includes(ISSUE_DRAG_MIME))
+                return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              event.currentTarget.classList.add(
+                "ring-1",
+                "ring-accent/50",
+                "bg-accent/10",
+              );
+            }}
+            onDragLeave={(event) => {
+              event.currentTarget.classList.remove(
+                "ring-1",
+                "ring-accent/50",
+                "bg-accent/10",
+              );
+            }}
+            onDrop={(event) => {
+              event.currentTarget.classList.remove(
+                "ring-1",
+                "ring-accent/50",
+                "bg-accent/10",
+              );
+              const issueId = event.dataTransfer.getData(ISSUE_DRAG_MIME);
+              if (!issueId) return;
+              event.preventDefault();
+              void (async () => {
+                try {
+                  await updateIssue(issueId, { projectId: project.id });
+                  toast.success(`Added to ${project.name}`);
+                } catch (error) {
+                  toast.error(
+                    error instanceof Error
+                      ? error.message
+                      : "Failed to add to project",
+                  );
+                }
+              })();
+            }}
+            className={cn(
+              "flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[12.5px] transition-colors",
+              isActive
+                ? "bg-surface text-fg"
+                : "text-fg-muted hover:bg-surface hover:text-fg",
+            )}
+          >
+            <ProjectIcon
+              color={project.color}
+              icon={project.icon}
+              name={project.name}
+              size="sm"
+            />
+            <span className="min-w-0 flex-1 truncate">{project.name}</span>
+            {project.issueCount > 0 ? (
+              <span className="shrink-0 text-[10px] tabular-nums text-fg-faint">
+                {project.doneCount}/{project.issueCount}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

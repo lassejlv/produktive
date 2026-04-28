@@ -7,6 +7,7 @@ mod invitations;
 mod issues;
 mod members;
 pub mod preferences;
+pub mod projects;
 mod realtime;
 mod waitlist;
 
@@ -19,5 +20,6 @@ pub use invitations::{org_routes as org_invitation_routes, public_routes as invi
 pub use issues::routes as issue_routes;
 pub use members::routes as member_routes;
 pub use preferences::routes as preferences_routes;
+pub use projects::routes as project_routes;
 pub use realtime::routes as realtime_routes;
 pub use waitlist::routes as waitlist_routes;

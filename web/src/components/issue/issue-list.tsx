@@ -3,6 +3,7 @@ import type * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { StarIcon } from "@/components/chat/icons";
+import { ProjectIcon } from "@/components/project/project-icon";
 import { Avatar } from "@/components/issue/avatar";
 import { PriorityIcon } from "@/components/issue/priority-icon";
 import { StatusIcon } from "@/components/issue/status-icon";
@@ -348,6 +349,22 @@ export function IssueList({
                               size={11}
                               filled={Boolean(isFavorite?.(issue.id))}
                             />
+                          </span>
+                        ) : null}
+                        {properties.project && issue.project ? (
+                          <span
+                            className="inline-flex h-5 shrink-0 items-center gap-1 rounded-[4px] border border-border-subtle bg-surface/40 px-1.5 text-[11px] text-fg-muted"
+                            title={issue.project.name}
+                          >
+                            <ProjectIcon
+                              color={issue.project.color}
+                              icon={issue.project.icon}
+                              name={issue.project.name}
+                              size="sm"
+                            />
+                            <span className="hidden max-w-[100px] truncate sm:inline">
+                              {issue.project.name}
+                            </span>
                           </span>
                         ) : null}
                         {properties.assignee ? (

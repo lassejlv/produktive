@@ -6,7 +6,7 @@ import {
   statusOrder,
 } from "@/lib/issue-constants";
 
-export type GroupBy = "status" | "priority" | "assignee" | "none";
+export type GroupBy = "status" | "priority" | "assignee" | "project" | "none";
 export type SortBy = "manual" | "created" | "updated" | "priority";
 export type Density = "comfortable" | "compact";
 export type ViewMode = "list" | "board";
@@ -16,6 +16,7 @@ export type ShownProperties = {
   id: boolean;
   status: boolean;
   assignee: boolean;
+  project: boolean;
   updated: boolean;
 };
 
@@ -37,6 +38,7 @@ export const defaultDisplayOptions: DisplayOptions = {
     id: true,
     status: true,
     assignee: true,
+    project: true,
     updated: true,
   },
 };
@@ -161,6 +163,27 @@ export function groupIssues(
         label: priorityLabels[priority] ?? priority,
         status: null,
         items: buckets[priority],
+      }));
+  }
+
+  if (groupBy === "project") {
+    const buckets: Record<string, { name: string; items: Issue[] }> = {};
+    for (const issue of issues) {
+      const id = issue.project?.id ?? "__noproject";
+      const name = issue.project?.name ?? "No project";
+      (buckets[id] ??= { name, items: [] }).items.push(issue);
+    }
+    return Object.entries(buckets)
+      .sort(([a, av], [b, bv]) => {
+        if (a === "__noproject") return 1;
+        if (b === "__noproject") return -1;
+        return av.name.localeCompare(bv.name);
+      })
+      .map(([key, { name, items }]) => ({
+        key,
+        label: name,
+        status: null,
+        items,
       }));
   }
 

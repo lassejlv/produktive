@@ -240,6 +240,7 @@ async fn create_issue(
         created_by_id: Set(Some(auth.user.id.clone())),
         assigned_to_id: Set(assigned_to_id),
         parent_id: Set(None),
+        project_id: Set(None),
         attachments: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
