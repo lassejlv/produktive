@@ -239,6 +239,7 @@ async fn create_issue(
         priority: Set(optional_string(args.priority, "medium")?),
         created_by_id: Set(Some(auth.user.id.clone())),
         assigned_to_id: Set(assigned_to_id),
+        parent_id: Set(None),
         attachments: Set(None),
         created_at: Set(now),
         updated_at: Set(now),

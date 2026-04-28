@@ -13,6 +13,7 @@ import {
   SparkleIcon,
   StarIcon,
 } from "@/components/chat/icons";
+import { CommandPalette } from "@/components/command-palette";
 import { StatusIcon } from "@/components/issue/status-icon";
 import { OrgSwitcher } from "@/components/org-switcher";
 import {
@@ -29,6 +30,7 @@ import { signOut, useSession } from "@/lib/auth-client";
 import { parseMessageWithAttachments } from "@/lib/chat-attachments";
 import { useChats } from "@/lib/use-chats";
 import { useFavorites } from "@/lib/use-favorites";
+import { useInbox } from "@/lib/use-inbox";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app")({
@@ -48,6 +50,7 @@ function AppLayout() {
     isFavorite,
     toggleFavorite,
   } = useFavorites();
+  const { unreadCount: inboxUnread } = useInbox();
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [chatMenuOpenId, setChatMenuOpenId] = useState<string | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
@@ -175,12 +178,92 @@ function AppLayout() {
 
   return (
     <SidebarProvider>
+      <CommandPalette />
       <Sidebar className="bg-sidebar/95">
         <SidebarHeader>
-          <OrgSwitcher activeOrganization={session.data.organization} />
+          <div className="flex items-center gap-1">
+            <div className="min-w-0 flex-1">
+              <OrgSwitcher activeOrganization={session.data.organization} />
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                window.dispatchEvent(
+                  new CustomEvent("produktive:open-cmdk"),
+                )
+              }
+              aria-label="Search"
+              className="grid size-7 shrink-0 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface hover:text-fg"
+            >
+              <SearchSidebarIcon />
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (
+                  pathname !== "/issues" &&
+                  !pathname.startsWith("/issues/")
+                ) {
+                  await navigate({ to: "/issues" });
+                }
+                setTimeout(() => {
+                  window.dispatchEvent(
+                    new CustomEvent("produktive:new-issue"),
+                  );
+                }, 50);
+              }}
+              aria-label="New issue"
+              className="grid size-7 shrink-0 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface hover:text-fg"
+            >
+              <ComposeIcon />
+            </button>
+          </div>
         </SidebarHeader>
 
         <SidebarContent className="flex flex-col gap-5 px-4 pt-0 pb-3">
+          <div className="flex flex-col gap-px">
+            <button
+              type="button"
+              onClick={() => void navigate({ to: "/inbox" })}
+              className={cn(
+                "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
+                pathname === "/inbox"
+                  ? "bg-surface-2 text-fg [&_svg]:text-fg"
+                  : "text-fg-muted hover:bg-surface hover:text-fg",
+              )}
+            >
+              <InboxIcon />
+              <span className="flex-1 truncate">Inbox</span>
+              {inboxUnread > 0 ? (
+                <span className="ml-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-medium text-white">
+                  {inboxUnread > 99 ? "99+" : inboxUnread}
+                </span>
+              ) : null}
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (
+                  pathname !== "/issues" &&
+                  !pathname.startsWith("/issues/")
+                ) {
+                  await navigate({ to: "/issues" });
+                }
+                setTimeout(() => {
+                  window.dispatchEvent(
+                    new CustomEvent("produktive:filter-mine", {
+                      detail: { userId: currentUser?.id ?? null },
+                    }),
+                  );
+                }, 50);
+              }}
+              className="flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] text-fg-muted transition-colors hover:bg-surface hover:text-fg [&_svg]:text-fg-faint"
+            >
+              <MyIssuesIcon />
+              <span className="flex-1 truncate">My issues</span>
+            </button>
+          </div>
+
           {favoritesLoading || favorites.length > 0 ? (
             <div>
               <div className="flex items-center gap-1.5 px-2 pb-1.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
@@ -286,8 +369,26 @@ function AppLayout() {
                 <IssuesIcon />
                 <span className="flex-1 truncate">Issues</span>
               </button>
+              <button
+                type="button"
+                onClick={() => toast("Views coming soon")}
+                className="flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] text-fg-muted transition-colors hover:bg-surface hover:text-fg [&_svg]:text-fg-faint"
+              >
+                <ViewsIcon />
+                <span className="flex-1 truncate">Views</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => toast("Projects coming soon")}
+                className="flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] text-fg-muted transition-colors hover:bg-surface hover:text-fg [&_svg]:text-fg-faint"
+              >
+                <ProjectsIcon />
+                <span className="flex-1 truncate">Projects</span>
+              </button>
             </div>
           </div>
+
+          <TrySection />
 
           <div>
             <div className="px-2 pb-1.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
@@ -542,5 +643,195 @@ function SignOutIcon() {
       <polyline points="16 17 21 12 16 7" />
       <line x1="21" y1="12" x2="9" y2="12" />
     </svg>
+  );
+}
+
+function InboxIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <path
+        d="M2 3.5h10v5.5l-3 1H5l-3-1V3.5z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2 9l3 1h4l3-1"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function MyIssuesIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <circle cx="7" cy="5" r="2" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M3 12c.5-2 2-3 4-3s3.5 1 4 3"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function SearchSidebarIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 14 14"
+      fill="none"
+      aria-hidden
+    >
+      <circle
+        cx="6"
+        cy="6"
+        r="3.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M11 11l-2.4-2.4"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ComposeIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 14 14"
+      fill="none"
+      aria-hidden
+    >
+      <path
+        d="M2.5 11.5h9M3 9.5l5.6-5.6 1.5 1.5L4.5 11l-2 .5.5-2z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ViewsIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <path
+        d="M2 4.5l5-2.5 5 2.5-5 2.5-5-2.5z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M2 7.5l5 2.5 5-2.5M2 10.5l5 2.5 5-2.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ProjectsIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <path
+        d="M2 4l2-1.5 5.5 3v6L4 14.5 2 13V4z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.5 5.5L12 4v6l-2.5 1.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+const TRY_DISMISSED_KEY = "sidebar-try-dismissed";
+
+function TrySection() {
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setDismissed(window.localStorage.getItem(TRY_DISMISSED_KEY) === "1");
+  }, []);
+
+  if (dismissed) return null;
+
+  const dismiss = () => {
+    setDismissed(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TRY_DISMISSED_KEY, "1");
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between px-2 pb-1.5">
+        <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
+          Try
+        </span>
+        <button
+          type="button"
+          onClick={dismiss}
+          aria-label="Dismiss"
+          className="text-fg-faint transition-colors hover:text-fg"
+        >
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden>
+            <path
+              d="M3 3l6 6M9 3l-6 6"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      </div>
+      <div className="flex flex-col gap-px">
+        <TryItem
+          label="Import issues"
+          onClick={() => toast("Import coming soon")}
+        />
+        <TryItem
+          label="Invite people"
+          onClick={() => toast("Invite coming soon")}
+        />
+        <TryItem
+          label="Connect GitHub"
+          onClick={() => toast("GitHub integration coming soon")}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TryItem({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+    >
+      <span className="grid size-4 place-items-center text-fg-faint">+</span>
+      <span className="flex-1 truncate">{label}</span>
+    </button>
   );
 }

@@ -1,23 +1,21 @@
 use sea_orm::entity::prelude::*;
 use serde::Serialize;
-use serde_json::Value;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize)]
-#[sea_orm(table_name = "issues")]
+#[sea_orm(table_name = "notifications")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
     pub organization_id: String,
+    pub user_id: String,
+    pub kind: String,
+    pub target_type: String,
+    pub target_id: String,
+    pub actor_id: Option<String>,
     pub title: String,
-    pub description: Option<String>,
-    pub status: String,
-    pub priority: String,
-    pub created_by_id: Option<String>,
-    pub assigned_to_id: Option<String>,
-    pub parent_id: Option<String>,
-    pub attachments: Option<Value>,
+    pub snippet: Option<String>,
     pub created_at: DateTimeWithTimeZone,
-    pub updated_at: DateTimeWithTimeZone,
+    pub read_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

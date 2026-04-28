@@ -1,6 +1,7 @@
 use crate::{
     auth::require_auth,
     error::ApiError,
+    http::inbox::enqueue_notification,
     issue_helpers::{
         non_empty_optional, normalize_assignee, optional_string, required_string, validate_assignee,
     },
@@ -15,7 +16,7 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
-use produktive_entity::{issue, issue_comment, issue_event, user};
+use produktive_entity::{issue, issue_comment, issue_event, issue_subscriber, user};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter,
     QueryOrder, Set,
@@ -36,6 +37,12 @@ pub fn routes() -> Router<AppState> {
         .route("/{id}/history", get(get_issue_history))
         .route("/{id}/comments", get(list_comments).post(create_comment))
         .route(
+            "/{id}/subscribers",
+            get(list_subscribers)
+                .post(subscribe_self)
+                .delete(unsubscribe_self),
+        )
+        .route(
             "/{id}/attachments",
             post(upload_attachment)
                 .layer(DefaultBodyLimit::max(MAX_ATTACHMENT_BYTES + 1024 * 1024)),
@@ -55,6 +62,7 @@ struct CreateIssueRequest {
     status: Option<String>,
     priority: Option<String>,
     assigned_to_id: Option<String>,
+    parent_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -115,6 +123,7 @@ struct IssueResponse {
     updated_at: String,
     created_by: Option<UserResponse>,
     assigned_to: Option<UserResponse>,
+    parent_id: Option<String>,
     attachments: Vec<AttachmentResponse>,
 }
 
@@ -197,6 +206,21 @@ async fn create_issue(
 
     let actor_id = auth.user.id.clone();
     let organization_id = auth.organization.id;
+    let parent_id = payload
+        .parent_id
+        .as_deref()
+        .and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_owned())
+            }
+        });
+    if let Some(ref parent) = parent_id {
+        find_issue(&state, &organization_id, parent).await?;
+    }
+
     let issue = issue::ActiveModel {
         id: Set(Uuid::new_v4().to_string()),
         organization_id: Set(organization_id.clone()),
@@ -206,6 +230,7 @@ async fn create_issue(
         priority: Set(optional_string(payload.priority, "medium")?),
         created_by_id: Set(Some(actor_id.clone())),
         assigned_to_id: Set(assigned_to_id.clone()),
+        parent_id: Set(parent_id),
         attachments: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
@@ -326,6 +351,7 @@ async fn update_issue(
         }
         issue.priority = Set(next);
     }
+    let mut new_assignee_for_notify: Option<String> = None;
     if let Some(value) = assigned_to_id {
         if let Some(change) = string_change(
             "assignedToId",
@@ -333,6 +359,13 @@ async fn update_issue(
             value.as_deref(),
         ) {
             changes.push(change);
+            if let Some(ref new_id) = value {
+                if Some(new_id.as_str()) != before.assigned_to_id.as_deref()
+                    && new_id != &auth.user.id
+                {
+                    new_assignee_for_notify = Some(new_id.clone());
+                }
+            }
         }
         issue.assigned_to_id = Set(value);
     }
@@ -349,6 +382,20 @@ async fn update_issue(
             changes,
         )
         .await?;
+    }
+    if let Some(assignee_id) = new_assignee_for_notify {
+        let _ = enqueue_notification(
+            &state,
+            &auth.organization.id,
+            &assignee_id,
+            "assignment",
+            "issue",
+            &issue.id,
+            Some(&auth.user.id),
+            &format!("Assigned to you: \"{}\"", issue.title),
+            None,
+        )
+        .await;
     }
     Ok(Json(IssueEnvelope {
         issue: issue_response(&state, issue).await?,
@@ -436,9 +483,35 @@ async fn create_comment(
     .insert(&state.db)
     .await?;
 
+    let issue_title = issue.title.clone();
+    let issue_id_for_notify = issue.id.clone();
     let mut active = issue.into_active_model();
     active.updated_at = Set(Utc::now().fixed_offset());
     active.update(&state.db).await?;
+
+    // Notify subscribers (excluding the author)
+    let subscribers = issue_subscriber::Entity::find()
+        .filter(issue_subscriber::Column::IssueId.eq(&issue_id_for_notify))
+        .all(&state.db)
+        .await?;
+    let snippet = comment.body.chars().take(140).collect::<String>();
+    for sub in subscribers {
+        if sub.user_id == auth.user.id {
+            continue;
+        }
+        let _ = enqueue_notification(
+            &state,
+            &auth.organization.id,
+            &sub.user_id,
+            "comment",
+            "issue",
+            &issue_id_for_notify,
+            Some(&auth.user.id),
+            &format!("New comment on \"{}\"", issue_title),
+            Some(snippet.clone()),
+        )
+        .await;
+    }
 
     Ok((
         StatusCode::CREATED,
@@ -578,6 +651,7 @@ async fn issue_response(state: &AppState, issue: issue::Model) -> Result<IssueRe
         updated_at: issue.updated_at.to_rfc3339(),
         created_by,
         assigned_to,
+        parent_id: issue.parent_id,
         attachments: issue_attachments(&issue.attachments),
     })
 }
@@ -636,4 +710,89 @@ async fn find_user_response(state: &AppState, id: &str) -> Result<Option<UserRes
             email: user.email,
             image: user.image,
         }))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SubscribersResponse {
+    subscribers: Vec<UserResponse>,
+    subscribed: bool,
+}
+
+async fn list_subscribers(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<SubscribersResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    find_issue(&state, &auth.organization.id, &id).await?;
+
+    let rows = issue_subscriber::Entity::find()
+        .filter(issue_subscriber::Column::OrganizationId.eq(&auth.organization.id))
+        .filter(issue_subscriber::Column::IssueId.eq(&id))
+        .order_by_asc(issue_subscriber::Column::CreatedAt)
+        .all(&state.db)
+        .await?;
+
+    let mut subscribers = Vec::with_capacity(rows.len());
+    let mut subscribed = false;
+    for row in rows {
+        if row.user_id == auth.user.id {
+            subscribed = true;
+        }
+        if let Some(user) = find_user_response(&state, &row.user_id).await? {
+            subscribers.push(user);
+        }
+    }
+
+    Ok(Json(SubscribersResponse {
+        subscribers,
+        subscribed,
+    }))
+}
+
+async fn subscribe_self(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<SubscribersResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    find_issue(&state, &auth.organization.id, &id).await?;
+
+    let existing = issue_subscriber::Entity::find()
+        .filter(issue_subscriber::Column::IssueId.eq(&id))
+        .filter(issue_subscriber::Column::UserId.eq(&auth.user.id))
+        .one(&state.db)
+        .await?;
+
+    if existing.is_none() {
+        issue_subscriber::ActiveModel {
+            id: Set(Uuid::new_v4().to_string()),
+            organization_id: Set(auth.organization.id.clone()),
+            issue_id: Set(id.clone()),
+            user_id: Set(auth.user.id.clone()),
+            created_at: Set(Utc::now().fixed_offset()),
+        }
+        .insert(&state.db)
+        .await?;
+    }
+
+    list_subscribers(State(state), headers, Path(id)).await
+}
+
+async fn unsubscribe_self(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<SubscribersResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    find_issue(&state, &auth.organization.id, &id).await?;
+
+    issue_subscriber::Entity::delete_many()
+        .filter(issue_subscriber::Column::IssueId.eq(&id))
+        .filter(issue_subscriber::Column::UserId.eq(&auth.user.id))
+        .exec(&state.db)
+        .await?;
+
+    list_subscribers(State(state), headers, Path(id)).await
 }

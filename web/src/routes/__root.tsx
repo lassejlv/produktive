@@ -11,7 +11,6 @@ function RootLayout() {
     <>
       <Outlet />
       <Toaster />
-      <TanStackRouterDevtools position="top-right" />
     </>
   );
 }

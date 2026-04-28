@@ -20,11 +20,17 @@ import {
   type IssueComment,
   type IssueHistoryChange,
   type IssueHistoryEvent,
+  type IssueSubscriberUser,
+  createIssue,
   createIssueComment,
   deleteIssue,
   getIssue,
   getIssueHistory,
   listIssueComments,
+  listIssueSubscribers,
+  listIssues,
+  subscribeToIssue,
+  unsubscribeFromIssue,
   updateIssue,
   uploadIssueAttachment,
 } from "@/lib/api";
@@ -42,7 +48,20 @@ function IssueDetailPage() {
   return <IssueDetail issueId={issueId} />;
 }
 
-export function IssueDetail({ issueId }: { issueId: string }) {
+export type IssueDetailSiblings = {
+  position: number | null;
+  total: number;
+  prevId: string | null;
+  nextId: string | null;
+};
+
+export function IssueDetail({
+  issueId,
+  siblings,
+}: {
+  issueId: string;
+  siblings?: IssueDetailSiblings;
+}) {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -76,6 +95,42 @@ export function IssueDetail({ issueId }: { issueId: string }) {
       document.removeEventListener("keydown", onKey);
     };
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!siblings) return;
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (
+        (event.key === "j" || event.key === "ArrowDown") &&
+        siblings.nextId
+      ) {
+        event.preventDefault();
+        void navigate({
+          to: "/issues/$issueId",
+          params: { issueId: siblings.nextId },
+        });
+      } else if (
+        (event.key === "k" || event.key === "ArrowUp") &&
+        siblings.prevId
+      ) {
+        event.preventDefault();
+        void navigate({
+          to: "/issues/$issueId",
+          params: { issueId: siblings.prevId },
+        });
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [siblings, navigate]);
 
   const loadIssueData = async (showLoading = false) => {
     if (showLoading) setIsLoading(true);
@@ -326,21 +381,34 @@ export function IssueDetail({ issueId }: { issueId: string }) {
   return (
     <main className="min-h-full bg-bg">
       <header className="flex items-center justify-between gap-3 px-6 pt-5">
-        <Link
-          to="/issues"
-          className="inline-flex items-center gap-1.5 text-[12px] text-fg-faint transition-colors hover:text-fg-muted"
-        >
-          <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
-            <path
-              d="M9 3l-4 4 4 4"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+        <div className="flex items-center gap-3">
+          <Link
+            to="/issues"
+            className="inline-flex items-center gap-1.5 text-[12px] text-fg-faint transition-colors hover:text-fg-muted"
+          >
+            <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
+              <path
+                d="M9 3l-4 4 4 4"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Back to issues
+          </Link>
+          {siblings && siblings.position !== null ? (
+            <SiblingsNav
+              siblings={siblings}
+              onNavigate={(id) =>
+                void navigate({
+                  to: "/issues/$issueId",
+                  params: { issueId: id },
+                })
+              }
             />
-          </svg>
-          Back to issues
-        </Link>
+          ) : null}
+        </div>
         {issue ? (
           <div className="flex items-center gap-0.5">
             <input
@@ -469,6 +537,8 @@ export function IssueDetail({ issueId }: { issueId: string }) {
             />
           </div>
 
+          <SubIssuesSection parentId={issueId} />
+
           {issue.attachments && issue.attachments.length > 0 ? (
             <section className="mt-12">
               <h2 className="mb-3 text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
@@ -479,9 +549,12 @@ export function IssueDetail({ issueId }: { issueId: string }) {
           ) : null}
 
           <section className="mt-14 border-t border-border-subtle pt-8">
-            <h2 className="mb-5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
-              Activity
-            </h2>
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
+                Activity
+              </h2>
+              <SubscribeStrip issueId={issueId} />
+            </div>
             <IssueTimeline items={timeline} />
             <div className="mt-6">
               <CommentComposer
@@ -495,6 +568,330 @@ export function IssueDetail({ issueId }: { issueId: string }) {
         </article>
       )}
     </main>
+  );
+}
+
+function SubIssuesSection({ parentId }: { parentId: string }) {
+  const navigate = useNavigate();
+  const [children, setChildren] = useState<Issue[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const reload = async () => {
+    try {
+      const response = await listIssues();
+      setChildren(
+        response.issues.filter((issue) => issue.parentId === parentId),
+      );
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parentId]);
+
+  const submit = async () => {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    setSubmitting(true);
+    try {
+      const response = await createIssue({ title: trimmed, parentId });
+      setChildren((current) => [...current, response.issue]);
+      setDraft("");
+      setCreating(false);
+      toast.success("Sub-issue added");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading && children.length === 0 && !creating) return null;
+
+  const done = children.filter((c) => c.status === "done").length;
+
+  return (
+    <section className="mt-12">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h2 className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
+            Sub-issues
+          </h2>
+          {children.length > 0 ? (
+            <span className="text-[11px] tabular-nums text-fg-faint">
+              {done} / {children.length}
+            </span>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="text-[11px] text-fg-muted transition-colors hover:text-fg"
+        >
+          + Add
+        </button>
+      </div>
+      {children.length > 0 ? (
+        <ul className="overflow-hidden rounded-lg border border-border-subtle">
+          {children.map((child, index) => (
+            <li
+              key={child.id}
+              className={cn(
+                "border-border-subtle",
+                index !== children.length - 1 && "border-b",
+              )}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  void navigate({
+                    to: "/issues/$issueId",
+                    params: { issueId: child.id },
+                  })
+                }
+                className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-surface/40"
+              >
+                <SubIssueStatusDot status={child.status} />
+                <span className="font-mono text-[11px] text-fg-faint">
+                  P-{child.id.slice(0, 4).toUpperCase()}
+                </span>
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-[13px]",
+                    child.status === "done"
+                      ? "text-fg-muted line-through"
+                      : "text-fg",
+                  )}
+                >
+                  {child.title}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {creating ? (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+          className={cn(
+            "mt-2 flex items-center gap-2 rounded-lg border border-border bg-surface/40 px-3 py-2",
+          )}
+        >
+          <span className="size-3 rounded-full border border-dashed border-fg-faint" />
+          <input
+            autoFocus
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setCreating(false);
+                setDraft("");
+              }
+            }}
+            onBlur={() => {
+              if (!draft.trim()) {
+                setCreating(false);
+                setDraft("");
+              }
+            }}
+            placeholder="Sub-issue title…"
+            disabled={submitting}
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-fg outline-none placeholder:text-fg-faint disabled:opacity-50"
+          />
+          <button
+            type="submit"
+            disabled={!draft.trim() || submitting}
+            className="rounded-md bg-fg px-2 py-0.5 text-[11px] font-medium text-bg disabled:opacity-50"
+          >
+            {submitting ? "…" : "Add"}
+          </button>
+        </form>
+      ) : null}
+    </section>
+  );
+}
+
+function SubIssueStatusDot({ status }: { status: string }) {
+  const color =
+    status === "done"
+      ? "bg-success"
+      : status === "in-progress"
+        ? "bg-accent"
+        : status === "todo"
+          ? "bg-fg-muted"
+          : "border border-dashed border-fg-faint";
+  return <span className={cn("size-3 shrink-0 rounded-full", color)} />;
+}
+
+function SubscribeStrip({ issueId }: { issueId: string }) {
+  const [subscribers, setSubscribers] = useState<IssueSubscriberUser[]>([]);
+  const [subscribed, setSubscribed] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    void listIssueSubscribers(issueId)
+      .then((response) => {
+        if (!mounted) return;
+        setSubscribers(response.subscribers);
+        setSubscribed(response.subscribed);
+      })
+      .catch(() => {
+        /* ignore */
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [issueId]);
+
+  const toggle = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const response = subscribed
+        ? await unsubscribeFromIssue(issueId)
+        : await subscribeToIssue(issueId);
+      setSubscribers(response.subscribers);
+      setSubscribed(response.subscribed);
+      toast.success(subscribed ? "Unsubscribed" : "Subscribed");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) return null;
+
+  const visible = subscribers.slice(0, 4);
+  const extra = subscribers.length - visible.length;
+
+  return (
+    <div className="flex items-center gap-2 text-[11px] text-fg-muted">
+      <button
+        type="button"
+        onClick={() => void toggle()}
+        disabled={busy}
+        className="rounded-full border border-border-subtle px-2 py-0.5 transition-colors hover:border-border hover:text-fg disabled:opacity-50"
+      >
+        {subscribed ? "Unsubscribe" : "Subscribe"}
+      </button>
+      {visible.length > 0 ? (
+        <div className="flex -space-x-1.5">
+          {visible.map((user) => (
+            <span
+              key={user.id}
+              title={user.name}
+              className="grid size-5 place-items-center rounded-full border border-bg bg-surface-2 text-[9px] font-medium text-fg-muted"
+            >
+              {user.image ? (
+                <img
+                  src={user.image}
+                  alt=""
+                  className="size-5 rounded-full object-cover"
+                />
+              ) : (
+                user.name.slice(0, 2).toUpperCase()
+              )}
+            </span>
+          ))}
+          {extra > 0 ? (
+            <span className="grid size-5 place-items-center rounded-full border border-bg bg-surface-2 text-[9px] tabular-nums text-fg-muted">
+              +{extra}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SiblingsNav({
+  siblings,
+  onNavigate,
+}: {
+  siblings: IssueDetailSiblings;
+  onNavigate: (id: string) => void;
+}) {
+  const goPrev = () => {
+    if (siblings.prevId) onNavigate(siblings.prevId);
+  };
+  const goNext = () => {
+    if (siblings.nextId) onNavigate(siblings.nextId);
+  };
+
+  return (
+    <div className="inline-flex items-center gap-2 rounded-full border border-border-subtle bg-surface/40 px-2 py-0.5 text-[11px] text-fg-muted">
+      <span className="tabular-nums">
+        {siblings.position} <span className="text-fg-faint">/</span>{" "}
+        {siblings.total}
+      </span>
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={goPrev}
+          disabled={!siblings.prevId}
+          aria-label="Previous issue"
+          className="grid size-5 place-items-center rounded-[4px] text-fg-faint transition-colors hover:bg-surface hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-faint"
+        >
+          <ArrowIcon direction="up" />
+        </button>
+        <button
+          type="button"
+          onClick={goNext}
+          disabled={!siblings.nextId}
+          aria-label="Next issue"
+          className="grid size-5 place-items-center rounded-[4px] text-fg-faint transition-colors hover:bg-surface hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-faint"
+        >
+          <ArrowIcon direction="down" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ArrowIcon({ direction }: { direction: "up" | "down" }) {
+  return (
+    <svg
+      width="9"
+      height="9"
+      viewBox="0 0 12 12"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      style={{
+        transform: direction === "up" ? "rotate(180deg)" : "none",
+      }}
+    >
+      <path
+        d="M3 4.5l3 3 3-3"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

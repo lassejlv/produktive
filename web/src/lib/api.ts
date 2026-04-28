@@ -30,6 +30,7 @@ export type Issue = {
     email: string;
     image: string | null;
   } | null;
+  parentId?: string | null;
   attachments: IssueAttachment[];
 };
 
@@ -113,6 +114,7 @@ type CreateIssueInput = {
   description?: string;
   status?: string;
   priority?: string;
+  parentId?: string | null;
 };
 
 type UpdateIssueInput = Partial<CreateIssueInput> & {
@@ -153,6 +155,60 @@ export const createIssueComment = (id: string, body: string) =>
     method: "POST",
     body: JSON.stringify({ body }),
   });
+
+export type IssueSubscriberUser = {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+};
+
+export type IssueSubscribersResponse = {
+  subscribers: IssueSubscriberUser[];
+  subscribed: boolean;
+};
+
+export const listIssueSubscribers = (id: string) =>
+  request<IssueSubscribersResponse>(`/api/issues/${id}/subscribers`);
+
+export const subscribeToIssue = (id: string) =>
+  request<IssueSubscribersResponse>(`/api/issues/${id}/subscribers`, {
+    method: "POST",
+  });
+
+export const unsubscribeFromIssue = (id: string) =>
+  request<IssueSubscribersResponse>(`/api/issues/${id}/subscribers`, {
+    method: "DELETE",
+  });
+
+export type InboxNotification = {
+  id: string;
+  kind: string;
+  targetType: string;
+  targetId: string;
+  title: string;
+  snippet: string | null;
+  createdAt: string;
+  readAt: string | null;
+  actor: {
+    id: string;
+    name: string;
+    image: string | null;
+  } | null;
+};
+
+export type InboxResponse = {
+  notifications: InboxNotification[];
+  unreadCount: number;
+};
+
+export const listInbox = () => request<InboxResponse>("/api/inbox");
+
+export const markNotificationRead = (id: string) =>
+  request<InboxResponse>(`/api/inbox/${id}/read`, { method: "POST" });
+
+export const markAllNotificationsRead = () =>
+  request<InboxResponse>("/api/inbox/read-all", { method: "POST" });
 
 export const getMemberProfile = (id: string) =>
   request<{ member: MemberProfile }>(`/api/members/${id}`);

@@ -46,6 +46,10 @@ export function useIssues() {
     );
   };
 
+  const removeIssueLocal = (id: string) => {
+    setIssues((current) => current.filter((issue) => issue.id !== id));
+  };
+
   const dismissError = () => setError(null);
 
   return {
@@ -55,5 +59,6 @@ export function useIssues() {
     dismissError,
     addIssue,
     updateIssueLocal,
+    removeIssueLocal,
   };
 }

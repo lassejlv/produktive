@@ -5,6 +5,8 @@ pub mod favorite;
 pub mod issue;
 pub mod issue_comment;
 pub mod issue_event;
+pub mod issue_subscriber;
+pub mod notification;
 pub mod member;
 pub mod organization;
 pub mod session;

@@ -16,6 +16,12 @@ mod m20260428_000006_create_issue_events;
 mod m20260428_000007_create_favorites;
 #[path = "../migrations/m20260428_000008_create_issue_comments.rs"]
 mod m20260428_000008_create_issue_comments;
+#[path = "../migrations/m20260428_000009_create_issue_subscribers.rs"]
+mod m20260428_000009_create_issue_subscribers;
+#[path = "../migrations/m20260428_000010_add_issue_parent.rs"]
+mod m20260428_000010_add_issue_parent;
+#[path = "../migrations/m20260428_000011_create_notifications.rs"]
+mod m20260428_000011_create_notifications;
 
 pub struct Migrator;
 
@@ -31,6 +37,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20260428_000006_create_issue_events::Migration),
             Box::new(m20260428_000007_create_favorites::Migration),
             Box::new(m20260428_000008_create_issue_comments::Migration),
+            Box::new(m20260428_000009_create_issue_subscribers::Migration),
+            Box::new(m20260428_000010_add_issue_parent::Migration),
+            Box::new(m20260428_000011_create_notifications::Migration),
         ]
     }
 }

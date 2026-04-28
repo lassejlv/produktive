@@ -85,6 +85,20 @@ export function NewIssueDialog({
   }, [shortcutEnabled]);
 
   useEffect(() => {
+    if (!shortcutEnabled) return;
+    const onOpenEvent = () => setOpen(true);
+    window.addEventListener(
+      "produktive:new-issue",
+      onOpenEvent as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        "produktive:new-issue",
+        onOpenEvent as EventListener,
+      );
+  }, [shortcutEnabled]);
+
+  useEffect(() => {
     if (!dragging) return;
 
     const onMove = (event: globalThis.PointerEvent) => {
