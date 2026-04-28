@@ -1,0 +1,25 @@
+[package]
+name = "autumn-rs"
+version = "0.2.0"
+edition.workspace = true
+license.workspace = true
+description = "Async Rust SDK for the Autumn Billing API"
+repository = "https://github.com/lassejlv/produktive"
+readme = "README.md"
+keywords = ["autumn", "billing", "stripe", "sdk"]
+categories = ["api-bindings", "web-programming::http-client"]
+
+[features]
+default = []
+tracing = ["dep:tracing"]
+
+[dependencies]
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing = { workspace = true, optional = true }
+
+[dev-dependencies]
+wiremock = "0.6"

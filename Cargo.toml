@@ -1,5 +1,11 @@
 [workspace]
-members = ["crates/ai", "crates/api", "crates/entity", "crates/migration"]
+members = [
+    "crates/ai",
+    "crates/api",
+    "crates/autumn-rs",
+    "crates/entity",
+    "crates/migration",
+]
 resolver = "2"
 
 [workspace.package]
