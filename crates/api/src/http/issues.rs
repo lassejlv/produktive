@@ -1,7 +1,7 @@
 use crate::{
     auth::require_auth,
     error::ApiError,
-    http::inbox::enqueue_notification,
+    http::inbox::dispatch_notification,
     issue_helpers::{
         non_empty_optional, normalize_assignee, optional_string, required_string, validate_assignee,
     },
@@ -384,7 +384,8 @@ async fn update_issue(
         .await?;
     }
     if let Some(assignee_id) = new_assignee_for_notify {
-        let _ = enqueue_notification(
+        let target_path = format!("/issues/{}", issue.id);
+        let _ = dispatch_notification(
             &state,
             &auth.organization.id,
             &assignee_id,
@@ -394,6 +395,7 @@ async fn update_issue(
             Some(&auth.user.id),
             &format!("Assigned to you: \"{}\"", issue.title),
             None,
+            &target_path,
         )
         .await;
     }
@@ -495,11 +497,12 @@ async fn create_comment(
         .all(&state.db)
         .await?;
     let snippet = comment.body.chars().take(140).collect::<String>();
+    let target_path = format!("/issues/{}", issue_id_for_notify);
     for sub in subscribers {
         if sub.user_id == auth.user.id {
             continue;
         }
-        let _ = enqueue_notification(
+        let _ = dispatch_notification(
             &state,
             &auth.organization.id,
             &sub.user_id,
@@ -509,6 +512,7 @@ async fn create_comment(
             Some(&auth.user.id),
             &format!("New comment on \"{}\"", issue_title),
             Some(snippet.clone()),
+            &target_path,
         )
         .await;
     }

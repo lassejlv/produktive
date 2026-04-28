@@ -5,17 +5,32 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
 
+type LoginSearch = {
+  invite?: string;
+  email?: string;
+  mode?: "signin" | "signup";
+};
+
 export const Route = createFileRoute("/login")({
   component: LoginPage,
+  validateSearch: (search: Record<string, unknown>): LoginSearch => ({
+    invite: typeof search.invite === "string" ? search.invite : undefined,
+    email: typeof search.email === "string" ? search.email : undefined,
+    mode: search.mode === "signin" || search.mode === "signup" ? search.mode : undefined,
+  }),
 });
 
 type AuthMode = "signin" | "signup";
 
 function LoginPage() {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<AuthMode>("signin");
+  const search = Route.useSearch();
+  const inviteToken = search.invite ?? null;
+  const [mode, setMode] = useState<AuthMode>(
+    search.mode ?? (inviteToken ? "signup" : "signin"),
+  );
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(search.email ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -40,7 +55,19 @@ function LoginPage() {
     }
 
     if (mode === "signup") {
-      setMessage("Check your email to verify your address.");
+      setMessage(
+        inviteToken
+          ? "Check your email to verify your address, then come back here."
+          : "Check your email to verify your address.",
+      );
+      return;
+    }
+
+    if (inviteToken) {
+      await navigate({
+        to: "/invite/$token",
+        params: { token: inviteToken },
+      });
       return;
     }
 
@@ -100,7 +127,13 @@ function LoginPage() {
               onChange={(event) => setEmail(event.target.value)}
               placeholder="john@doe.gg"
               required
+              readOnly={Boolean(inviteToken && mode === "signup")}
             />
+            {inviteToken && mode === "signup" ? (
+              <p className="text-[11px] text-fg-faint">
+                The invitation is for this email.
+              </p>
+            ) : null}
           </div>
 
           <div className="grid gap-1.5">

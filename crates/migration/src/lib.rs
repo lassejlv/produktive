@@ -22,6 +22,10 @@ mod m20260428_000009_create_issue_subscribers;
 mod m20260428_000010_add_issue_parent;
 #[path = "../migrations/m20260428_000011_create_notifications.rs"]
 mod m20260428_000011_create_notifications;
+#[path = "../migrations/m20260428_000012_create_notification_preferences.rs"]
+mod m20260428_000012_create_notification_preferences;
+#[path = "../migrations/m20260428_000013_create_invitations.rs"]
+mod m20260428_000013_create_invitations;
 
 pub struct Migrator;
 
@@ -40,6 +44,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260428_000009_create_issue_subscribers::Migration),
             Box::new(m20260428_000010_add_issue_parent::Migration),
             Box::new(m20260428_000011_create_notifications::Migration),
+            Box::new(m20260428_000012_create_notification_preferences::Migration),
+            Box::new(m20260428_000013_create_invitations::Migration),
         ]
     }
 }

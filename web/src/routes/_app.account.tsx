@@ -1,9 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingTip } from "@/components/ui/loading-tip";
+import {
+  type NotificationPreferences,
+  getMyPreferences,
+  updateMyPreferences,
+} from "@/lib/api";
 import { deleteAccount, useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -74,6 +79,8 @@ function AccountPage() {
         )}
       </Section>
 
+      <NotificationPrefsSection />
+
       <Section
         title="Delete account"
         tone="danger"
@@ -113,6 +120,147 @@ function AccountPage() {
         </div>
       </Section>
     </div>
+  );
+}
+
+function NotificationPrefsSection() {
+  const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    void getMyPreferences()
+      .then((response) => {
+        if (mounted) setPrefs(response);
+      })
+      .catch(() => {
+        /* ignore */
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const apply = async (patch: Partial<NotificationPreferences>) => {
+    if (!prefs) return;
+    const previous = prefs;
+    setPrefs({ ...prefs, ...patch });
+    try {
+      const next = await updateMyPreferences(patch);
+      setPrefs(next);
+    } catch (error) {
+      setPrefs(previous);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update",
+      );
+    }
+  };
+
+  return (
+    <Section
+      title="Email notifications"
+      description="Choose which events should also send you an email. Inbox notifications are always on."
+    >
+      {loading || !prefs ? (
+        <LoadingTip compact />
+      ) : (
+        <div className="flex flex-col gap-2">
+          <ToggleRow
+            label="Pause all"
+            hint="Don't send any email notifications until I unpause."
+            checked={prefs.emailPaused}
+            onChange={(value) => void apply({ emailPaused: value })}
+          />
+          <ToggleRow
+            label="Assignments"
+            hint="Email me when an issue is assigned to me."
+            checked={prefs.emailAssignments}
+            disabled={prefs.emailPaused}
+            onChange={(value) => void apply({ emailAssignments: value })}
+          />
+          <ToggleRow
+            label="Comments"
+            hint="Email me when someone comments on an issue I subscribe to."
+            checked={prefs.emailComments}
+            disabled={prefs.emailPaused}
+            onChange={(value) => void apply({ emailComments: value })}
+          />
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function ToggleRow({
+  label,
+  hint,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between gap-4 rounded-md border border-border-subtle bg-bg/40 px-3 py-2.5",
+        disabled && "opacity-60",
+      )}
+    >
+      <div className="min-w-0">
+        <div className="text-[13px] text-fg">{label}</div>
+        <div className="text-[12px] text-fg-muted">{hint}</div>
+      </div>
+      <Toggle
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        ariaLabel={label}
+      />
+    </div>
+  );
+}
+
+function Toggle({
+  checked,
+  disabled,
+  onChange,
+  ariaLabel,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (next: boolean) => void;
+  ariaLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+        checked ? "bg-accent" : "bg-surface-2",
+        disabled && "cursor-not-allowed",
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "block size-4 rounded-full bg-white shadow transition-transform",
+          checked ? "translate-x-[18px]" : "translate-x-[2px]",
+        )}
+      />
+    </button>
   );
 }
 

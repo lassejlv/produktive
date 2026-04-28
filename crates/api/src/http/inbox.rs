@@ -1,4 +1,10 @@
-use crate::{auth::require_auth, error::ApiError, state::AppState};
+use crate::{
+    auth::require_auth,
+    email,
+    error::ApiError,
+    http::preferences::for_user as preferences_for_user,
+    state::AppState,
+};
 use axum::{
     extract::{Path, State},
     http::HeaderMap,
@@ -167,6 +173,90 @@ pub async fn enqueue_notification(
     }
     .insert(&state.db)
     .await?;
+
+    Ok(())
+}
+
+/// Enqueue an in-app notification AND send an email if the user's preferences allow it.
+/// Email failures are logged with `tracing::warn!` and never propagated.
+#[allow(clippy::too_many_arguments)]
+pub async fn dispatch_notification(
+    state: &AppState,
+    organization_id: &str,
+    user_id: &str,
+    kind: &str,
+    target_type: &str,
+    target_id: &str,
+    actor_id: Option<&str>,
+    title: &str,
+    snippet: Option<String>,
+    target_path: &str,
+) -> Result<(), ApiError> {
+    enqueue_notification(
+        state,
+        organization_id,
+        user_id,
+        kind,
+        target_type,
+        target_id,
+        actor_id,
+        title,
+        snippet.clone(),
+    )
+    .await?;
+
+    let prefs = match preferences_for_user(state, user_id).await {
+        Ok(prefs) => prefs,
+        Err(error) => {
+            tracing::warn!("failed to load notification prefs for {}: {}", user_id, error);
+            return Ok(());
+        }
+    };
+
+    if prefs.email_paused {
+        return Ok(());
+    }
+    let send = match kind {
+        "comment" => prefs.email_comments,
+        "assignment" => prefs.email_assignments,
+        _ => false,
+    };
+    if !send {
+        return Ok(());
+    }
+
+    let recipient = match user::Entity::find_by_id(user_id).one(&state.db).await {
+        Ok(Some(user)) => user,
+        Ok(None) => return Ok(()),
+        Err(error) => {
+            tracing::warn!("failed to load recipient {}: {}", user_id, error);
+            return Ok(());
+        }
+    };
+
+    let action_label = match kind {
+        "comment" => "Open comment",
+        "assignment" => "Open issue",
+        _ => "Open Produktive",
+    };
+
+    if let Err(error) = email::send_notification_email(
+        state,
+        &recipient.email,
+        &recipient.name,
+        title,
+        snippet.as_deref(),
+        action_label,
+        target_path,
+    )
+    .await
+    {
+        tracing::warn!(
+            "failed to send notification email to {}: {}",
+            recipient.email,
+            error
+        );
+    }
 
     Ok(())
 }

@@ -385,6 +385,19 @@ function AppLayout() {
                 <ProjectsIcon />
                 <span className="flex-1 truncate">Projects</span>
               </button>
+              <button
+                type="button"
+                onClick={() => void navigate({ to: "/members" })}
+                className={cn(
+                  "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
+                  pathname === "/members"
+                    ? "bg-surface-2 text-fg [&_svg]:text-fg"
+                    : "text-fg-muted hover:bg-surface hover:text-fg",
+                )}
+              >
+                <MembersIcon />
+                <span className="flex-1 truncate">Members</span>
+              </button>
             </div>
           </div>
 
@@ -740,6 +753,21 @@ function ViewsIcon() {
         stroke="currentColor"
         strokeWidth="1.4"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function MembersIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <circle cx="5" cy="5" r="2" stroke="currentColor" strokeWidth="1.4" />
+      <circle cx="10.5" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M1.5 12c.5-1.8 2-2.7 3.5-2.7s3 .9 3.5 2.7M9 12c.4-1.4 1.4-2 2.5-2 .9 0 1.7.5 2 1.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
       />
     </svg>
   );

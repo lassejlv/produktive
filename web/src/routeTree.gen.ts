@@ -14,6 +14,8 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as AppMembersRouteImport } from './routes/_app.members'
 import { Route as AppIssuesRouteImport } from './routes/_app.issues'
 import { Route as AppInboxRouteImport } from './routes/_app.inbox'
 import { Route as AppChatRouteImport } from './routes/_app.chat'
@@ -46,6 +48,16 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppMembersRoute = AppMembersRouteImport.update({
+  id: '/members',
+  path: '/members',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppIssuesRoute = AppIssuesRouteImport.update({
   id: '/issues',
   path: '/issues',
@@ -67,9 +79,9 @@ const AppAccountRoute = AppAccountRouteImport.update({
   getParentRoute: () => AppRoute,
 } as any)
 const AppMembersMemberIdRoute = AppMembersMemberIdRouteImport.update({
-  id: '/members/$memberId',
-  path: '/members/$memberId',
-  getParentRoute: () => AppRoute,
+  id: '/$memberId',
+  path: '/$memberId',
+  getParentRoute: () => AppMembersRoute,
 } as any)
 const AppIssuesIssueIdRoute = AppIssuesIssueIdRouteImport.update({
   id: '/$issueId',
@@ -91,6 +103,8 @@ export interface FileRoutesByFullPath {
   '/chat': typeof AppChatRouteWithChildren
   '/inbox': typeof AppInboxRoute
   '/issues': typeof AppIssuesRouteWithChildren
+  '/members': typeof AppMembersRouteWithChildren
+  '/invite/$token': typeof InviteTokenRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/members/$memberId': typeof AppMembersMemberIdRoute
@@ -104,6 +118,8 @@ export interface FileRoutesByTo {
   '/chat': typeof AppChatRouteWithChildren
   '/inbox': typeof AppInboxRoute
   '/issues': typeof AppIssuesRouteWithChildren
+  '/members': typeof AppMembersRouteWithChildren
+  '/invite/$token': typeof InviteTokenRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/members/$memberId': typeof AppMembersMemberIdRoute
@@ -119,6 +135,8 @@ export interface FileRoutesById {
   '/_app/chat': typeof AppChatRouteWithChildren
   '/_app/inbox': typeof AppInboxRoute
   '/_app/issues': typeof AppIssuesRouteWithChildren
+  '/_app/members': typeof AppMembersRouteWithChildren
+  '/invite/$token': typeof InviteTokenRoute
   '/_app/chat/$chatId': typeof AppChatChatIdRoute
   '/_app/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/_app/members/$memberId': typeof AppMembersMemberIdRoute
@@ -134,6 +152,8 @@ export interface FileRouteTypes {
     | '/chat'
     | '/inbox'
     | '/issues'
+    | '/members'
+    | '/invite/$token'
     | '/chat/$chatId'
     | '/issues/$issueId'
     | '/members/$memberId'
@@ -147,6 +167,8 @@ export interface FileRouteTypes {
     | '/chat'
     | '/inbox'
     | '/issues'
+    | '/members'
+    | '/invite/$token'
     | '/chat/$chatId'
     | '/issues/$issueId'
     | '/members/$memberId'
@@ -161,6 +183,8 @@ export interface FileRouteTypes {
     | '/_app/chat'
     | '/_app/inbox'
     | '/_app/issues'
+    | '/_app/members'
+    | '/invite/$token'
     | '/_app/chat/$chatId'
     | '/_app/issues/$issueId'
     | '/_app/members/$memberId'
@@ -172,6 +196,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
+  InviteTokenRoute: typeof InviteTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -211,6 +236,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/members': {
+      id: '/_app/members'
+      path: '/members'
+      fullPath: '/members'
+      preLoaderRoute: typeof AppMembersRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/issues': {
       id: '/_app/issues'
       path: '/issues'
@@ -241,10 +280,10 @@ declare module '@tanstack/react-router' {
     }
     '/_app/members/$memberId': {
       id: '/_app/members/$memberId'
-      path: '/members/$memberId'
+      path: '/$memberId'
       fullPath: '/members/$memberId'
       preLoaderRoute: typeof AppMembersMemberIdRouteImport
-      parentRoute: typeof AppRoute
+      parentRoute: typeof AppMembersRoute
     }
     '/_app/issues/$issueId': {
       id: '/_app/issues/$issueId'
@@ -286,12 +325,24 @@ const AppIssuesRouteWithChildren = AppIssuesRoute._addFileChildren(
   AppIssuesRouteChildren,
 )
 
+interface AppMembersRouteChildren {
+  AppMembersMemberIdRoute: typeof AppMembersMemberIdRoute
+}
+
+const AppMembersRouteChildren: AppMembersRouteChildren = {
+  AppMembersMemberIdRoute: AppMembersMemberIdRoute,
+}
+
+const AppMembersRouteWithChildren = AppMembersRoute._addFileChildren(
+  AppMembersRouteChildren,
+)
+
 interface AppRouteChildren {
   AppAccountRoute: typeof AppAccountRoute
   AppChatRoute: typeof AppChatRouteWithChildren
   AppInboxRoute: typeof AppInboxRoute
   AppIssuesRoute: typeof AppIssuesRouteWithChildren
-  AppMembersMemberIdRoute: typeof AppMembersMemberIdRoute
+  AppMembersRoute: typeof AppMembersRouteWithChildren
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -299,7 +350,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppChatRoute: AppChatRouteWithChildren,
   AppInboxRoute: AppInboxRoute,
   AppIssuesRoute: AppIssuesRouteWithChildren,
-  AppMembersMemberIdRoute: AppMembersMemberIdRoute,
+  AppMembersRoute: AppMembersRouteWithChildren,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
@@ -310,6 +361,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   VerifyEmailRoute: VerifyEmailRoute,
+  InviteTokenRoute: InviteTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -210,6 +210,87 @@ export const markNotificationRead = (id: string) =>
 export const markAllNotificationsRead = () =>
   request<InboxResponse>("/api/inbox/read-all", { method: "POST" });
 
+export type NotificationPreferences = {
+  emailPaused: boolean;
+  emailAssignments: boolean;
+  emailComments: boolean;
+};
+
+export const getMyPreferences = () =>
+  request<NotificationPreferences>("/api/me/preferences");
+
+export const updateMyPreferences = (patch: Partial<NotificationPreferences>) =>
+  request<NotificationPreferences>("/api/me/preferences", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+
+export type Invitation = {
+  id: string;
+  email: string;
+  role: string;
+  invitedByName: string | null;
+  expiresAt: string;
+  createdAt: string;
+};
+
+export const listInvitations = () =>
+  request<{ invitations: Invitation[] }>("/api/organizations/me/invitations");
+
+export const createInvitation = (email: string) =>
+  request<Invitation>("/api/organizations/me/invitations", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+
+export const revokeInvitation = (id: string) =>
+  request<{ invitations: Invitation[] }>(
+    `/api/organizations/me/invitations/${id}`,
+    { method: "DELETE" },
+  );
+
+export const resendInvitation = (id: string) =>
+  request<Invitation>(
+    `/api/organizations/me/invitations/${id}/resend`,
+    { method: "POST" },
+  );
+
+export type InvitationLookup = {
+  valid: boolean;
+  expired: boolean;
+  revoked: boolean;
+  accepted: boolean;
+  organizationName: string | null;
+  inviterName: string | null;
+  email: string | null;
+};
+
+export const lookupInvitation = (token: string) =>
+  request<InvitationLookup>(
+    `/api/invitations/lookup?token=${encodeURIComponent(token)}`,
+  );
+
+export type AcceptInvitationResponse = {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    image: string | null;
+    emailVerified: boolean;
+  };
+  organization: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+};
+
+export const acceptInvitation = (token: string) =>
+  request<AcceptInvitationResponse>("/api/invitations/accept", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+
 export const getMemberProfile = (id: string) =>
   request<{ member: MemberProfile }>(`/api/members/${id}`);
 
