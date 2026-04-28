@@ -10,6 +10,7 @@ import {
   CaretIcon,
   DotsIcon,
   IssuesIcon,
+  SettingsIcon,
   SparkleIcon,
   StarIcon,
 } from "@/components/chat/icons";
@@ -444,6 +445,19 @@ function AppLayout() {
                 <MembersIcon />
                 <span className="flex-1 truncate">Members</span>
               </button>
+              <button
+                type="button"
+                onClick={() => void navigate({ to: "/workspace/settings" })}
+                className={cn(
+                  "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
+                  pathname === "/workspace/settings"
+                    ? "bg-surface-2 text-fg [&_svg]:text-fg"
+                    : "text-fg-muted hover:bg-surface hover:text-fg",
+                )}
+              >
+                <SettingsIcon size={13} />
+                <span className="flex-1 truncate">Workspace settings</span>
+              </button>
             </div>
           </div>
 
@@ -582,6 +596,16 @@ function AppLayout() {
                   }}
                 >
                   <span>Account settings</span>
+                </button>
+                <button
+                  type="button"
+                  className="flex h-9 w-full items-center justify-between px-3 text-left text-[13px] text-fg transition-colors hover:bg-surface-2"
+                  onClick={async () => {
+                    setAccountMenuOpen(false);
+                    await navigate({ to: "/workspace/settings" });
+                  }}
+                >
+                  <span>Workspace settings</span>
                 </button>
                 <div className="h-px bg-border-subtle" />
                 <button

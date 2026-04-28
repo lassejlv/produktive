@@ -23,6 +23,7 @@ import { Route as AppIssuesRouteImport } from './routes/_app.issues'
 import { Route as AppInboxRouteImport } from './routes/_app.inbox'
 import { Route as AppChatRouteImport } from './routes/_app.chat'
 import { Route as AppAccountRouteImport } from './routes/_app.account'
+import { Route as AppWorkspaceSettingsRouteImport } from './routes/_app.workspace.settings'
 import { Route as AppProjectsProjectIdRouteImport } from './routes/_app.projects.$projectId'
 import { Route as AppMembersMemberIdRouteImport } from './routes/_app.members.$memberId'
 import { Route as AppIssuesIssueIdRouteImport } from './routes/_app.issues.$issueId'
@@ -97,6 +98,11 @@ const AppAccountRoute = AppAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => AppRoute,
 } as any)
+const AppWorkspaceSettingsRoute = AppWorkspaceSettingsRouteImport.update({
+  id: '/workspace/settings',
+  path: '/workspace/settings',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
   id: '/$projectId',
   path: '/$projectId',
@@ -136,6 +142,7 @@ export interface FileRoutesByFullPath {
   '/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/members/$memberId': typeof AppMembersMemberIdRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
+  '/workspace/settings': typeof AppWorkspaceSettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -155,6 +162,7 @@ export interface FileRoutesByTo {
   '/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/members/$memberId': typeof AppMembersMemberIdRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
+  '/workspace/settings': typeof AppWorkspaceSettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -176,6 +184,7 @@ export interface FileRoutesById {
   '/_app/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/_app/members/$memberId': typeof AppMembersMemberIdRoute
   '/_app/projects/$projectId': typeof AppProjectsProjectIdRoute
+  '/_app/workspace/settings': typeof AppWorkspaceSettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -197,6 +206,7 @@ export interface FileRouteTypes {
     | '/issues/$issueId'
     | '/members/$memberId'
     | '/projects/$projectId'
+    | '/workspace/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -216,6 +226,7 @@ export interface FileRouteTypes {
     | '/issues/$issueId'
     | '/members/$memberId'
     | '/projects/$projectId'
+    | '/workspace/settings'
   id:
     | '__root__'
     | '/'
@@ -236,6 +247,7 @@ export interface FileRouteTypes {
     | '/_app/issues/$issueId'
     | '/_app/members/$memberId'
     | '/_app/projects/$projectId'
+    | '/_app/workspace/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -348,6 +360,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccountRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/workspace/settings': {
+      id: '/_app/workspace/settings'
+      path: '/workspace/settings'
+      fullPath: '/workspace/settings'
+      preLoaderRoute: typeof AppWorkspaceSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/projects/$projectId': {
       id: '/_app/projects/$projectId'
       path: '/$projectId'
@@ -434,6 +453,7 @@ interface AppRouteChildren {
   AppLabelsRoute: typeof AppLabelsRoute
   AppMembersRoute: typeof AppMembersRouteWithChildren
   AppProjectsRoute: typeof AppProjectsRouteWithChildren
+  AppWorkspaceSettingsRoute: typeof AppWorkspaceSettingsRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -444,6 +464,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppLabelsRoute: AppLabelsRoute,
   AppMembersRoute: AppMembersRouteWithChildren,
   AppProjectsRoute: AppProjectsRouteWithChildren,
+  AppWorkspaceSettingsRoute: AppWorkspaceSettingsRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

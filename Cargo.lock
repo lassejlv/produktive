@@ -2159,6 +2159,7 @@ dependencies = [
  "anyhow",
  "argon2",
  "async-stream",
+ "autumn-rs",
  "axum",
  "chrono",
  "cookie",

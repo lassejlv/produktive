@@ -249,6 +249,32 @@ export const updateMyPreferences = (patch: Partial<NotificationPreferences>) =>
     body: JSON.stringify(patch),
   });
 
+export type BillingSubscription = {
+  id: string;
+  planId: string;
+  status: string;
+  currentPeriodEnd: number | null;
+  trialEndsAt: number | null;
+  canceledAt: number | null;
+};
+
+export type BillingStatus = {
+  customerId: string;
+  proPlanId: string;
+  isPro: boolean;
+  canManage: boolean;
+  subscriptions: BillingSubscription[];
+};
+
+export const getBillingStatus = () =>
+  request<BillingStatus>("/api/billing/status");
+
+export const startBillingCheckout = () =>
+  request<{ url: string }>("/api/billing/checkout", { method: "POST" });
+
+export const openBillingPortal = () =>
+  request<{ url: string }>("/api/billing/portal", { method: "POST" });
+
 export type Invitation = {
   id: string;
   email: string;

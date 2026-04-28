@@ -10,12 +10,13 @@ mod state;
 mod storage;
 
 use anyhow::Context;
+use autumn_rs::{Autumn, AutumnConfig};
 use axum::Router;
 use config::{Config, DatabaseConfig};
 use http::{
-    auth_routes, chat_routes, cors_layer, favorite_routes, inbox_routes, invitation_routes,
-    issue_routes, label_routes, member_routes, org_invitation_routes, preferences_routes,
-    project_routes, realtime_routes, waitlist_routes,
+    auth_routes, billing_routes, chat_routes, cors_layer, favorite_routes, inbox_routes,
+    invitation_routes, issue_routes, label_routes, member_routes, org_invitation_routes,
+    preferences_routes, project_routes, realtime_routes, waitlist_routes,
 };
 use produktive_ai::AiClient;
 use sea_orm::Database;
@@ -55,13 +56,20 @@ async fn main() -> anyhow::Result<()> {
 
     let ai = AiClient::new(&config.ai_api_key, &config.ai_base_url)
         .map_err(|e| anyhow::anyhow!("failed to build AI client: {e}"))?;
-    let state = AppState::new(db, config.clone(), ai);
+    let mut autumn_config = AutumnConfig::new(config.autumn_secret_key.clone());
+    if let Some(base_url) = &config.autumn_base_url {
+        autumn_config = autumn_config.base_url(base_url);
+    }
+    let autumn = Autumn::with_config(autumn_config)
+        .map_err(|e| anyhow::anyhow!("failed to build Autumn client: {e}"))?;
+    let state = AppState::new(db, config.clone(), ai, autumn);
     let spa_service = ServeDir::new(&config.web_dist_dir).fallback(ServeFile::new(format!(
         "{}/index.html",
         config.web_dist_dir
     )));
     let app = Router::new()
         .nest("/api/auth", auth_routes())
+        .nest("/api/billing", billing_routes())
         .nest("/api/issues", issue_routes())
         .nest("/api/waitlist", waitlist_routes())
         .nest("/api/chats", chat_routes())

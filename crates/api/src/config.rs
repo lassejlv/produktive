@@ -23,6 +23,9 @@ pub struct Config {
     pub ai_api_key: String,
     pub ai_base_url: String,
     pub ai_model: String,
+    pub autumn_secret_key: String,
+    pub autumn_base_url: Option<String>,
+    pub autumn_pro_plan_id: String,
     pub storage: Option<StorageConfig>,
 }
 
@@ -78,6 +81,10 @@ impl Config {
             ai_api_key: required_env("AI_API_KEY").context("AI_API_KEY is required")?,
             ai_base_url: env_or_default("AI_BASE_URL", "https://ollama.com/v1"),
             ai_model: env_or_default("AI_MODEL", "kimi-k2.6"),
+            autumn_secret_key: required_env("AUTUMN_SECRET_KEY")
+                .context("AUTUMN_SECRET_KEY is required")?,
+            autumn_base_url: optional_env("AUTUMN_BASE_URL"),
+            autumn_pro_plan_id: env_or_default("AUTUMN_PRO_PLAN_ID", "pro"),
             storage: StorageConfig::from_env()?,
         })
     }

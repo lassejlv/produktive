@@ -1,6 +1,6 @@
 use autumn_rs::models::{
-    AttachRequest, CheckRequest, FeatureType, GetOrCreateCustomerRequest, Lock, TrackRequest,
-    UpdateFeatureRequest,
+    AttachRequest, CheckRequest, FeatureType, GetOrCreateCustomerRequest, Lock,
+    OpenCustomerPortalResponse, TrackRequest, UpdateFeatureRequest,
 };
 use serde_json::json;
 
@@ -100,6 +100,16 @@ fn null_customer_id_round_trips() {
 
     let value = serde_json::to_value(&request).expect("serializes");
     assert_eq!(value, json!({ "customer_id": null }));
+}
+
+#[test]
+fn portal_response_accepts_url_only() {
+    let response: OpenCustomerPortalResponse =
+        serde_json::from_value(json!({ "url": "https://billing.stripe.com/session" }))
+            .expect("deserializes");
+
+    assert_eq!(response.customer_id, None);
+    assert_eq!(response.url, "https://billing.stripe.com/session");
 }
 
 #[test]

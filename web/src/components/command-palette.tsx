@@ -2,12 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProjectIcon } from "@/components/project/project-icon";
-import {
-  listIssues,
-  listProjects,
-  type Issue,
-  type Project,
-} from "@/lib/api";
+import { listIssues, listProjects, type Issue, type Project } from "@/lib/api";
 import { signOut } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -22,7 +17,13 @@ type CommandResult =
       issueCount: number;
       doneCount: number;
     }
-  | { type: "action"; key: string; label: string; hint?: string; run: () => Promise<void> | void };
+  | {
+      type: "action";
+      key: string;
+      label: string;
+      hint?: string;
+      run: () => Promise<void> | void;
+    };
 
 export function CommandPalette() {
   const navigate = useNavigate();
@@ -37,10 +38,7 @@ export function CommandPalette() {
   // Open via Cmd/Ctrl+K
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        event.key.toLowerCase() === "k"
-      ) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setOpen((v) => !v);
       } else if (event.key === "Escape" && open) {
@@ -85,9 +83,7 @@ export function CommandPalette() {
       .filter((issue) => {
         if (!q) return true;
         const id = `p-${issue.id.slice(0, 4)}`.toLowerCase();
-        return (
-          issue.title.toLowerCase().includes(q) || id.includes(q)
-        );
+        return issue.title.toLowerCase().includes(q) || id.includes(q);
       })
       .slice(0, 6)
       .map((issue) => ({
@@ -147,6 +143,12 @@ export function CommandPalette() {
         key: "go-account",
         label: "Account settings",
         run: () => navigate({ to: "/account" }),
+      },
+      {
+        type: "action" as const,
+        key: "go-workspace-settings",
+        label: "Settings",
+        run: () => navigate({ to: "/workspace/settings" }),
       },
       {
         type: "action" as const,

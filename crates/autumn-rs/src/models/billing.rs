@@ -449,9 +449,9 @@ pub struct OpenCustomerPortalRequest {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct OpenCustomerPortalResponse {
-    pub customer_id: String,
+    #[serde(default)]
+    pub customer_id: Option<String>,
     pub url: String,
     #[serde(default, flatten)]
     pub extra: Extra,
 }
-

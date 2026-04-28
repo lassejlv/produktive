@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 async-stream.workspace = true
+autumn-rs = { path = "../autumn-rs" }
 argon2.workspace = true
 axum = { workspace = true, features = ["multipart"] }
 chrono.workspace = true

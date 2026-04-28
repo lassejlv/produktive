@@ -1,5 +1,11 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { CaretIcon, CheckIcon, PlusIcon } from "@/components/chat/icons";
+import {
+  CaretIcon,
+  CheckIcon,
+  PlusIcon,
+  SettingsIcon,
+} from "@/components/chat/icons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,6 +30,7 @@ type OrgSwitcherProps = {
 };
 
 export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -149,6 +156,20 @@ export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
               )}
             </div>
             <div className="border-t border-border-subtle">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setMenuOpen(false);
+                  void navigate({ to: "/workspace/settings" });
+                }}
+                className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-60"
+              >
+                <span className="grid size-5 shrink-0 place-items-center rounded-[5px] border border-border text-fg-muted">
+                  <SettingsIcon size={11} />
+                </span>
+                <span>Workspace settings</span>
+              </button>
               <button
                 type="button"
                 disabled={busy}

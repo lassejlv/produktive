@@ -52,10 +52,10 @@ function AccountPage() {
           ← Back
         </button>
         <h1 className="m-0 text-[22px] font-semibold tracking-[-0.02em] text-fg">
-          Account
+          Personal account
         </h1>
         <p className="mt-1 text-[13px] text-fg-muted">
-          Manage your profile and your data.
+          Manage your profile, notifications, and account data.
         </p>
       </header>
 

@@ -1,4 +1,5 @@
 mod auth;
+mod billing;
 mod chats;
 mod cors;
 mod favorites;
@@ -13,6 +14,7 @@ mod realtime;
 mod waitlist;
 
 pub use auth::routes as auth_routes;
+pub use billing::routes as billing_routes;
 pub use chats::routes as chat_routes;
 pub use cors::cors_layer;
 pub use favorites::routes as favorite_routes;
