@@ -1,6 +1,7 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { joinWaitlist } from "@/lib/api";
+import { useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -8,6 +9,9 @@ export const Route = createFileRoute("/")({
 });
 
 function ComingSoonPage() {
+  const session = useSession();
+  const isLoggedIn = Boolean(session.data);
+
   return (
     <main className="relative isolate flex min-h-screen flex-col">
       <div className="bg-dotgrid" aria-hidden />
@@ -22,10 +26,10 @@ function ComingSoonPage() {
           </span>
         </div>
         <Link
-          to="/login"
+          to={isLoggedIn ? "/issues" : "/login"}
           className="text-[12.5px] text-fg-muted transition-colors hover:text-fg"
         >
-          Sign in
+          {isLoggedIn ? "Go to App" : "Sign in"}
         </Link>
       </header>
 

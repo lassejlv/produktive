@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { LoadingTip } from "@/components/ui/loading-tip";
 import {
   type OrganizationMembership,
   createOrganization,
@@ -113,8 +114,8 @@ export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
             </div>
             <div className="flex max-h-[260px] flex-col overflow-auto pb-1">
               {organizations.length === 0 ? (
-                <div className="px-3 py-2 text-[12px] text-fg-faint">
-                  Loading…
+                <div className="px-3 py-2">
+                  <LoadingTip compact />
                 </div>
               ) : (
                 organizations.map((org) => {

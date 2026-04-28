@@ -3,6 +3,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LoadingTip } from "@/components/ui/loading-tip";
 import { deleteAccount, useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -55,7 +56,7 @@ function AccountPage() {
 
       <Section title="Profile">
         {!user ? (
-          <p className="text-[13px] text-fg-muted">Loading…</p>
+          <LoadingTip compact />
         ) : (
           <dl className="grid grid-cols-[120px_minmax(0,1fr)] gap-y-2 text-[13px]">
             <dt className="text-fg-faint">Name</dt>

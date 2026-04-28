@@ -157,6 +157,17 @@ export const createIssueComment = (id: string, body: string) =>
 export const getMemberProfile = (id: string) =>
   request<{ member: MemberProfile }>(`/api/members/${id}`);
 
+export type Member = {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  role: string;
+};
+
+export const listMembers = () =>
+  request<{ members: Member[] }>("/api/members");
+
 export const createIssue = (input: CreateIssueInput) =>
   request<{ issue: Issue }>("/api/issues", {
     method: "POST",

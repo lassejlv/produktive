@@ -23,6 +23,7 @@ import {
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar";
+import { LoadingTip } from "@/components/ui/loading-tip";
 import { deleteChat, getChat, type Chat } from "@/lib/api";
 import { signOut, useSession } from "@/lib/auth-client";
 import { parseMessageWithAttachments } from "@/lib/chat-attachments";
@@ -107,11 +108,9 @@ function AppLayout() {
 
   if (session.isPending || !session.data) {
     return (
-      <main className="grid min-h-screen place-items-center text-fg-muted text-sm">
-        <div className="flex items-center gap-2">
-          <span className="inline-block size-3 animate-spin rounded-full border-2 border-border border-t-fg" />
-          Loading…
-        </div>
+      <main className="grid min-h-screen place-items-center px-6">
+        <div className="bg-dotgrid" aria-hidden />
+        <LoadingTip />
       </main>
     );
   }
@@ -190,8 +189,8 @@ function AppLayout() {
               </div>
               <div className="flex flex-col gap-px">
                 {favoritesLoading && favorites.length === 0 ? (
-                  <div className="px-2.5 py-1 text-[12px] text-fg-faint">
-                    Loading…
+                  <div className="px-2.5 py-1">
+                    <LoadingTip compact />
                   </div>
                 ) : (
                   favorites.map((fav) => {
@@ -296,8 +295,8 @@ function AppLayout() {
             </div>
             <div className="flex flex-col gap-px">
               {chatsLoading ? (
-                <div className="px-2.5 py-1 text-[12px] text-fg-faint">
-                  Loading…
+                <div className="px-2.5 py-1">
+                  <LoadingTip compact />
                 </div>
               ) : chats.length === 0 ? (
                 <div className="px-2.5 py-1 text-[12px] text-fg-faint">

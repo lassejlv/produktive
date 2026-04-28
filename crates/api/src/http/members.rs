@@ -10,7 +10,55 @@ use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder,
 use serde::Serialize;
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/{id}", get(get_member))
+    Router::new()
+        .route("/", get(list_members))
+        .route("/{id}", get(get_member))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MembersEnvelope {
+    members: Vec<MemberSummaryResponse>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MemberSummaryResponse {
+    id: String,
+    name: String,
+    email: String,
+    image: Option<String>,
+    role: String,
+}
+
+async fn list_members(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<MembersEnvelope>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    let memberships = member::Entity::find()
+        .filter(member::Column::OrganizationId.eq(&auth.organization.id))
+        .order_by_asc(member::Column::CreatedAt)
+        .all(&state.db)
+        .await?;
+
+    let mut members = Vec::with_capacity(memberships.len());
+    for membership in memberships {
+        if let Some(user) = user::Entity::find_by_id(&membership.user_id)
+            .one(&state.db)
+            .await?
+        {
+            members.push(MemberSummaryResponse {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                image: user.image,
+                role: membership.role,
+            });
+        }
+    }
+
+    Ok(Json(MembersEnvelope { members }))
 }
 
 #[derive(Serialize)]
