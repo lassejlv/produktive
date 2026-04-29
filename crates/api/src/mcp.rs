@@ -18,7 +18,8 @@ use sha2::{Digest, Sha256};
 use std::{net::IpAddr, sync::Mutex, time::Duration as StdDuration};
 
 pub const TOOL_PREFIX: &str = "mcp__";
-pub const TOOL_LIMIT: usize = 64;
+pub const TOOL_LIMIT: usize = 24;
+const FUNCTION_NAME_LIMIT: usize = 64;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -139,10 +140,30 @@ pub fn default_name(url: &str) -> String {
 }
 
 pub fn namespaced_tool_name(server_slug: &str, tool_name: &str) -> String {
-    format!(
-        "{TOOL_PREFIX}{server_slug}__{}",
-        sanitize_tool_name(tool_name)
-    )
+    let prefix = format!("{TOOL_PREFIX}{server_slug}__");
+    let safe_tool_name = sanitize_tool_name(tool_name);
+    let raw = format!("{prefix}{safe_tool_name}");
+    if raw.len() <= FUNCTION_NAME_LIMIT {
+        return raw;
+    }
+
+    let hash = short_hash(&raw);
+    let suffix_len = hash.len() + 1;
+    let available = FUNCTION_NAME_LIMIT
+        .saturating_sub(prefix.len())
+        .saturating_sub(suffix_len);
+    let truncated = safe_tool_name
+        .chars()
+        .take(available)
+        .collect::<String>()
+        .trim_matches('_')
+        .to_owned();
+
+    if truncated.is_empty() {
+        format!("{prefix}{hash}")
+    } else {
+        format!("{prefix}{truncated}_{hash}")
+    }
 }
 
 pub fn parse_remote_tool_name(name: &str) -> Option<RemoteToolName> {
@@ -171,11 +192,43 @@ pub fn tools_from_servers(servers: &[mcp_server::Model]) -> Vec<Tool> {
             tools.push(Tool {
                 name: namespaced_tool_name(&server.slug, &tool.name),
                 description: format!("Remote MCP tool from {}: {}", server.name, tool.description),
-                parameters: tool.input_schema,
+                parameters: normalize_tool_schema(tool.input_schema),
             });
         }
     }
     tools
+}
+
+pub fn relevant_servers_for_message(
+    servers: &[mcp_server::Model],
+    user_content: &str,
+) -> Vec<mcp_server::Model> {
+    let connected = servers
+        .iter()
+        .filter(|server| server.enabled && server.auth_status == "connected")
+        .collect::<Vec<_>>();
+    if connected.is_empty() {
+        return Vec::new();
+    }
+
+    let haystack = user_content.to_lowercase();
+    let generic_mcp_request = contains_word(&haystack, "mcp")
+        || contains_word(&haystack, "tool")
+        || contains_word(&haystack, "tools")
+        || contains_word(&haystack, "integration")
+        || contains_word(&haystack, "feature");
+
+    let mut selected = connected
+        .iter()
+        .filter(|server| server_matches_message(server, &haystack))
+        .map(|server| (*server).clone())
+        .collect::<Vec<_>>();
+
+    if selected.is_empty() && connected.len() == 1 && generic_mcp_request {
+        selected.push(connected[0].clone());
+    }
+
+    selected
 }
 
 pub fn cached_tools(server: &mcp_server::Model) -> Vec<CachedTool> {
@@ -211,10 +264,12 @@ pub async fn call_remote_tool(
         .await?
         .ok_or_else(|| ApiError::NotFound("Remote MCP server not found".to_owned()))?;
 
+    let tool_name =
+        resolve_cached_tool_name(&server, &parsed.tool_name).unwrap_or(parsed.tool_name);
     let token = load_access_token(state, &server).await?;
     let client = McpHttpClient::new(server.url.clone(), token)?;
     client.initialize().await?;
-    let result = client.call_tool(&parsed.tool_name, args).await;
+    let result = client.call_tool(&tool_name, args).await;
     match result {
         Ok(value) => Ok(value),
         Err(error) => Ok(json!({ "error": error.to_string() })),
@@ -540,6 +595,74 @@ fn readable_protocol_error(error: &Value) -> String {
         .unwrap_or_else(|| error.to_string())
 }
 
+fn resolve_cached_tool_name(server: &mcp_server::Model, wire_tool_name: &str) -> Option<String> {
+    cached_tools(server)
+        .into_iter()
+        .find(|tool| {
+            namespaced_tool_name(&server.slug, &tool.name)
+                .strip_prefix(&format!("{TOOL_PREFIX}{}__", server.slug))
+                == Some(wire_tool_name)
+        })
+        .map(|tool| tool.name)
+}
+
+fn server_matches_message(server: &mcp_server::Model, haystack: &str) -> bool {
+    contains_word(haystack, &server.name.to_lowercase())
+        || contains_word(haystack, &server.slug.to_lowercase())
+        || cached_tools(server).into_iter().any(|tool| {
+            let safe_name = sanitize_tool_name(&tool.name).to_lowercase();
+            contains_word(haystack, &tool.name.to_lowercase())
+                || contains_word(haystack, &safe_name)
+        })
+}
+
+fn contains_word(haystack: &str, needle: &str) -> bool {
+    let needle = needle.trim();
+    if needle.is_empty() {
+        return false;
+    }
+    haystack.contains(needle)
+}
+
+fn normalize_tool_schema(schema: Value) -> Value {
+    let mut schema = match schema {
+        Value::Object(map) => Value::Object(map),
+        _ => json!({ "type": "object", "properties": {} }),
+    };
+
+    let Some(object) = schema.as_object_mut() else {
+        return json!({ "type": "object", "properties": {} });
+    };
+
+    object.insert("type".to_owned(), Value::String("object".to_owned()));
+    match object.get("properties") {
+        Some(Value::Object(_)) => {}
+        _ => {
+            object.insert("properties".to_owned(), json!({}));
+        }
+    }
+
+    let property_keys = object
+        .get("properties")
+        .and_then(Value::as_object)
+        .map(|properties| properties.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+
+    if let Some(required) = object.get_mut("required") {
+        if let Some(items) = required.as_array_mut() {
+            items.retain(|item| {
+                item.as_str()
+                    .map(|name| property_keys.iter().any(|key| key == name))
+                    .unwrap_or(false)
+            });
+        } else {
+            object.remove("required");
+        }
+    }
+
+    schema
+}
+
 fn sanitize_tool_name(input: &str) -> String {
     let mut out = String::new();
     for ch in input.chars() {
@@ -554,6 +677,10 @@ fn sanitize_tool_name(input: &str) -> String {
     } else {
         out
     }
+}
+
+fn short_hash(input: &str) -> String {
+    URL_SAFE_NO_PAD.encode(&Sha256::digest(input.as_bytes())[..6])
 }
 
 fn is_local_url(url: &Url) -> bool {

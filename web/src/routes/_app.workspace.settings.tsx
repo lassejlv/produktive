@@ -13,10 +13,8 @@ import { DangerSettings } from "@/components/workspace/danger-settings";
 import { MembersSettings } from "@/components/workspace/members-settings";
 import { SettingRow } from "@/components/workspace/setting-row";
 import {
-  type BillingStatus,
   type Invitation,
   type Member,
-  getBillingStatus,
   listInvitations,
   listMembers,
 } from "@/lib/api";
@@ -98,8 +96,6 @@ function WorkspaceSettingsPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [membersLoading, setMembersLoading] = useState(true);
-  const [billing, setBilling] = useState<BillingStatus | null>(null);
-  const [billingLoading, setBillingLoading] = useState(true);
 
   useEffect(() => {
     const section = new URLSearchParams(window.location.search).get("section");
@@ -124,23 +120,6 @@ function WorkspaceSettingsPage() {
       mounted = false;
     };
   }, []);
-
-  useEffect(() => {
-    let mounted = true;
-    void getBillingStatus()
-      .then((response) => {
-        if (mounted) setBilling(response);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (mounted) setBillingLoading(false);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const isPro = billing?.isPro ?? false;
 
   const onSelectSection = (id: SettingsSectionId) => {
     setActiveSection(id);
@@ -263,32 +242,8 @@ function WorkspaceSettingsPage() {
             />
           ) : null}
           {activeSection === "billing" ? <BillingSettings /> : null}
-          {activeSection === "ai" ? (
-            billingLoading ? (
-              <LoadingTip compact />
-            ) : isPro ? (
-              <AiSettings />
-            ) : (
-              <ProUpgradeCard
-                title="MCP servers are a Pro feature"
-                description="Connect remote MCP servers and let chat use their tools."
-                onUpgrade={() => onSelectSection("billing")}
-              />
-            )
-          ) : null}
-          {activeSection === "templates" ? (
-            billingLoading ? (
-              <LoadingTip compact />
-            ) : isPro ? (
-              <McpTemplatesSettings />
-            ) : (
-              <ProUpgradeCard
-                title="MCP templates are a Pro feature"
-                description="One-click connect Notra, Railway, Context7, and other curated MCP servers."
-                onUpgrade={() => onSelectSection("billing")}
-              />
-            )
-          ) : null}
+          {activeSection === "ai" ? <AiSettings /> : null}
+          {activeSection === "templates" ? <McpTemplatesSettings /> : null}
           {activeSection === "danger" ? (
             organization ? (
               <DangerSettings
@@ -343,31 +298,6 @@ function SectionButton({
       <span className="truncate">{section.label}</span>
       {trailing}
     </button>
-  );
-}
-
-function ProUpgradeCard({
-  title,
-  description,
-  onUpgrade,
-}: {
-  title: string;
-  description: string;
-  onUpgrade: () => void;
-}) {
-  return (
-    <div className="rounded-md border border-border-subtle bg-surface px-5 py-8 text-center">
-      <span className="inline-block rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-accent">
-        Pro
-      </span>
-      <h3 className="mt-3 mb-0 text-[14px] font-medium text-fg">{title}</h3>
-      <p className="mx-auto mt-1.5 max-w-[420px] text-[12.5px] text-fg-muted">
-        {description}
-      </p>
-      <Button type="button" size="sm" className="mt-4" onClick={onUpgrade}>
-        Upgrade to Pro
-      </Button>
-    </div>
   );
 }
 

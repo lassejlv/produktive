@@ -413,14 +413,15 @@ async fn finish_assistant_turn(
         == 1;
 
     let remote_servers = mcp::load_enabled_servers(state, &auth.organization.id).await?;
-    let remote_servers = if remote_servers.is_empty() || super::billing::is_pro(state, auth).await?
-    {
-        remote_servers
-    } else {
-        Vec::new()
-    };
+    let remote_servers = mcp::relevant_servers_for_message(&remote_servers, user_content);
     let mut tools = registry();
     tools.extend(mcp::tools_from_servers(&remote_servers));
+    tracing::info!(
+        %chat_id,
+        remote_server_count = remote_servers.len(),
+        tool_count = tools.len(),
+        "prepared chat tools"
+    );
     let system_prompt = build_system_prompt(auth);
 
     for round in 0..MAX_TOOL_ROUNDS {
@@ -812,7 +813,26 @@ fn chunk_text(text: &str) -> Vec<String> {
 fn build_system_prompt(auth: &AuthContext) -> String {
     let date = Utc::now().format("%Y-%m-%d");
     format!(
-        "You are Produktive's assistant — a helpful agent inside an issue tracker. Use tools to read or modify the workspace's issues. Be concise. Prefer bullet points and short paragraphs. Today is {date}. Workspace: {workspace} (id: {workspace_id}). Current user: {user_name} (id: {user_id}).",
+        r#"You are Produktive's assistant, an agent inside a focused issue tracker.
+
+Work context:
+- Today is {date}.
+- Workspace: {workspace} (id: {workspace_id}).
+- Current user: {user_name} (id: {user_id}).
+
+How to work:
+- Use tools whenever you need current workspace data or need to create/update issues.
+- For issue creation, gather only the details needed to make a useful issue: title, description if helpful, priority, status, project/assignee only when the user implies them.
+- If the user asks you to create or change something but required details are missing or ambiguous, use the `ask_user` tool. It is available specifically for concise clarifying questions. After calling it, stop and wait for the user's answer.
+- Do not ask questions for details you can discover with tools. Look up members, existing issues, chats, or remote MCP tools when that would resolve the ambiguity.
+- If remote MCP tools are available and the user names one, such as Railway, use the matching MCP tool when relevant.
+- Prefer doing the work over explaining how the user could do it. Summarize the result after tool calls.
+
+Response style:
+- Be concise, direct, and practical.
+- Prefer short paragraphs or bullets.
+- Mention IDs only when useful for follow-up.
+- If something fails, say what failed and the next best action."#,
         workspace = auth.organization.name,
         workspace_id = auth.organization.id,
         user_name = auth.user.name,

@@ -25,7 +25,7 @@ const PRO_FEATURES: Tier["features"] = [
   { label: "No issues limit", included: true },
   { label: "10 active projects", included: true },
   { label: "Unlimited members", included: true },
-  { label: "Bring your own Skills & MCP Servers", included: true },
+  { label: "Bring your own Skills", included: true },
 ];
 
 const FREE_TIER: Tier = {
@@ -38,7 +38,7 @@ const FREE_TIER: Tier = {
     { label: "Up to 50 issues", included: true },
     { label: "2 active projects", included: true },
     { label: "Up to 5 members", included: true },
-    { label: "Bring your own Skills & MCP Servers", included: false },
+    { label: "Bring your own MCP servers", included: true },
   ],
   cta: "Get started",
 };
