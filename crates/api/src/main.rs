@@ -12,8 +12,8 @@ mod state;
 mod storage;
 
 use anyhow::Context;
-use autumn_rs::{Autumn, AutumnConfig};
 use axum::Router;
+use polar_rs::{Polar, PolarConfig};
 use config::{Config, DatabaseConfig};
 use http::{
     ai_mcp_routes, ai_routes, auth_routes, billing_routes, chat_routes, cors_layer,
@@ -58,13 +58,13 @@ async fn main() -> anyhow::Result<()> {
 
     let ai = AiClient::new(&config.ai_api_key, &config.ai_base_url)
         .map_err(|e| anyhow::anyhow!("failed to build AI client: {e}"))?;
-    let mut autumn_config = AutumnConfig::new(config.autumn_secret_key.clone());
-    if let Some(base_url) = &config.autumn_base_url {
-        autumn_config = autumn_config.base_url(base_url);
+    let mut polar_config = PolarConfig::new(config.polar_access_token.clone());
+    if let Some(base_url) = &config.polar_base_url {
+        polar_config = polar_config.base_url(base_url);
     }
-    let autumn = Autumn::with_config(autumn_config)
-        .map_err(|e| anyhow::anyhow!("failed to build Autumn client: {e}"))?;
-    let state = AppState::new(db, config.clone(), ai, autumn);
+    let polar = Polar::with_config(polar_config)
+        .map_err(|e| anyhow::anyhow!("failed to build Polar client: {e}"))?;
+    let state = AppState::new(db, config.clone(), ai, polar);
     let spa_service = ServeDir::new(&config.web_dist_dir).fallback(ServeFile::new(format!(
         "{}/index.html",
         config.web_dist_dir

@@ -5,6 +5,7 @@ members = [
     "crates/autumn-rs",
     "crates/entity",
     "crates/migration",
+    "crates/polar",
 ]
 resolver = "2"
 

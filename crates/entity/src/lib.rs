@@ -17,6 +17,7 @@ pub mod member;
 pub mod notification;
 pub mod notification_preference;
 pub mod organization;
+pub mod organization_subscription;
 pub mod project;
 pub mod session;
 pub mod user;

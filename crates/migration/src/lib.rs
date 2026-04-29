@@ -40,6 +40,8 @@ mod m20260429_000018_create_mcp_servers;
 mod m20260429_000019_add_mcp_oauth_token_url;
 #[path = "../migrations/m20260429_000020_add_mcp_oauth_clients.rs"]
 mod m20260429_000020_add_mcp_oauth_clients;
+#[path = "../migrations/m20260429_000021_create_organization_subscriptions.rs"]
+mod m20260429_000021_create_organization_subscriptions;
 
 pub struct Migrator;
 
@@ -67,6 +69,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260429_000018_create_mcp_servers::Migration),
             Box::new(m20260429_000019_add_mcp_oauth_token_url::Migration),
             Box::new(m20260429_000020_add_mcp_oauth_clients::Migration),
+            Box::new(m20260429_000021_create_organization_subscriptions::Migration),
         ]
     }
 }

@@ -3,24 +3,28 @@ use crate::{
     error::ApiError,
     state::AppState,
 };
-use autumn_rs::{
-    models::{
-        Customer, GetOrCreateCustomerRequest, OpenCustomerPortalRequest, RedirectMode,
-        SubscriptionStatus,
-    },
-    AutumnError,
-};
 use axum::{
+    body::Bytes,
     extract::State,
     http::{HeaderMap, StatusCode},
     routing::{get, post},
     Json, Router,
 };
-use produktive_entity::member;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use chrono::{DateTime, FixedOffset, Utc};
+use polar_rs::{
+    models::{CreateCheckoutRequest, CreateCustomerSessionRequest, Subscription},
+    webhooks::verify,
+    PolarError,
+};
+use produktive_entity::{member, organization_subscription as os};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
+};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+
+const ACTIVE_STATUSES: &[&str] = &["active", "trialing"];
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -29,6 +33,7 @@ pub fn routes() -> Router<AppState> {
         .route("/portal", post(portal))
         .route("/cancel", post(cancel))
         .route("/resume", post(resume))
+        .route("/webhook", post(webhook))
 }
 
 #[derive(Serialize)]
@@ -64,12 +69,12 @@ async fn status(
 ) -> Result<Json<BillingStatusResponse>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     let role = active_member_role(&state, &auth.user.id, &auth.organization.id).await?;
-    let customer = get_or_create_customer(&state, &auth).await?;
+    let subs = load_subscriptions(&state, &auth.organization.id).await?;
 
-    Ok(Json(status_response(
-        &state.config.autumn_pro_plan_id,
+    Ok(Json(build_status(
+        &state,
         role.as_deref() == Some("owner"),
-        customer,
+        subs,
         &auth.organization.id,
     )))
 }
@@ -80,26 +85,28 @@ async fn checkout(
 ) -> Result<Json<BillingUrlResponse>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     require_owner(&state, &auth.user.id, &auth.organization.id).await?;
-    get_or_create_customer(&state, &auth).await?;
+
+    let mut metadata: HashMap<String, Value> = HashMap::new();
+    metadata.insert("organization_id".to_owned(), json!(auth.organization.id));
+    metadata.insert("created_by_user_id".to_owned(), json!(auth.user.id));
 
     let success_url = format!("{}/account?billing=success", state.config.app_url);
     let response = state
-        .autumn
-        .attach(&auth.organization.id)
-        .plan(&state.config.autumn_pro_plan_id)
-        .redirect_mode(RedirectMode::Always)
-        .success_url(success_url)
-        .metadata_entry("organizationId", &auth.organization.id)
-        .metadata_entry("createdByUserId", &auth.user.id)
-        .send()
+        .polar
+        .checkouts()
+        .create(CreateCheckoutRequest {
+            products: vec![state.config.polar_pro_product_id.clone()],
+            external_customer_id: Some(auth.organization.id.clone()),
+            customer_email: Some(auth.user.email.clone()),
+            customer_name: Some(auth.organization.name.clone()),
+            success_url: Some(success_url),
+            metadata,
+            ..Default::default()
+        })
         .await
-        .map_err(map_autumn_error)?;
+        .map_err(map_polar_error)?;
 
-    let url = response.payment_url.ok_or_else(|| {
-        ApiError::BadRequest("Billing checkout did not return a payment URL".to_owned())
-    })?;
-
-    Ok(Json(BillingUrlResponse { url }))
+    Ok(Json(BillingUrlResponse { url: response.url }))
 }
 
 async fn portal(
@@ -108,20 +115,20 @@ async fn portal(
 ) -> Result<Json<BillingUrlResponse>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     require_owner(&state, &auth.user.id, &auth.organization.id).await?;
-    get_or_create_customer(&state, &auth).await?;
 
-    let response = state
-        .autumn
-        .billing()
-        .open_customer_portal(OpenCustomerPortalRequest {
-            customer_id: auth.organization.id,
+    let session = state
+        .polar
+        .customer_sessions()
+        .create(CreateCustomerSessionRequest::External {
+            external_customer_id: auth.organization.id.clone(),
             return_url: Some(format!("{}/account", state.config.app_url)),
-            ..OpenCustomerPortalRequest::default()
         })
         .await
-        .map_err(map_autumn_error)?;
+        .map_err(map_polar_error)?;
 
-    Ok(Json(BillingUrlResponse { url: response.url }))
+    Ok(Json(BillingUrlResponse {
+        url: session.customer_portal_url,
+    }))
 }
 
 async fn cancel(
@@ -130,22 +137,26 @@ async fn cancel(
 ) -> Result<Json<BillingStatusResponse>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     require_owner(&state, &auth.user.id, &auth.organization.id).await?;
-    get_or_create_customer(&state, &auth).await?;
 
-    state
-        .autumn
-        .cancel(auth.organization.id.clone())
-        .plan(&state.config.autumn_pro_plan_id)
-        .end_of_cycle()
-        .send()
+    let target = active_subscription(&state, &auth.organization.id)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("No active subscription to cancel".to_owned()))?;
+
+    let updated = state
+        .polar
+        .subscriptions()
+        .cancel_at_period_end(&target.id, true)
         .await
-        .map_err(map_autumn_error)?;
+        .map_err(map_polar_error)?;
 
-    let customer = get_or_create_customer(&state, &auth).await?;
-    Ok(Json(status_response(
-        &state.config.autumn_pro_plan_id,
-        true,
-        customer,
+    upsert_subscription(&state, &updated, Some(auth.organization.id.clone())).await?;
+
+    let role = active_member_role(&state, &auth.user.id, &auth.organization.id).await?;
+    let subs = load_subscriptions(&state, &auth.organization.id).await?;
+    Ok(Json(build_status(
+        &state,
+        role.as_deref() == Some("owner"),
+        subs,
         &auth.organization.id,
     )))
 }
@@ -156,31 +167,70 @@ async fn resume(
 ) -> Result<Json<BillingStatusResponse>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     require_owner(&state, &auth.user.id, &auth.organization.id).await?;
-    get_or_create_customer(&state, &auth).await?;
 
-    state
-        .autumn
-        .cancel(auth.organization.id.clone())
-        .plan(&state.config.autumn_pro_plan_id)
-        .uncancel()
-        .send()
+    let target = latest_subscription(&state, &auth.organization.id)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("No subscription to resume".to_owned()))?;
+
+    let updated = state
+        .polar
+        .subscriptions()
+        .cancel_at_period_end(&target.id, false)
         .await
-        .map_err(map_autumn_error)?;
+        .map_err(map_polar_error)?;
 
-    let customer = get_or_create_customer(&state, &auth).await?;
-    Ok(Json(status_response(
-        &state.config.autumn_pro_plan_id,
-        true,
-        customer,
+    upsert_subscription(&state, &updated, Some(auth.organization.id.clone())).await?;
+
+    let role = active_member_role(&state, &auth.user.id, &auth.organization.id).await?;
+    let subs = load_subscriptions(&state, &auth.organization.id).await?;
+    Ok(Json(build_status(
+        &state,
+        role.as_deref() == Some("owner"),
+        subs,
         &auth.organization.id,
     )))
 }
 
+async fn webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<StatusCode, ApiError> {
+    let id = header(&headers, "webhook-id");
+    let timestamp = header(&headers, "webhook-timestamp");
+    let signature = header(&headers, "webhook-signature");
+
+    let event = verify(
+        body.as_ref(),
+        id,
+        timestamp,
+        signature,
+        &state.config.polar_webhook_secret,
+    )
+    .map_err(|err| {
+        tracing::warn!(error = %err, "polar webhook verification failed");
+        ApiError::Unauthorized
+    })?;
+
+    if let Some(sub) = event.as_subscription() {
+        let org_id = resolve_organization_id(sub);
+        if let Err(err) = upsert_subscription(&state, sub, org_id).await {
+            tracing::error!(error = ?err, subscription_id = %sub.id, "failed to upsert polar subscription");
+            return Err(err);
+        }
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub(crate) async fn is_pro(state: &AppState, auth: &AuthContext) -> Result<bool, ApiError> {
-    let customer = get_or_create_customer(state, auth).await?;
-    Ok(customer.subscriptions.iter().any(|subscription| {
-        subscription.plan_id == state.config.autumn_pro_plan_id
-            && matches!(subscription.status, SubscriptionStatus::Active)
+    let now = Utc::now().fixed_offset();
+    let pro_id = &state.config.polar_pro_product_id;
+    let subs = load_subscriptions(state, &auth.organization.id).await?;
+    Ok(subs.iter().any(|s| {
+        s.product_id == *pro_id
+            && ACTIVE_STATUSES.contains(&s.status.as_str())
+            && s.ends_at.map_or(true, |t| t > now)
     }))
 }
 
@@ -193,26 +243,155 @@ pub(crate) async fn require_pro(state: &AppState, auth: &AuthContext) -> Result<
     ))
 }
 
-async fn get_or_create_customer(
+async fn upsert_subscription(
     state: &AppState,
-    auth: &AuthContext,
-) -> Result<Customer, ApiError> {
-    let mut metadata: HashMap<String, Value> = HashMap::new();
-    metadata.insert("organizationId".to_owned(), json!(auth.organization.id));
-    metadata.insert("createdByUserId".to_owned(), json!(auth.user.id));
+    sub: &Subscription,
+    fallback_org_id: Option<String>,
+) -> Result<(), ApiError> {
+    let Some(organization_id) = resolve_organization_id(sub).or(fallback_org_id) else {
+        tracing::warn!(
+            subscription_id = %sub.id,
+            "polar subscription missing organization reference; skipping"
+        );
+        return Ok(());
+    };
 
-    state
-        .autumn
-        .customers()
-        .get_or_create(GetOrCreateCustomerRequest {
-            customer_id: Some(auth.organization.id.clone()),
-            name: Some(auth.organization.name.clone()),
-            email: Some(auth.user.email.clone()),
-            metadata,
-            ..GetOrCreateCustomerRequest::default()
+    let existing = os::Entity::find_by_id(sub.id.clone())
+        .one(&state.db)
+        .await?;
+    let now = Utc::now().fixed_offset();
+    let product_id = sub.product_id.clone().unwrap_or_default();
+
+    let mut active = match existing {
+        Some(model) => {
+            let mut active: os::ActiveModel = model.into();
+            active.organization_id = Set(organization_id);
+            active.product_id = Set(product_id);
+            active.updated_at = Set(now);
+            active
+        }
+        None => os::ActiveModel {
+            id: Set(sub.id.clone()),
+            organization_id: Set(organization_id),
+            product_id: Set(product_id),
+            created_at: Set(now),
+            updated_at: Set(now),
+            ..Default::default()
+        },
+    };
+
+    active.status = Set(sub.status.clone());
+    active.cancel_at_period_end = Set(sub.cancel_at_period_end);
+    active.current_period_end = Set(parse_dt(sub.current_period_end.as_deref()));
+    active.canceled_at = Set(parse_dt(sub.canceled_at.as_deref()));
+    active.ends_at = Set(parse_dt(sub.ends_at.as_deref()));
+    active.customer_id = Set(sub.customer_id.clone());
+
+    active.save(&state.db).await?;
+    Ok(())
+}
+
+fn resolve_organization_id(sub: &Subscription) -> Option<String> {
+    sub.metadata
+        .get("organization_id")
+        .or_else(|| sub.metadata.get("organizationId"))
+        .and_then(|v| v.as_str().map(ToOwned::to_owned))
+        .or_else(|| {
+            sub.customer
+                .as_ref()
+                .and_then(|c| c.external_id.clone())
+                .or_else(|| {
+                    sub.customer
+                        .as_ref()
+                        .and_then(|c| c.metadata.get("organization_id"))
+                        .and_then(|v| v.as_str().map(ToOwned::to_owned))
+                })
         })
-        .await
-        .map_err(map_autumn_error)
+}
+
+fn parse_dt(value: Option<&str>) -> Option<DateTime<FixedOffset>> {
+    value.and_then(|raw| DateTime::parse_from_rfc3339(raw).ok())
+}
+
+fn header<'a>(headers: &'a HeaderMap, name: &str) -> &'a str {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+}
+
+async fn load_subscriptions(
+    state: &AppState,
+    organization_id: &str,
+) -> Result<Vec<os::Model>, ApiError> {
+    Ok(os::Entity::find()
+        .filter(os::Column::OrganizationId.eq(organization_id))
+        .order_by_desc(os::Column::CreatedAt)
+        .all(&state.db)
+        .await?)
+}
+
+async fn active_subscription(
+    state: &AppState,
+    organization_id: &str,
+) -> Result<Option<os::Model>, ApiError> {
+    let now = Utc::now().fixed_offset();
+    Ok(load_subscriptions(state, organization_id)
+        .await?
+        .into_iter()
+        .find(|m| {
+            ACTIVE_STATUSES.contains(&m.status.as_str())
+                && m.ends_at.map_or(true, |t| t > now)
+                && !m.cancel_at_period_end
+        }))
+}
+
+async fn latest_subscription(
+    state: &AppState,
+    organization_id: &str,
+) -> Result<Option<os::Model>, ApiError> {
+    Ok(load_subscriptions(state, organization_id)
+        .await?
+        .into_iter()
+        .next())
+}
+
+fn build_status(
+    state: &AppState,
+    can_manage: bool,
+    subs: Vec<os::Model>,
+    fallback_id: &str,
+) -> BillingStatusResponse {
+    let now = Utc::now().fixed_offset();
+    let pro_id = &state.config.polar_pro_product_id;
+    let is_pro = subs.iter().any(|s| {
+        s.product_id == *pro_id
+            && ACTIVE_STATUSES.contains(&s.status.as_str())
+            && s.ends_at.map_or(true, |t| t > now)
+    });
+    let customer_id = subs
+        .iter()
+        .find_map(|s| s.customer_id.clone())
+        .unwrap_or_else(|| fallback_id.to_owned());
+    let subscriptions = subs
+        .into_iter()
+        .map(|s| BillingSubscriptionResponse {
+            id: s.id,
+            plan_id: s.product_id,
+            status: s.status,
+            current_period_end: s.current_period_end.map(|t| t.timestamp()),
+            trial_ends_at: None,
+            canceled_at: s.canceled_at.map(|t| t.timestamp()),
+        })
+        .collect::<Vec<_>>();
+
+    BillingStatusResponse {
+        customer_id,
+        pro_plan_id: pro_id.clone(),
+        is_pro,
+        can_manage,
+        subscriptions,
+    }
 }
 
 async fn require_owner(
@@ -246,63 +425,23 @@ async fn active_member_role(
         .map(|membership| membership.role))
 }
 
-fn status_response(
-    pro_plan_id: &str,
-    can_manage: bool,
-    customer: Customer,
-    fallback_customer_id: &str,
-) -> BillingStatusResponse {
-    let subscriptions = customer
-        .subscriptions
-        .into_iter()
-        .map(|subscription| BillingSubscriptionResponse {
-            id: subscription.id,
-            plan_id: subscription.plan_id,
-            status: subscription_status(subscription.status).to_owned(),
-            current_period_end: subscription.current_period_end,
-            trial_ends_at: subscription.trial_ends_at,
-            canceled_at: subscription.canceled_at,
-        })
-        .collect::<Vec<_>>();
-    let is_pro = subscriptions
-        .iter()
-        .any(|subscription| subscription.plan_id == pro_plan_id && subscription.status == "active");
-
-    BillingStatusResponse {
-        customer_id: customer
-            .id
-            .unwrap_or_else(|| fallback_customer_id.to_owned()),
-        pro_plan_id: pro_plan_id.to_owned(),
-        is_pro,
-        can_manage,
-        subscriptions,
-    }
-}
-
-fn subscription_status(status: SubscriptionStatus) -> &'static str {
-    match status {
-        SubscriptionStatus::Active => "active",
-        SubscriptionStatus::Scheduled => "scheduled",
-    }
-}
-
-fn map_autumn_error(error: AutumnError) -> ApiError {
+fn map_polar_error(error: PolarError) -> ApiError {
     match error {
-        AutumnError::Api(api) if api.status.is_client_error() => {
+        PolarError::Api(api) if api.status.is_client_error() => {
             tracing::warn!(
                 status = %api.status,
-                code = ?api.code,
+                error_type = ?api.error_type,
                 message = %api.message,
-                "Autumn billing request failed"
+                "Polar billing request failed"
             );
             if api.status == StatusCode::UNAUTHORIZED || api.status == StatusCode::FORBIDDEN {
-                ApiError::Internal(anyhow::anyhow!("Autumn billing credentials were rejected"))
+                ApiError::Internal(anyhow::anyhow!("Polar billing credentials were rejected"))
             } else {
                 ApiError::BadRequest(format!("Billing request failed: {}", api.message))
             }
         }
         other => {
-            tracing::error!(error = ?other, "Autumn billing provider error");
+            tracing::error!(error = ?other, "Polar billing provider error");
             ApiError::Internal(anyhow::anyhow!("Billing provider error"))
         }
     }
