@@ -202,34 +202,6 @@ function AppLayout() {
             <div className="min-w-0 flex-1">
               <OrgSwitcher activeOrganization={session.data.organization} />
             </div>
-            <button
-              type="button"
-              onClick={() =>
-                window.dispatchEvent(new CustomEvent("produktive:open-cmdk"))
-              }
-              aria-label="Search"
-              className="grid size-7 shrink-0 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface hover:text-fg"
-            >
-              <SearchSidebarIcon />
-            </button>
-            <button
-              type="button"
-              onClick={async () => {
-                if (
-                  pathname !== "/issues" &&
-                  !pathname.startsWith("/issues/")
-                ) {
-                  await navigate({ to: "/issues" });
-                }
-                setTimeout(() => {
-                  window.dispatchEvent(new CustomEvent("produktive:new-issue"));
-                }, 50);
-              }}
-              aria-label="New issue"
-              className="grid size-7 shrink-0 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface hover:text-fg"
-            >
-              <ComposeIcon />
-            </button>
           </div>
         </SidebarHeader>
 
