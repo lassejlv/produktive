@@ -18,7 +18,7 @@ use polar_rs::{
 };
 use produktive_entity::{member, organization_subscription as os};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
+    sea_query::OnConflict, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -262,7 +262,7 @@ async fn webhook(
             webhook_id = %id,
             "polar webhook verification failed"
         );
-        ApiError::Unauthorized
+        ApiError::Forbidden("Invalid webhook signature".to_owned())
     })?;
 
     let event_type = describe_event(&event);
@@ -300,7 +300,7 @@ async fn webhook(
         }
     }
 
-    Ok(StatusCode::NO_CONTENT)
+    Ok(StatusCode::ACCEPTED)
 }
 
 fn describe_event(event: &WebhookEvent) -> &str {
@@ -353,38 +353,42 @@ async fn upsert_subscription(
         return Ok(());
     };
 
-    let existing = os::Entity::find_by_id(sub.id.clone())
-        .one(&state.db)
-        .await?;
     let now = Utc::now().fixed_offset();
     let product_id = sub.product_id.clone().unwrap_or_default();
 
-    let mut active = match existing {
-        Some(model) => {
-            let mut active: os::ActiveModel = model.into();
-            active.organization_id = Set(organization_id);
-            active.product_id = Set(product_id);
-            active.updated_at = Set(now);
-            active
-        }
-        None => os::ActiveModel {
-            id: Set(sub.id.clone()),
-            organization_id: Set(organization_id),
-            product_id: Set(product_id),
-            created_at: Set(now),
-            updated_at: Set(now),
-            ..Default::default()
-        },
+    let active = os::ActiveModel {
+        id: Set(sub.id.clone()),
+        organization_id: Set(organization_id),
+        product_id: Set(product_id),
+        status: Set(sub.status.clone()),
+        current_period_end: Set(parse_dt(sub.current_period_end.as_deref())),
+        cancel_at_period_end: Set(sub.cancel_at_period_end),
+        canceled_at: Set(parse_dt(sub.canceled_at.as_deref())),
+        ends_at: Set(parse_dt(sub.ends_at.as_deref())),
+        customer_id: Set(sub.customer_id.clone()),
+        created_at: Set(now),
+        updated_at: Set(now),
     };
 
-    active.status = Set(sub.status.clone());
-    active.cancel_at_period_end = Set(sub.cancel_at_period_end);
-    active.current_period_end = Set(parse_dt(sub.current_period_end.as_deref()));
-    active.canceled_at = Set(parse_dt(sub.canceled_at.as_deref()));
-    active.ends_at = Set(parse_dt(sub.ends_at.as_deref()));
-    active.customer_id = Set(sub.customer_id.clone());
+    os::Entity::insert(active)
+        .on_conflict(
+            OnConflict::column(os::Column::Id)
+                .update_columns([
+                    os::Column::OrganizationId,
+                    os::Column::ProductId,
+                    os::Column::Status,
+                    os::Column::CurrentPeriodEnd,
+                    os::Column::CancelAtPeriodEnd,
+                    os::Column::CanceledAt,
+                    os::Column::EndsAt,
+                    os::Column::CustomerId,
+                    os::Column::UpdatedAt,
+                ])
+                .to_owned(),
+        )
+        .exec_without_returning(&state.db)
+        .await?;
 
-    active.save(&state.db).await?;
     Ok(())
 }
 
