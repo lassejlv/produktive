@@ -152,6 +152,14 @@ export const deleteActiveOrganization = (input: { confirm: string }) =>
     },
   );
 
+export const leaveActiveOrganization = () =>
+  requestJson<{ ok: true; switchedTo: AuthOrganization | null }>(
+    "/api/auth/organizations/active/leave",
+    {
+      method: "POST",
+    },
+  );
+
 export const deleteAccount = (confirm: string) =>
   requestJson<{ ok: true }>("/api/auth/account", {
     method: "DELETE",
@@ -186,41 +194,70 @@ export const signOut = async () => {
   });
 };
 
+type SessionState = {
+  data: AuthSession | null;
+  error: Error | null;
+  status: "initial" | "loading" | "ready" | "error";
+};
+
+let sessionState: SessionState = {
+  data: null,
+  error: null,
+  status: "initial",
+};
+const sessionSubscribers = new Set<() => void>();
+let inflightSessionFetch: Promise<void> | null = null;
+
+const notifySessionSubscribers = () => {
+  for (const fn of sessionSubscribers) fn();
+};
+
+const fetchSession = async () => {
+  sessionState = { ...sessionState, status: "loading" };
+  notifySessionSubscribers();
+  const result = await authClient.getSession();
+  if (result.error) {
+    sessionState = {
+      data: null,
+      error: new Error(result.error.message),
+      status: "error",
+    };
+  } else {
+    sessionState = { data: result.data, error: null, status: "ready" };
+  }
+  notifySessionSubscribers();
+};
+
+export const refreshSession = (): Promise<void> => {
+  if (!inflightSessionFetch) {
+    inflightSessionFetch = fetchSession().finally(() => {
+      inflightSessionFetch = null;
+    });
+  }
+  return inflightSessionFetch;
+};
+
 export const useSession = () => {
-  const [data, setData] = useState<AuthSession | null>(null);
-  const [isPending, setIsPending] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const [, forceRender] = useState(0);
 
   useEffect(() => {
-    let isMounted = true;
-
-    const loadSession = async () => {
-      setIsPending(true);
-      const result = await authClient.getSession();
-
-      if (!isMounted) {
-        return;
-      }
-
-      if (result.error) {
-        setError(new Error(result.error.message));
-        setData(null);
-      } else {
-        setError(null);
-        setData(result.data);
-      }
-
-      setIsPending(false);
-    };
-
-    void loadSession();
-
+    const handler = () => forceRender((tick) => tick + 1);
+    sessionSubscribers.add(handler);
+    if (sessionState.status === "initial") {
+      void refreshSession();
+    }
     return () => {
-      isMounted = false;
+      sessionSubscribers.delete(handler);
     };
   }, []);
 
-  return { data, error, isPending };
+  return {
+    data: sessionState.data,
+    error: sessionState.error,
+    isPending:
+      sessionState.status === "initial" || sessionState.status === "loading",
+    refresh: refreshSession,
+  };
 };
 
 export const useOrganizations = (enabled: boolean) => {

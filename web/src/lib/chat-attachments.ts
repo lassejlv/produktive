@@ -46,6 +46,38 @@ export function formatIssueReferences(issues: ReferencedIssue[]) {
   )}`;
 }
 
+export type ReferencedTool = {
+  displayName: string;
+  description: string;
+  server: { name: string };
+};
+
+export function formatToolReferences(tools: ReferencedTool[]) {
+  if (tools.length === 0) return "";
+  const lines = tools.map((tool) => {
+    const desc = tool.description ? ` — ${tool.description}` : "";
+    return `- ${tool.displayName} (${tool.server.name})${desc}`;
+  });
+  return `\n\nThe user has @-mentioned these tools — prefer them when relevant this turn:\n${lines.join(
+    "\n",
+  )}`;
+}
+
+export type ReferencedChat = {
+  id: string;
+  title: string;
+};
+
+export function formatChatReferences(chats: ReferencedChat[]) {
+  if (chats.length === 0) return "";
+  const lines = chats.map(
+    (chat) => `- id: ${chat.id} — "${chat.title}"`,
+  );
+  return `\n\nReferenced chats (use the get_chat tool to inspect their messages):\n${lines.join(
+    "\n",
+  )}`;
+}
+
 export function prepareChatAttachments(
   files: FileList | File[],
   currentCount = 0,

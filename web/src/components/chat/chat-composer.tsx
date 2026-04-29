@@ -10,14 +10,29 @@ import {
   IssuePicker,
   type PickableIssue,
 } from "@/components/chat/issue-picker";
+import { ModelPicker } from "@/components/chat/model-picker";
+import {
+  MentionPopup,
+  type MentionItem,
+  prettyToolName,
+} from "@/components/chat/tool-mention-popup";
+import type { AiModel } from "@/lib/api";
 import { StatusIcon } from "@/components/issue/status-icon";
+import { SparkleIcon } from "@/components/chat/icons";
 import {
   type ChatAttachmentDraft,
+  type ReferencedChat,
   type ReferencedIssue,
   formatBytes,
+  formatChatReferences,
   formatIssueReferences,
+  formatToolReferences,
   prepareChatAttachments,
 } from "@/lib/chat-attachments";
+import { getCaretCoords } from "@/lib/textarea-caret";
+import { useChats } from "@/lib/use-chats";
+import { useIssues } from "@/lib/use-issues";
+import { useMcpTools, type MentionableTool } from "@/lib/use-mcp-tools";
 import { cn } from "@/lib/utils";
 
 export type PendingQuestion = {
@@ -34,6 +49,11 @@ export function ChatComposer({
   changesCount = 0,
   changesOpen = false,
   pendingQuestion,
+  model,
+  models,
+  onModelChange,
+  isPro = false,
+  onUpgradeRequired,
 }: {
   busy: boolean;
   onSend: (value: string, attachments: ChatAttachmentDraft[]) => void;
@@ -42,18 +62,57 @@ export function ChatComposer({
   changesCount?: number;
   changesOpen?: boolean;
   pendingQuestion?: PendingQuestion | null;
+  model?: string | null;
+  models?: AiModel[];
+  onModelChange?: (modelId: string) => void;
+  isPro?: boolean;
+  onUpgradeRequired?: () => void;
 }) {
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [issues, setIssues] = useState<ReferencedIssue[]>([]);
+  const [mentionedTools, setMentionedTools] = useState<MentionableTool[]>([]);
+  const [mentionedChats, setMentionedChats] = useState<ReferencedChat[]>([]);
+  const [mentionState, setMentionState] = useState<{
+    anchor: number;
+    query: string;
+    coords: { left: number; top: number };
+  } | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const { tools: availableTools } = useMcpTools();
+  const { issues: availableIssues } = useIssues();
+  const { chats: availableChats } = useChats();
 
   const selectedIssueIds = useMemo(
     () => new Set(issues.map((issue) => issue.id)),
     [issues],
   );
+
+  const mentionItems = useMemo<MentionItem[]>(() => {
+    const issueItems: MentionItem[] = availableIssues.map((issue) => ({
+      kind: "issue",
+      id: `issue:${issue.id}`,
+      issue: {
+        id: issue.id,
+        title: issue.title,
+        status: issue.status,
+        priority: issue.priority,
+      },
+    }));
+    const chatItems: MentionItem[] = availableChats.map((chat) => ({
+      kind: "chat",
+      id: `chat:${chat.id}`,
+      chat,
+    }));
+    const toolItems: MentionItem[] = availableTools.map((tool) => ({
+      kind: "tool",
+      id: `tool:${tool.id}`,
+      tool,
+    }));
+    return [...issueItems, ...chatItems, ...toolItems];
+  }, [availableIssues, availableChats, availableTools]);
 
   const autoresize = (el: HTMLTextAreaElement | null) => {
     if (!el) return;
@@ -61,24 +120,123 @@ export function ChatComposer({
     el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
   };
 
+  const detectMention = (textarea: HTMLTextAreaElement) => {
+    const caret = textarea.selectionStart ?? textarea.value.length;
+    const before = textarea.value.slice(0, caret);
+    const atIndex = before.lastIndexOf("@");
+    if (atIndex === -1) {
+      setMentionState(null);
+      return;
+    }
+    const charBefore = atIndex === 0 ? "" : before[atIndex - 1];
+    const atBoundary = atIndex === 0 || /\s/.test(charBefore);
+    if (!atBoundary) {
+      setMentionState(null);
+      return;
+    }
+    const query = before.slice(atIndex + 1);
+    if (!/^[\w-]*$/.test(query)) {
+      setMentionState(null);
+      return;
+    }
+    setMentionState({
+      anchor: atIndex,
+      query,
+      coords: getCaretCoords(textarea),
+    });
+  };
+
   const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
     setValue(event.target.value);
     autoresize(event.target);
+    detectMention(event.target);
+  };
+
+  const addMentionedTool = (tool: MentionableTool) => {
+    setMentionedTools((current) =>
+      current.find((existing) => existing.id === tool.id)
+        ? current
+        : [...current, tool],
+    );
+  };
+
+  const addMentionedIssue = (issue: ReferencedIssue) => {
+    setIssues((current) =>
+      current.find((existing) => existing.id === issue.id)
+        ? current
+        : [...current, issue],
+    );
+  };
+
+  const addMentionedChat = (chat: ReferencedChat) => {
+    setMentionedChats((current) =>
+      current.find((existing) => existing.id === chat.id)
+        ? current
+        : [...current, chat],
+    );
+  };
+
+  const onSelectMention = (item: MentionItem) => {
+    const ta = taRef.current;
+    if (!ta || !mentionState) return;
+    const caret = ta.selectionStart ?? ta.value.length;
+    const nextValue =
+      ta.value.slice(0, mentionState.anchor) + ta.value.slice(caret);
+    setValue(nextValue);
+    if (item.kind === "tool") {
+      addMentionedTool(item.tool);
+    } else if (item.kind === "issue") {
+      addMentionedIssue(item.issue);
+    } else {
+      addMentionedChat({
+        id: item.chat.id,
+        title: item.chat.title || "Untitled chat",
+      });
+    }
+    const restoreAt = mentionState.anchor;
+    setMentionState(null);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(restoreAt, restoreAt);
+      autoresize(ta);
+    });
+  };
+
+  const removeTool = (id: string) => {
+    setMentionedTools((current) =>
+      current.filter((tool) => tool.id !== id),
+    );
+  };
+
+  const removeMentionedChat = (id: string) => {
+    setMentionedChats((current) => current.filter((chat) => chat.id !== id));
   };
 
   const trySend = () => {
     const trimmed = value.trim();
-    if ((!trimmed && attachments.length === 0 && issues.length === 0) || busy) {
+    if (
+      (!trimmed &&
+        attachments.length === 0 &&
+        issues.length === 0 &&
+        mentionedTools.length === 0 &&
+        mentionedChats.length === 0) ||
+      busy
+    ) {
       return;
     }
     const fallback = attachments.length > 0 ? "Review the attached files." : "";
     const baseText = trimmed || fallback;
-    const outgoing = `${baseText}${formatIssueReferences(issues)}`.trim();
+    const outgoing = `${baseText}${formatIssueReferences(issues)}${formatChatReferences(
+      mentionedChats,
+    )}${formatToolReferences(mentionedTools)}`.trim();
     onSend(outgoing, attachments);
     setValue("");
     setAttachments([]);
     setAttachmentError(null);
     setIssues([]);
+    setMentionedTools([]);
+    setMentionedChats([]);
+    setMentionState(null);
     requestAnimationFrame(() => autoresize(taRef.current));
   };
 
@@ -119,6 +277,10 @@ export function ChatComposer({
   };
 
   const handleKey = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionState !== null) {
+      // Mention popup is open; let it own keyboard handling.
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       trySend();
@@ -126,7 +288,11 @@ export function ChatComposer({
   };
 
   const canSend =
-    (value.trim().length > 0 || attachments.length > 0 || issues.length > 0) &&
+    (value.trim().length > 0 ||
+      attachments.length > 0 ||
+      issues.length > 0 ||
+      mentionedTools.length > 0 ||
+      mentionedChats.length > 0) &&
     !busy;
 
   return (
@@ -172,9 +338,53 @@ export function ChatComposer({
             ) : null}
           </div>
         ) : null}
-        {attachments.length > 0 || issues.length > 0 ? (
+        {attachments.length > 0 ||
+        issues.length > 0 ||
+        mentionedTools.length > 0 ||
+        mentionedChats.length > 0 ? (
           <div className="border-b border-border-subtle px-3 py-2">
             <div className="flex flex-wrap gap-1.5">
+              {mentionedChats.map((chat) => (
+                <div
+                  key={chat.id}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-[6px] border border-accent/30 bg-accent/[0.06] px-2 py-1 text-[11px] text-fg-muted"
+                >
+                  <span className="text-accent">
+                    <SparkleIcon size={11} />
+                  </span>
+                  <span className="max-w-[180px] truncate text-fg">
+                    {chat.title}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-fg-faint transition-colors hover:text-fg"
+                    onClick={() => removeMentionedChat(chat.id)}
+                    aria-label={`Remove ${chat.title}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {mentionedTools.map((tool) => (
+                <div
+                  key={tool.id}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-[6px] border border-accent/30 bg-accent/[0.06] px-2 py-1 text-[11px] text-fg-muted"
+                >
+                  <span className="font-mono text-[10px] text-accent">@</span>
+                  <span className="max-w-[180px] truncate font-mono text-fg">
+                    {prettyToolName(tool)}
+                  </span>
+                  <span className="text-fg-faint">· {tool.server.name}</span>
+                  <button
+                    type="button"
+                    className="text-fg-faint transition-colors hover:text-fg"
+                    onClick={() => removeTool(tool.id)}
+                    aria-label={`Remove ${tool.displayName}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
               {issues.map((issue) => (
                 <div
                   key={issue.id}
@@ -221,10 +431,25 @@ export function ChatComposer({
           value={value}
           onChange={handleChange}
           onKeyDown={handleKey}
+          onClick={(event) => detectMention(event.currentTarget)}
+          onKeyUp={(event) => {
+            const navKeys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
+            if (navKeys.includes(event.key)) {
+              detectMention(event.currentTarget);
+            }
+          }}
           rows={1}
           placeholder={placeholder}
           className="block min-h-[46px] w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3.5 text-[14px] leading-[1.55] text-fg outline-none placeholder:text-fg-muted"
           style={{ maxHeight: 240 }}
+        />
+        <MentionPopup
+          open={mentionState !== null}
+          query={mentionState?.query ?? ""}
+          coords={mentionState?.coords ?? null}
+          items={mentionItems}
+          onSelect={onSelectMention}
+          onClose={() => setMentionState(null)}
         />
         {attachmentError ? (
           <p className="border-t border-border-subtle px-3 py-2 text-[12px] text-danger">
@@ -269,6 +494,16 @@ export function ChatComposer({
             ) : null}
           </ToolButton>
           <span className="flex-1" />
+          {models && models.length > 0 && onModelChange ? (
+            <ModelPicker
+              value={model ?? null}
+              models={models}
+              onChange={onModelChange}
+              disabled={busy}
+              isPro={isPro}
+              onUpgradeRequired={onUpgradeRequired}
+            />
+          ) : null}
           {busy ? (
             <button
               type="button"

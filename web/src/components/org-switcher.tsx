@@ -20,6 +20,7 @@ import { LoadingTip } from "@/components/ui/loading-tip";
 import {
   type OrganizationMembership,
   createOrganization,
+  refreshSession,
   switchOrganization,
   useOrganizations,
 } from "@/lib/auth-client";
@@ -72,7 +73,9 @@ export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
     setSwitchError(null);
     try {
       await switchOrganization(org.id);
-      window.location.reload();
+      await refreshSession();
+      setMenuOpen(false);
+      setBusy(false);
     } catch (error) {
       setSwitchError(
         error instanceof Error
@@ -238,7 +241,8 @@ function CreateOrganizationDialog({
     setError(null);
     try {
       await createOrganization(trimmed);
-      window.location.reload();
+      await refreshSession();
+      onClose();
     } catch (createError) {
       setError(
         createError instanceof Error

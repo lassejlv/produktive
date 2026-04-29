@@ -131,6 +131,7 @@ async fn create_server(
 ) -> Result<Json<ServerEnvelope>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     require_owner(&state, &auth).await?;
+    super::billing::require_pro(&state, &auth).await?;
 
     let url = validate_remote_url(&payload.url, allow_local_mcp())?;
     let name = payload
@@ -256,6 +257,7 @@ async fn refresh_tools(
 ) -> Result<Json<ServerEnvelope>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     require_owner(&state, &auth).await?;
+    super::billing::require_pro(&state, &auth).await?;
     let server = find_server(&state, &auth.organization.id, &id).await?;
     let token = crate::mcp::load_access_token(&state, &server).await?;
     let probe = probe_server(&server.url, token).await;
@@ -293,6 +295,7 @@ async fn start_oauth(
 ) -> Result<Json<Value>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     require_owner(&state, &auth).await?;
+    super::billing::require_pro(&state, &auth).await?;
     let server = find_server(&state, &auth.organization.id, &id).await?;
     let probe = probe_server(&server.url, None).await;
     let oauth = match probe {

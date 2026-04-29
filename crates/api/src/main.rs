@@ -1,4 +1,5 @@
 mod agent_tools;
+mod ai_models;
 mod auth;
 mod config;
 mod email;
@@ -15,8 +16,8 @@ use autumn_rs::{Autumn, AutumnConfig};
 use axum::Router;
 use config::{Config, DatabaseConfig};
 use http::{
-    ai_mcp_routes, auth_routes, billing_routes, chat_routes, cors_layer, favorite_routes,
-    inbox_routes, invitation_routes, issue_routes, label_routes, member_routes,
+    ai_mcp_routes, ai_routes, auth_routes, billing_routes, chat_routes, cors_layer,
+    favorite_routes, inbox_routes, invitation_routes, issue_routes, label_routes, member_routes,
     org_invitation_routes, preferences_routes, project_routes, realtime_routes, waitlist_routes,
 };
 use produktive_ai::AiClient;
@@ -70,6 +71,7 @@ async fn main() -> anyhow::Result<()> {
     )));
     let app = Router::new()
         .nest("/api/auth", auth_routes())
+        .nest("/api/ai", ai_routes())
         .nest("/api/ai/mcp", ai_mcp_routes())
         .nest("/api/billing", billing_routes())
         .nest("/api/issues", issue_routes())

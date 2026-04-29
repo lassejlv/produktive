@@ -311,6 +311,21 @@ export type McpServerEnvelope = {
 export const listMcpServers = () =>
   request<{ servers: McpServer[] }>("/api/ai/mcp/servers");
 
+export type AiModel = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  requiresPro: boolean;
+};
+
+export type AiModelsResponse = {
+  models: AiModel[];
+  defaultId: string;
+};
+
+export const listAiModels = () =>
+  request<AiModelsResponse>("/api/ai/models");
+
 export const createMcpServer = (input: {
   name?: string;
   url: string;
@@ -712,14 +727,17 @@ export const streamChatMessage = async (
   id: string,
   content: string,
   onEvent: (event: ChatStreamEvent) => void,
+  options?: { model?: string },
 ) => {
+  const body: Record<string, unknown> = { content };
+  if (options?.model) body.model = options.model;
   const response = await fetch(apiPath(`/api/chats/${id}/messages/stream`), {
     method: "POST",
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

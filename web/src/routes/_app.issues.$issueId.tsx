@@ -13,7 +13,7 @@ import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Avatar } from "@/components/issue/avatar";
 import { EditableDescription } from "@/components/issue/editable-description";
 import { EditableTitle } from "@/components/issue/editable-title";
-import { IssueMetaStrip } from "@/components/issue/issue-meta-strip";
+import { IssueProperties } from "@/components/issue/issue-properties";
 import {
   apiPath,
   type Issue,
@@ -544,86 +544,91 @@ export function IssueDetail({
           </Link>
         </div>
       ) : (
-        <article className="mx-auto w-full max-w-[760px] px-6 pb-24 pt-10 animate-fade-in">
-          <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.08em] text-fg-faint">
-            P-{issue.id.slice(0, 4).toUpperCase()}
-          </p>
-          <EditableTitle value={issue.title} onSave={handleTitle} />
+        <article className="mx-auto w-full max-w-[1080px] px-6 pb-24 pt-10 animate-fade-in">
+          <div className="grid gap-10 md:grid-cols-[minmax(0,1fr)_260px]">
+            <div className="order-2 min-w-0 md:order-none">
+              <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.08em] text-fg-faint">
+                P-{issue.id.slice(0, 4).toUpperCase()}
+              </p>
+              <EditableTitle value={issue.title} onSave={handleTitle} />
 
-          <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[12px] text-fg-faint">
-            {issue.createdBy ? (
-              <span className="inline-flex items-center gap-1.5 text-fg-muted">
-                <Avatar
-                  name={issue.createdBy.name}
-                  image={issue.createdBy.image}
+              <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[12px] text-fg-faint">
+                {issue.createdBy ? (
+                  <span className="inline-flex items-center gap-1.5 text-fg-muted">
+                    <Avatar
+                      name={issue.createdBy.name}
+                      image={issue.createdBy.image}
+                    />
+                    {issue.createdBy.name}
+                  </span>
+                ) : null}
+                {issue.createdBy ? (
+                  <span className="text-fg-faint/60">·</span>
+                ) : null}
+                <span>Created {formatDate(issue.createdAt)}</span>
+                <span className="text-fg-faint/60">·</span>
+                <span>Updated {formatDate(issue.updatedAt)}</span>
+              </div>
+
+              <div className="mt-10">
+                <EditableDescription
+                  value={issue.description}
+                  onSave={handleDescription}
                 />
-                {issue.createdBy.name}
-              </span>
-            ) : null}
-            {issue.createdBy ? <span className="text-fg-faint/60">·</span> : null}
-            <span>Created {formatDate(issue.createdAt)}</span>
-            <span className="text-fg-faint/60">·</span>
-            <span>Updated {formatDate(issue.updatedAt)}</span>
-          </div>
+              </div>
 
-          <div className="mt-3">
-            <IssueMetaStrip
-              status={issue.status}
-              priority={issue.priority}
-              assignee={
-                issue.assignedTo
-                  ? {
-                      id: issue.assignedTo.id,
-                      name: issue.assignedTo.name,
-                      image: issue.assignedTo.image,
-                    }
-                  : null
-              }
-              project={issue.project ?? null}
-              labels={issue.labels ?? []}
-              onChangeStatus={(next) => void handleStatus(next)}
-              onChangePriority={(next) => void handlePriority(next)}
-              onChangeAssignee={(id) => void handleAssignee(id)}
-              onChangeProject={(id) => void handleProject(id)}
-              onChangeLabels={(ids) => void handleLabels(ids)}
-            />
-          </div>
+              <SubIssuesSection parentId={issueId} />
 
-          <div className="mt-10">
-            <EditableDescription
-              value={issue.description}
-              onSave={handleDescription}
-            />
-          </div>
+              {issue.attachments && issue.attachments.length > 0 ? (
+                <section className="mt-12">
+                  <h2 className="mb-3 text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
+                    Attachments
+                  </h2>
+                  <AttachmentRail attachments={issue.attachments} />
+                </section>
+              ) : null}
 
-          <SubIssuesSection parentId={issueId} />
-
-          {issue.attachments && issue.attachments.length > 0 ? (
-            <section className="mt-12">
-              <h2 className="mb-3 text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
-                Attachments
-              </h2>
-              <AttachmentRail attachments={issue.attachments} />
-            </section>
-          ) : null}
-
-          <section className="mt-14 border-t border-border-subtle pt-8">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
-                Activity
-              </h2>
-              <SubscribeStrip issueId={issueId} />
+              <section className="mt-14 border-t border-border-subtle pt-8">
+                <h2 className="mb-5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
+                  Activity
+                </h2>
+                <IssueTimeline items={timeline} />
+                <div className="mt-6">
+                  <CommentComposer
+                    value={commentBody}
+                    disabled={isCommenting}
+                    onChange={setCommentBody}
+                    onSubmit={() => void handleComment()}
+                  />
+                </div>
+              </section>
             </div>
-            <IssueTimeline items={timeline} />
-            <div className="mt-6">
-              <CommentComposer
-                value={commentBody}
-                disabled={isCommenting}
-                onChange={setCommentBody}
-                onSubmit={() => void handleComment()}
+
+            <aside className="order-1 md:order-none md:sticky md:top-10 md:self-start">
+              <IssueProperties
+                status={issue.status}
+                priority={issue.priority}
+                assignee={
+                  issue.assignedTo
+                    ? {
+                        id: issue.assignedTo.id,
+                        name: issue.assignedTo.name,
+                        image: issue.assignedTo.image,
+                      }
+                    : null
+                }
+                project={issue.project ?? null}
+                labels={issue.labels ?? []}
+                onChangeStatus={(next) => void handleStatus(next)}
+                onChangePriority={(next) => void handlePriority(next)}
+                onChangeAssignee={(id) => void handleAssignee(id)}
+                onChangeProject={(id) => void handleProject(id)}
+                onChangeLabels={(ids) => void handleLabels(ids)}
               />
-            </div>
-          </section>
+              <div className="my-4 h-px bg-border-subtle" />
+              <SubscribeStrip issueId={issueId} />
+            </aside>
+          </div>
         </article>
       )}
     </main>

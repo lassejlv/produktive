@@ -1,5 +1,6 @@
 use crate::{
     agent_tools::{self, registry},
+    ai_models::is_valid_model,
     auth::{require_auth, AuthContext},
     error::ApiError,
     mcp,
@@ -279,6 +280,35 @@ async fn upload_attachment(
 #[derive(Deserialize)]
 struct PostMessageRequest {
     content: String,
+    #[serde(default)]
+    model: Option<String>,
+}
+
+async fn resolve_model(
+    state: &AppState,
+    auth: &AuthContext,
+    requested: Option<String>,
+) -> Result<String, ApiError> {
+    let trimmed = requested
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let Some(value) = trimmed else {
+        return Ok(state.config.ai_model.clone());
+    };
+    if !is_valid_model(value) {
+        return Ok(state.config.ai_model.clone());
+    }
+    if value == state.config.ai_model {
+        return Ok(value.to_owned());
+    }
+    super::billing::require_pro(state, auth).await.map_err(|err| match err {
+        ApiError::Forbidden(_) => ApiError::Forbidden(
+            "Pro plan required to switch models".to_owned(),
+        ),
+        other => other,
+    })?;
+    Ok(value.to_owned())
 }
 
 async fn post_message(
@@ -297,11 +327,14 @@ async fn post_message(
         ));
     }
 
+    let model_id = resolve_model(&state, &auth, payload.model).await?;
     let user_row = insert_message(&state, &chat_id, "user", user_content, None, None).await?;
 
     let mut new_rows = vec![user_row];
-    new_rows
-        .extend(finish_assistant_turn(&state, &auth, &chat_model, &chat_id, user_content).await?);
+    new_rows.extend(
+        finish_assistant_turn(&state, &auth, &chat_model, &chat_id, user_content, &model_id)
+            .await?,
+    );
 
     Ok(Json(MessagesResponse {
         messages: wire_messages_from_rows(&new_rows),
@@ -324,6 +357,7 @@ async fn stream_message(
         ));
     }
 
+    let model_id = resolve_model(&state, &auth, payload.model).await?;
     let user_row = insert_message(&state, &chat_id, "user", &user_content, None, None).await?;
     let user_event = StreamEvent::User {
         message: WireMessage::from(&user_row),
@@ -332,7 +366,7 @@ async fn stream_message(
     let stream = async_stream::stream! {
         yield stream_line(&user_event);
 
-        match finish_assistant_turn(&state, &auth, &chat_model, &chat_id, &user_content).await {
+        match finish_assistant_turn(&state, &auth, &chat_model, &chat_id, &user_content, &model_id).await {
             Ok(rows) => {
                 if let Some(assistant) = rows.iter().rev().find(|m| m.role == "assistant" && !m.content.is_empty()) {
                     for chunk in chunk_text(&assistant.content) {
@@ -367,6 +401,7 @@ async fn finish_assistant_turn(
     chat_model: &chat::Model,
     chat_id: &str,
     user_content: &str,
+    model_id: &str,
 ) -> Result<Vec<chat_message::Model>, ApiError> {
     let mut new_rows: Vec<chat_message::Model> = Vec::new();
 
@@ -378,6 +413,12 @@ async fn finish_assistant_turn(
         == 1;
 
     let remote_servers = mcp::load_enabled_servers(state, &auth.organization.id).await?;
+    let remote_servers = if remote_servers.is_empty() || super::billing::is_pro(state, auth).await?
+    {
+        remote_servers
+    } else {
+        Vec::new()
+    };
     let mut tools = registry();
     tools.extend(mcp::tools_from_servers(&remote_servers));
     let system_prompt = build_system_prompt(auth);
@@ -386,7 +427,7 @@ async fn finish_assistant_turn(
         let history = load_history(state, chat_id).await?;
         let result = match state
             .ai
-            .complete(&state.config.ai_model, &system_prompt, &history, &tools)
+            .complete(model_id, &system_prompt, &history, &tools)
             .await
         {
             Ok(result) => result,

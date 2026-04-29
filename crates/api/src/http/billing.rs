@@ -1,4 +1,8 @@
-use crate::{auth::require_auth, error::ApiError, state::AppState};
+use crate::{
+    auth::{require_auth, AuthContext},
+    error::ApiError,
+    state::AppState,
+};
 use autumn_rs::{
     models::{
         Customer, GetOrCreateCustomerRequest, OpenCustomerPortalRequest, RedirectMode,
@@ -172,9 +176,26 @@ async fn resume(
     )))
 }
 
+pub(crate) async fn is_pro(state: &AppState, auth: &AuthContext) -> Result<bool, ApiError> {
+    let customer = get_or_create_customer(state, auth).await?;
+    Ok(customer.subscriptions.iter().any(|subscription| {
+        subscription.plan_id == state.config.autumn_pro_plan_id
+            && matches!(subscription.status, SubscriptionStatus::Active)
+    }))
+}
+
+pub(crate) async fn require_pro(state: &AppState, auth: &AuthContext) -> Result<(), ApiError> {
+    if is_pro(state, auth).await? {
+        return Ok(());
+    }
+    Err(ApiError::Forbidden(
+        "Pro plan required for this feature".to_owned(),
+    ))
+}
+
 async fn get_or_create_customer(
     state: &AppState,
-    auth: &crate::auth::AuthContext,
+    auth: &AuthContext,
 ) -> Result<Customer, ApiError> {
     let mut metadata: HashMap<String, Value> = HashMap::new();
     metadata.insert("organizationId".to_owned(), json!(auth.organization.id));

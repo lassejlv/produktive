@@ -77,20 +77,6 @@ export function ChatMessageItem({
           {message.typing ? (
             <span className="inline-flex items-center gap-2 py-1 text-fg-muted">
               <span className="text-shimmer font-medium">Thinking</span>
-              <span className="inline-flex items-end gap-[3px] pb-[3px]">
-                <span
-                  className="size-[3px] rounded-full bg-fg-faint animate-typing-bounce"
-                  style={{ animationDelay: "0ms" }}
-                />
-                <span
-                  className="size-[3px] rounded-full bg-fg-faint animate-typing-bounce"
-                  style={{ animationDelay: "150ms" }}
-                />
-                <span
-                  className="size-[3px] rounded-full bg-fg-faint animate-typing-bounce"
-                  style={{ animationDelay: "300ms" }}
-                />
-              </span>
             </span>
           ) : (
             <>
@@ -108,7 +94,9 @@ export function ChatMessageItem({
             </>
           )}
         </div>
-        {message.role === "assistant" && !message.typing && message.rawContent ? (
+        {message.role === "assistant" &&
+        !message.typing &&
+        message.rawContent ? (
           <div className="mt-0.5 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <ActionButton
               title={actionState === "copied" ? "Copied" : "Copy"}

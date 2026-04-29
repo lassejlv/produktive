@@ -2,8 +2,10 @@ import { type FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
-import { LoadingTip } from "@/components/ui/loading-tip";
-import { SettingRow } from "@/components/workspace/setting-row";
+import {
+  SettingRow,
+  SettingsSkeleton,
+} from "@/components/workspace/setting-row";
 import {
   type McpServer,
   createMcpServer,
@@ -191,7 +193,7 @@ export function AiSettings() {
     });
   };
 
-  if (loading) return <LoadingTip compact />;
+  if (loading) return <SettingsSkeleton rows={3} />;
 
   return (
     <div>
@@ -324,7 +326,7 @@ export function McpTemplatesSettings() {
     }
   };
 
-  if (loading) return <LoadingTip compact />;
+  if (loading) return <SettingsSkeleton rows={3} />;
 
   return (
     <div>

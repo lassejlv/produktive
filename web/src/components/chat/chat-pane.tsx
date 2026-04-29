@@ -23,6 +23,7 @@ import {
   createChat,
   getChat,
   streamChatMessage,
+  type AiModel,
   uploadChatAttachment,
 } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
@@ -33,7 +34,11 @@ import {
   parseMessageWithAttachments,
 } from "@/lib/chat-attachments";
 import { firstName, greetingForNow } from "@/lib/chat-history";
+import { useAiModels } from "@/lib/use-ai-models";
+import { useBillingStatus } from "@/lib/use-billing-status";
 import { cn } from "@/lib/utils";
+
+const MODEL_STORAGE_KEY = "produktive:chat-model";
 
 export function ChatPane({ chatId }: { chatId: string | null }) {
   const navigate = useNavigate();
@@ -53,6 +58,50 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
 
   const convoRef = useRef<HTMLDivElement | null>(null);
   const stopRef = useRef(false);
+
+  const { models: availableModels, defaultId: defaultModelId } = useAiModels();
+  const { isPro } = useBillingStatus();
+  const [selectedModel, setSelectedModel] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem(MODEL_STORAGE_KEY);
+  });
+
+  useEffect(() => {
+    if (availableModels.length === 0) return;
+    if (
+      selectedModel &&
+      availableModels.some((entry) => entry.id === selectedModel)
+    ) {
+      return;
+    }
+    setSelectedModel(defaultModelId);
+  }, [availableModels, defaultModelId, selectedModel]);
+
+  const handleModelChange = (modelId: string) => {
+    const next = availableModels.find((entry) => entry.id === modelId);
+    if (next?.requiresPro && !isPro) {
+      handleUpgradeRequired();
+      return;
+    }
+    setSelectedModel(modelId);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(MODEL_STORAGE_KEY, modelId);
+    }
+  };
+
+  const handleUpgradeRequired = () => {
+    toast.error("Upgrade to Pro to switch models.", {
+      action: {
+        label: "Upgrade",
+        onClick: () => {
+          void navigate({
+            to: "/workspace/settings",
+            search: { section: "billing" },
+          });
+        },
+      },
+    });
+  };
 
   // Load existing chat when navigating to a deep link.
   useEffect(() => {
@@ -169,7 +218,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
         if (event.type === "error") {
           throw new Error(event.error);
         }
-      });
+      }, selectedModel ? { model: selectedModel } : undefined);
 
       if (!receivedDone && stopRef.current) {
         setMessages((prev) => prev.filter((m) => !m.typing));
@@ -368,6 +417,11 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
           changesCount={changes.length}
           changesOpen={changesOpen}
           pendingQuestion={pendingQuestion}
+          model={selectedModel}
+          models={availableModels}
+          onModelChange={handleModelChange}
+          isPro={isPro}
+          onUpgradeRequired={handleUpgradeRequired}
         />
       </div>
       <ChatChangesPanel

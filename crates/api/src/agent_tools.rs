@@ -9,10 +9,10 @@ use crate::{
 };
 use chrono::Utc;
 use produktive_ai::Tool;
-use produktive_entity::{issue, member, user};
+use produktive_entity::{chat, chat_message, issue, member, user};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
-    QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -92,6 +92,34 @@ pub fn registry() -> Vec<Tool> {
             }),
         },
         Tool {
+            name: "list_chats".to_owned(),
+            description: "List previous chats in the current workspace, most recently updated first. Use this to find a chat the user has referenced. Returns at most 30 chats.".to_owned(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Optional substring to filter chat titles (case-insensitive)."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max number of chats to return (1-30). Defaults to 30."
+                    }
+                }
+            }),
+        },
+        Tool {
+            name: "get_chat".to_owned(),
+            description: "Fetch the full message history of a previous chat in the current workspace. Use this after the user @-references a chat or after list_chats. Returns up to 200 of the most recent messages.".to_owned(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "The chat id." }
+                },
+                "required": ["id"]
+            }),
+        },
+        Tool {
             name: "ask_user".to_owned(),
             description: "Ask the user a clarifying question when you genuinely need more information to proceed. After calling this tool, STOP — do not call other tools and do not generate any further text. The user will respond and you'll continue on the next turn.".to_owned(),
             parameters: json!({
@@ -141,6 +169,8 @@ pub async fn dispatch(
         "create_issue" => create_issue(parsed_args, state, auth).await,
         "update_issue" => update_issue(parsed_args, state, auth).await,
         "list_members" => list_members(state, auth).await,
+        "list_chats" => list_chats(parsed_args, state, auth).await,
+        "get_chat" => get_chat(parsed_args, state, auth).await,
         "ask_user" => ask_user(parsed_args).await,
         other => return Ok(json!({ "error": format!("Unknown tool: {other}") })),
     };
@@ -407,6 +437,92 @@ async fn ask_user(args: Value) -> Result<Value, ApiError> {
         "asked": true,
         "question": question,
         "options": args.options.unwrap_or_default(),
+    }))
+}
+
+#[derive(Deserialize, Default)]
+struct ListChatsArgs {
+    #[serde(default)]
+    query: Option<String>,
+    #[serde(default)]
+    limit: Option<u64>,
+}
+
+async fn list_chats(args: Value, state: &AppState, auth: &AuthContext) -> Result<Value, ApiError> {
+    let args: ListChatsArgs = serde_json::from_value(args).unwrap_or_default();
+    let limit = args.limit.unwrap_or(30).clamp(1, 30);
+
+    let mut select = chat::Entity::find()
+        .filter(chat::Column::OrganizationId.eq(&auth.organization.id))
+        .order_by_desc(chat::Column::UpdatedAt)
+        .limit(limit);
+
+    if let Some(query) = args.query.and_then(|v| non_empty_optional(v).ok().flatten()) {
+        let pattern = format!("%{}%", query.to_lowercase());
+        select = select.filter(chat::Column::Title.like(&pattern));
+    }
+
+    let chats = select.all(&state.db).await?;
+    let mut response = Vec::with_capacity(chats.len());
+    for chat in chats {
+        let message_count = chat_message::Entity::find()
+            .filter(chat_message::Column::ChatId.eq(&chat.id))
+            .count(&state.db)
+            .await?;
+        response.push(json!({
+            "id": chat.id,
+            "title": chat.title,
+            "message_count": message_count,
+            "created_at": chat.created_at.to_rfc3339(),
+            "updated_at": chat.updated_at.to_rfc3339(),
+        }));
+    }
+    Ok(json!({ "chats": response }))
+}
+
+#[derive(Deserialize)]
+struct GetChatArgs {
+    id: String,
+}
+
+async fn get_chat(args: Value, state: &AppState, auth: &AuthContext) -> Result<Value, ApiError> {
+    let args: GetChatArgs = serde_json::from_value(args)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid arguments for get_chat: {e}")))?;
+
+    let chat = chat::Entity::find()
+        .filter(chat::Column::Id.eq(&args.id))
+        .filter(chat::Column::OrganizationId.eq(&auth.organization.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("Chat {} not found", args.id)))?;
+
+    let messages = chat_message::Entity::find()
+        .filter(chat_message::Column::ChatId.eq(&chat.id))
+        .order_by_asc(chat_message::Column::CreatedAt)
+        .limit(200)
+        .all(&state.db)
+        .await?;
+
+    let serialized: Vec<Value> = messages
+        .into_iter()
+        .map(|message| {
+            json!({
+                "role": message.role,
+                "content": message.content,
+                "tool_calls": message.tool_calls,
+                "created_at": message.created_at.to_rfc3339(),
+            })
+        })
+        .collect();
+
+    Ok(json!({
+        "chat": {
+            "id": chat.id,
+            "title": chat.title,
+            "created_at": chat.created_at.to_rfc3339(),
+            "updated_at": chat.updated_at.to_rfc3339(),
+            "messages": serialized,
+        }
     }))
 }
 

@@ -4,7 +4,7 @@ import { Avatar } from "@/components/issue/avatar";
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
-import { LoadingTip } from "@/components/ui/loading-tip";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   type Invitation,
   type Member,
@@ -169,9 +169,27 @@ export function MembersSettings({
           </span>
         </h3>
         {loading ? (
-          <div className="mt-3">
-            <LoadingTip compact />
-          </div>
+          <ul
+            aria-hidden
+            className="mt-3 overflow-hidden rounded-md border border-border-subtle"
+          >
+            {Array.from({ length: 3 }).map((_, index) => (
+              <li
+                key={index}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5",
+                  index !== 2 && "border-b border-border-subtle",
+                )}
+              >
+                <Skeleton className="size-7 rounded-full" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-3.5 w-32" />
+                  <Skeleton className="h-3 w-48" />
+                </div>
+                <Skeleton className="h-4 w-12" />
+              </li>
+            ))}
+          </ul>
         ) : members.length === 0 ? (
           <p className="mt-3 text-[12px] text-fg-faint">No members yet.</p>
         ) : (

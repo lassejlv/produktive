@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
-import { LoadingTip } from "@/components/ui/loading-tip";
-import { SettingRow } from "@/components/workspace/setting-row";
+import {
+  SettingRow,
+  SettingsSkeleton,
+} from "@/components/workspace/setting-row";
 import {
   type BillingStatus,
   cancelSubscription,
@@ -104,7 +106,7 @@ export function BillingSettings() {
   );
 
   if (loading || !billing) {
-    return <LoadingTip compact />;
+    return <SettingsSkeleton rows={3} />;
   }
 
   return (

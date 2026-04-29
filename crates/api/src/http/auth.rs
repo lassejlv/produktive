@@ -40,6 +40,7 @@ pub fn routes() -> Router<AppState> {
             "/organizations/active",
             patch(update_active_organization).delete(delete_active_organization),
         )
+        .route("/organizations/active/leave", post(leave_active_organization))
         .route("/switch-organization", post(switch_organization))
         .route("/account", delete(delete_account))
 }
@@ -431,6 +432,67 @@ async fn delete_active_organization(
 
     let deleted_org_id = auth.organization.id.clone();
     organization::Entity::delete_by_id(&deleted_org_id)
+        .exec(&state.db)
+        .await?;
+
+    let next_org = next_organization.expect("checked above");
+    let (_, token) =
+        set_session_active_organization(&state.db, &state, auth.session, next_org.id.clone())
+            .await?;
+    let cookie = auth_cookie(&state, &token)?;
+
+    Ok((
+        StatusCode::OK,
+        [(header::SET_COOKIE, cookie)],
+        Json(DeleteOrganizationResponse {
+            ok: true,
+            switched_to: Some(next_org.into()),
+        }),
+    ))
+}
+
+async fn leave_active_organization(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+
+    let membership = member::Entity::find()
+        .filter(member::Column::UserId.eq(&auth.user.id))
+        .filter(member::Column::OrganizationId.eq(&auth.organization.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::Forbidden("Not a member of this workspace".to_owned()))?;
+
+    if membership.role == "owner" {
+        return Err(ApiError::BadRequest(
+            "Owners can't leave. Transfer ownership or delete the workspace.".to_owned(),
+        ));
+    }
+
+    let other_membership = member::Entity::find()
+        .filter(member::Column::UserId.eq(&auth.user.id))
+        .filter(member::Column::OrganizationId.ne(&auth.organization.id))
+        .order_by_asc(member::Column::CreatedAt)
+        .one(&state.db)
+        .await?;
+
+    let next_organization = if let Some(other) = other_membership.as_ref() {
+        organization::Entity::find_by_id(&other.organization_id)
+            .one(&state.db)
+            .await?
+    } else {
+        None
+    };
+
+    if next_organization.is_none() {
+        return Err(ApiError::BadRequest(
+            "You can't leave your only workspace.".to_owned(),
+        ));
+    }
+
+    let membership_id = membership.id.clone();
+    member::Entity::delete_by_id(&membership_id)
         .exec(&state.db)
         .await?;
 
