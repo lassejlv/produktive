@@ -5,7 +5,8 @@
   font-display: swap;
   font-style: normal;
   font-weight: 100 900;
-  src: url("../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2") format("woff2");
+  src: url("../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2")
+    format("woff2");
 }
 
 @font-face {
@@ -13,7 +14,8 @@
   font-display: swap;
   font-style: normal;
   font-weight: 100 900;
-  src: url("../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2");
+  src: url("../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2")
+    format("woff2");
 }
 
 @theme {
@@ -26,7 +28,7 @@
   --color-fg: #ededee;
   --color-fg-muted: #8a8a90;
   --color-fg-faint: #5a5a60;
-  --color-accent: #5b8cff;
+  --color-accent: #f1c6aa;
   --color-accent-hover: #7aa0ff;
   --color-success: #46b07a;
   --color-warning: #d4a23a;
@@ -223,14 +225,21 @@
   content: "";
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-image: radial-gradient(
+    rgba(255, 255, 255, 0.06) 1px,
+    transparent 1px
+  );
   background-size: 24px 24px;
   -webkit-mask-image: radial-gradient(
     ellipse 70% 60% at 50% 45%,
     black 0%,
     transparent 80%
   );
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, black 0%, transparent 80%);
+  mask-image: radial-gradient(
+    ellipse 70% 60% at 50% 45%,
+    black 0%,
+    transparent 80%
+  );
 }
 
 *::-webkit-scrollbar {
@@ -265,14 +274,46 @@
   --diffs-bg-context-override: var(--color-bg);
   --diffs-bg-hover-override: var(--color-surface);
   --diffs-bg-separator-override: var(--color-border-subtle);
-  --diffs-bg-addition-override: color-mix(in srgb, #4fb899 13%, var(--color-bg));
-  --diffs-bg-addition-number-override: color-mix(in srgb, #4fb899 18%, var(--color-bg));
-  --diffs-bg-addition-hover-override: color-mix(in srgb, #4fb899 17%, var(--color-bg));
-  --diffs-bg-addition-emphasis-override: color-mix(in srgb, #4fb899 24%, transparent);
-  --diffs-bg-deletion-override: color-mix(in srgb, #d46a68 12%, var(--color-bg));
-  --diffs-bg-deletion-number-override: color-mix(in srgb, #d46a68 16%, var(--color-bg));
-  --diffs-bg-deletion-hover-override: color-mix(in srgb, #d46a68 16%, var(--color-bg));
-  --diffs-bg-deletion-emphasis-override: color-mix(in srgb, #d46a68 22%, transparent);
+  --diffs-bg-addition-override: color-mix(
+    in srgb,
+    #4fb899 13%,
+    var(--color-bg)
+  );
+  --diffs-bg-addition-number-override: color-mix(
+    in srgb,
+    #4fb899 18%,
+    var(--color-bg)
+  );
+  --diffs-bg-addition-hover-override: color-mix(
+    in srgb,
+    #4fb899 17%,
+    var(--color-bg)
+  );
+  --diffs-bg-addition-emphasis-override: color-mix(
+    in srgb,
+    #4fb899 24%,
+    transparent
+  );
+  --diffs-bg-deletion-override: color-mix(
+    in srgb,
+    #d46a68 12%,
+    var(--color-bg)
+  );
+  --diffs-bg-deletion-number-override: color-mix(
+    in srgb,
+    #d46a68 16%,
+    var(--color-bg)
+  );
+  --diffs-bg-deletion-hover-override: color-mix(
+    in srgb,
+    #d46a68 16%,
+    var(--color-bg)
+  );
+  --diffs-bg-deletion-emphasis-override: color-mix(
+    in srgb,
+    #d46a68 22%,
+    transparent
+  );
   display: block;
   color-scheme: dark;
 }
