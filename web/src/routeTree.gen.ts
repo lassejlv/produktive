@@ -13,8 +13,10 @@ import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as LegalRouteImport } from './routes/legal'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LegalTypeRouteImport } from './routes/legal.$type'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as AppProjectsRouteImport } from './routes/_app.projects'
 import { Route as AppLabelsRouteImport } from './routes/_app.labels'
@@ -48,6 +50,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LegalRoute = LegalRouteImport.update({
+  id: '/legal',
+  path: '/legal',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
@@ -56,6 +63,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const LegalTypeRoute = LegalTypeRouteImport.update({
+  id: '/$type',
+  path: '/$type',
+  getParentRoute: () => LegalRoute,
 } as any)
 const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
@@ -120,6 +132,7 @@ const AppChatChatIdRoute = AppChatChatIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/legal': typeof LegalRouteWithChildren
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -131,6 +144,7 @@ export interface FileRoutesByFullPath {
   '/labels': typeof AppLabelsRoute
   '/projects': typeof AppProjectsRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
+  '/legal/$type': typeof LegalTypeRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/members/$memberId': typeof AppMembersMemberIdRoute
@@ -139,6 +153,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/legal': typeof LegalRouteWithChildren
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -150,6 +165,7 @@ export interface FileRoutesByTo {
   '/labels': typeof AppLabelsRoute
   '/projects': typeof AppProjectsRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
+  '/legal/$type': typeof LegalTypeRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/members/$memberId': typeof AppMembersMemberIdRoute
@@ -160,6 +176,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
+  '/legal': typeof LegalRouteWithChildren
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/reset-password': typeof ResetPasswordRoute
@@ -171,6 +188,7 @@ export interface FileRoutesById {
   '/_app/labels': typeof AppLabelsRoute
   '/_app/projects': typeof AppProjectsRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
+  '/legal/$type': typeof LegalTypeRoute
   '/_app/chat/$chatId': typeof AppChatChatIdRoute
   '/_app/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/_app/members/$memberId': typeof AppMembersMemberIdRoute
@@ -181,6 +199,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/legal'
     | '/login'
     | '/pricing'
     | '/reset-password'
@@ -192,6 +211,7 @@ export interface FileRouteTypes {
     | '/labels'
     | '/projects'
     | '/invite/$token'
+    | '/legal/$type'
     | '/chat/$chatId'
     | '/issues/$issueId'
     | '/members/$memberId'
@@ -200,6 +220,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/legal'
     | '/login'
     | '/pricing'
     | '/reset-password'
@@ -211,6 +232,7 @@ export interface FileRouteTypes {
     | '/labels'
     | '/projects'
     | '/invite/$token'
+    | '/legal/$type'
     | '/chat/$chatId'
     | '/issues/$issueId'
     | '/members/$memberId'
@@ -220,6 +242,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_app'
+    | '/legal'
     | '/login'
     | '/pricing'
     | '/reset-password'
@@ -231,6 +254,7 @@ export interface FileRouteTypes {
     | '/_app/labels'
     | '/_app/projects'
     | '/invite/$token'
+    | '/legal/$type'
     | '/_app/chat/$chatId'
     | '/_app/issues/$issueId'
     | '/_app/members/$memberId'
@@ -241,6 +265,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
+  LegalRoute: typeof LegalRouteWithChildren
   LoginRoute: typeof LoginRoute
   PricingRoute: typeof PricingRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -278,6 +303,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/legal': {
+      id: '/legal'
+      path: '/legal'
+      fullPath: '/legal'
+      preLoaderRoute: typeof LegalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app': {
       id: '/_app'
       path: ''
@@ -291,6 +323,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/legal/$type': {
+      id: '/legal/$type'
+      path: '/$type'
+      fullPath: '/legal/$type'
+      preLoaderRoute: typeof LegalTypeRouteImport
+      parentRoute: typeof LegalRoute
     }
     '/invite/$token': {
       id: '/invite/$token'
@@ -438,9 +477,20 @@ const AppRouteChildren: AppRouteChildren = {
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
+interface LegalRouteChildren {
+  LegalTypeRoute: typeof LegalTypeRoute
+}
+
+const LegalRouteChildren: LegalRouteChildren = {
+  LegalTypeRoute: LegalTypeRoute,
+}
+
+const LegalRouteWithChildren = LegalRoute._addFileChildren(LegalRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
+  LegalRoute: LegalRouteWithChildren,
   LoginRoute: LoginRoute,
   PricingRoute: PricingRoute,
   ResetPasswordRoute: ResetPasswordRoute,

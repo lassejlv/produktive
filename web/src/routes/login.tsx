@@ -21,17 +21,17 @@ export const Route = createFileRoute("/login")({
 });
 
 type AuthMode = "signin" | "signup";
+type NoticeVariant = "error" | "info";
 
 function LoginPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
   const inviteToken = search.invite ?? null;
-  const [mode, setMode] = useState<AuthMode>(
-    search.mode ?? (inviteToken ? "signup" : "signin"),
-  );
+  const [mode, setMode] = useState<AuthMode>(search.mode ?? (inviteToken ? "signup" : "signin"));
   const [name, setName] = useState("");
   const [email, setEmail] = useState(search.email ?? "");
   const [password, setPassword] = useState("");
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,6 +40,12 @@ function LoginPage() {
     event.preventDefault();
     setError(null);
     setMessage(null);
+
+    if (mode === "signup" && !acceptedLegal) {
+      setError("Accept the terms to continue.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     const result =
@@ -50,15 +56,15 @@ function LoginPage() {
     setIsSubmitting(false);
 
     if (result.error) {
-      setError(result.error.message ?? "Authentication failed");
+      setError(formatAuthError(result.error.message, mode));
       return;
     }
 
     if (mode === "signup") {
       setMessage(
         inviteToken
-          ? "Check your email to verify your address, then come back here."
-          : "Check your email to verify your address.",
+          ? "Check your email, then return to accept the invite."
+          : "Check your email to verify your account.",
       );
       return;
     }
@@ -79,18 +85,18 @@ function LoginPage() {
     setMessage(null);
 
     if (!email.trim()) {
-      setError("Enter your email address first.");
+      setError("Enter your email first.");
       return;
     }
 
     const result = await authClient.requestPasswordReset({ email });
 
     if (result.error) {
-      setError(result.error.message);
+      setError("Could not send reset link.");
       return;
     }
 
-    setMessage("If that email exists, a reset link is on the way.");
+    setMessage("If the email exists, a reset link was sent.");
   };
 
   const switchMode = (newMode: AuthMode) => {
@@ -100,8 +106,26 @@ function LoginPage() {
   };
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6 py-12">
-      <div className="w-full max-w-sm animate-fade-in">
+    <main className="relative isolate flex min-h-screen items-center justify-center overflow-hidden bg-bg px-6 py-12">
+      <div aria-hidden className="absolute inset-0 -z-10">
+        <img
+          src="https://cdn.produktive.app/assets/landing.webp"
+          alt=""
+          decoding="async"
+          fetchPriority="high"
+          className="animate-ken-burns absolute inset-0 h-full w-full object-cover object-[center_65%]"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-bg/10 via-bg/55 to-bg" />
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 70% 55% at 50% 50%, rgba(13,13,15,0.2) 0%, rgba(13,13,15,0.76) 100%)",
+          }}
+        />
+      </div>
+
+      <div className="w-full max-w-sm animate-fade-in rounded-[12px] border border-white/10 bg-bg/72 p-5 backdrop-blur-xl">
         <form className="grid gap-4" onSubmit={onSubmit}>
           {mode === "signup" ? (
             <div className="grid gap-1.5">
@@ -130,9 +154,7 @@ function LoginPage() {
               readOnly={Boolean(inviteToken && mode === "signup")}
             />
             {inviteToken && mode === "signup" ? (
-              <p className="text-[11px] text-fg-faint">
-                The invitation is for this email.
-              </p>
+              <p className="text-[11px] text-fg-faint">The invitation is for this email.</p>
             ) : null}
           </div>
 
@@ -152,9 +174,7 @@ function LoginPage() {
             <Input
               id="password"
               type="password"
-              autoComplete={
-                mode === "signin" ? "current-password" : "new-password"
-              }
+              autoComplete={mode === "signin" ? "current-password" : "new-password"}
               minLength={8}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -163,16 +183,43 @@ function LoginPage() {
             />
           </div>
 
-          {error ? (
-            <p className="text-xs text-danger" role="alert">
-              {error}
-            </p>
+          {mode === "signup" ? (
+            <div className="flex gap-3 border-y border-border-subtle py-3">
+              <Label htmlFor="legal-acceptance" className="sr-only">
+                Legal agreement
+              </Label>
+              <input
+                id="legal-acceptance"
+                type="checkbox"
+                checked={acceptedLegal}
+                onChange={(event) => setAcceptedLegal(event.target.checked)}
+                required
+                className="mt-0.5 size-3.5 shrink-0 accent-fg"
+              />
+              <p className="text-[11.5px] leading-[1.65] text-fg-muted">
+                I agree to the{" "}
+                <Link
+                  to="/legal/$type"
+                  params={{ type: "terms" }}
+                  className="text-fg transition-colors hover:text-accent"
+                >
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link
+                  to="/legal/$type"
+                  params={{ type: "privacy" }}
+                  className="text-fg transition-colors hover:text-accent"
+                >
+                  Privacy Policy
+                </Link>
+                .
+              </p>
+            </div>
           ) : null}
-          {message ? (
-            <p className="text-xs text-fg-muted" role="status">
-              {message}
-            </p>
-          ) : null}
+
+          {error ? <LoginNotice variant="error" message={error} /> : null}
+          {message ? <LoginNotice variant="info" message={message} /> : null}
 
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? (
@@ -222,4 +269,27 @@ function LoginPage() {
       </div>
     </main>
   );
+}
+
+function LoginNotice({ variant, message }: { variant: NoticeVariant; message: string }) {
+  return (
+    <p
+      className={
+        variant === "error"
+          ? "border-t border-danger/25 pt-2 text-xs text-danger"
+          : "border-t border-border-subtle pt-2 text-xs text-fg-muted"
+      }
+      role={variant === "error" ? "alert" : "status"}
+    >
+      {message}
+    </p>
+  );
+}
+
+function formatAuthError(message: string | undefined, mode: AuthMode): string {
+  if (message?.toLowerCase().includes("verify your email")) {
+    return "Verify your email before signing in.";
+  }
+
+  return mode === "signin" ? "Could not sign in." : "Could not create account.";
 }

@@ -9,6 +9,7 @@ COPY web/package.json web/bun.lock ./
 RUN bun install --frozen-lockfile
 
 COPY web ./
+COPY TERMS.md PRIVACY.md /app/
 RUN bun run build
 
 FROM rust:1.95.0-slim-bookworm AS api-builder
