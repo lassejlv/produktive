@@ -7,5 +7,5 @@ export const Route = createFileRoute("/_app/chat/$chatId")({
 
 function ChatDetail() {
   const { chatId } = Route.useParams();
-  return <ChatPane key={chatId} chatId={chatId} />;
+  return <ChatPane chatId={chatId} />;
 }

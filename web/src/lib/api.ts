@@ -731,7 +731,7 @@ export type ChatStreamEvent =
   | { type: "user"; message: ChatMessageRecord }
   | { type: "delta"; content: string }
   | { type: "done"; messages: ChatMessageRecord[] }
-  | { type: "error"; error: string };
+  | { type: "error"; error: string; messages?: ChatMessageRecord[] };
 
 export const streamChatMessage = async (
   id: string,

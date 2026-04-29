@@ -57,6 +57,8 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   );
 
   const convoRef = useRef<HTMLDivElement | null>(null);
+  const activeChatIdRef = useRef<string | null>(null);
+  const skipLoadChatIdRef = useRef<string | null>(null);
   const stopRef = useRef(false);
 
   const { models: availableModels, defaultId: defaultModelId } = useAiModels();
@@ -106,8 +108,17 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   // Load existing chat when navigating to a deep link.
   useEffect(() => {
     if (!chatId) {
+      activeChatIdRef.current = null;
+      skipLoadChatIdRef.current = null;
       setChatTitle("New conversation");
       setMessages([]);
+      setIsLoadingChat(false);
+      return;
+    }
+
+    if (skipLoadChatIdRef.current === chatId) {
+      skipLoadChatIdRef.current = null;
+      activeChatIdRef.current = chatId;
       setIsLoadingChat(false);
       return;
     }
@@ -118,6 +129,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
       try {
         const response = await getChat(chatId);
         if (!isMounted) return;
+        activeChatIdRef.current = chatId;
         setChatTitle(response.chat.title);
         setMessages(response.messages.map(recordToMessage));
       } catch (loadError) {
@@ -149,15 +161,24 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
     setError(null);
     stopRef.current = false;
     setBusy(true);
+    let activeId = chatId;
     let createdChatId: string | null = null;
+    let streamedUserId: string | null = null;
+    const previousMessageCount = messages.length;
 
     try {
-      let activeId = chatId;
       if (!activeId) {
         const created = await createChat();
         activeId = created.chat.id;
         createdChatId = created.chat.id;
+        activeChatIdRef.current = created.chat.id;
+        skipLoadChatIdRef.current = created.chat.id;
         setChatTitle(created.chat.title);
+        await navigate({
+          to: "/chat/$chatId",
+          params: { chatId: created.chat.id },
+          replace: true,
+        });
       }
 
       const uploadedAttachments = await uploadAttachments(
@@ -172,6 +193,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
         if (stopRef.current) return;
 
         if (event.type === "user") {
+          streamedUserId = event.message.id;
           setMessages((prev) => [
             ...prev,
             recordToMessage(event.message),
@@ -216,6 +238,19 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
         }
 
         if (event.type === "error") {
+          if (event.messages?.length) {
+            setMessages(event.messages.map(recordToMessage));
+            if (
+              didRecoverAssistantResponse(
+                event.messages,
+                streamedUserId,
+                previousMessageCount,
+              )
+            ) {
+              receivedDone = true;
+              return;
+            }
+          }
           throw new Error(event.error);
         }
       }, selectedModel ? { model: selectedModel } : undefined);
@@ -230,24 +265,34 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
         setChatTitle(truncateForTab(parsed.text));
       }
 
-      if (createdChatId) {
-        await navigate({
-          to: "/chat/$chatId",
-          params: { chatId: createdChatId },
-          replace: true,
-        });
-      }
+      if (createdChatId) skipLoadChatIdRef.current = null;
     } catch (sendError) {
-      if (createdChatId) {
+      const recoverId = activeId ?? createdChatId;
+      if (recoverId) {
         try {
-          const response = await getChat(createdChatId);
+          const response = await getChat(recoverId);
           setChatTitle(response.chat.title);
-          setMessages(response.messages.map(recordToMessage));
-          await navigate({
-            to: "/chat/$chatId",
-            params: { chatId: createdChatId },
-            replace: true,
-          });
+          const recoveredMessages = response.messages.map(recordToMessage);
+          setMessages(recoveredMessages);
+
+          if (createdChatId) {
+            await navigate({
+              to: "/chat/$chatId",
+              params: { chatId: createdChatId },
+              replace: true,
+            });
+          }
+
+          if (
+            didRecoverAssistantResponse(
+              response.messages,
+              streamedUserId,
+              previousMessageCount,
+            )
+          ) {
+            setError(null);
+            return;
+          }
         } catch {
           // Fall through to the normal error state below.
         }
@@ -354,19 +399,6 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
           </div>
         </header>
 
-        {error ? (
-          <div className="relative z-10 m-5 flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
-            <span>{error}</span>
-            <button
-              type="button"
-              className="text-fg-muted transition-colors hover:text-fg"
-              onClick={() => setError(null)}
-            >
-              Dismiss
-            </button>
-          </div>
-        ) : null}
-
         {isLoadingChat ? (
           <ChatSkeleton />
         ) : isEmpty ? (
@@ -409,6 +441,8 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
           </div>
         )}
 
+        {error ? <ChatErrorNotice message={error} onDismiss={() => setError(null)} /> : null}
+
         <ChatComposer
           busy={busy}
           onSend={(text, attachments) => void handleSend(text, attachments)}
@@ -429,6 +463,29 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
         changes={changes}
         onClose={() => setChangesOpen(false)}
       />
+    </div>
+  );
+}
+
+function ChatErrorNotice({
+  message,
+  onDismiss,
+}: {
+  message: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="relative z-20 px-6 pb-1">
+      <div className="mx-auto flex min-h-9 w-full max-w-[760px] items-center justify-between gap-3 rounded-[8px] border border-danger/25 bg-danger/[0.08] px-3 py-2 text-[12px] text-danger shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
+        <span className="min-w-0 truncate">{message}</span>
+        <button
+          type="button"
+          className="shrink-0 text-[11px] text-fg-muted transition-colors hover:text-fg"
+          onClick={onDismiss}
+        >
+          Dismiss
+        </button>
+      </div>
     </div>
   );
 }
@@ -616,6 +673,33 @@ function buildOutgoingMessage(text: string, attachments: ChatAttachment[]) {
 
   const visibleText = text.trim() || "Review the attached files.";
   return buildMessageWithAttachments(visibleText, attachments);
+}
+
+function didRecoverAssistantResponse(
+  records: ChatMessageRecord[],
+  streamedUserId: string | null,
+  previousMessageCount: number,
+) {
+  if (streamedUserId) {
+    const userIndex = records.findIndex((record) => record.id === streamedUserId);
+    return (
+      userIndex >= 0 &&
+      records.slice(userIndex + 1).some(isUsableAssistantRecord)
+    );
+  }
+
+  return (
+    records.length > previousMessageCount &&
+    records.slice(previousMessageCount).some(isUsableAssistantRecord)
+  );
+}
+
+function isUsableAssistantRecord(record: ChatMessageRecord) {
+  if (record.role !== "assistant") return false;
+  if (record.content.trim()) return true;
+  return (record.toolCalls ?? []).some(
+    (toolCall) => toolCall.name === "ask_user" || toolCall.result !== undefined,
+  );
 }
 
 function recordToMessage(record: ChatMessageRecord): ChatMessage {

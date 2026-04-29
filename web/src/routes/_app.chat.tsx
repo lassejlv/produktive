@@ -13,5 +13,5 @@ function ChatIndex() {
     ? decodeURIComponent(pathname.slice("/chat/".length))
     : null;
 
-  return <ChatPane key={chatId ?? "new"} chatId={chatId} />;
+  return <ChatPane chatId={chatId} />;
 }

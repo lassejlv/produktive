@@ -131,10 +131,19 @@ struct AttachmentResponse {
 #[derive(Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum StreamEvent {
-    User { message: WireMessage },
-    Delta { content: String },
-    Done { messages: Vec<WireMessage> },
-    Error { error: String },
+    User {
+        message: WireMessage,
+    },
+    Delta {
+        content: String,
+    },
+    Done {
+        messages: Vec<WireMessage>,
+    },
+    Error {
+        error: String,
+        messages: Vec<WireMessage>,
+    },
 }
 
 #[derive(Serialize)]
@@ -302,12 +311,14 @@ async fn resolve_model(
     if value == state.config.ai_model {
         return Ok(value.to_owned());
     }
-    super::billing::require_pro(state, auth).await.map_err(|err| match err {
-        ApiError::Forbidden(_) => ApiError::Forbidden(
-            "Pro plan required to switch models".to_owned(),
-        ),
-        other => other,
-    })?;
+    super::billing::require_pro(state, auth)
+        .await
+        .map_err(|err| match err {
+            ApiError::Forbidden(_) => {
+                ApiError::Forbidden("Pro plan required to switch models".to_owned())
+            }
+            other => other,
+        })?;
     Ok(value.to_owned())
 }
 
@@ -332,8 +343,15 @@ async fn post_message(
 
     let mut new_rows = vec![user_row];
     new_rows.extend(
-        finish_assistant_turn(&state, &auth, &chat_model, &chat_id, user_content, &model_id)
-            .await?,
+        finish_assistant_turn(
+            &state,
+            &auth,
+            &chat_model,
+            &chat_id,
+            user_content,
+            &model_id,
+        )
+        .await?,
     );
 
     Ok(Json(MessagesResponse {
@@ -379,8 +397,12 @@ async fn stream_message(
             }
             Err(error) => {
                 tracing::error!(?error, "streamed chat turn failed");
+                let messages = visible_messages_for_chat(&state, &chat_id)
+                    .await
+                    .unwrap_or_default();
                 yield stream_line(&StreamEvent::Error {
                     error: "Failed to send message".to_owned(),
+                    messages,
                 });
             }
         }
@@ -606,6 +628,19 @@ async fn load_history(state: &AppState, chat_id: &str) -> Result<Vec<AiMessage>,
         .await?;
 
     Ok(rows.into_iter().map(row_to_ai_message).collect::<Vec<_>>())
+}
+
+async fn visible_messages_for_chat(
+    state: &AppState,
+    chat_id: &str,
+) -> Result<Vec<WireMessage>, ApiError> {
+    let rows = chat_message::Entity::find()
+        .filter(chat_message::Column::ChatId.eq(chat_id))
+        .order_by_asc(chat_message::Column::CreatedAt)
+        .all(&state.db)
+        .await?;
+
+    Ok(wire_messages_from_rows(&rows))
 }
 
 fn row_to_ai_message(row: chat_message::Model) -> AiMessage {
