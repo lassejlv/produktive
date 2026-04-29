@@ -157,3 +157,45 @@ pub enum UpdateSubscriptionRequest {
     /// Cancel and revoke immediately.
     Revoke { revoke: bool },
 }
+
+// ---------------------------------------------------------------------------
+// Product
+// ---------------------------------------------------------------------------
+
+/// Product as returned by `/v1/products/{id}`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Product {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub is_recurring: bool,
+    #[serde(default)]
+    pub is_archived: bool,
+    /// Recurring interval at the product level (`month` / `year`). Individual
+    /// prices may carry their own.
+    #[serde(default)]
+    pub recurring_interval: Option<String>,
+    #[serde(default)]
+    pub prices: Vec<ProductPrice>,
+}
+
+/// One price variant attached to a [`Product`].
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProductPrice {
+    pub id: String,
+    /// `fixed`, `custom`, or `free`.
+    #[serde(default)]
+    pub amount_type: Option<String>,
+    /// Amount in the smallest currency unit (e.g. cents).
+    #[serde(default)]
+    pub price_amount: Option<i64>,
+    /// Three-letter currency code (lowercased by Polar, e.g. `eur`).
+    #[serde(default)]
+    pub price_currency: Option<String>,
+    #[serde(default)]
+    pub recurring_interval: Option<String>,
+    #[serde(default)]
+    pub is_archived: bool,
+}

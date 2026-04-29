@@ -1,4 +1,6 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { getPricingPlans, type PricingPlan } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -16,42 +18,78 @@ type Tier = {
   emphasized?: boolean;
 };
 
-const tiers: Tier[] = [
-  {
-    name: "Free",
-    tagline: "For getting a feel for it.",
-    price: "$0",
-    cadence: "/ month",
-    features: [
-      { label: "10 AI messages per day", included: true },
-      { label: "Up to 50 issues", included: true },
-      { label: "2 active projects", included: true },
-      { label: "Up to 5 members", included: true },
-      { label: "Bring your own Skills & MCP Servers", included: false },
-    ],
-    cta: "Get started",
-  },
-  {
-    name: "Pro",
-    tagline: "For real work.",
-    price: "$10",
-    cadence: "/ month",
-    features: [
-      { label: "100 AI messages per day", included: true },
-      { label: "No issues limit", included: true },
-      { label: "10 active projects", included: true },
-      { label: "Unlimited members", included: true },
-      { label: "Bring your own Skills & MCP Servers", included: true },
-    ],
-    cta: "Get started",
-    emphasized: true,
-  },
+const PRO_FALLBACK = { price: "€10", cadence: "/ month" } as const;
+
+const PRO_FEATURES: Tier["features"] = [
+  { label: "100 AI messages per day", included: true },
+  { label: "No issues limit", included: true },
+  { label: "10 active projects", included: true },
+  { label: "Unlimited members", included: true },
+  { label: "Bring your own Skills & MCP Servers", included: true },
 ];
+
+const FREE_TIER: Tier = {
+  name: "Free",
+  tagline: "For getting a feel for it.",
+  price: "€0",
+  cadence: "/ month",
+  features: [
+    { label: "10 AI messages per day", included: true },
+    { label: "Up to 50 issues", included: true },
+    { label: "2 active projects", included: true },
+    { label: "Up to 5 members", included: true },
+    { label: "Bring your own Skills & MCP Servers", included: false },
+  ],
+  cta: "Get started",
+};
+
+function formatPrice(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en", {
+      style: "currency",
+      currency: currency.toUpperCase(),
+      minimumFractionDigits: amount % 100 === 0 ? 0 : 2,
+      maximumFractionDigits: 2,
+    }).format(amount / 100);
+  } catch {
+    return `€${(amount / 100).toFixed(amount % 100 === 0 ? 0 : 2)}`;
+  }
+}
 
 function PricingPage() {
   const session = useSession();
   const isLoggedIn = Boolean(session.data);
   const ctaTo = isLoggedIn ? "/issues" : "/login";
+
+  const [pro, setPro] = useState<PricingPlan | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    void getPricingPlans()
+      .then((response) => {
+        if (mounted) setPro(response.plans[0] ?? null);
+      })
+      .catch(() => {
+        // fall through to fallback values
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const proTier: Tier = {
+    name: pro?.name ?? "Pro",
+    tagline: "For real work.",
+    price: pro ? formatPrice(pro.priceAmount, pro.currency) : PRO_FALLBACK.price,
+    cadence: pro?.recurringInterval
+      ? `/ ${pro.recurringInterval}`
+      : PRO_FALLBACK.cadence,
+    features: PRO_FEATURES,
+    cta: "Get started",
+    emphasized: true,
+  };
+
+  const tiers: Tier[] = [FREE_TIER, proTier];
 
   return (
     <main className="relative isolate flex min-h-screen flex-col overflow-hidden bg-bg">
@@ -113,6 +151,12 @@ function PricingPage() {
           style={{ animationDelay: "360ms" }}
         >
           Plans renew monthly. Cancel anytime.
+        </p>
+        <p
+          className="animate-fade-up mt-1 text-[11px] text-fg-faint"
+          style={{ animationDelay: "400ms" }}
+        >
+          Prices localize to your currency at checkout.
         </p>
       </section>
 

@@ -28,6 +28,7 @@ const ACTIVE_STATUSES: &[&str] = &["active", "trialing"];
 
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/plans", get(plans))
         .route("/status", get(status))
         .route("/checkout", post(checkout))
         .route("/portal", post(portal))
@@ -61,6 +62,54 @@ struct BillingSubscriptionResponse {
 #[serde(rename_all = "camelCase")]
 struct BillingUrlResponse {
     url: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PricingPlanResponse {
+    name: String,
+    price_amount: i64,
+    currency: String,
+    recurring_interval: Option<String>,
+}
+
+#[derive(Serialize)]
+struct PricingPlansResponse {
+    plans: Vec<PricingPlanResponse>,
+}
+
+async fn plans(State(state): State<AppState>) -> Result<Json<PricingPlansResponse>, ApiError> {
+    let product = state
+        .polar
+        .products()
+        .get(&state.config.polar_pro_product_id)
+        .await
+        .map_err(map_polar_error)?;
+
+    let price = product
+        .prices
+        .iter()
+        .find(|p| !p.is_archived && p.amount_type.as_deref() == Some("fixed"))
+        .ok_or_else(|| {
+            ApiError::Internal(anyhow::anyhow!(
+                "Pro product has no active fixed price configured"
+            ))
+        })?;
+
+    let plan = PricingPlanResponse {
+        name: product.name,
+        price_amount: price.price_amount.unwrap_or(0),
+        currency: price
+            .price_currency
+            .clone()
+            .unwrap_or_else(|| "eur".to_owned()),
+        recurring_interval: price
+            .recurring_interval
+            .clone()
+            .or(product.recurring_interval),
+    };
+
+    Ok(Json(PricingPlansResponse { plans: vec![plan] }))
 }
 
 async fn status(

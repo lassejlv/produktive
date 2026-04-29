@@ -266,6 +266,16 @@ export type BillingStatus = {
   subscriptions: BillingSubscription[];
 };
 
+export type PricingPlan = {
+  name: string;
+  priceAmount: number;
+  currency: string;
+  recurringInterval: string | null;
+};
+
+export const getPricingPlans = () =>
+  request<{ plans: PricingPlan[] }>("/api/billing/plans");
+
 export const getBillingStatus = () =>
   request<BillingStatus>("/api/billing/status");
 
