@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ProjectsIcon } from "@/components/chat/icons";
 import { Avatar } from "@/components/issue/avatar";
 import { NewProjectDialog } from "@/components/project/new-project-dialog";
 import { ProjectIcon } from "@/components/project/project-icon";
@@ -103,7 +104,7 @@ function ProjectsPage() {
       <header className="sticky top-0 z-10 flex h-12 items-center justify-between gap-3 border-b border-border-subtle bg-bg/85 px-5 backdrop-blur">
         <div className="flex items-center gap-2">
           <span className="text-fg-muted">
-            <ProjectsHeaderIcon />
+            <ProjectsIcon />
           </span>
           <h1 className="text-sm font-medium text-fg">Projects</h1>
           <span className="text-xs text-fg-muted tabular-nums">
@@ -298,7 +299,7 @@ function EmptyState({
   return (
     <div className="flex flex-col items-center py-16 text-center">
       <div className="mb-4 grid size-12 place-items-center rounded-xl bg-surface/60 text-fg-muted">
-        <ProjectsHeaderIcon size={22} />
+        <ProjectsIcon size={22} />
       </div>
       <h2 className="text-[15px] font-medium text-fg">
         Track work as projects
@@ -327,24 +328,5 @@ function EmptyState({
         + Create project
       </button>
     </div>
-  );
-}
-
-function ProjectsHeaderIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path
-        d="M2 4l2-1.5 5.5 3v6L4 14.5 2 13V4z"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9.5 5.5L12 4v6l-2.5 1.5"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }

@@ -75,8 +75,22 @@ export function ChatMessageItem({
           )}
         >
           {message.typing ? (
-            <span className="inline-flex items-center gap-2.5 py-1 text-fg-muted">
+            <span className="inline-flex items-center gap-2 py-1 text-fg-muted">
               <span className="text-shimmer font-medium">Thinking</span>
+              <span className="inline-flex items-end gap-[3px] pb-[3px]">
+                <span
+                  className="size-[3px] rounded-full bg-fg-faint animate-typing-bounce"
+                  style={{ animationDelay: "0ms" }}
+                />
+                <span
+                  className="size-[3px] rounded-full bg-fg-faint animate-typing-bounce"
+                  style={{ animationDelay: "150ms" }}
+                />
+                <span
+                  className="size-[3px] rounded-full bg-fg-faint animate-typing-bounce"
+                  style={{ animationDelay: "300ms" }}
+                />
+              </span>
             </span>
           ) : (
             <>
@@ -95,7 +109,7 @@ export function ChatMessageItem({
           )}
         </div>
         {message.role === "assistant" && !message.typing && message.rawContent ? (
-          <div className="mt-0.5 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="mt-0.5 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <ActionButton
               title={actionState === "copied" ? "Copied" : "Copy"}
               onClick={onCopy}
@@ -396,7 +410,7 @@ function ActionButton({
       title={title}
       onClick={onClick}
       className={cn(
-        "grid size-6 place-items-center rounded-[5px] transition-colors hover:bg-surface hover:text-fg",
+        "grid size-6 place-items-center rounded-[5px] transition-colors hover:bg-surface hover:text-fg focus-visible:bg-surface focus-visible:text-fg focus-visible:outline-none",
         active ? "bg-surface text-fg" : "text-fg-faint",
       )}
     >

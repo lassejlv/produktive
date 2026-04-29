@@ -26,6 +26,7 @@ pub struct Config {
     pub autumn_secret_key: String,
     pub autumn_base_url: Option<String>,
     pub autumn_pro_plan_id: String,
+    pub mcp_token_encryption_key: Option<String>,
     pub storage: Option<StorageConfig>,
 }
 
@@ -85,8 +86,15 @@ impl Config {
                 .context("AUTUMN_SECRET_KEY is required")?,
             autumn_base_url: optional_env("AUTUMN_BASE_URL"),
             autumn_pro_plan_id: env_or_default("AUTUMN_PRO_PLAN_ID", "pro"),
+            mcp_token_encryption_key: optional_env("MCP_TOKEN_ENCRYPTION_KEY"),
             storage: StorageConfig::from_env()?,
         })
+    }
+
+    pub fn mcp_token_key(&self) -> String {
+        self.mcp_token_encryption_key
+            .clone()
+            .unwrap_or_else(|| self.jwt_secret.clone())
     }
 }
 

@@ -4,6 +4,13 @@ import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import "./styles.css";
 
+if (window.localStorage.getItem("produktive-theme") === "light") {
+  document.documentElement.classList.add("theme-light");
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute("content", "#fbfbfa");
+}
+
 const router = createRouter({ routeTree });
 
 declare module "@tanstack/react-router" {

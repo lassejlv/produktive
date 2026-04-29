@@ -2,6 +2,7 @@ use crate::{
     agent_tools::{self, registry},
     auth::{require_auth, AuthContext},
     error::ApiError,
+    mcp,
     state::AppState,
     storage,
 };
@@ -376,19 +377,48 @@ async fn finish_assistant_turn(
         .await?
         == 1;
 
-    let tools = registry();
+    let remote_servers = mcp::load_enabled_servers(state, &auth.organization.id).await?;
+    let mut tools = registry();
+    tools.extend(mcp::tools_from_servers(&remote_servers));
     let system_prompt = build_system_prompt(auth);
 
-    for _ in 0..MAX_TOOL_ROUNDS {
+    for round in 0..MAX_TOOL_ROUNDS {
         let history = load_history(state, chat_id).await?;
-        let result = state
+        let result = match state
             .ai
             .complete(&state.config.ai_model, &system_prompt, &history, &tools)
             .await
-            .map_err(|e| {
-                tracing::error!(?e, "ai provider error");
-                ApiError::Internal(anyhow::anyhow!("AI provider error: {e}"))
-            })?;
+        {
+            Ok(result) => result,
+            Err(error) => {
+                let has_tool_results = new_rows.iter().any(|row| row.role == "tool");
+                tracing::error!(
+                    ?error,
+                    %chat_id,
+                    round,
+                    has_tool_results,
+                    "ai provider error during chat turn"
+                );
+
+                if has_tool_results {
+                    let fallback = insert_message(
+                        state,
+                        chat_id,
+                        "assistant",
+                        "I completed the tool work, but the final response failed to generate. The changes above were still applied.",
+                        None,
+                        None,
+                    )
+                    .await?;
+                    new_rows.push(fallback);
+                    break;
+                }
+
+                return Err(ApiError::Internal(anyhow::anyhow!(
+                    "AI provider error: {error}"
+                )));
+            }
+        };
 
         match result {
             CompletionResult::Text(text) => {
@@ -398,6 +428,12 @@ async fn finish_assistant_turn(
                 break;
             }
             CompletionResult::ToolCalls(calls) => {
+                let tool_names = calls
+                    .iter()
+                    .map(|call| call.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                tracing::info!(%chat_id, round, tools = %tool_names, "assistant requested tools");
                 let serialized_calls = serialize_tool_calls(&calls);
                 let placeholder = insert_message(
                     state,
@@ -412,8 +448,7 @@ async fn finish_assistant_turn(
 
                 let mut hit_terminal_tool = false;
                 for call in &calls {
-                    let result_value =
-                        agent_tools::dispatch(&call.name, &call.arguments, state, auth).await?;
+                    let result_value = dispatch_tool_call(call, state, auth).await?;
                     let result_str =
                         serde_json::to_string(&result_value).unwrap_or_else(|_| "{}".to_owned());
                     let tool_row = insert_message(
@@ -551,6 +586,26 @@ fn row_to_ai_message(row: chat_message::Model) -> AiMessage {
         "tool" => AiMessage::tool_result(row.tool_call_id.unwrap_or_default(), row.content),
         _ => AiMessage::user(row.content),
     }
+}
+
+async fn dispatch_tool_call(
+    call: &AiToolCall,
+    state: &AppState,
+    auth: &AuthContext,
+) -> Result<Value, ApiError> {
+    if let Some(parsed) = mcp::parse_remote_tool_name(&call.name) {
+        let args = match serde_json::from_str::<Value>(&call.arguments) {
+            Ok(value) => value,
+            Err(error) => {
+                return Ok(json!({
+                    "error": format!("Invalid JSON arguments: {error}")
+                }))
+            }
+        };
+        return mcp::call_remote_tool(state, &auth.organization.id, parsed, args).await;
+    }
+
+    agent_tools::dispatch(&call.name, &call.arguments, state, auth).await
 }
 
 #[derive(serde::Deserialize)]

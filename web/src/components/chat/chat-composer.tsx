@@ -4,7 +4,6 @@ import {
   ChangesIcon,
   HashIcon,
   SendIcon,
-  SlashIcon,
   StopIcon,
 } from "@/components/chat/icons";
 import {
@@ -85,7 +84,7 @@ export function ChatComposer({
 
   const placeholder = pendingQuestion
     ? "Answer the question above…"
-    : "Ask Produktive, or type / for commands…";
+    : "Ask Produktive anything…";
 
   const toggleIssue = (issue: PickableIssue) => {
     setIssues((current) => {
@@ -256,10 +255,6 @@ export function ChatComposer({
               </ToolButton>
             )}
           />
-          <ToolButton title="Slash command">
-            <SlashIcon size={11} />
-            Command
-          </ToolButton>
           <ToolButton
             title="View changes"
             onClick={onOpenChanges}
@@ -331,10 +326,3 @@ function ToolButton({
   );
 }
 
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="mx-1 rounded-[4px] border border-border-subtle bg-surface px-1.5 py-0.5 font-mono text-[10px]">
-      {children}
-    </kbd>
-  );
-}

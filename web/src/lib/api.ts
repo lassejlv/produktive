@@ -275,6 +275,74 @@ export const startBillingCheckout = () =>
 export const openBillingPortal = () =>
   request<{ url: string }>("/api/billing/portal", { method: "POST" });
 
+export const cancelSubscription = () =>
+  request<BillingStatus>("/api/billing/cancel", { method: "POST" });
+
+export const resumeSubscription = () =>
+  request<BillingStatus>("/api/billing/resume", { method: "POST" });
+
+export type McpTool = {
+  name: string;
+  displayName: string;
+  description: string;
+};
+
+export type McpServer = {
+  id: string;
+  name: string;
+  slug: string;
+  url: string;
+  transport: string | null;
+  enabled: boolean;
+  authType: string;
+  authStatus: string;
+  tools: McpTool[];
+  lastCheckedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type McpServerEnvelope = {
+  server: McpServer;
+  oauthUrl: string | null;
+};
+
+export const listMcpServers = () =>
+  request<{ servers: McpServer[] }>("/api/ai/mcp/servers");
+
+export const createMcpServer = (input: {
+  name?: string;
+  url: string;
+  accessToken?: string;
+}) =>
+  request<McpServerEnvelope>("/api/ai/mcp/servers", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const updateMcpServer = (
+  id: string,
+  patch: { name?: string; enabled?: boolean },
+) =>
+  request<McpServerEnvelope>(`/api/ai/mcp/servers/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+
+export const deleteMcpServer = (id: string) =>
+  request<void>(`/api/ai/mcp/servers/${id}`, { method: "DELETE" });
+
+export const refreshMcpServerTools = (id: string) =>
+  request<McpServerEnvelope>(`/api/ai/mcp/servers/${id}/refresh-tools`, {
+    method: "POST",
+  });
+
+export const startMcpServerOAuth = (id: string) =>
+  request<{ url: string }>(`/api/ai/mcp/servers/${id}/oauth/start`, {
+    method: "POST",
+  });
+
 export type Invitation = {
   id: string;
   email: string;

@@ -14,9 +14,11 @@ license = "AGPL-3.0"
 
 [workspace.dependencies]
 anyhow = "1.0"
+aes-gcm = "0.10"
 async-stream = "0.3"
 argon2 = "0.5"
 axum = "0.8"
+base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 cookie = "0.18"
 futures-core = "0.3"

@@ -27,11 +27,7 @@ impl MigrationTrait for Migration {
                             .string()
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(IssueSubscribers::UserId)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(IssueSubscribers::UserId).string().not_null())
                     .col(
                         ColumnDef::new(IssueSubscribers::CreatedAt)
                             .timestamp_with_time_zone()
@@ -41,10 +37,7 @@ impl MigrationTrait for Migration {
                     .foreign_key(
                         ForeignKey::create()
                             .name("issue_subscribers_organization_id_fkey")
-                            .from(
-                                IssueSubscribers::Table,
-                                IssueSubscribers::OrganizationId,
-                            )
+                            .from(IssueSubscribers::Table, IssueSubscribers::OrganizationId)
                             .to(Organizations::Table, Organizations::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )

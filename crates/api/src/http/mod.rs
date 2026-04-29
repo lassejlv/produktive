@@ -1,3 +1,4 @@
+mod ai_mcp;
 mod auth;
 mod billing;
 mod chats;
@@ -13,6 +14,7 @@ pub mod projects;
 mod realtime;
 mod waitlist;
 
+pub use ai_mcp::routes as ai_mcp_routes;
 pub use auth::routes as auth_routes;
 pub use billing::routes as billing_routes;
 pub use chats::routes as chat_routes;

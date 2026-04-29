@@ -34,6 +34,12 @@ mod m20260428_000015_add_issue_project;
 mod m20260428_000016_create_labels;
 #[path = "../migrations/m20260428_000017_create_issue_labels.rs"]
 mod m20260428_000017_create_issue_labels;
+#[path = "../migrations/m20260429_000018_create_mcp_servers.rs"]
+mod m20260429_000018_create_mcp_servers;
+#[path = "../migrations/m20260429_000019_add_mcp_oauth_token_url.rs"]
+mod m20260429_000019_add_mcp_oauth_token_url;
+#[path = "../migrations/m20260429_000020_add_mcp_oauth_clients.rs"]
+mod m20260429_000020_add_mcp_oauth_clients;
 
 pub struct Migrator;
 
@@ -58,6 +64,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20260428_000015_add_issue_project::Migration),
             Box::new(m20260428_000016_create_labels::Migration),
             Box::new(m20260428_000017_create_issue_labels::Migration),
+            Box::new(m20260429_000018_create_mcp_servers::Migration),
+            Box::new(m20260429_000019_add_mcp_oauth_token_url::Migration),
+            Box::new(m20260429_000020_add_mcp_oauth_clients::Migration),
         ]
     }
 }

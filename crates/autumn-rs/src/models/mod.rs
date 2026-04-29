@@ -70,8 +70,9 @@ pub use plan::{
 pub use platform::{
     CreateOrganizationRequest, CreateOrganizationResponse, GenerateOAuthUrlRequest,
     GenerateOAuthUrlResponse, ListPlatformOrgsParams, ListPlatformOrgsResponse,
-    ListPlatformUsersParams, ListPlatformUsersResponse, OAuthEnv, PlatformEnv, PlatformOrganization,
-    PlatformUser, UpdateStripeConfigRequest, UpdateStripeConfigResponse, UpdateStripeOrganization,
+    ListPlatformUsersParams, ListPlatformUsersResponse, OAuthEnv, PlatformEnv,
+    PlatformOrganization, PlatformUser, UpdateStripeConfigRequest, UpdateStripeConfigResponse,
+    UpdateStripeOrganization,
 };
 pub use referrals::{
     CreateReferralCodeRequest, CreateReferralCodeResponse, RedeemReferralCodeRequest,

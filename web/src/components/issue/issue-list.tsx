@@ -32,6 +32,7 @@ export type IssueListProps = {
   focusedId?: string | null;
   selectedIds?: Set<string>;
   onSelect: (issueId: string, event: React.MouseEvent) => void;
+  onToggleSelected?: (issueId: string) => void;
   onMoveToStatus?: (issueId: string, status: string) => void;
   isFavorite?: (issueId: string) => boolean;
   onToggleFavorite?: (issueId: string) => void;
@@ -57,6 +58,7 @@ export function IssueList({
   focusedId,
   selectedIds,
   onSelect,
+  onToggleSelected,
   onMoveToStatus,
   isFavorite,
   onToggleFavorite,
@@ -194,7 +196,10 @@ export function IssueList({
             onDragOver={(event) => handleGroupDragOver(event, group.status)}
             onDragLeave={(event) => handleGroupDragLeave(event, group.status)}
             onDrop={(event) => handleGroupDrop(event, group.status)}
-            className={cn("transition-colors", isDropping && "bg-accent/5")}
+            className={cn(
+              "transition-colors",
+              isDropping && "bg-accent/10 ring-2 ring-accent/40 ring-inset",
+            )}
           >
             <div
               className={cn(
@@ -267,8 +272,9 @@ export function IssueList({
                       onDragStart={(event) => handleDragStart(event, issue)}
                       onDragEnd={handleDragEnd}
                       className={cn(
-                        "transition-opacity",
-                        isDragging && "opacity-40",
+                        "transition-all",
+                        isDragging &&
+                          "opacity-60 scale-[0.99] shadow-lg shadow-black/30",
                       )}
                     >
                       <button
@@ -286,6 +292,32 @@ export function IssueList({
                             "before:absolute before:inset-y-0 before:left-0 before:w-[2px] before:bg-accent",
                         )}
                       >
+                        <span
+                          role="checkbox"
+                          tabIndex={0}
+                          aria-checked={isMultiSelected}
+                          aria-label={`Select ${issue.title}`}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onToggleSelected?.(issue.id);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onToggleSelected?.(issue.id);
+                            }
+                          }}
+                          className={cn(
+                            "grid size-4 shrink-0 place-items-center rounded-[3px] border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                            isMultiSelected
+                              ? "border-accent bg-accent text-bg"
+                              : "border-border-subtle text-transparent group-hover/row:border-border group-hover/row:text-fg-faint focus-visible:border-border focus-visible:text-fg-faint",
+                          )}
+                        >
+                          <CheckIcon />
+                        </span>
                         {properties.priority ? (
                           <PriorityIcon priority={issue.priority} />
                         ) : null}
@@ -315,7 +347,7 @@ export function IssueList({
                               void copyIssueLink(issue.id);
                             }
                           }}
-                          className="grid size-5 shrink-0 place-items-center rounded-[4px] text-fg-faint opacity-0 transition-colors hover:bg-surface-2 hover:text-fg group-hover/row:opacity-100"
+                          className="grid size-5 shrink-0 place-items-center rounded-[4px] text-fg-faint opacity-0 transition-colors hover:bg-surface-2 hover:text-fg group-hover/row:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                         >
                           <LinkIcon />
                         </span>
@@ -340,10 +372,10 @@ export function IssueList({
                               }
                             }}
                             className={cn(
-                              "grid size-5 shrink-0 place-items-center rounded-[4px] transition-colors hover:bg-surface-2",
+                              "grid size-5 shrink-0 place-items-center rounded-[4px] transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
                               isFavorite?.(issue.id)
                                 ? "text-warning opacity-100"
-                                : "text-fg-faint opacity-0 group-hover/row:opacity-100 hover:text-fg",
+                                : "text-fg-faint opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-fg",
                             )}
                           >
                             <StarIcon
@@ -573,6 +605,20 @@ function LinkIcon() {
         d="M5 3.5H3.5A1.5 1.5 0 002 5v2a1.5 1.5 0 001.5 1.5H5M7 3.5h1.5A1.5 1.5 0 0110 5v2a1.5 1.5 0 01-1.5 1.5H7M4 6h4"
         stroke="currentColor"
         strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden>
+      <path
+        d="M3 6.2l2 2L9 3.8"
+        stroke="currentColor"
+        strokeWidth="1.6"
         strokeLinecap="round"
         strokeLinejoin="round"
       />

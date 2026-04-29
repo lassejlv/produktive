@@ -15,11 +15,12 @@ use axum::{
     extract::State,
     http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
+use chrono::Utc;
 use produktive_entity::{member, organization, user};
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
 use serde::{Deserialize, Serialize};
 
 pub fn routes() -> Router<AppState> {
@@ -34,6 +35,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/organizations",
             get(list_organizations).post(create_organization),
+        )
+        .route(
+            "/organizations/active",
+            patch(update_active_organization).delete(delete_active_organization),
         )
         .route("/switch-organization", post(switch_organization))
         .route("/account", delete(delete_account))
@@ -312,6 +317,135 @@ async fn switch_organization(
         Json(crate::auth::AuthResponse {
             user: auth.user.into(),
             organization: organization.into(),
+        }),
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateOrganizationRequest {
+    name: String,
+}
+
+async fn update_active_organization(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<UpdateOrganizationRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+
+    let membership = member::Entity::find()
+        .filter(member::Column::UserId.eq(&auth.user.id))
+        .filter(member::Column::OrganizationId.eq(&auth.organization.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::Forbidden("Not a member of this workspace".to_owned()))?;
+
+    if membership.role != "owner" {
+        return Err(ApiError::Forbidden(
+            "Only workspace owners can rename the workspace".to_owned(),
+        ));
+    }
+
+    let name = payload.name.trim();
+    if name.is_empty() {
+        return Err(ApiError::BadRequest(
+            "Workspace name is required".to_owned(),
+        ));
+    }
+    if name.chars().count() > 64 {
+        return Err(ApiError::BadRequest(
+            "Workspace name must be 64 characters or fewer".to_owned(),
+        ));
+    }
+
+    let mut active: organization::ActiveModel = auth.organization.into();
+    active.name = Set(name.to_owned());
+    active.updated_at = Set(Utc::now().fixed_offset());
+    let updated = active.update(&state.db).await?;
+
+    Ok(Json(OrganizationEnvelope {
+        organization: updated.into(),
+    }))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeleteOrganizationRequest {
+    confirm: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeleteOrganizationResponse {
+    ok: bool,
+    switched_to: Option<OrganizationResponse>,
+}
+
+async fn delete_active_organization(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<DeleteOrganizationRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+
+    let membership = member::Entity::find()
+        .filter(member::Column::UserId.eq(&auth.user.id))
+        .filter(member::Column::OrganizationId.eq(&auth.organization.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::Forbidden("Not a member of this workspace".to_owned()))?;
+
+    if membership.role != "owner" {
+        return Err(ApiError::Forbidden(
+            "Only workspace owners can delete the workspace".to_owned(),
+        ));
+    }
+
+    if payload.confirm.trim() != auth.organization.name {
+        return Err(ApiError::BadRequest(
+            "Type the workspace name exactly to confirm deletion".to_owned(),
+        ));
+    }
+
+    let other_membership = member::Entity::find()
+        .filter(member::Column::UserId.eq(&auth.user.id))
+        .filter(member::Column::OrganizationId.ne(&auth.organization.id))
+        .order_by_asc(member::Column::CreatedAt)
+        .one(&state.db)
+        .await?;
+
+    let next_organization = if let Some(other) = other_membership.as_ref() {
+        organization::Entity::find_by_id(&other.organization_id)
+            .one(&state.db)
+            .await?
+    } else {
+        None
+    };
+
+    if next_organization.is_none() {
+        return Err(ApiError::BadRequest(
+            "You can't delete your only workspace. Create another one first.".to_owned(),
+        ));
+    }
+
+    let deleted_org_id = auth.organization.id.clone();
+    organization::Entity::delete_by_id(&deleted_org_id)
+        .exec(&state.db)
+        .await?;
+
+    let next_org = next_organization.expect("checked above");
+    let (_, token) =
+        set_session_active_organization(&state.db, &state, auth.session, next_org.id.clone())
+            .await?;
+    let cookie = auth_cookie(&state, &token)?;
+
+    Ok((
+        StatusCode::OK,
+        [(header::SET_COOKIE, cookie)],
+        Json(DeleteOrganizationResponse {
+            ok: true,
+            switched_to: Some(next_org.into()),
         }),
     ))
 }

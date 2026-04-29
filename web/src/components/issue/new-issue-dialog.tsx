@@ -38,7 +38,7 @@ export function NewIssueDialog({
   onCreated,
 }: {
   triggerLabel?: React.ReactNode;
-  triggerVariant?: "default" | "outline" | "ghost" | "secondary" | "danger" | "link";
+  triggerVariant?: "default" | "outline" | "ghost" | "danger" | "link";
   triggerSize?: "default" | "sm" | "lg" | "icon";
   triggerClassName?: string;
   shortcutEnabled?: boolean;

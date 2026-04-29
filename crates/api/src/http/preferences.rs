@@ -2,9 +2,7 @@ use crate::{auth::require_auth, error::ApiError, state::AppState};
 use axum::{extract::State, http::HeaderMap, routing::get, Json, Router};
 use chrono::Utc;
 use produktive_entity::notification_preference;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

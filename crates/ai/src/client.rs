@@ -119,11 +119,7 @@ fn message_to_wire(message: &Message) -> Value {
                     .collect();
                 json!({
                     "role": "assistant",
-                    "content": if message.content.is_empty() {
-                        Value::Null
-                    } else {
-                        Value::String(message.content.clone())
-                    },
+                    "content": message.content,
                     "tool_calls": calls,
                 })
             }

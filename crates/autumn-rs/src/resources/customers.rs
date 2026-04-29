@@ -28,9 +28,7 @@ impl Customers {
     /// `POST /v1/customers.get_or_create` — fetch by external id, or create
     /// the customer if none exists.
     pub async fn get_or_create(&self, request: GetOrCreateCustomerRequest) -> Result<Customer> {
-        self.client
-            .post("/customers.get_or_create", &request)
-            .await
+        self.client.post("/customers.get_or_create", &request).await
     }
 
     /// `POST /v1/customers.update` — patch a customer in place. Use

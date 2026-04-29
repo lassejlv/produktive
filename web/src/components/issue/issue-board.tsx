@@ -142,7 +142,7 @@ function Column({
       onDrop={onDrop}
       className={cn(
         "flex w-[280px] shrink-0 flex-col rounded-lg border border-border-subtle bg-surface/30 transition-colors",
-        isDropping && "border-accent/50 bg-accent/5",
+        isDropping && "border-accent bg-accent/10 ring-2 ring-accent/40",
       )}
     >
       <header className="flex items-center gap-2 px-3 py-2.5">
@@ -210,8 +210,9 @@ function Column({
             onDragEnd={onDragEnd}
             onClick={() => onSelect(issue.id)}
             className={cn(
-              "block w-full cursor-grab rounded-md border border-border-subtle bg-bg p-3 text-left transition-colors hover:border-border active:cursor-grabbing",
-              draggingId === issue.id && "opacity-40",
+              "block w-full cursor-grab rounded-md border border-border-subtle bg-bg p-3 text-left transition-all hover:border-border active:cursor-grabbing",
+              draggingId === issue.id &&
+                "opacity-60 scale-[0.98] shadow-lg shadow-black/30",
             )}
           >
             <div className="flex items-start justify-between gap-2">

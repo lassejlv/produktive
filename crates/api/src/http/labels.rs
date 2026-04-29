@@ -167,8 +167,7 @@ async fn patch_label(
                 "Label name must be 48 characters or fewer".to_owned(),
             ));
         }
-        ensure_unique_name(&state, &auth.organization.id, trimmed, Some(&existing_id))
-            .await?;
+        ensure_unique_name(&state, &auth.organization.id, trimmed, Some(&existing_id)).await?;
         active.name = Set(trimmed.to_owned());
     }
     if let Some(description) = payload.description {
@@ -215,10 +214,7 @@ pub async fn find_label(
         .ok_or_else(|| ApiError::NotFound("Label not found".to_owned()))
 }
 
-async fn label_response(
-    state: &AppState,
-    row: label::Model,
-) -> Result<LabelResponse, ApiError> {
+async fn label_response(state: &AppState, row: label::Model) -> Result<LabelResponse, ApiError> {
     let issue_count = issue_label::Entity::find()
         .filter(issue_label::Column::LabelId.eq(&row.id))
         .count(&state.db)
@@ -249,10 +245,7 @@ async fn ensure_unique_name(
         select = select.filter(label::Column::Id.ne(id));
     }
     let rows = select.all(&state.db).await?;
-    if rows
-        .iter()
-        .any(|row| row.name.to_lowercase() == lowered)
-    {
+    if rows.iter().any(|row| row.name.to_lowercase() == lowered) {
         return Err(ApiError::Conflict(
             "A label with this name already exists".to_owned(),
         ));
@@ -273,13 +266,7 @@ fn normalize_color(value: Option<&str>) -> String {
 }
 
 fn non_empty(value: Option<String>) -> Option<String> {
-    value.and_then(|v| {
-        if v.trim().is_empty() {
-            None
-        } else {
-            Some(v)
-        }
-    })
+    value.and_then(|v| if v.trim().is_empty() { None } else { Some(v) })
 }
 
 pub async fn validate_labels(

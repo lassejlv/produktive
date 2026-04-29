@@ -1,11 +1,15 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LoadingTip } from "@/components/ui/loading-tip";
+import { SettingRow } from "@/components/workspace/setting-row";
 import {
   type BillingStatus,
+  cancelSubscription,
   getBillingStatus,
   openBillingPortal,
+  resumeSubscription,
   startBillingCheckout,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -13,9 +17,10 @@ import { cn } from "@/lib/utils";
 export function BillingSettings() {
   const [billing, setBilling] = useState<BillingStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busyAction, setBusyAction] = useState<"checkout" | "portal" | null>(
-    null,
-  );
+  const [busyAction, setBusyAction] = useState<
+    "checkout" | "portal" | "cancel" | "resume" | null
+  >(null);
+  const { confirm, dialog } = useConfirmDialog();
 
   useEffect(() => {
     let mounted = true;
@@ -52,6 +57,48 @@ export function BillingSettings() {
     }
   };
 
+  const onCancel = () => {
+    confirm({
+      title: "Cancel Pro?",
+      description:
+        "You'll keep access until the end of the current billing period. You can resume anytime before then.",
+      confirmLabel: "Cancel plan",
+      cancelLabel: "Keep Pro",
+      destructive: true,
+      onConfirm: async () => {
+        setBusyAction("cancel");
+        try {
+          const next = await cancelSubscription();
+          setBilling(next);
+          toast.success("Pro is scheduled to cancel.");
+        } catch (error) {
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Failed to cancel subscription",
+          );
+        } finally {
+          setBusyAction(null);
+        }
+      },
+    });
+  };
+
+  const onResume = async () => {
+    setBusyAction("resume");
+    try {
+      const next = await resumeSubscription();
+      setBilling(next);
+      toast.success("Pro will renew as scheduled.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to resume subscription",
+      );
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const activeSubscription = billing?.subscriptions.find(
     (subscription) => subscription.planId === billing.proPlanId,
   );
@@ -61,54 +108,40 @@ export function BillingSettings() {
   }
 
   return (
-    <div className="border-t border-border-subtle">
-      <BillingRow
-        label="Plan"
-        value={
-          <div className="flex min-w-0 items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[13px] text-fg">
-                {billing.isPro ? "Pro" : "Free"}
-              </div>
-              <div className="mt-0.5 text-[12px] text-fg-muted">
-                {billing.isPro
-                  ? billingDescription(activeSubscription)
-                  : "This workspace is on the free plan."}
-              </div>
-            </div>
-            <StatusMark active={billing.isPro} />
-          </div>
-        }
-      />
-      <BillingRow
-        label="Customer"
-        value={
-          <span className="block truncate font-mono text-[12px] text-fg">
-            {billing.customerId}
-          </span>
-        }
-      />
-      <BillingRow
-        label="Pro plan id"
-        value={
-          <span className="font-mono text-[12px] text-fg">
-            {billing.proPlanId}
-          </span>
-        }
-      />
-      <BillingRow
-        label="Access"
-        value={
-          <span className="text-[13px] text-fg-muted">
-            {billing.canManage
-              ? "You can manage billing for this workspace."
-              : "Only workspace owners can manage billing."}
-          </span>
-        }
-      />
+    <div>
+      {dialog}
+      <SettingRow label="Plan">
+        <div className="flex items-center gap-2">
+          <span className="text-fg">{billing.isPro ? "Pro" : "Free"}</span>
+          <span
+            aria-hidden
+            className={cn(
+              "inline-block size-1.5 rounded-full",
+              billing.isPro ? "bg-success" : "bg-border",
+            )}
+          />
+        </div>
+        <div className="mt-0.5 text-[12px] text-fg-muted">
+          {billing.isPro
+            ? billingDescription(activeSubscription)
+            : "This workspace is on the free plan."}
+        </div>
+      </SettingRow>
+      <SettingRow label="Customer">
+        <span className="block truncate font-mono text-[12px]">
+          {billing.customerId}
+        </span>
+      </SettingRow>
+      <SettingRow label="Access">
+        <span className="text-fg-muted">
+          {billing.canManage
+            ? "You can manage billing for this workspace."
+            : "Only workspace owners can manage billing."}
+        </span>
+      </SettingRow>
 
       {billing.canManage ? (
-        <div className="flex flex-wrap justify-end gap-2 border-b border-border-subtle py-4">
+        <div className="flex flex-wrap justify-end gap-2 pt-4">
           {!billing.isPro ? (
             <Button
               type="button"
@@ -118,7 +151,26 @@ export function BillingSettings() {
             >
               {busyAction === "checkout" ? "Opening..." : "Upgrade to Pro"}
             </Button>
-          ) : null}
+          ) : activeSubscription?.canceledAt ? (
+            <Button
+              type="button"
+              size="sm"
+              disabled={busyAction !== null}
+              onClick={() => void onResume()}
+            >
+              {busyAction === "resume" ? "Resuming…" : "Resume plan"}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busyAction !== null}
+              onClick={onCancel}
+            >
+              {busyAction === "cancel" ? "Canceling…" : "Cancel plan"}
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -131,38 +183,6 @@ export function BillingSettings() {
         </div>
       ) : null}
     </div>
-  );
-}
-
-function BillingRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: ReactNode;
-}) {
-  return (
-    <div className="grid gap-2 border-b border-border-subtle py-3 md:grid-cols-[140px_minmax(0,1fr)]">
-      <div className="font-mono text-[11px] uppercase tracking-[0.08em] text-fg-faint">
-        {label}
-      </div>
-      <div className="min-w-0">{value}</div>
-    </div>
-  );
-}
-
-function StatusMark({ active }: { active: boolean }) {
-  return (
-    <span
-      className={cn(
-        "shrink-0 rounded-[4px] border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.08em]",
-        active
-          ? "border-success/30 bg-success/10 text-success"
-          : "border-border-subtle bg-surface text-fg-muted",
-      )}
-    >
-      {active ? "Active" : "Free"}
-    </span>
   );
 }
 

@@ -399,18 +399,10 @@ fn normalize_optional_string(value: Option<String>) -> Option<String> {
 }
 
 fn non_empty(value: Option<String>) -> Option<String> {
-    value.and_then(|v| {
-        if v.trim().is_empty() {
-            None
-        } else {
-            Some(v)
-        }
-    })
+    value.and_then(|v| if v.trim().is_empty() { None } else { Some(v) })
 }
 
-fn parse_optional_date(
-    value: Option<&str>,
-) -> Result<Option<DateTime<FixedOffset>>, ApiError> {
+fn parse_optional_date(value: Option<&str>) -> Result<Option<DateTime<FixedOffset>>, ApiError> {
     let Some(raw) = value else {
         return Ok(None);
     };
@@ -422,11 +414,7 @@ fn parse_optional_date(
         return Ok(Some(dt));
     }
     if let Ok(date) = chrono::NaiveDate::parse_from_str(trimmed, "%Y-%m-%d") {
-        let dt = date
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()
-            .fixed_offset();
+        let dt = date.and_hms_opt(0, 0, 0).unwrap().and_utc().fixed_offset();
         return Ok(Some(dt));
     }
     Err(ApiError::BadRequest(

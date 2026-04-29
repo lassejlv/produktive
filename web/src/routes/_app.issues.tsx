@@ -21,6 +21,7 @@ import {
   type IssueFilters,
 } from "@/components/issue/issue-toolbar";
 import { NewIssueDialog } from "@/components/issue/new-issue-dialog";
+import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DashboardSkeleton } from "@/components/issue-skeleton";
 import { IssueDetail } from "@/routes/_app.issues.$issueId";
 import { createIssue, deleteIssue, updateIssue } from "@/lib/api";
@@ -28,6 +29,7 @@ import { statusLabel, type View, viewLabels } from "@/lib/issue-constants";
 import { useDisplayOptions } from "@/lib/issue-display";
 import { useFavorites } from "@/lib/use-favorites";
 import { useIssues } from "@/lib/use-issues";
+import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 
 const viewDropStatus: Record<View, string | null> = {
@@ -66,6 +68,12 @@ function IssuesPage() {
   const { isFavorite, toggleFavorite } = useFavorites();
   const { options: displayOptions, update: updateDisplay, updateProperties } =
     useDisplayOptions();
+  const isNarrowViewport = useMediaQuery("(max-width: 1023px)");
+  const effectiveViewMode =
+    isNarrowViewport && displayOptions.viewMode === "board"
+      ? "list"
+      : displayOptions.viewMode;
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [viewFavorited, setViewFavorited] = useState(false);
 
   useEffect(() => {
@@ -217,6 +225,35 @@ function IssuesPage() {
     setLastClickedId(null);
   };
 
+  const toggleIssueSelected = (id: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setLastClickedId(id);
+  };
+
+  const allFilteredSelected =
+    filteredIssues.length > 0 &&
+    filteredIssues.every((issue) => selectedIds.has(issue.id));
+
+  const toggleAllFiltered = () => {
+    if (filteredIssues.length === 0) return;
+    setSelectedIds((current) => {
+      if (allFilteredSelected) {
+        const next = new Set(current);
+        for (const issue of filteredIssues) {
+          next.delete(issue.id);
+        }
+        return next;
+      }
+      return new Set([...current, ...filteredIssues.map((issue) => issue.id)]);
+    });
+    setLastClickedId(filteredIssues[0]?.id ?? null);
+  };
+
   const handleBulkSetStatus = async (status: string) => {
     const ids = Array.from(selectedIds);
     const previousStatuses = new Map(
@@ -275,25 +312,32 @@ function IssuesPage() {
     }
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    if (!window.confirm(`Delete ${ids.length} issue(s)?`)) return;
-    clearSelection();
-    const failures: string[] = [];
-    for (const id of ids) {
-      try {
-        await deleteIssue(id);
-        removeIssueLocal(id);
-      } catch {
-        failures.push(id);
-      }
-    }
-    if (failures.length === 0) {
-      toast.success(`Deleted ${ids.length}`);
-    } else {
-      toast.error(`Failed to delete ${failures.length}`);
-    }
+    confirm({
+      title: `Delete ${ids.length} issue${ids.length === 1 ? "" : "s"}?`,
+      description: "This can't be undone.",
+      confirmLabel: `Delete ${ids.length === 1 ? "issue" : "all"}`,
+      destructive: true,
+      onConfirm: async () => {
+        clearSelection();
+        const failures: string[] = [];
+        for (const id of ids) {
+          try {
+            await deleteIssue(id);
+            removeIssueLocal(id);
+          } catch {
+            failures.push(id);
+          }
+        }
+        if (failures.length === 0) {
+          toast.success(`Deleted ${ids.length}`);
+        } else {
+          toast.error(`Failed to delete ${failures.length}`);
+        }
+      },
+    });
   };
 
   useEffect(() => {
@@ -403,6 +447,7 @@ function IssuesPage() {
 
   return (
     <>
+      {confirmDialog}
       <header
         className={cn(
           "sticky top-0 z-10 flex h-12 items-center justify-between gap-3 border-b border-border-subtle bg-bg/85 px-5 backdrop-blur",
@@ -506,6 +551,30 @@ function IssuesPage() {
           filters={filters}
           onFiltersChange={setFilters}
         />
+        {effectiveViewMode === "list" && filteredIssues.length > 0 ? (
+          <button
+            type="button"
+            onClick={toggleAllFiltered}
+            className={cn(
+              "inline-flex h-7 items-center gap-1.5 rounded-md border px-2.5 text-xs transition-colors",
+              allFilteredSelected
+                ? "border-accent/40 bg-accent/10 text-accent"
+                : "border-border-subtle text-fg-muted hover:border-border hover:bg-surface hover:text-fg",
+            )}
+          >
+            <span
+              className={cn(
+                "grid size-3.5 place-items-center rounded-[3px] border",
+                allFilteredSelected
+                  ? "border-accent bg-accent text-bg"
+                  : "border-border text-transparent",
+              )}
+            >
+              <SelectCheckIcon />
+            </span>
+            <span>{allFilteredSelected ? "Clear" : "Select all"}</span>
+          </button>
+        ) : null}
       </nav>
       <IssueFilterChips filters={filters} onChange={setFilters} />
 
@@ -529,7 +598,7 @@ function IssuesPage() {
         ) : filteredIssues.length === 0 ? (
           <EmptyView view={view} onSwitchView={setView} />
         ) : (
-          displayOptions.viewMode === "board" ? (
+          effectiveViewMode === "board" ? (
             <IssueBoard
               issues={filteredIssues}
               onSelect={onSelect}
@@ -543,6 +612,7 @@ function IssuesPage() {
               focusedId={focusedId}
               selectedIds={selectedIds}
               onSelect={onSelect}
+              onToggleSelected={toggleIssueSelected}
               onMoveToStatus={handleMoveToStatus}
               onCreateInGroup={handleCreateInGroup}
               isFavorite={(id) => isFavorite("issue", id)}
@@ -557,7 +627,7 @@ function IssuesPage() {
           count={selectedIds.size}
           onSetStatus={(status) => void handleBulkSetStatus(status)}
           onSetPriority={(priority) => void handleBulkSetPriority(priority)}
-          onDelete={() => void handleBulkDelete()}
+          onDelete={handleBulkDelete}
           onClear={clearSelection}
         />
       ) : (
@@ -594,6 +664,20 @@ function AskDock() {
         <span>Ask Produktive</span>
       </Link>
     </div>
+  );
+}
+
+function SelectCheckIcon() {
+  return (
+    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" aria-hidden>
+      <path
+        d="M3 6.2l2 2L9 3.8"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

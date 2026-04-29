@@ -9,12 +9,14 @@ import { toast } from "sonner";
 import {
   CaretIcon,
   DotsIcon,
+  InboxIcon,
   IssuesIcon,
-  SettingsIcon,
+  ProjectsIcon,
   SparkleIcon,
   StarIcon,
 } from "@/components/chat/icons";
 import { CommandPalette } from "@/components/command-palette";
+import { KeyboardHelp } from "@/components/keyboard-help";
 import { StatusIcon } from "@/components/issue/status-icon";
 import { OrgSwitcher } from "@/components/org-switcher";
 import {
@@ -186,6 +188,7 @@ function AppLayout() {
   return (
     <SidebarProvider>
       <CommandPalette />
+      <KeyboardHelp />
       <NewProjectDialog
         headless
         onCreated={(project) => {
@@ -292,6 +295,7 @@ function AppLayout() {
                         key={fav.favoriteId}
                         type="button"
                         onClick={() => void goTo()}
+                        title={displayFavoriteTitle(fav.title)}
                         className={cn(
                           "group flex h-8 w-full items-center gap-2 rounded-[7px] px-2.5 text-left text-[13px] transition-colors",
                           isActive
@@ -317,7 +321,7 @@ function AppLayout() {
                           {displayFavoriteTitle(fav.title)}
                         </span>
                         <span
-                          className="shrink-0 text-warning opacity-0 transition-opacity group-hover:opacity-100 hover:text-fg"
+                          className="shrink-0 text-warning opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent rounded-[3px] hover:text-fg"
                           role="button"
                           tabIndex={0}
                           aria-label={`Unpin ${displayFavoriteTitle(fav.title)}`}
@@ -402,37 +406,6 @@ function AppLayout() {
             </div>
           </div>
 
-          <div>
-            <div className="flex flex-col gap-px">
-              <button
-                type="button"
-                onClick={() => void navigate({ to: "/members" })}
-                className={cn(
-                  "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
-                  pathname === "/members"
-                    ? "bg-surface-2 text-fg [&_svg]:text-fg"
-                    : "text-fg-muted hover:bg-surface hover:text-fg",
-                )}
-              >
-                <MembersIcon />
-                <span className="flex-1 truncate">Members</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => void navigate({ to: "/workspace/settings" })}
-                className={cn(
-                  "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
-                  pathname === "/workspace/settings"
-                    ? "bg-surface-2 text-fg [&_svg]:text-fg"
-                    : "text-fg-muted hover:bg-surface hover:text-fg",
-                )}
-              >
-                <SettingsIcon size={13} />
-                <span className="flex-1 truncate">Workspace settings</span>
-              </button>
-            </div>
-          </div>
-
           <TrySection />
 
           <div>
@@ -456,6 +429,7 @@ function AppLayout() {
                       <button
                         type="button"
                         onClick={() => void openChat(entry.id)}
+                        title={displayChatTitle(entry)}
                         className={cn(
                           "group flex h-8 w-full items-center gap-2 rounded-[7px] px-2.5 text-left text-[13px] transition-colors",
                           isActive
@@ -468,7 +442,7 @@ function AppLayout() {
                         </span>
                         <span
                           className={cn(
-                            "grid size-6 shrink-0 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg",
+                            "grid size-6 shrink-0 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
                             chatMenuOpenId === entry.id
                               ? "bg-surface-2 opacity-100"
                               : "opacity-0 group-hover:opacity-100",
@@ -569,16 +543,6 @@ function AppLayout() {
                 >
                   <span>Account settings</span>
                 </button>
-                <button
-                  type="button"
-                  className="flex h-9 w-full items-center justify-between px-3 text-left text-[13px] text-fg transition-colors hover:bg-surface-2"
-                  onClick={async () => {
-                    setAccountMenuOpen(false);
-                    await navigate({ to: "/workspace/settings" });
-                  }}
-                >
-                  <span>Workspace settings</span>
-                </button>
                 <div className="h-px bg-border-subtle" />
                 <button
                   type="button"
@@ -613,10 +577,16 @@ function AppLayout() {
                 {currentUser?.name?.slice(0, 2).toUpperCase() ?? "P"}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-medium text-fg">
+                <p
+                  className="truncate text-[13px] font-medium text-fg"
+                  title={currentUser?.name ?? "User"}
+                >
                   {currentUser?.name ?? "User"}
                 </p>
-                <p className="truncate text-[11px] text-fg-muted">
+                <p
+                  className="truncate text-[11px] text-fg-muted"
+                  title={currentUser?.email}
+                >
                   {currentUser?.email}
                 </p>
               </div>
@@ -703,26 +673,6 @@ function SignOutIcon() {
   );
 }
 
-function InboxIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path
-        d="M2 3.5h10v5.5l-3 1H5l-3-1V3.5z"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M2 9l3 1h4l3-1"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 function MyIssuesIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
@@ -784,6 +734,7 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
           <button
             key={project.id}
             type="button"
+            title={project.name}
             onClick={() =>
               void navigate({
                 to: "/projects/$projectId",
@@ -795,23 +746,23 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
               event.preventDefault();
               event.dataTransfer.dropEffect = "move";
               event.currentTarget.classList.add(
-                "ring-1",
-                "ring-accent/50",
-                "bg-accent/10",
+                "ring-2",
+                "ring-accent",
+                "bg-accent/15",
               );
             }}
             onDragLeave={(event) => {
               event.currentTarget.classList.remove(
-                "ring-1",
-                "ring-accent/50",
-                "bg-accent/10",
+                "ring-2",
+                "ring-accent",
+                "bg-accent/15",
               );
             }}
             onDrop={(event) => {
               event.currentTarget.classList.remove(
-                "ring-1",
-                "ring-accent/50",
-                "bg-accent/10",
+                "ring-2",
+                "ring-accent",
+                "bg-accent/15",
               );
               const issueId = event.dataTransfer.getData(ISSUE_DRAG_MIME);
               if (!issueId) return;
@@ -865,46 +816,6 @@ function SidebarLabelsIcon() {
         strokeLinejoin="round"
       />
       <circle cx="9.5" cy="4.5" r="0.9" fill="currentColor" />
-    </svg>
-  );
-}
-
-function MembersIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <circle cx="5" cy="5" r="2" stroke="currentColor" strokeWidth="1.4" />
-      <circle
-        cx="10.5"
-        cy="6"
-        r="1.5"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
-      <path
-        d="M1.5 12c.5-1.8 2-2.7 3.5-2.7s3 .9 3.5 2.7M9 12c.4-1.4 1.4-2 2.5-2 .9 0 1.7.5 2 1.5"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function ProjectsIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path
-        d="M2 4l2-1.5 5.5 3v6L4 14.5 2 13V4z"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9.5 5.5L12 4v6l-2.5 1.5"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
     </svg>
   );
 }

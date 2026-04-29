@@ -11,17 +11,8 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(Labels::Table)
                     .if_not_exists()
-                    .col(
-                        ColumnDef::new(Labels::Id)
-                            .string()
-                            .not_null()
-                            .primary_key(),
-                    )
-                    .col(
-                        ColumnDef::new(Labels::OrganizationId)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Labels::Id).string().not_null().primary_key())
+                    .col(ColumnDef::new(Labels::OrganizationId).string().not_null())
                     .col(ColumnDef::new(Labels::Name).string().not_null())
                     .col(ColumnDef::new(Labels::Description).text().null())
                     .col(

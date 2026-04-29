@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import { AttachIcon, DotsIcon, StarIcon } from "@/components/chat/icons";
 import { ChatMarkdown } from "@/components/chat/chat-markdown";
+import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Avatar } from "@/components/issue/avatar";
 import { EditableDescription } from "@/components/issue/editable-description";
 import { EditableTitle } from "@/components/issue/editable-title";
@@ -76,6 +77,7 @@ export function IssueDetail({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const { isFavorite, toggleFavorite } = useFavorites();
+  const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const pinned = isFavorite("issue", issueId);
 
   useEffect(() => {
@@ -339,18 +341,27 @@ export function IssueDetail({
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!issue) return;
-    if (!window.confirm("Delete this issue? This can't be undone.")) return;
-    try {
-      await deleteIssue(issue.id);
-      void navigate({ to: "/issues" });
-    } catch (deleteError) {
-      const message =
-        deleteError instanceof Error ? deleteError.message : "Failed to delete issue";
-      setError(message);
-      toast.error(message);
-    }
+    confirm({
+      title: "Delete this issue?",
+      description: "This can't be undone.",
+      confirmLabel: "Delete issue",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await deleteIssue(issue.id);
+          void navigate({ to: "/issues" });
+        } catch (deleteError) {
+          const message =
+            deleteError instanceof Error
+              ? deleteError.message
+              : "Failed to delete issue";
+          setError(message);
+          toast.error(message);
+        }
+      },
+    });
   };
 
   const handleComment = async () => {
@@ -423,6 +434,7 @@ export function IssueDetail({
 
   return (
     <main className="min-h-full bg-bg">
+      {confirmDialog}
       <header className="flex items-center justify-between gap-3 px-6 pt-5">
         <div className="flex items-center gap-3">
           <Link
@@ -495,7 +507,7 @@ export function IssueDetail({
                     className="flex h-8 w-full items-center px-2.5 text-left text-[12.5px] text-danger transition-colors hover:bg-surface-2"
                     onClick={() => {
                       setMenuOpen(false);
-                      void handleDelete();
+                      handleDelete();
                     }}
                   >
                     Delete issue

@@ -232,8 +232,7 @@ async fn list_issues(
                 .filter(produktive_entity::issue_label::Column::LabelId.is_in(ids))
                 .all(&state.db)
                 .await?;
-            let issue_ids: Vec<String> =
-                join_rows.into_iter().map(|j| j.issue_id).collect();
+            let issue_ids: Vec<String> = join_rows.into_iter().map(|j| j.issue_id).collect();
             if issue_ids.is_empty() {
                 return Ok(Json(IssuesResponse { issues: Vec::new() }));
             }
@@ -262,32 +261,26 @@ async fn create_issue(
 
     let actor_id = auth.user.id.clone();
     let organization_id = auth.organization.id;
-    let parent_id = payload
-        .parent_id
-        .as_deref()
-        .and_then(|value| {
-            let trimmed = value.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_owned())
-            }
-        });
+    let parent_id = payload.parent_id.as_deref().and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_owned())
+        }
+    });
     if let Some(ref parent) = parent_id {
         find_issue(&state, &organization_id, parent).await?;
     }
 
-    let project_id = payload
-        .project_id
-        .as_deref()
-        .and_then(|value| {
-            let trimmed = value.trim();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_owned())
-            }
-        });
+    let project_id = payload.project_id.as_deref().and_then(|value| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_owned())
+        }
+    });
     if let Some(ref pid) = project_id {
         crate::http::projects::find_project(&state, &organization_id, pid).await?;
     }
@@ -458,30 +451,19 @@ async fn update_issue(
         let next: Option<String> = if trimmed.is_empty() {
             None
         } else {
-            crate::http::projects::find_project(
-                &state,
-                &auth.organization.id,
-                trimmed,
-            )
-            .await?;
+            crate::http::projects::find_project(&state, &auth.organization.id, trimmed).await?;
             Some(trimmed.to_owned())
         };
-        if let Some(change) = string_change(
-            "projectId",
-            before.project_id.as_deref(),
-            next.as_deref(),
-        ) {
+        if let Some(change) =
+            string_change("projectId", before.project_id.as_deref(), next.as_deref())
+        {
             changes.push(change);
         }
         issue.project_id = Set(next);
     }
     let label_replacement: Option<Vec<String>> = if let Some(ids) = payload.label_ids {
-        let cleaned: Vec<String> = ids
-            .into_iter()
-            .filter(|s| !s.trim().is_empty())
-            .collect();
-        crate::http::labels::validate_labels(&state, &auth.organization.id, &cleaned)
-            .await?;
+        let cleaned: Vec<String> = ids.into_iter().filter(|s| !s.trim().is_empty()).collect();
+        crate::http::labels::validate_labels(&state, &auth.organization.id, &cleaned).await?;
         Some(cleaned)
     } else {
         None
@@ -778,8 +760,7 @@ async fn issue_response(state: &AppState, issue: issue::Model) -> Result<IssueRe
         None => None,
     };
 
-    let label_rows =
-        crate::http::labels::labels_for_issue(state, &issue.id).await?;
+    let label_rows = crate::http::labels::labels_for_issue(state, &issue.id).await?;
     let labels: Vec<LabelSummary> = label_rows
         .into_iter()
         .map(|row| LabelSummary {

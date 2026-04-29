@@ -152,6 +152,24 @@ export function CommandPalette() {
       },
       {
         type: "action" as const,
+        key: "switch-light-mode",
+        label: "Switch to light mode",
+        run: () => {
+          applyTheme("light");
+          toast.success("Light mode enabled");
+        },
+      },
+      {
+        type: "action" as const,
+        key: "switch-dark-mode",
+        label: "Switch to dark mode",
+        run: () => {
+          applyTheme("dark");
+          toast.success("Dark mode enabled");
+        },
+      },
+      {
+        type: "action" as const,
         key: "new-issue",
         label: "New issue",
         hint: "C",
@@ -347,6 +365,15 @@ function SearchIcon() {
       />
     </svg>
   );
+}
+
+function applyTheme(theme: "light" | "dark") {
+  const root = document.documentElement;
+  root.classList.toggle("theme-light", theme === "light");
+  window.localStorage.setItem("produktive-theme", theme);
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute("content", theme === "light" ? "#fbfbfa" : "#0d0d0f");
 }
 
 function IssueGlyph() {

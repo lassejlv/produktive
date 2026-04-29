@@ -75,7 +75,9 @@ export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
       window.location.reload();
     } catch (error) {
       setSwitchError(
-        error instanceof Error ? error.message : "Failed to switch organization",
+        error instanceof Error
+          ? error.message
+          : "Failed to switch organization",
       );
       setBusy(false);
     }
@@ -144,7 +146,9 @@ export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
                       <div className="grid size-5 shrink-0 place-items-center rounded-[5px] bg-fg text-[10px] font-semibold text-bg">
                         {org.name.trim().charAt(0).toUpperCase() || "O"}
                       </div>
-                      <span className="min-w-0 flex-1 truncate">{org.name}</span>
+                      <span className="min-w-0 flex-1 truncate">
+                        {org.name}
+                      </span>
                       {isActive ? (
                         <span className="text-fg">
                           <CheckIcon size={13} />
@@ -168,7 +172,7 @@ export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
                 <span className="grid size-5 shrink-0 place-items-center rounded-[5px] border border-border text-fg-muted">
                   <SettingsIcon size={11} />
                 </span>
-                <span>Workspace settings</span>
+                <span>Settings</span>
               </button>
               <button
                 type="button"

@@ -24,7 +24,11 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(Notifications::UserId).string().not_null())
                     .col(ColumnDef::new(Notifications::Kind).string().not_null())
-                    .col(ColumnDef::new(Notifications::TargetType).string().not_null())
+                    .col(
+                        ColumnDef::new(Notifications::TargetType)
+                            .string()
+                            .not_null(),
+                    )
                     .col(ColumnDef::new(Notifications::TargetId).string().not_null())
                     .col(ColumnDef::new(Notifications::ActorId).string().null())
                     .col(ColumnDef::new(Notifications::Title).text().not_null())

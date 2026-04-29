@@ -100,10 +100,10 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
     setError(null);
     stopRef.current = false;
     setBusy(true);
+    let createdChatId: string | null = null;
 
     try {
       let activeId = chatId;
-      let createdChatId: string | null = null;
       if (!activeId) {
         const created = await createChat();
         activeId = created.chat.id;
@@ -189,6 +189,20 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
         });
       }
     } catch (sendError) {
+      if (createdChatId) {
+        try {
+          const response = await getChat(createdChatId);
+          setChatTitle(response.chat.title);
+          setMessages(response.messages.map(recordToMessage));
+          await navigate({
+            to: "/chat/$chatId",
+            params: { chatId: createdChatId },
+            replace: true,
+          });
+        } catch {
+          // Fall through to the normal error state below.
+        }
+      }
       const message =
         sendError instanceof Error ? sendError.message : "Failed to send message";
       setError(message);

@@ -2,6 +2,7 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/issue/avatar";
+import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EditableDescription } from "@/components/issue/editable-description";
 import { EditableTitle } from "@/components/issue/editable-title";
 import { IssueList } from "@/components/issue/issue-list";
@@ -37,6 +38,7 @@ function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const { issues, addIssue, updateIssueLocal } = useIssues();
+  const { confirm, dialog } = useConfirmDialog();
 
   const loadProject = async () => {
     try {
@@ -98,18 +100,26 @@ function ProjectDetailPage() {
     toast.success(next ? "Project archived" : "Project restored");
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!project) return;
-    if (!window.confirm(`Delete project "${project.name}"?`)) return;
-    try {
-      await deleteProject(projectId);
-      toast.success("Project deleted");
-      await navigate({ to: "/projects" });
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to delete",
-      );
-    }
+    confirm({
+      title: `Delete project "${project.name}"?`,
+      description:
+        "Issues in this project won't be deleted, but they'll lose the project assignment.",
+      confirmLabel: "Delete project",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await deleteProject(projectId);
+          toast.success("Project deleted");
+          await navigate({ to: "/projects" });
+        } catch (error) {
+          toast.error(
+            error instanceof Error ? error.message : "Failed to delete",
+          );
+        }
+      },
+    });
   };
 
   const handleCreateInGroup = async (status: string, title: string) => {
@@ -159,6 +169,7 @@ function ProjectDetailPage() {
 
   return (
     <main className="min-h-full bg-bg">
+      {dialog}
       <header className="flex items-center justify-between gap-3 px-6 pt-5">
         <Link
           to="/projects"
@@ -200,7 +211,7 @@ function ProjectDetailPage() {
                 danger
                 onClick={() => {
                   setMenuOpen(false);
-                  void handleDelete();
+                  handleDelete();
                 }}
               >
                 Delete project

@@ -134,6 +134,24 @@ export const createOrganization = (name: string) =>
     body: JSON.stringify({ name }),
   });
 
+export const updateActiveOrganization = (input: { name: string }) =>
+  requestJson<{ organization: AuthOrganization }>(
+    "/api/auth/organizations/active",
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
+
+export const deleteActiveOrganization = (input: { confirm: string }) =>
+  requestJson<{ ok: true; switchedTo: AuthOrganization | null }>(
+    "/api/auth/organizations/active",
+    {
+      method: "DELETE",
+      body: JSON.stringify(input),
+    },
+  );
+
 export const deleteAccount = (confirm: string) =>
   requestJson<{ ok: true }>("/api/auth/account", {
     method: "DELETE",

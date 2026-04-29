@@ -10,9 +10,7 @@ impl MigrationTrait for Migration {
             .alter_table(
                 Table::alter()
                     .table(Issues::Table)
-                    .add_column_if_not_exists(
-                        ColumnDef::new(Issues::ParentId).string().null(),
-                    )
+                    .add_column_if_not_exists(ColumnDef::new(Issues::ParentId).string().null())
                     .to_owned(),
             )
             .await?;

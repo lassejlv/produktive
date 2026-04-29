@@ -1,9 +1,6 @@
 use crate::{
-    auth::require_auth,
-    email,
-    error::ApiError,
-    http::preferences::for_user as preferences_for_user,
-    state::AppState,
+    auth::require_auth, email, error::ApiError,
+    http::preferences::for_user as preferences_for_user, state::AppState,
 };
 use axum::{
     extract::{Path, State},
@@ -208,7 +205,11 @@ pub async fn dispatch_notification(
     let prefs = match preferences_for_user(state, user_id).await {
         Ok(prefs) => prefs,
         Err(error) => {
-            tracing::warn!("failed to load notification prefs for {}: {}", user_id, error);
+            tracing::warn!(
+                "failed to load notification prefs for {}: {}",
+                user_id,
+                error
+            );
             return Ok(());
         }
     };

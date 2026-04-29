@@ -6,10 +6,12 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+aes-gcm.workspace = true
 async-stream.workspace = true
 autumn-rs = { path = "../autumn-rs" }
 argon2.workspace = true
 axum = { workspace = true, features = ["multipart"] }
+base64.workspace = true
 chrono.workspace = true
 cookie.workspace = true
 futures-core.workspace = true

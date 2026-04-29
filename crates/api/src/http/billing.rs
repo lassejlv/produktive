@@ -23,6 +23,8 @@ pub fn routes() -> Router<AppState> {
         .route("/status", get(status))
         .route("/checkout", post(checkout))
         .route("/portal", post(portal))
+        .route("/cancel", post(cancel))
+        .route("/resume", post(resume))
 }
 
 #[derive(Serialize)]
@@ -116,6 +118,58 @@ async fn portal(
         .map_err(map_autumn_error)?;
 
     Ok(Json(BillingUrlResponse { url: response.url }))
+}
+
+async fn cancel(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<BillingStatusResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    require_owner(&state, &auth.user.id, &auth.organization.id).await?;
+    get_or_create_customer(&state, &auth).await?;
+
+    state
+        .autumn
+        .cancel(auth.organization.id.clone())
+        .plan(&state.config.autumn_pro_plan_id)
+        .end_of_cycle()
+        .send()
+        .await
+        .map_err(map_autumn_error)?;
+
+    let customer = get_or_create_customer(&state, &auth).await?;
+    Ok(Json(status_response(
+        &state.config.autumn_pro_plan_id,
+        true,
+        customer,
+        &auth.organization.id,
+    )))
+}
+
+async fn resume(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<BillingStatusResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    require_owner(&state, &auth.user.id, &auth.organization.id).await?;
+    get_or_create_customer(&state, &auth).await?;
+
+    state
+        .autumn
+        .cancel(auth.organization.id.clone())
+        .plan(&state.config.autumn_pro_plan_id)
+        .uncancel()
+        .send()
+        .await
+        .map_err(map_autumn_error)?;
+
+    let customer = get_or_create_customer(&state, &auth).await?;
+    Ok(Json(status_response(
+        &state.config.autumn_pro_plan_id,
+        true,
+        customer,
+        &auth.organization.id,
+    )))
 }
 
 async fn get_or_create_customer(

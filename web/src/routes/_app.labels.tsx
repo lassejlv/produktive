@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { NewLabelDialog } from "@/components/label/new-label-dialog";
+import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   type Label,
   deleteLabel,
@@ -43,6 +44,7 @@ function LabelsPage() {
     updateLabelLocal,
     removeLabelLocal,
   } = useLabels(includeArchived);
+  const { confirm, dialog } = useConfirmDialog();
 
   const filtered = useMemo(() => {
     if (view === "all") return labels;
@@ -90,24 +92,25 @@ function LabelsPage() {
     }
   };
 
-  const handleDelete = async (label: Label) => {
-    if (
-      !window.confirm(
-        `Delete "${label.name}"? It will be removed from all issues.`,
-      )
-    ) {
-      return;
-    }
-    removeLabelLocal(label.id);
-    try {
-      await deleteLabel(label.id);
-      toast.success("Label deleted");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to delete label",
-      );
-      void refresh();
-    }
+  const handleDelete = (label: Label) => {
+    confirm({
+      title: `Delete "${label.name}"?`,
+      description: "It will be removed from all issues.",
+      confirmLabel: "Delete label",
+      destructive: true,
+      onConfirm: async () => {
+        removeLabelLocal(label.id);
+        try {
+          await deleteLabel(label.id);
+          toast.success("Label deleted");
+        } catch (error) {
+          toast.error(
+            error instanceof Error ? error.message : "Failed to delete label",
+          );
+          void refresh();
+        }
+      },
+    });
   };
 
   const handleRename = async (label: Label, name: string) => {
@@ -128,6 +131,7 @@ function LabelsPage() {
 
   return (
     <main className="min-h-full bg-bg">
+      {dialog}
       <header className="sticky top-0 z-10 flex h-12 items-center justify-between gap-3 border-b border-border-subtle bg-bg/85 px-5 backdrop-blur">
         <div className="flex items-center gap-2">
           <span className="text-fg-muted">
@@ -222,7 +226,7 @@ function LabelsPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => void handleDelete(label)}
+                    onClick={() => handleDelete(label)}
                     className="rounded-md px-2 py-0.5 text-[11.5px] text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger"
                   >
                     Delete

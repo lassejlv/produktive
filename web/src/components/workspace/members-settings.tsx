@@ -1,48 +1,33 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState, type FormEvent } from "react";
+import { type Dispatch, type FormEvent, type SetStateAction, useState } from "react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/issue/avatar";
+import { Button } from "@/components/ui/button";
+import { useConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Input } from "@/components/ui/input";
+import { LoadingTip } from "@/components/ui/loading-tip";
 import {
   type Invitation,
   type Member,
   createInvitation,
-  listInvitations,
-  listMembers,
   resendInvitation,
   revokeInvitation,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/_app/members")({
-  component: MembersPage,
-});
-
-function MembersPage() {
-  const navigate = useNavigate();
-  const [members, setMembers] = useState<Member[]>([]);
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [loading, setLoading] = useState(true);
+export function MembersSettings({
+  loading,
+  members,
+  invitations,
+  setInvitations,
+}: {
+  loading: boolean;
+  members: Member[];
+  invitations: Invitation[];
+  setInvitations: Dispatch<SetStateAction<Invitation[]>>;
+}) {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    void Promise.all([listMembers(), listInvitations()])
-      .then(([m, i]) => {
-        if (!mounted) return;
-        setMembers(m.members);
-        setInvitations(i.invitations);
-      })
-      .catch(() => {
-        /* ignore */
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  const { confirm, dialog } = useConfirmDialog();
 
   const onInvite = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -64,17 +49,24 @@ function MembersPage() {
     }
   };
 
-  const onRevoke = async (invitationId: string) => {
-    if (!window.confirm("Revoke this invitation?")) return;
-    try {
-      const response = await revokeInvitation(invitationId);
-      setInvitations(response.invitations);
-      toast.success("Invitation revoked");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to revoke",
-      );
-    }
+  const onRevoke = (invitationId: string, email: string) => {
+    confirm({
+      title: "Revoke invitation?",
+      description: `${email} will no longer be able to accept this invite.`,
+      confirmLabel: "Revoke invite",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          const response = await revokeInvitation(invitationId);
+          setInvitations(response.invitations);
+          toast.success("Invitation revoked");
+        } catch (error) {
+          toast.error(
+            error instanceof Error ? error.message : "Failed to revoke",
+          );
+        }
+      },
+    });
   };
 
   const onResend = async (invitationId: string) => {
@@ -92,54 +84,41 @@ function MembersPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[760px] px-6 py-10">
-      <header className="mb-8">
-        <button
-          type="button"
-          onClick={() => void navigate({ to: "/issues" })}
-          className="mb-4 inline-flex items-center gap-1 text-[12px] text-fg-muted transition-colors hover:text-fg"
-        >
-          ← Back
-        </button>
-        <h1 className="m-0 text-[22px] font-semibold tracking-[-0.02em] text-fg">
-          Members
-        </h1>
-        <p className="mt-1 text-[13px] text-fg-muted">
-          Invite teammates and manage who has access to this workspace.
-        </p>
-      </header>
-
-      <section className="mb-6 rounded-[10px] border border-border-subtle bg-surface/40 p-4">
-        <h2 className="m-0 text-[13px] font-medium text-fg">Invite a teammate</h2>
+    <div className="flex flex-col gap-8">
+      {dialog}
+      <section>
+        <h3 className="m-0 text-[13px] font-medium text-fg">
+          Invite a teammate
+        </h3>
         <form onSubmit={onInvite} className="mt-3 flex gap-2">
-          <input
+          <Input
             type="email"
             required
             placeholder="alice@example.com"
             value={inviteEmail}
             onChange={(event) => setInviteEmail(event.target.value)}
             disabled={inviteSubmitting}
-            className="h-9 flex-1 rounded-md border border-border bg-bg px-3 text-[13px] text-fg outline-none placeholder:text-fg-faint focus:border-accent disabled:opacity-60"
+            className="flex-1"
           />
-          <button
+          <Button
             type="submit"
+            size="sm"
             disabled={!inviteEmail.trim() || inviteSubmitting}
-            className="inline-flex h-9 items-center rounded-md bg-fg px-4 text-[13px] font-medium text-bg transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             {inviteSubmitting ? "Sending…" : "Send invite"}
-          </button>
+          </Button>
         </form>
       </section>
 
       {invitations.length > 0 ? (
-        <section className="mb-6 rounded-[10px] border border-border-subtle bg-surface/40 p-4">
-          <h2 className="m-0 mb-3 text-[13px] font-medium text-fg">
+        <section>
+          <h3 className="m-0 text-[13px] font-medium text-fg">
             Pending invitations
             <span className="ml-2 text-[11px] tabular-nums text-fg-faint">
               {invitations.length}
             </span>
-          </h2>
-          <ul className="overflow-hidden rounded-md border border-border-subtle">
+          </h3>
+          <ul className="mt-3 overflow-hidden rounded-md border border-border-subtle">
             {invitations.map((invitation, index) => (
               <li
                 key={invitation.id}
@@ -171,7 +150,7 @@ function MembersPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void onRevoke(invitation.id)}
+                  onClick={() => onRevoke(invitation.id, invitation.email)}
                   className="rounded-md px-2 py-1 text-[11px] text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger"
                 >
                   Revoke
@@ -182,19 +161,21 @@ function MembersPage() {
         </section>
       ) : null}
 
-      <section className="rounded-[10px] border border-border-subtle bg-surface/40 p-4">
-        <h2 className="m-0 mb-3 text-[13px] font-medium text-fg">
+      <section>
+        <h3 className="m-0 text-[13px] font-medium text-fg">
           Members
           <span className="ml-2 text-[11px] tabular-nums text-fg-faint">
             {members.length}
           </span>
-        </h2>
+        </h3>
         {loading ? (
-          <p className="text-[12px] text-fg-faint">Loading…</p>
+          <div className="mt-3">
+            <LoadingTip compact />
+          </div>
         ) : members.length === 0 ? (
-          <p className="text-[12px] text-fg-faint">No members yet.</p>
+          <p className="mt-3 text-[12px] text-fg-faint">No members yet.</p>
         ) : (
-          <ul className="overflow-hidden rounded-md border border-border-subtle">
+          <ul className="mt-3 overflow-hidden rounded-md border border-border-subtle">
             {members.map((member, index) => (
               <li
                 key={member.id}

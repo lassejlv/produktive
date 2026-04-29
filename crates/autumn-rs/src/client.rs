@@ -12,7 +12,7 @@ use crate::builders::{AttachBuilder, CancelBuilder, CheckBuilder, TrackBuilder};
 use crate::config::AutumnConfig;
 use crate::error::{ApiError, AutumnError, Result};
 use crate::resources::{
-    Balances, Billing, Customers, Entities, Events, Features, Platform, Plans, Referrals,
+    Balances, Billing, Customers, Entities, Events, Features, Plans, Platform, Referrals,
 };
 
 const X_API_VERSION: &str = "X-Api-Version";

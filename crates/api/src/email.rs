@@ -53,9 +53,7 @@ pub async fn send_notification_email(
         title = html_escape(title),
         action_label = html_escape(action_label),
     );
-    let text = format!(
-        "Hi {recipient_name},\n\n{title}{snippet_text}\n\n{action_label}: {url}"
-    );
+    let text = format!("Hi {recipient_name},\n\n{title}{snippet_text}\n\n{action_label}: {url}");
 
     send_email(state, to, title, html, text).await
 }

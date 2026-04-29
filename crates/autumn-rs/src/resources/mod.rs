@@ -11,8 +11,8 @@ pub mod customers;
 pub mod entities;
 pub mod events;
 pub mod features;
-pub mod platform;
 pub mod plans;
+pub mod platform;
 pub mod referrals;
 
 pub use balances::Balances;
@@ -21,6 +21,6 @@ pub use customers::Customers;
 pub use entities::Entities;
 pub use events::Events;
 pub use features::Features;
-pub use platform::Platform;
 pub use plans::Plans;
+pub use platform::Platform;
 pub use referrals::Referrals;

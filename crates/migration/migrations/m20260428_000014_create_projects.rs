@@ -17,11 +17,7 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(Projects::OrganizationId)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Projects::OrganizationId).string().not_null())
                     .col(ColumnDef::new(Projects::Name).string().not_null())
                     .col(ColumnDef::new(Projects::Description).text().null())
                     .col(
@@ -121,12 +117,7 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(
-                Table::drop()
-                    .table(Projects::Table)
-                    .if_exists()
-                    .to_owned(),
-            )
+            .drop_table(Table::drop().table(Projects::Table).if_exists().to_owned())
             .await
     }
 }
