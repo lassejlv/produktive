@@ -468,7 +468,10 @@ async fn finish_assistant_turn(
                 new_rows.push(assistant_row);
                 break;
             }
-            CompletionResult::ToolCalls(calls) => {
+            CompletionResult::ToolCalls {
+                calls,
+                reasoning_content,
+            } => {
                 let tool_names = calls
                     .iter()
                     .map(|call| call.name.as_str())
@@ -476,6 +479,8 @@ async fn finish_assistant_turn(
                     .join(", ");
                 tracing::info!(%chat_id, round, tools = %tool_names, "assistant requested tools");
                 let serialized_calls = serialize_tool_calls(&calls);
+                let serialized_calls =
+                    attach_reasoning_content(serialized_calls, reasoning_content.as_deref());
                 let placeholder = insert_message(
                     state,
                     chat_id,
@@ -611,6 +616,7 @@ fn row_to_ai_message(row: chat_message::Model) -> AiMessage {
                 .and_then(|v| serde_json::from_value::<Vec<SerializedToolCall>>(v).ok())
             {
                 if !calls.is_empty() {
+                    let reasoning_content = calls.iter().find_map(|c| c.reasoning_content.clone());
                     let mapped = calls
                         .into_iter()
                         .map(|c| AiToolCall {
@@ -619,7 +625,10 @@ fn row_to_ai_message(row: chat_message::Model) -> AiMessage {
                             arguments: c.arguments,
                         })
                         .collect();
-                    return AiMessage::assistant_tool_calls(mapped);
+                    return AiMessage::assistant_tool_calls_with_reasoning(
+                        mapped,
+                        reasoning_content,
+                    );
                 }
             }
             AiMessage::assistant_text(row.content)
@@ -654,6 +663,8 @@ struct SerializedToolCall {
     id: String,
     name: String,
     arguments: String,
+    #[serde(default)]
+    reasoning_content: Option<String>,
 }
 
 fn serialize_tool_calls(calls: &[AiToolCall]) -> Value {
@@ -668,6 +679,27 @@ fn serialize_tool_calls(calls: &[AiToolCall]) -> Value {
         })
         .collect();
     Value::Array(arr)
+}
+
+fn attach_reasoning_content(mut tool_calls: Value, reasoning_content: Option<&str>) -> Value {
+    let Some(reasoning_content) = reasoning_content else {
+        return tool_calls;
+    };
+
+    let Some(calls) = tool_calls.as_array_mut() else {
+        return tool_calls;
+    };
+
+    for call in calls {
+        if let Some(call) = call.as_object_mut() {
+            call.insert(
+                "reasoning_content".to_owned(),
+                Value::String(reasoning_content.to_owned()),
+            );
+        }
+    }
+
+    tool_calls
 }
 
 fn should_send_to_client(m: &chat_message::Model) -> bool {

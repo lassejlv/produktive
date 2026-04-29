@@ -14,6 +14,7 @@ pub enum Role {
 pub struct Message {
     pub role: Role,
     pub content: String,
+    pub reasoning_content: Option<String>,
     pub tool_calls: Vec<ToolCall>,
     pub tool_call_id: Option<String>,
 }
@@ -23,6 +24,7 @@ impl Message {
         Self {
             role: Role::System,
             content: content.into(),
+            reasoning_content: None,
             tool_calls: Vec::new(),
             tool_call_id: None,
         }
@@ -32,6 +34,7 @@ impl Message {
         Self {
             role: Role::User,
             content: content.into(),
+            reasoning_content: None,
             tool_calls: Vec::new(),
             tool_call_id: None,
         }
@@ -41,15 +44,24 @@ impl Message {
         Self {
             role: Role::Assistant,
             content: content.into(),
+            reasoning_content: None,
             tool_calls: Vec::new(),
             tool_call_id: None,
         }
     }
 
     pub fn assistant_tool_calls(calls: Vec<ToolCall>) -> Self {
+        Self::assistant_tool_calls_with_reasoning(calls, None)
+    }
+
+    pub fn assistant_tool_calls_with_reasoning(
+        calls: Vec<ToolCall>,
+        reasoning_content: Option<String>,
+    ) -> Self {
         Self {
             role: Role::Assistant,
             content: String::new(),
+            reasoning_content,
             tool_calls: calls,
             tool_call_id: None,
         }
@@ -59,6 +71,7 @@ impl Message {
         Self {
             role: Role::Tool,
             content: content.into(),
+            reasoning_content: None,
             tool_calls: Vec::new(),
             tool_call_id: Some(tool_call_id.into()),
         }
@@ -83,7 +96,10 @@ pub struct Tool {
 #[derive(Clone, Debug)]
 pub enum CompletionResult {
     Text(String),
-    ToolCalls(Vec<ToolCall>),
+    ToolCalls {
+        calls: Vec<ToolCall>,
+        reasoning_content: Option<String>,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]

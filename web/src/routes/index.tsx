@@ -1,14 +1,12 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
-import { joinWaitlist } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
-  component: ComingSoonPage,
+  component: LandingPage,
 });
 
-function ComingSoonPage() {
+function LandingPage() {
   const session = useSession();
   const isLoggedIn = Boolean(session.data);
 
@@ -47,38 +45,35 @@ function ComingSoonPage() {
               Produktive
             </span>
           </div>
-          <Link
-            to={isLoggedIn ? "/issues" : "/login"}
-            className="text-[12.5px] text-fg/70 transition-colors hover:text-fg"
-          >
-            {isLoggedIn ? "Open app" : "Sign in"}
-          </Link>
+          <div className="flex items-center gap-1">
+            <Link
+              to="/pricing"
+              className="rounded-full px-3 py-1 text-[12.5px] text-fg/70 transition-colors hover:text-fg"
+            >
+              Pricing
+            </Link>
+            <Link
+              to={isLoggedIn ? "/issues" : "/login"}
+              className="rounded-full px-3 py-1 text-[12.5px] text-fg/70 transition-colors hover:text-fg"
+            >
+              {isLoggedIn ? "Open app" : "Sign in"}
+            </Link>
+          </div>
         </nav>
       </header>
 
       <section className="relative z-10 flex flex-1 items-center justify-center px-6 pb-12 pt-24">
         <div className="w-full max-w-[760px] text-center lg:-translate-y-[3%]">
-          <div
-            className="animate-fade-up inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[12px] tracking-tight text-fg/85 backdrop-blur-md"
-            style={{ animationDelay: "80ms" }}
-          >
-            <span
-              aria-hidden
-              className="animate-pulse-glow size-1.5 rounded-full bg-[#f0c5a8]"
-            />
-            <span>Coming soon · Join the waitlist</span>
-          </div>
-
-          <h1 className="mt-6 text-balance text-[clamp(48px,8.5vw,108px)] font-semibold leading-[0.95] tracking-[-0.04em] text-fg">
+          <h1 className="text-balance text-[clamp(48px,8.5vw,108px)] font-semibold leading-[0.95] tracking-[-0.04em] text-fg">
             <span
               className="animate-fade-up block"
-              style={{ animationDelay: "160ms" }}
+              style={{ animationDelay: "80ms" }}
             >
               Ship faster.
             </span>
             <span
               className="animate-fade-up block bg-[linear-gradient(180deg,#ffffff_0%,#f0c5a8_70%,#d99a78_100%)] bg-clip-text text-transparent"
-              style={{ animationDelay: "240ms" }}
+              style={{ animationDelay: "160ms" }}
             >
               Track less.
             </span>
@@ -86,23 +81,43 @@ function ComingSoonPage() {
 
           <p
             className="animate-fade-up mx-auto mt-5 max-w-[420px] text-pretty text-[16px] leading-[1.55] text-fg/80"
-            style={{ animationDelay: "320ms" }}
+            style={{ animationDelay: "240ms" }}
           >
             The issue tracker that gets out of your way.
           </p>
 
           <div
-            className="animate-fade-up"
-            style={{ animationDelay: "400ms" }}
+            className="animate-fade-up mt-8 flex flex-wrap items-center justify-center gap-2.5"
+            style={{ animationDelay: "320ms" }}
           >
-            <EmailForm />
+            <Link
+              to={isLoggedIn ? "/issues" : "/login"}
+              className={cn(
+                "inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-[10px] bg-fg px-6 text-[13px] font-medium text-bg transition-colors",
+                "hover:bg-white",
+              )}
+            >
+              {isLoggedIn ? "Open app" : "Get started"}
+              <span aria-hidden>↗</span>
+            </Link>
+            {!isLoggedIn ? (
+              <Link
+                to="/pricing"
+                className={cn(
+                  "inline-flex h-11 items-center rounded-[10px] border border-white/10 bg-bg/30 px-5 text-[13px] font-medium text-fg/85 backdrop-blur-xl transition-colors",
+                  "hover:border-white/20 hover:text-fg",
+                )}
+              >
+                See pricing
+              </Link>
+            ) : null}
           </div>
 
           <p
-            className="animate-fade-up mt-3 text-[12px] text-fg/55"
-            style={{ animationDelay: "480ms" }}
+            className="animate-fade-up mt-4 text-[12px] text-fg/55"
+            style={{ animationDelay: "400ms" }}
           >
-            No card. We'll only email you when we launch.
+            Free to start. No card required.
           </p>
         </div>
       </section>
@@ -111,90 +126,5 @@ function ComingSoonPage() {
         © 2026 Produktive
       </footer>
     </main>
-  );
-}
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function EmailForm() {
-  const [email, setEmail] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [status, setStatus] = useState<{
-    type: "idle" | "success" | "error";
-    msg: string;
-  }>({ type: "idle", msg: "" });
-
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (submitting) return;
-    const trimmed = email.trim();
-    if (!trimmed || !EMAIL_RE.test(trimmed)) {
-      setStatus({ type: "error", msg: "Enter a valid email address." });
-      return;
-    }
-    setSubmitting(true);
-    setStatus({ type: "idle", msg: "" });
-    try {
-      await joinWaitlist(trimmed);
-      setEmail("");
-      setStatus({ type: "success", msg: "You're on the list." });
-    } catch (error) {
-      setStatus({
-        type: "error",
-        msg: error instanceof Error ? error.message : "Something went wrong.",
-      });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <>
-      <form
-        onSubmit={onSubmit}
-        className={cn(
-          "mx-auto mt-7 flex w-full max-w-[440px] items-center gap-1.5 rounded-[14px] border border-white/10 bg-bg/40 p-1.5 backdrop-blur-xl",
-          "shadow-[0_8px_30px_rgba(0,0,0,0.35)]",
-        )}
-      >
-        <input
-          type="email"
-          required
-          autoComplete="email"
-          placeholder="you@company.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="h-11 flex-1 border-0 bg-transparent px-3 text-[14px] text-fg outline-none placeholder:text-fg/40"
-        />
-        <button
-          type="submit"
-          disabled={submitting}
-          className={cn(
-            "inline-flex h-11 items-center gap-1 whitespace-nowrap rounded-[10px] bg-fg px-5 text-[13px] font-medium text-bg transition-colors",
-            "hover:bg-white disabled:cursor-not-allowed disabled:opacity-60",
-          )}
-        >
-          {submitting ? (
-            "Adding…"
-          ) : (
-            <>
-              Notify me <span aria-hidden>↗</span>
-            </>
-          )}
-        </button>
-      </form>
-      <div
-        role={status.type === "error" ? "alert" : "status"}
-        aria-live="polite"
-        className={cn(
-          "mt-2.5 min-h-4 text-center text-[12px]",
-          status.type === "success" && "text-success",
-          status.type === "error" && "text-danger",
-          status.type === "idle" && "text-fg-muted",
-        )}
-      >
-        {status.msg}
-      </div>
-    </>
   );
 }

@@ -85,7 +85,10 @@ impl AiClient {
                         arguments: c.function.arguments,
                     })
                     .collect();
-                return Ok(CompletionResult::ToolCalls(mapped));
+                return Ok(CompletionResult::ToolCalls {
+                    calls: mapped,
+                    reasoning_content: first.message.reasoning_content,
+                });
             }
         }
 
@@ -120,6 +123,7 @@ fn message_to_wire(message: &Message) -> Value {
                 json!({
                     "role": "assistant",
                     "content": message.content,
+                    "reasoning_content": message.reasoning_content.as_deref().unwrap_or(""),
                     "tool_calls": calls,
                 })
             }
@@ -162,7 +166,73 @@ struct ChatChoice {
 struct ChatChoiceMessage {
     content: Option<String>,
     #[serde(default)]
+    #[serde(alias = "reasoning")]
+    reasoning_content: Option<String>,
+    #[serde(default)]
     tool_calls: Option<Vec<ChatToolCall>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn assistant_tool_call_messages_include_reasoning_content() {
+        let message = Message::assistant_tool_calls_with_reasoning(
+            vec![ToolCall {
+                id: "call_1".to_owned(),
+                name: "list_issues".to_owned(),
+                arguments: "{}".to_owned(),
+            }],
+            Some("Need to inspect current issues.".to_owned()),
+        );
+
+        let wire = message_to_wire(&message);
+
+        assert_eq!(wire["role"], "assistant");
+        assert_eq!(wire["reasoning_content"], "Need to inspect current issues.");
+        assert!(wire["tool_calls"].is_array());
+    }
+
+    #[test]
+    fn legacy_assistant_tool_call_messages_include_empty_reasoning_content() {
+        let message = Message::assistant_tool_calls(vec![ToolCall {
+            id: "call_1".to_owned(),
+            name: "list_issues".to_owned(),
+            arguments: "{}".to_owned(),
+        }]);
+
+        let wire = message_to_wire(&message);
+
+        assert_eq!(wire["reasoning_content"], "");
+    }
+
+    #[test]
+    fn chat_response_decodes_tool_call_reasoning_content() {
+        let parsed: ChatCompletionResponse = serde_json::from_value(json!({
+            "choices": [{
+                "message": {
+                    "content": null,
+                    "reasoning_content": "Need issue data before answering.",
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "list_issues",
+                            "arguments": "{}"
+                        }
+                    }]
+                }
+            }]
+        }))
+        .expect("valid chat completion response");
+
+        let message = &parsed.choices[0].message;
+        assert_eq!(
+            message.reasoning_content.as_deref(),
+            Some("Need issue data before answering.")
+        );
+    }
 }
 
 #[derive(Deserialize)]

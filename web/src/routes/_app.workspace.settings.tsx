@@ -199,8 +199,6 @@ function WorkspaceSettingsPage() {
         >
           <SectionGroup>
             {mainSections.map((section) => {
-              const proGated = section.id === "ai" || section.id === "templates";
-              const showProBadge = proGated && !billingLoading && !isPro;
               return (
                 <SectionButton
                   key={section.id}
@@ -208,11 +206,9 @@ function WorkspaceSettingsPage() {
                   active={activeSection === section.id}
                   onSelect={onSelectSection}
                   trailing={
-                    showProBadge ? (
-                      <ProBadge />
-                    ) : section.id === "members" &&
-                      !membersLoading &&
-                      members.length > 0 ? (
+                    section.id === "members" &&
+                    !membersLoading &&
+                    members.length > 0 ? (
                       <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-surface-2 px-1.5 text-[10.5px] font-medium tabular-nums text-fg-muted">
                         {members.length}
                       </span>
@@ -350,14 +346,6 @@ function SectionButton({
   );
 }
 
-function ProBadge() {
-  return (
-    <span className="rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-accent">
-      Pro
-    </span>
-  );
-}
-
 function ProUpgradeCard({
   title,
   description,
@@ -402,7 +390,8 @@ function GeneralSettings({
   const trimmed = draftName.trim();
   const dirty = trimmed !== organization.name;
   const tooLong = trimmed.length > 64;
-  const canSave = canEdit && dirty && trimmed.length > 0 && !tooLong && !submitting;
+  const canSave =
+    canEdit && dirty && trimmed.length > 0 && !tooLong && !submitting;
 
   const onSave = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
