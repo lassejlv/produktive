@@ -4,9 +4,19 @@
 //! workspace doesn't currently consume are intentionally omitted — `serde` will
 //! ignore unknown keys, so adding more later is non-breaking.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+
+/// Treat a `null` JSON value as an empty map. Polar occasionally emits
+/// `metadata: null` for subscriptions and customers without metadata, which
+/// would otherwise fail to deserialize into `HashMap`.
+fn metadata_from_optional<'de, D>(deserializer: D) -> Result<HashMap<String, Value>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(Option::<HashMap<String, Value>>::deserialize(deserializer)?.unwrap_or_default())
+}
 
 // ---------------------------------------------------------------------------
 // Checkout
@@ -124,7 +134,7 @@ pub struct Subscription {
     pub ends_at: Option<String>,
     #[serde(default)]
     pub customer: Option<Customer>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "metadata_from_optional")]
     pub metadata: HashMap<String, Value>,
 }
 
@@ -139,7 +149,7 @@ pub struct Customer {
     pub email: Option<String>,
     #[serde(default)]
     pub name: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "metadata_from_optional")]
     pub metadata: HashMap<String, Value>,
 }
 

@@ -10,9 +10,12 @@
 //!
 //! # Note on the secret
 //!
-//! Polar's SDKs treat the webhook secret as a **plain UTF-8 string** — the
-//! HMAC key is `secret.as_bytes()` directly, not the base64-decoded value of
-//! a `whsec_` prefix. This implementation matches that convention.
+//! Polar issues secrets in the Standard Webhooks form `whsec_<base64>` and
+//! signs with the **base64-decoded** key bytes (matching the
+//! `standardwebhooks` reference library their SDKs use). [`verify`] strips an
+//! optional `whsec_` prefix and decodes; if the value isn't valid base64 it
+//! falls back to the raw UTF-8 bytes so older or hand-rolled secrets still
+//! work.
 //!
 //! # Example
 //!
@@ -128,9 +131,10 @@ pub fn verify_at(
     signed.push(b'.');
     signed.extend_from_slice(body);
 
+    let keys = derive_keys(secret);
     let mut had_v1 = false;
     let mut matched = false;
-    for entry in webhook_signature.split_whitespace() {
+    'outer: for entry in webhook_signature.split_whitespace() {
         let Some((version, value)) = entry.split_once(',') else {
             continue;
         };
@@ -142,12 +146,14 @@ pub fn verify_at(
             Ok(bytes) => bytes,
             Err(_) => continue,
         };
-        let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-            .map_err(|_| WebhookError::InvalidKey)?;
-        mac.update(&signed);
-        if mac.verify_slice(&decoded).is_ok() {
-            matched = true;
-            break;
+        for key in &keys {
+            let mut mac =
+                HmacSha256::new_from_slice(key).map_err(|_| WebhookError::InvalidKey)?;
+            mac.update(&signed);
+            if mac.verify_slice(&decoded).is_ok() {
+                matched = true;
+                break 'outer;
+            }
         }
     }
     if !had_v1 {
@@ -159,6 +165,27 @@ pub fn verify_at(
 
     let event: WebhookEvent = serde_json::from_slice(body)?;
     Ok(event)
+}
+
+/// Returns every HMAC key worth trying for `secret`.
+///
+/// Polar issues `whsec_<base64>` secrets; the canonical key is the
+/// base64-decoded body. We also keep the raw UTF-8 bytes around so legacy
+/// non-Standard Webhooks secrets still verify.
+fn derive_keys(secret: &str) -> Vec<Vec<u8>> {
+    let trimmed = secret.trim();
+    let stripped = trimmed.strip_prefix("whsec_").unwrap_or(trimmed);
+    let mut keys: Vec<Vec<u8>> = Vec::with_capacity(2);
+    if let Ok(decoded) = BASE64.decode(stripped) {
+        if !decoded.is_empty() {
+            keys.push(decoded);
+        }
+    }
+    let raw = trimmed.as_bytes().to_vec();
+    if !raw.is_empty() && !keys.iter().any(|existing| existing == &raw) {
+        keys.push(raw);
+    }
+    keys
 }
 
 fn current_unix_seconds() -> i64 {
@@ -256,17 +283,21 @@ impl WebhookEvent {
 mod tests {
     use super::*;
 
-    fn sign(secret: &str, id: &str, ts: &str, body: &[u8]) -> String {
+    fn sign_with_key(key: &[u8], id: &str, ts: &str, body: &[u8]) -> String {
         let mut signed = Vec::new();
         signed.extend_from_slice(id.as_bytes());
         signed.push(b'.');
         signed.extend_from_slice(ts.as_bytes());
         signed.push(b'.');
         signed.extend_from_slice(body);
-        let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
+        let mut mac = HmacSha256::new_from_slice(key).unwrap();
         mac.update(&signed);
         let digest = mac.finalize().into_bytes();
         format!("v1,{}", BASE64.encode(digest))
+    }
+
+    fn sign(secret: &str, id: &str, ts: &str, body: &[u8]) -> String {
+        sign_with_key(secret.as_bytes(), id, ts, body)
     }
 
     #[test]
@@ -316,6 +347,35 @@ mod tests {
 
         let event = verify_at(body, id, ts, &combined, secret, 1717171717).unwrap();
         assert!(matches!(event, WebhookEvent::CustomerCreated(_)));
+    }
+
+    #[test]
+    fn verifies_standard_webhooks_secret_with_prefix() {
+        // Polar issues secrets in the form whsec_<base64>; the HMAC key is the
+        // decoded bytes, not the raw string.
+        let key_bytes: Vec<u8> = (0..32).collect();
+        let encoded = BASE64.encode(&key_bytes);
+        let secret = format!("whsec_{encoded}");
+        let id = "msg_456";
+        let ts = "1717171717";
+        let body = br#"{"type":"subscription.created","data":{"id":"sub_2","status":"active"}}"#;
+        let sig = sign_with_key(&key_bytes, id, ts, body);
+
+        let event = verify_at(body, id, ts, &sig, &secret, 1717171717).unwrap();
+        assert!(matches!(event, WebhookEvent::SubscriptionCreated(_)));
+    }
+
+    #[test]
+    fn verifies_base64_secret_without_prefix() {
+        let key_bytes: Vec<u8> = (10..42).collect();
+        let secret = BASE64.encode(&key_bytes);
+        let id = "msg_789";
+        let ts = "1717171717";
+        let body = br#"{"type":"subscription.active","data":{"id":"sub_3","status":"active"}}"#;
+        let sig = sign_with_key(&key_bytes, id, ts, body);
+
+        let event = verify_at(body, id, ts, &sig, &secret, 1717171717).unwrap();
+        assert!(matches!(event, WebhookEvent::SubscriptionActive(_)));
     }
 
     #[test]

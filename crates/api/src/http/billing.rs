@@ -13,7 +13,7 @@ use axum::{
 use chrono::{DateTime, FixedOffset, Utc};
 use polar_rs::{
     models::{CreateCheckoutRequest, CreateCustomerSessionRequest, Subscription},
-    webhooks::verify,
+    webhooks::{verify, WebhookEvent},
     PolarError,
 };
 use produktive_entity::{member, organization_subscription as os};
@@ -257,19 +257,67 @@ async fn webhook(
         &state.config.polar_webhook_secret,
     )
     .map_err(|err| {
-        tracing::warn!(error = %err, "polar webhook verification failed");
+        tracing::warn!(
+            error = %err,
+            webhook_id = %id,
+            "polar webhook verification failed"
+        );
         ApiError::Unauthorized
     })?;
 
+    let event_type = describe_event(&event);
+    tracing::info!(webhook_id = %id, event = %event_type, "polar webhook received");
+
     if let Some(sub) = event.as_subscription() {
         let org_id = resolve_organization_id(sub);
+        if org_id.is_none() {
+            tracing::warn!(
+                webhook_id = %id,
+                event = %event_type,
+                subscription_id = %sub.id,
+                customer_id = ?sub.customer_id,
+                customer_external_id = ?sub.customer.as_ref().and_then(|c| c.external_id.as_deref()),
+                "polar subscription event missing organization id; subscription will be ignored"
+            );
+        } else {
+            tracing::info!(
+                webhook_id = %id,
+                event = %event_type,
+                subscription_id = %sub.id,
+                organization_id = ?org_id,
+                status = %sub.status,
+                "applying polar subscription event"
+            );
+        }
         if let Err(err) = upsert_subscription(&state, sub, org_id).await {
-            tracing::error!(error = ?err, subscription_id = %sub.id, "failed to upsert polar subscription");
+            tracing::error!(
+                error = ?err,
+                webhook_id = %id,
+                subscription_id = %sub.id,
+                "failed to upsert polar subscription"
+            );
             return Err(err);
         }
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn describe_event(event: &WebhookEvent) -> &str {
+    match event {
+        WebhookEvent::SubscriptionCreated(_) => "subscription.created",
+        WebhookEvent::SubscriptionUpdated(_) => "subscription.updated",
+        WebhookEvent::SubscriptionActive(_) => "subscription.active",
+        WebhookEvent::SubscriptionCanceled(_) => "subscription.canceled",
+        WebhookEvent::SubscriptionUncanceled(_) => "subscription.uncanceled",
+        WebhookEvent::SubscriptionRevoked(_) => "subscription.revoked",
+        WebhookEvent::SubscriptionPastDue(_) => "subscription.past_due",
+        WebhookEvent::CustomerCreated(_) => "customer.created",
+        WebhookEvent::CustomerUpdated(_) => "customer.updated",
+        WebhookEvent::CustomerDeleted(_) => "customer.deleted",
+        WebhookEvent::CustomerStateChanged(_) => "customer.state_changed",
+        WebhookEvent::Other { event_type, .. } => event_type,
+    }
 }
 
 pub(crate) async fn is_pro(state: &AppState, auth: &AuthContext) -> Result<bool, ApiError> {
