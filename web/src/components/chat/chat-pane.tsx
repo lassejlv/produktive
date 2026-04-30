@@ -36,6 +36,8 @@ import {
 import { firstName, greetingForNow } from "@/lib/chat-history";
 import { useAiModels } from "@/lib/use-ai-models";
 import { useBillingStatus } from "@/lib/use-billing-status";
+import { useRegisterTab } from "@/lib/use-tabs";
+import { useUserPreferences } from "@/lib/use-user-preferences";
 import { cn } from "@/lib/utils";
 
 const MODEL_STORAGE_KEY = "produktive:chat-model";
@@ -46,6 +48,13 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   const userName = session.data?.user?.name ?? "there";
 
   const [chatTitle, setChatTitle] = useState("New conversation");
+  const { tabsEnabled } = useUserPreferences();
+  useRegisterTab({
+    tabType: "chat",
+    targetId: chatId ?? "",
+    title: chatId ? chatTitle : null,
+    enabled: tabsEnabled && Boolean(chatId),
+  });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [isLoadingChat, setIsLoadingChat] = useState(Boolean(chatId));
@@ -451,11 +460,6 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
           changesCount={changes.length}
           changesOpen={changesOpen}
           pendingQuestion={pendingQuestion}
-          model={selectedModel}
-          models={availableModels}
-          onModelChange={handleModelChange}
-          isPro={isPro}
-          onUpgradeRequired={handleUpgradeRequired}
         />
       </div>
       <ChatChangesPanel

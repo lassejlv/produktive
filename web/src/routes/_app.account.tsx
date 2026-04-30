@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -15,6 +16,13 @@ import {
   updateMyPreferences,
 } from "@/lib/api";
 import { deleteAccount, refreshSession, useSession } from "@/lib/auth-client";
+import {
+  type ThemeName,
+  THEMES,
+  applyTheme,
+  readStoredTheme,
+} from "@/lib/theme";
+import { useUserPreferences } from "@/lib/use-user-preferences";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/account")({
@@ -83,6 +91,8 @@ function AccountPage() {
           </dl>
         )}
       </Section>
+
+      <AppearanceSection />
 
       <NotificationPrefsSection />
 
@@ -168,6 +178,99 @@ function ProductTourSection() {
       >
         {busy ? "Starting…" : "Replay product tour"}
       </Button>
+    </Section>
+  );
+}
+
+function AppearanceSection() {
+  const [current, setCurrent] = useState<ThemeName>(() => readStoredTheme());
+  const qc = useQueryClient();
+  const { prefs } = useUserPreferences();
+  const [tabsEnabledLocal, setTabsEnabledLocal] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (prefs && tabsEnabledLocal === null) {
+      setTabsEnabledLocal(prefs.tabsEnabled);
+    }
+  }, [prefs, tabsEnabledLocal]);
+
+  const choose = (next: ThemeName) => {
+    setCurrent(next);
+    applyTheme(next);
+  };
+
+  const toggleTabs = async (next: boolean) => {
+    const previous = tabsEnabledLocal;
+    setTabsEnabledLocal(next);
+    try {
+      const updated = await updateMyPreferences({ tabsEnabled: next });
+      qc.setQueryData(["user-preferences"], updated);
+    } catch (error) {
+      setTabsEnabledLocal(previous);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to update",
+      );
+    }
+  };
+
+  return (
+    <Section
+      title="Appearance"
+      description="Pick the theme and toggle the tab bar."
+    >
+      <div className="grid gap-2 sm:grid-cols-2">
+        {THEMES.map((theme) => {
+          const active = current === theme.id;
+          return (
+            <button
+              key={theme.id}
+              type="button"
+              onClick={() => choose(theme.id)}
+              aria-pressed={active}
+              className={cn(
+                "flex items-center gap-3 rounded-md border px-3 py-2.5 text-left transition-colors",
+                active
+                  ? "border-accent bg-surface"
+                  : "border-border-subtle bg-bg/40 hover:border-border hover:bg-surface/60",
+              )}
+            >
+              <span
+                aria-hidden
+                className="grid size-9 shrink-0 place-items-center rounded-md border border-border-subtle"
+                style={{ backgroundColor: theme.swatchBg }}
+              >
+                <span
+                  className="block size-4 rounded-full"
+                  style={{ backgroundColor: theme.swatchAccent }}
+                />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium text-fg">
+                  {theme.label}
+                </span>
+                <span className="block text-[11.5px] text-fg-muted">
+                  {theme.hint}
+                </span>
+              </span>
+              {active ? (
+                <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-accent">
+                  Active
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-3">
+        <ToggleRow
+          label="Tab bar"
+          hint="Show a bottom tab bar that tracks the issues, projects, and chats you've opened."
+          checked={tabsEnabledLocal ?? prefs?.tabsEnabled ?? true}
+          disabled={tabsEnabledLocal === null && !prefs}
+          onChange={(value) => void toggleTabs(value)}
+        />
+      </div>
     </Section>
   );
 }

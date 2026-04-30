@@ -17,6 +17,7 @@ pub struct PreferencesResponse {
     pub email_assignments: bool,
     pub email_comments: bool,
     pub email_progress: bool,
+    pub tabs_enabled: bool,
 }
 
 impl From<notification_preference::Model> for PreferencesResponse {
@@ -26,6 +27,7 @@ impl From<notification_preference::Model> for PreferencesResponse {
             email_assignments: model.email_assignments,
             email_comments: model.email_comments,
             email_progress: model.email_progress,
+            tabs_enabled: model.tabs_enabled,
         }
     }
 }
@@ -37,6 +39,7 @@ pub struct PreferencesPatch {
     pub email_assignments: Option<bool>,
     pub email_comments: Option<bool>,
     pub email_progress: Option<bool>,
+    pub tabs_enabled: Option<bool>,
 }
 
 pub async fn for_user(
@@ -61,6 +64,7 @@ pub async fn for_user(
         email_progress: Set(true),
         next_progress_email_at: Set(None),
         last_progress_email_at: Set(None),
+        tabs_enabled: Set(true),
         created_at: Set(now),
         updated_at: Set(now),
     }
@@ -101,6 +105,9 @@ async fn patch_preferences(
         if value {
             active.next_progress_email_at = Set(None);
         }
+    }
+    if let Some(value) = payload.tabs_enabled {
+        active.tabs_enabled = Set(value);
     }
     active.updated_at = Set(Utc::now().fixed_offset());
     let updated = active.update(&state.db).await?;

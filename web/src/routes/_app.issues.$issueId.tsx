@@ -53,6 +53,8 @@ import {
 } from "@/lib/mutations/issues";
 import { useLabelsQuery } from "@/lib/queries/labels";
 import { useProjectsQuery } from "@/lib/queries/projects";
+import { useRegisterTab } from "@/lib/use-tabs";
+import { useUserPreferences } from "@/lib/use-user-preferences";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/issues/$issueId")({
@@ -107,6 +109,13 @@ export function IssueDetail({
   const history = historyQuery.data ?? [];
   const comments = commentsQuery.data ?? [];
   const isLoading = issueQuery.isPending;
+  const { tabsEnabled } = useUserPreferences();
+  useRegisterTab({
+    tabType: "issue",
+    targetId: issueId,
+    title: issue?.title,
+    enabled: tabsEnabled,
+  });
 
   const lookups = useMemo<Lookups>(
     () => ({

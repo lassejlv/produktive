@@ -83,7 +83,7 @@ impl Config {
             resend_from_email: env_or_default("RESEND_FROM_EMAIL", "Produktive <be@produktive.app>"),
             ai_api_key: required_env("AI_API_KEY").context("AI_API_KEY is required")?,
             ai_base_url: env_or_default("AI_BASE_URL", "https://ollama.com/v1"),
-            ai_model: env_or_default("AI_MODEL", "kimi-k2.6"),
+            ai_model: env_or_default("AI_MODEL", "glm-5.1"),
             polar_access_token: required_env("POLAR_ACCESS_TOKEN")
                 .context("POLAR_ACCESS_TOKEN is required")?,
             polar_base_url: optional_env("POLAR_BASE_URL"),

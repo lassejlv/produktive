@@ -40,10 +40,12 @@ import { ISSUE_DRAG_MIME } from "@/components/issue/issue-list";
 import { NewLabelDialog } from "@/components/label/new-label-dialog";
 import { NewProjectDialog } from "@/components/project/new-project-dialog";
 import { updateIssue } from "@/lib/api";
+import { TabBar } from "@/components/workspace/tab-bar";
 import { useChats } from "@/lib/use-chats";
 import { useFavorites } from "@/lib/use-favorites";
 import { useInbox } from "@/lib/use-inbox";
 import { useProjects } from "@/lib/use-projects";
+import { useUserPreferences } from "@/lib/use-user-preferences";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app")({
@@ -53,6 +55,7 @@ export const Route = createFileRoute("/_app")({
 function AppLayout() {
   const navigate = useNavigate();
   const session = useSession();
+  const { tabsEnabled } = useUserPreferences();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -651,6 +654,7 @@ function AppLayout() {
 
       <SidebarInset>
         <Outlet />
+        <TabBar enabled={tabsEnabled} />
       </SidebarInset>
     </SidebarProvider>
   );

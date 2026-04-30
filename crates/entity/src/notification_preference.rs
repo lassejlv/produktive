@@ -13,6 +13,7 @@ pub struct Model {
     pub email_progress: bool,
     pub next_progress_email_at: Option<DateTimeWithTimeZone>,
     pub last_progress_email_at: Option<DateTimeWithTimeZone>,
+    pub tabs_enabled: bool,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

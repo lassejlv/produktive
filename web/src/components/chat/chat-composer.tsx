@@ -1,22 +1,16 @@
 import { useMemo, useRef, useState } from "react";
 import {
   AttachIcon,
+  AtIcon,
   ChangesIcon,
-  HashIcon,
   SendIcon,
   StopIcon,
 } from "@/components/chat/icons";
-import {
-  IssuePicker,
-  type PickableIssue,
-} from "@/components/chat/issue-picker";
-import { ModelPicker } from "@/components/chat/model-picker";
 import {
   MentionPopup,
   type MentionItem,
   prettyToolName,
 } from "@/components/chat/tool-mention-popup";
-import type { AiModel } from "@/lib/api";
 import { StatusIcon } from "@/components/issue/status-icon";
 import { SparkleIcon } from "@/components/chat/icons";
 import {
@@ -49,11 +43,6 @@ export function ChatComposer({
   changesCount = 0,
   changesOpen = false,
   pendingQuestion,
-  model,
-  models,
-  onModelChange,
-  isPro = false,
-  onUpgradeRequired,
 }: {
   busy: boolean;
   onSend: (value: string, attachments: ChatAttachmentDraft[]) => void;
@@ -62,11 +51,6 @@ export function ChatComposer({
   changesCount?: number;
   changesOpen?: boolean;
   pendingQuestion?: PendingQuestion | null;
-  model?: string | null;
-  models?: AiModel[];
-  onModelChange?: (modelId: string) => void;
-  isPro?: boolean;
-  onUpgradeRequired?: () => void;
 }) {
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
@@ -84,11 +68,6 @@ export function ChatComposer({
   const { tools: availableTools } = useMcpTools();
   const { issues: availableIssues } = useIssues();
   const { chats: availableChats } = useChats();
-
-  const selectedIssueIds = useMemo(
-    () => new Set(issues.map((issue) => issue.id)),
-    [issues],
-  );
 
   const mentionItems = useMemo<MentionItem[]>(() => {
     const issueItems: MentionItem[] = availableIssues.map((issue) => ({
@@ -150,6 +129,26 @@ export function ChatComposer({
     setValue(event.target.value);
     autoresize(event.target);
     detectMention(event.target);
+  };
+
+  const openMentionFromButton = () => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.focus();
+    const caret = ta.selectionStart ?? ta.value.length;
+    const before = ta.value.slice(0, caret);
+    const after = ta.value.slice(caret);
+    const needsSpace =
+      before.length > 0 && !/\s/.test(before[before.length - 1] ?? "");
+    const insertion = `${needsSpace ? " " : ""}@`;
+    const next = before + insertion + after;
+    setValue(next);
+    autoresize(ta);
+    const newCaret = caret + insertion.length;
+    requestAnimationFrame(() => {
+      ta.setSelectionRange(newCaret, newCaret);
+      detectMention(ta);
+    });
   };
 
   const addMentionedTool = (tool: MentionableTool) => {
@@ -242,16 +241,7 @@ export function ChatComposer({
 
   const placeholder = pendingQuestion
     ? "Answer the question above…"
-    : "Ask Produktive anything…";
-
-  const toggleIssue = (issue: PickableIssue) => {
-    setIssues((current) => {
-      if (current.some((existing) => existing.id === issue.id)) {
-        return current.filter((existing) => existing.id !== issue.id);
-      }
-      return [...current, issue];
-    });
-  };
+    : "Ask Produktive anything — type @ to add context";
 
   const removeIssue = (id: string) => {
     setIssues((current) => current.filter((issue) => issue.id !== id));
@@ -458,6 +448,15 @@ export function ChatComposer({
         ) : null}
         <div className="flex items-center gap-0.5 px-2 pb-2 pt-1">
           <ToolButton
+            title="Add context (@)"
+            onClick={openMentionFromButton}
+            disabled={busy}
+            active={mentionState !== null}
+          >
+            <AtIcon size={11} />
+            Context
+          </ToolButton>
+          <ToolButton
             title="Attach files"
             onClick={() => fileRef.current?.click()}
             disabled={busy}
@@ -465,21 +464,6 @@ export function ChatComposer({
             <AttachIcon size={11} />
             Attach
           </ToolButton>
-          <IssuePicker
-            selectedIds={selectedIssueIds}
-            onToggle={toggleIssue}
-            trigger={({ open, onClick }) => (
-              <ToolButton
-                title="Reference issue"
-                onClick={onClick}
-                disabled={busy}
-                active={open}
-              >
-                <HashIcon size={11} />
-                Issue
-              </ToolButton>
-            )}
-          />
           <ToolButton
             title="View changes"
             onClick={onOpenChanges}
@@ -494,16 +478,6 @@ export function ChatComposer({
             ) : null}
           </ToolButton>
           <span className="flex-1" />
-          {models && models.length > 0 && onModelChange ? (
-            <ModelPicker
-              value={model ?? null}
-              models={models}
-              onChange={onModelChange}
-              disabled={busy}
-              isPro={isPro}
-              onUpgradeRequired={onUpgradeRequired}
-            />
-          ) : null}
           {busy ? (
             <button
               type="button"

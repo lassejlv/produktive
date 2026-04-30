@@ -1,5 +1,6 @@
 import {
   Add01Icon,
+  AtIcon as HugeAtIcon,
   AttachmentIcon,
   CheckmarkCircle01Icon,
   CircleSlashTwoIcon,
@@ -98,6 +99,10 @@ export function SlashIcon({ size = 13, ...rest }: IconProps) {
 
 export function HashIcon({ size = 13, ...rest }: IconProps) {
   return <Icon icon={HashtagIcon} size={size} {...rest} />;
+}
+
+export function AtIcon({ size = 13, ...rest }: IconProps) {
+  return <Icon icon={HugeAtIcon} size={size} {...rest} />;
 }
 
 export function ChangesIcon({ size = 13, ...rest }: IconProps) {

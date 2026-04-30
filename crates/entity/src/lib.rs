@@ -26,4 +26,5 @@ pub mod organization_subscription;
 pub mod project;
 pub mod session;
 pub mod user;
+pub mod user_tab;
 pub mod waitlist;

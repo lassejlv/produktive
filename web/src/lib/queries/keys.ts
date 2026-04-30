@@ -40,4 +40,5 @@ export const queryKeys = {
   },
   members: ["members"] as const,
   invitations: ["invitations"] as const,
+  tabs: ["tabs"] as const,
 } as const;

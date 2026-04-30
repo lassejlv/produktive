@@ -238,6 +238,7 @@ export type NotificationPreferences = {
   emailAssignments: boolean;
   emailComments: boolean;
   emailProgress: boolean;
+  tabsEnabled: boolean;
 };
 
 export const getMyPreferences = () => request<NotificationPreferences>("/api/me/preferences");
@@ -247,6 +248,30 @@ export const updateMyPreferences = (patch: Partial<NotificationPreferences>) =>
     method: "PATCH",
     body: JSON.stringify(patch),
   });
+
+export type TabType = "issue" | "project" | "chat";
+
+export type WorkspaceTab = {
+  id: string;
+  tabType: TabType;
+  targetId: string;
+  title: string;
+  openedAt: string;
+};
+
+export const listTabs = () => request<WorkspaceTab[]>("/api/me/tabs");
+
+export const openTab = (input: { tabType: TabType; targetId: string; title: string }) =>
+  request<WorkspaceTab>("/api/me/tabs", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const closeTab = (id: string) =>
+  request<void>(`/api/me/tabs/${id}`, { method: "DELETE" });
+
+export const closeAllTabs = () =>
+  request<void>("/api/me/tabs", { method: "DELETE" });
 
 export type OnboardingPatch = {
   completed?: boolean;

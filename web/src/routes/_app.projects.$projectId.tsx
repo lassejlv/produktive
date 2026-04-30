@@ -19,6 +19,8 @@ import {
 } from "@/lib/project-constants";
 import { useProjectDetailQuery } from "@/lib/queries/projects";
 import { useIssues } from "@/lib/use-issues";
+import { useRegisterTab } from "@/lib/use-tabs";
+import { useUserPreferences } from "@/lib/use-user-preferences";
 import { useCreateIssue, useUpdateIssue } from "@/lib/mutations/issues";
 import {
   useDeleteProject,
@@ -47,6 +49,14 @@ function ProjectDetailPage() {
     () => issues.filter((issue) => issue.projectId === projectId),
     [issues, projectId],
   );
+
+  const { tabsEnabled } = useUserPreferences();
+  useRegisterTab({
+    tabType: "project",
+    targetId: projectId,
+    title: project?.name,
+    enabled: tabsEnabled,
+  });
 
   const updateField = async (patch: UpdateProjectInput) => {
     if (!project) return;
