@@ -444,8 +444,19 @@ function AppLayout() {
           <TrySection />
 
           <div>
-            <div className="px-2 pb-1.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
-              Recent
+            <div className="flex items-center justify-between pb-1.5 pl-2 pr-1">
+              <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
+                Chats
+              </span>
+              <button
+                type="button"
+                onClick={() => void navigate({ to: "/chat" })}
+                aria-label="New chat"
+                title="New chat"
+                className="grid size-5 place-items-center rounded-[5px] text-fg-faint transition-colors hover:bg-surface hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              >
+                <PlusIcon />
+              </button>
             </div>
             <div className="flex flex-col gap-px">
               {chatsLoading ? (
@@ -838,6 +849,19 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
         );
       })}
     </div>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden>
+      <path
+        d="M6 2.5v7M2.5 6h7"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
   );
 }
 
