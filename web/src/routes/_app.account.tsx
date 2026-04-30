@@ -1,15 +1,20 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import {
+  ONBOARDING_SKIP_FLAG,
+  useOnboarding,
+} from "@/components/onboarding/onboarding-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LoadingTip } from "@/components/ui/loading-tip";
 import {
   type NotificationPreferences,
   getMyPreferences,
+  markOnboarding,
   updateMyPreferences,
 } from "@/lib/api";
-import { deleteAccount, useSession } from "@/lib/auth-client";
+import { deleteAccount, refreshSession, useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/account")({
@@ -81,6 +86,8 @@ function AccountPage() {
 
       <NotificationPrefsSection />
 
+      <ProductTourSection />
+
       <Section
         title="Delete account"
         tone="danger"
@@ -120,6 +127,48 @@ function AccountPage() {
         </div>
       </Section>
     </div>
+  );
+}
+
+function ProductTourSection() {
+  const navigate = useNavigate();
+  const onboarding = useOnboarding();
+  const [busy, setBusy] = useState(false);
+
+  const replay = async () => {
+    setBusy(true);
+    try {
+      await markOnboarding({ completed: false, step: "welcome" });
+      await refreshSession();
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem(ONBOARDING_SKIP_FLAG);
+      }
+      await navigate({ to: "/issues" });
+      onboarding.start("welcome");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to restart tour",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Section
+      title="Product tour"
+      description="Replay the welcome tour any time to revisit the basics."
+    >
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={busy}
+        onClick={() => void replay()}
+      >
+        {busy ? "Starting…" : "Replay product tour"}
+      </Button>
+    </Section>
   );
 }
 

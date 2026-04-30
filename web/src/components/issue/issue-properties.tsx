@@ -51,37 +51,39 @@ export function IssueProperties({
         />
       </PropertyRow>
 
-      <PropertyRow label="Priority">
-        <NativeSelectTrigger
-          ariaLabel="Priority"
-          icon={<PriorityIcon priority={priority} />}
-          label={priority}
-          value={priority}
-          options={priorityOptions}
-          onChange={onChangePriority}
-        />
-      </PropertyRow>
+      <div data-tour="issue-fields">
+        <PropertyRow label="Priority">
+          <NativeSelectTrigger
+            ariaLabel="Priority"
+            icon={<PriorityIcon priority={priority} />}
+            label={priority}
+            value={priority}
+            options={priorityOptions}
+            onChange={onChangePriority}
+          />
+        </PropertyRow>
 
-      <PropertyRow label="Assignee">
-        <MemberPicker
-          selectedId={assignee?.id ?? null}
-          onSelect={onChangeAssignee}
-          trigger={({ onClick }) => (
-            <PickerTrigger onClick={onClick}>
-              {assignee ? (
-                <>
-                  <Avatar name={assignee.name} image={assignee.image} />
-                  <span className="min-w-0 flex-1 truncate">
-                    {assignee.name}
-                  </span>
-                </>
-              ) : (
-                <span className="text-fg-faint">Unassigned</span>
-              )}
-            </PickerTrigger>
-          )}
-        />
-      </PropertyRow>
+        <PropertyRow label="Assignee">
+          <MemberPicker
+            selectedId={assignee?.id ?? null}
+            onSelect={onChangeAssignee}
+            trigger={({ onClick }) => (
+              <PickerTrigger onClick={onClick}>
+                {assignee ? (
+                  <>
+                    <Avatar name={assignee.name} image={assignee.image} />
+                    <span className="min-w-0 flex-1 truncate">
+                      {assignee.name}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-fg-faint">Unassigned</span>
+                )}
+              </PickerTrigger>
+            )}
+          />
+        </PropertyRow>
+      </div>
 
       <PropertyRow label="Project">
         <ProjectPicker

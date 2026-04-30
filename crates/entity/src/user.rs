@@ -13,6 +13,8 @@ pub struct Model {
     pub image: Option<String>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    pub onboarding_completed_at: Option<DateTimeWithTimeZone>,
+    pub onboarding_step: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

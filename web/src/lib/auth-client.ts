@@ -7,6 +7,8 @@ type AuthUser = {
   email: string;
   emailVerified: boolean;
   image: string | null;
+  onboardingCompletedAt: string | null;
+  onboardingStep: string | null;
 };
 
 type AuthOrganization = {

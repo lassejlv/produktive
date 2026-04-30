@@ -18,6 +18,10 @@ import {
 import { CommandPalette } from "@/components/command-palette";
 import { KeyboardHelp } from "@/components/keyboard-help";
 import { StatusIcon } from "@/components/issue/status-icon";
+import {
+  ONBOARDING_SKIP_FLAG,
+  useOnboarding,
+} from "@/components/onboarding/onboarding-context";
 import { OrgSwitcher } from "@/components/org-switcher";
 import {
   Sidebar,
@@ -63,12 +67,29 @@ function AppLayout() {
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [chatMenuOpenId, setChatMenuOpenId] = useState<string | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
+  const onboarding = useOnboarding();
 
   useEffect(() => {
     if (!session.isPending && !session.data) {
       void navigate({ to: "/login" });
     }
   }, [navigate, session.data, session.isPending]);
+
+  useEffect(() => {
+    const user = session.data?.user;
+    if (!user) return;
+    if (user.onboardingCompletedAt) return;
+    if (onboarding.isActive) return;
+    if (typeof window === "undefined") return;
+    if (window.sessionStorage.getItem(ONBOARDING_SKIP_FLAG)) return;
+    const id = window.setTimeout(() => {
+      onboarding.start(
+        (user.onboardingStep as Parameters<typeof onboarding.start>[0]) ??
+          undefined,
+      );
+    }, 500);
+    return () => window.clearTimeout(id);
+  }, [session.data?.user, onboarding]);
 
   useEffect(() => {
     if (!accountMenuOpen) return;
@@ -199,10 +220,10 @@ function AppLayout() {
         }}
       />
       <NewLabelDialog headless />
-      <Sidebar className="bg-sidebar/95">
+      <Sidebar className="bg-sidebar/95" data-tour="sidebar">
         <SidebarHeader>
           <div className="flex items-center gap-1">
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1" data-tour="org-switcher">
               <OrgSwitcher activeOrganization={session.data.organization} />
             </div>
           </div>

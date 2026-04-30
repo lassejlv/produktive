@@ -37,6 +37,7 @@ import {
 } from "@/lib/api";
 import { formatBytes, prepareChatAttachments } from "@/lib/chat-attachments";
 import { formatDate } from "@/lib/issue-constants";
+import { useOnboarding } from "@/components/onboarding/onboarding-context";
 import { useFavorites } from "@/lib/use-favorites";
 import { cn } from "@/lib/utils";
 
@@ -78,6 +79,7 @@ export function IssueDetail({
   const menuRef = useRef<HTMLDivElement | null>(null);
   const { isFavorite, toggleFavorite } = useFavorites();
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
+  const onboarding = useOnboarding();
   const pinned = isFavorite("issue", issueId);
 
   useEffect(() => {
@@ -225,6 +227,7 @@ export function IssueDetail({
     try {
       const response = await updateIssue(issue.id, { priority: next });
       setIssue(response.issue);
+      onboarding.signal("priority-or-assignee-changed");
       await reloadAfterChange();
     } catch (updateError) {
       setIssue(previous);
@@ -286,6 +289,7 @@ export function IssueDetail({
         assignedToId: memberId,
       });
       setIssue(response.issue);
+      onboarding.signal("priority-or-assignee-changed");
       await reloadAfterChange();
     } catch (updateError) {
       setIssue(previous);
@@ -433,7 +437,7 @@ export function IssueDetail({
   };
 
   return (
-    <main className="min-h-full bg-bg">
+    <main className="min-h-full bg-bg" data-tour="issue-detail">
       {confirmDialog}
       <header className="flex items-center justify-between gap-3 px-6 pt-5">
         <div className="flex items-center gap-3">

@@ -209,6 +209,7 @@ export function NewIssueDialog({
         size={triggerSize}
         className={triggerClassName}
         onClick={() => setOpen(true)}
+        data-tour="new-issue-trigger"
       >
         {triggerLabel}
       </Button>

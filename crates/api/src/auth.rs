@@ -51,6 +51,8 @@ pub struct UserResponse {
     pub email: String,
     pub email_verified: bool,
     pub image: Option<String>,
+    pub onboarding_completed_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    pub onboarding_step: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -69,6 +71,8 @@ impl From<user::Model> for UserResponse {
             email: user.email,
             email_verified: user.email_verified,
             image: user.image,
+            onboarding_completed_at: user.onboarding_completed_at,
+            onboarding_step: user.onboarding_step,
         }
     }
 }
@@ -192,6 +196,8 @@ pub async fn create_signup_records(
         image: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
+        onboarding_completed_at: Set(None),
+        onboarding_step: Set(None),
     }
     .insert(&txn)
     .await?;

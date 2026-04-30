@@ -21,6 +21,7 @@ import {
   type IssueFilters,
 } from "@/components/issue/issue-toolbar";
 import { NewIssueDialog } from "@/components/issue/new-issue-dialog";
+import { useOnboarding } from "@/components/onboarding/onboarding-context";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DashboardSkeleton } from "@/components/issue-skeleton";
 import { IssueDetail } from "@/routes/_app.issues.$issueId";
@@ -75,6 +76,11 @@ function IssuesPage() {
       : displayOptions.viewMode;
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [viewFavorited, setViewFavorited] = useState(false);
+  const onboarding = useOnboarding();
+
+  useEffect(() => {
+    onboarding.setFirstIssueId(issues[0]?.id ?? null);
+  }, [issues, onboarding]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -482,7 +488,13 @@ function IssuesPage() {
             </kbd>{" "}
             to create
           </span>
-          <NewIssueDialog shortcutEnabled onCreated={addIssue} />
+          <NewIssueDialog
+            shortcutEnabled
+            onCreated={(issue) => {
+              addIssue(issue);
+              onboarding.signal("issue-created");
+            }}
+          />
         </div>
       </header>
 
@@ -578,7 +590,7 @@ function IssuesPage() {
       </nav>
       <IssueFilterChips filters={filters} onChange={setFilters} />
 
-      <section>
+      <section data-tour="issue-list">
         {error ? (
           <div className="m-5 flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
             <span>{error}</span>

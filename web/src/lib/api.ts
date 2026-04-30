@@ -247,6 +247,27 @@ export const updateMyPreferences = (patch: Partial<NotificationPreferences>) =>
     body: JSON.stringify(patch),
   });
 
+export type OnboardingPatch = {
+  completed?: boolean;
+  step?: string;
+};
+
+export type OnboardingUserResponse = {
+  id: string;
+  name: string;
+  email: string;
+  emailVerified: boolean;
+  image: string | null;
+  onboardingCompletedAt: string | null;
+  onboardingStep: string | null;
+};
+
+export const markOnboarding = (patch: OnboardingPatch) =>
+  request<OnboardingUserResponse>("/api/me/onboarding", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+
 export type BillingSubscription = {
   id: string;
   planId: string;
