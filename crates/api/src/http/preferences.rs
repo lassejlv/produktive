@@ -64,7 +64,7 @@ pub async fn for_user(
         email_progress: Set(true),
         next_progress_email_at: Set(None),
         last_progress_email_at: Set(None),
-        tabs_enabled: Set(true),
+        tabs_enabled: Set(false),
         created_at: Set(now),
         updated_at: Set(now),
     }

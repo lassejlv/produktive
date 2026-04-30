@@ -7,6 +7,7 @@ export type StepId =
   | "fields"
   | "project-switcher"
   | "github-sync"
+  | "tabs-feature"
   | "done";
 
 export type SignalName = "issue-created" | "priority-or-assignee-changed";
@@ -96,6 +97,17 @@ export const STEPS: OnboardingStep[] = [
     target: null,
     title: "Sync from GitHub",
     body: "Already tracking issues elsewhere? Connect a repo from Workspace settings → GitHub to import existing issues and keep them in sync automatically.",
+    await: "next",
+  },
+  {
+    id: "tabs-feature",
+    target: null,
+    title: "Optional: tab bar",
+    body: "Want browser-style tabs? A draggable bar at the bottom keeps the issues, projects, and pages you've opened one click away. It's off by default — flip it on under Account → Appearance whenever you want.",
+    link: {
+      url: "/account",
+      label: "Open account settings",
+    },
     await: "next",
   },
   {
