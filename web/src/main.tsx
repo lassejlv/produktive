@@ -4,14 +4,10 @@ import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { routeTree } from "./routeTree.gen";
+import { applyTheme, readStoredTheme } from "./lib/theme";
 import "./styles.css";
 
-if (window.localStorage.getItem("produktive-theme") === "light") {
-  document.documentElement.classList.add("theme-light");
-  document
-    .querySelector('meta[name="theme-color"]')
-    ?.setAttribute("content", "#fbfbfa");
-}
+applyTheme(readStoredTheme());
 
 const queryClient = new QueryClient({
   defaultOptions: {

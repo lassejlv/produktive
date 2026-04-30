@@ -66,8 +66,13 @@ export function KeyboardHelp() {
       event.preventDefault();
       setOpen((current) => !current);
     };
+    const onTrigger = () => setOpen(true);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("produktive:keyboard-help", onTrigger);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("produktive:keyboard-help", onTrigger);
+    };
   }, []);
 
   return (

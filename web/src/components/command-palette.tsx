@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { listIssues, listProjects, type Issue, type Project } from "@/lib/api";
 import { signOut } from "@/lib/auth-client";
+import { applyTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 type CommandResult =
@@ -159,20 +160,38 @@ export function CommandPalette() {
       },
       {
         type: "action" as const,
-        key: "switch-light-mode",
-        label: "Switch to light mode",
+        key: "theme-ember",
+        label: "Theme: Ember (warm dark)",
         run: () => {
-          applyTheme("light");
-          toast.success("Light mode enabled");
+          applyTheme("ember");
+          toast.success("Ember theme applied");
         },
       },
       {
         type: "action" as const,
-        key: "switch-dark-mode",
-        label: "Switch to dark mode",
+        key: "theme-slate",
+        label: "Theme: Slate (cool dark)",
         run: () => {
-          applyTheme("dark");
-          toast.success("Dark mode enabled");
+          applyTheme("slate");
+          toast.success("Slate theme applied");
+        },
+      },
+      {
+        type: "action" as const,
+        key: "theme-midnight",
+        label: "Theme: Midnight (cobalt dark)",
+        run: () => {
+          applyTheme("midnight");
+          toast.success("Midnight theme applied");
+        },
+      },
+      {
+        type: "action" as const,
+        key: "theme-light",
+        label: "Theme: Light",
+        run: () => {
+          applyTheme("light");
+          toast.success("Light theme applied");
         },
       },
       {
@@ -374,14 +393,6 @@ function SearchIcon() {
   );
 }
 
-function applyTheme(theme: "light" | "dark") {
-  const root = document.documentElement;
-  root.classList.toggle("theme-light", theme === "light");
-  window.localStorage.setItem("produktive-theme", theme);
-  document
-    .querySelector('meta[name="theme-color"]')
-    ?.setAttribute("content", theme === "light" ? "#fbfbfa" : "#0d0d0f");
-}
 
 function IssueGlyph() {
   return (

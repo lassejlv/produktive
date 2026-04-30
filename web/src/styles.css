@@ -19,6 +19,7 @@
 }
 
 @theme {
+  /* Default: Slate — the original cool dark */
   --color-bg: #0d0d0f;
   --color-surface: #151517;
   --color-surface-2: #1c1c1f;
@@ -69,38 +70,109 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  :root.theme-light {
-    --color-bg: #fbfbfa;
-    --color-surface: #f5f5f3;
-    --color-surface-2: #eeeeeb;
-    --color-surface-3: #e7e7e3;
-    --color-border: #d8d8d2;
-    --color-border-subtle: #e7e7e2;
-    --color-fg: #171717;
-    --color-fg-muted: #696966;
-    --color-fg-faint: #9a9a94;
-    --color-accent: #93684f;
-    --color-accent-hover: #5d6f9e;
+  /* Ember — warm copper dark, opt-in */
+  :root[data-theme="ember"] {
+    --color-bg: #0b0a0c;
+    --color-surface: #14131a;
+    --color-surface-2: #1c1b23;
+    --color-surface-3: #25232c;
+    --color-border: #2c2a35;
+    --color-border-subtle: #1f1d26;
+    --color-fg: #f5f1ea;
+    --color-fg-muted: #9b958d;
+    --color-fg-faint: #5e5950;
+    --color-accent: #e07a3c;
+    --color-accent-hover: #f08e54;
+    --color-success: #5ab97e;
+    --color-warning: #d6a23e;
+    --color-danger: #e85a3e;
+
+    --color-background: #0b0a0c;
+    --color-foreground: #f5f1ea;
+    --color-card: #14131a;
+    --color-card-foreground: #f5f1ea;
+    --color-primary: #f5f1ea;
+    --color-primary-foreground: #0b0a0c;
+    --color-muted: #1c1b23;
+    --color-muted-foreground: #9b958d;
+    --color-accent-foreground: #ffffff;
+    --color-input: #2c2a35;
+    --color-ring: #e07a3c;
+    --color-sidebar: #0e0d11;
+    --color-sidebar-foreground: #f5f1ea;
+    --color-sidebar-accent: #1c1b23;
+    --color-sidebar-accent-foreground: #f5f1ea;
+    --color-sidebar-border: #1d1b24;
+  }
+
+  /* Midnight — cobalt cool dark */
+  :root[data-theme="midnight"] {
+    --color-bg: #07080d;
+    --color-surface: #11131a;
+    --color-surface-2: #181b24;
+    --color-surface-3: #20242e;
+    --color-border: #2a2e38;
+    --color-border-subtle: #1a1d27;
+    --color-fg: #e8eaf2;
+    --color-fg-muted: #8a8d9c;
+    --color-fg-faint: #50556a;
+    --color-accent: #6a8cff;
+    --color-accent-hover: #84a0ff;
+    --color-success: #4ec1a3;
+    --color-warning: #d9a83a;
+    --color-danger: #e6594f;
+
+    --color-background: #07080d;
+    --color-foreground: #e8eaf2;
+    --color-card: #11131a;
+    --color-card-foreground: #e8eaf2;
+    --color-primary: #e8eaf2;
+    --color-primary-foreground: #07080d;
+    --color-muted: #181b24;
+    --color-muted-foreground: #8a8d9c;
+    --color-accent-foreground: #ffffff;
+    --color-input: #2a2e38;
+    --color-ring: #6a8cff;
+    --color-sidebar: #0a0c12;
+    --color-sidebar-foreground: #e8eaf2;
+    --color-sidebar-accent: #181b24;
+    --color-sidebar-accent-foreground: #e8eaf2;
+    --color-sidebar-border: #181b24;
+  }
+
+  /* Light — warm paper, copper accent */
+  :root[data-theme="light"] {
+    --color-bg: #faf7f2;
+    --color-surface: #f3eee5;
+    --color-surface-2: #ece6da;
+    --color-surface-3: #e4ddce;
+    --color-border: #d6cfbe;
+    --color-border-subtle: #e6dfd0;
+    --color-fg: #14110d;
+    --color-fg-muted: #6a6258;
+    --color-fg-faint: #978f80;
+    --color-accent: #b25624;
+    --color-accent-hover: #9a481b;
     --color-success: #367c55;
     --color-warning: #956400;
     --color-danger: #b13a31;
 
-    --color-background: #fbfbfa;
-    --color-foreground: #171717;
+    --color-background: #faf7f2;
+    --color-foreground: #14110d;
     --color-card: #ffffff;
-    --color-card-foreground: #171717;
-    --color-primary: #171717;
+    --color-card-foreground: #14110d;
+    --color-primary: #14110d;
     --color-primary-foreground: #ffffff;
-    --color-muted: #eeeeeb;
-    --color-muted-foreground: #696966;
+    --color-muted: #ece6da;
+    --color-muted-foreground: #6a6258;
     --color-accent-foreground: #ffffff;
-    --color-input: #d8d8d2;
-    --color-ring: #5d6f9e;
-    --color-sidebar: #f5f5f3;
-    --color-sidebar-foreground: #171717;
-    --color-sidebar-accent: #eeeeeb;
-    --color-sidebar-accent-foreground: #171717;
-    --color-sidebar-border: #e7e7e2;
+    --color-input: #d6cfbe;
+    --color-ring: #b25624;
+    --color-sidebar: #f3eee5;
+    --color-sidebar-foreground: #14110d;
+    --color-sidebar-accent: #ece6da;
+    --color-sidebar-accent-foreground: #14110d;
+    --color-sidebar-border: #e6dfd0;
 
     color-scheme: light;
   }
@@ -224,10 +296,10 @@
 @keyframes pulse-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(240, 197, 168, 0.55);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 6px rgba(240, 197, 168, 0);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-accent) 0%, transparent);
   }
 }
 
