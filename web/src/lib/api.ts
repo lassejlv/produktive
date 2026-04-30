@@ -336,7 +336,10 @@ export const createMcpServer = (input: { name?: string; url: string; accessToken
     body: JSON.stringify(input),
   });
 
-export const updateMcpServer = (id: string, patch: { name?: string; enabled?: boolean }) =>
+export const updateMcpServer = (
+  id: string,
+  patch: { name?: string; enabled?: boolean; accessToken?: string },
+) =>
   request<McpServerEnvelope>(`/api/ai/mcp/servers/${id}`, {
     method: "PATCH",
     body: JSON.stringify(patch),

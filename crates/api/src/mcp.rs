@@ -1,19 +1,19 @@
 use crate::{error::ApiError, state::AppState};
 use aes_gcm::{
-    aead::{Aead, AeadCore, KeyInit, OsRng},
     Aes256Gcm, Nonce,
+    aead::{Aead, AeadCore, KeyInit, OsRng},
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use produktive_ai::Tool;
 use produktive_entity::{mcp_oauth_token, mcp_server};
 use reqwest::{
-    header::{HeaderName, ACCEPT, AUTHORIZATION, CONTENT_TYPE, WWW_AUTHENTICATE},
     StatusCode, Url,
+    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderName, WWW_AUTHENTICATE},
 };
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{net::IpAddr, sync::Mutex, time::Duration as StdDuration};
 
@@ -41,6 +41,7 @@ pub enum ProbeOutcome {
         transport: String,
         tools: Vec<CachedTool>,
     },
+    TokenRequired,
     OAuthRequired {
         oauth: Option<OAuthDiscovery>,
     },
@@ -95,7 +96,7 @@ pub fn validate_remote_url(raw: &str, allow_local: bool) -> Result<String, McpEr
         _ => {
             return Err(McpError::InvalidUrl(
                 "Remote MCP URLs must use HTTPS outside local development".to_owned(),
-            ))
+            ));
         }
     }
 
@@ -286,7 +287,10 @@ pub async fn probe_server(
             let tools = client.list_tools().await?;
             Ok(ProbeOutcome::Connected { transport, tools })
         }
-        Err(McpError::OAuthRequired { oauth }) => Ok(ProbeOutcome::OAuthRequired { oauth }),
+        Err(McpError::OAuthRequired { oauth: Some(oauth) }) => {
+            Ok(ProbeOutcome::OAuthRequired { oauth: Some(oauth) })
+        }
+        Err(McpError::OAuthRequired { oauth: None }) => Ok(ProbeOutcome::TokenRequired),
         Err(error) => Err(error),
     }
 }
@@ -721,6 +725,10 @@ async fn discover_oauth_metadata(
         }));
     }
 
+    let explicit_resource_metadata = params
+        .get("resource_metadata")
+        .or_else(|| params.get("resource_metadata_uri"))
+        .is_some();
     let Some(resource_metadata_url) = params
         .get("resource_metadata")
         .or_else(|| params.get("resource_metadata_uri"))
@@ -730,7 +738,20 @@ async fn discover_oauth_metadata(
         return Ok(None);
     };
 
-    let protected = fetch_json::<ProtectedResourceMetadata>(http, &resource_metadata_url).await?;
+    let protected =
+        match fetch_json::<ProtectedResourceMetadata>(http, &resource_metadata_url).await {
+            Ok(protected) => protected,
+            Err(McpError::Http { status, .. })
+                if !explicit_resource_metadata
+                    && matches!(
+                        StatusCode::from_u16(status).ok(),
+                        Some(StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED)
+                    ) =>
+            {
+                return Ok(None);
+            }
+            Err(error) => return Err(error),
+        };
     let resource = protected
         .resource
         .clone()

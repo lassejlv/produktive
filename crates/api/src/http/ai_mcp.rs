@@ -1,20 +1,20 @@
 use crate::{
-    auth::{require_auth, AuthContext},
+    auth::{AuthContext, require_auth},
     error::ApiError,
     mcp::{
-        allow_local_mcp, cached_tools, default_name, encrypt_secret, namespaced_tool_name, now,
-        oauth_state_ttl, probe_server, slugify, validate_remote_url, OAuthDiscovery, ProbeOutcome,
+        OAuthDiscovery, ProbeOutcome, allow_local_mcp, cached_tools, default_name, encrypt_secret,
+        namespaced_tool_name, now, oauth_state_ttl, probe_server, slugify, validate_remote_url,
     },
     state::AppState,
 };
 use axum::{
+    Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
     response::{IntoResponse, Redirect},
     routing::{get, post},
-    Json, Router,
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use produktive_entity::{mcp_oauth_client, mcp_oauth_state, mcp_oauth_token, mcp_server, member};
 use reqwest::Url;
@@ -23,7 +23,7 @@ use sea_orm::{
     QueryOrder, Set,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -91,6 +91,7 @@ struct CreateServerRequest {
 struct UpdateServerRequest {
     name: Option<String>,
     enabled: Option<bool>,
+    access_token: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -143,7 +144,10 @@ async fn create_server(
     let slug = unique_slug(&state, &auth.organization.id, &slugify(&name)).await?;
     let access_token = payload
         .access_token
-        .filter(|token| !token.trim().is_empty());
+        .as_deref()
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(ToOwned::to_owned);
     let probe = probe_server(&url, access_token.clone()).await;
     let created_at = now();
 
@@ -151,7 +155,7 @@ async fn create_server(
         Ok(ProbeOutcome::Connected { transport, tools }) => (
             Some(transport),
             if access_token.is_some() {
-                "oauth"
+                "token"
             } else {
                 "none"
             }
@@ -167,6 +171,14 @@ async fn create_server(
             "needs_oauth".to_owned(),
             None,
             Some("OAuth is required".to_owned()),
+            None,
+        ),
+        Ok(ProbeOutcome::TokenRequired) => (
+            None,
+            "token".to_owned(),
+            "needs_token".to_owned(),
+            None,
+            Some(token_required_message(access_token.is_some())),
             None,
         ),
         Err(error) => (
@@ -218,7 +230,7 @@ async fn update_server(
     let auth = require_auth(&headers, &state).await?;
     require_owner(&state, &auth).await?;
     let server = find_server(&state, &auth.organization.id, &id).await?;
-    let mut active = server.into_active_model();
+    let mut active = server.clone().into_active_model();
     if let Some(name) = payload.name {
         let name = name.trim();
         if name.is_empty() {
@@ -229,8 +241,42 @@ async fn update_server(
     if let Some(enabled) = payload.enabled {
         active.enabled = Set(enabled);
     }
+
+    let access_token = payload
+        .access_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(ToOwned::to_owned);
+    let mut token_to_store = None;
+    if let Some(access_token) = access_token {
+        active.last_checked_at = Set(Some(now()));
+        match probe_server(&server.url, Some(access_token.clone())).await {
+            Ok(ProbeOutcome::Connected { transport, tools }) => {
+                active.transport = Set(Some(transport));
+                active.auth_type = Set("token".to_owned());
+                active.auth_status = Set("connected".to_owned());
+                active.tool_cache = Set(Some(json!(tools)));
+                active.last_error = Set(None);
+                token_to_store = Some(access_token);
+            }
+            Ok(ProbeOutcome::OAuthRequired { .. }) | Ok(ProbeOutcome::TokenRequired) => {
+                active.auth_type = Set("token".to_owned());
+                active.auth_status = Set("needs_token".to_owned());
+                active.last_error = Set(Some(token_required_message(true)));
+            }
+            Err(error) => {
+                active.auth_status = Set("error".to_owned());
+                active.last_error = Set(Some(error.to_string()));
+            }
+        }
+    }
+
     active.updated_at = Set(now());
     let server = active.update(&state.db).await?;
+    if let Some(access_token) = token_to_store {
+        store_access_token(&state, &server, &access_token).await?;
+    }
     Ok(Json(ServerEnvelope {
         server: server_response(server),
         oauth_url: None,
@@ -258,6 +304,7 @@ async fn refresh_tools(
     require_owner(&state, &auth).await?;
     let server = find_server(&state, &auth.organization.id, &id).await?;
     let token = crate::mcp::load_access_token(&state, &server).await?;
+    let had_token = token.is_some();
     let probe = probe_server(&server.url, token).await;
     let mut active = server.into_active_model();
     active.last_checked_at = Set(Some(now()));
@@ -273,6 +320,11 @@ async fn refresh_tools(
             active.auth_type = Set("oauth".to_owned());
             active.auth_status = Set("needs_oauth".to_owned());
             active.last_error = Set(Some("OAuth is required".to_owned()));
+        }
+        Ok(ProbeOutcome::TokenRequired) => {
+            active.auth_type = Set("token".to_owned());
+            active.auth_status = Set("needs_token".to_owned());
+            active.last_error = Set(Some(token_required_message(had_token)));
         }
         Err(error) => {
             active.auth_status = Set("error".to_owned());
@@ -373,7 +425,7 @@ async fn oauth_callback(
         (None, None) => {
             return Err(ApiError::BadRequest(
                 "OAuth callback did not include a token".to_owned(),
-            ))
+            ));
         }
     };
     store_oauth_token(&state, &server, &token).await?;
@@ -391,6 +443,10 @@ async fn oauth_callback(
             active.last_error = Set(None);
         }
         Ok(ProbeOutcome::OAuthRequired { .. }) => {
+            active.auth_status = Set("needs_oauth".to_owned());
+            active.last_error = Set(Some("OAuth token was not accepted".to_owned()));
+        }
+        Ok(ProbeOutcome::TokenRequired) => {
             active.auth_status = Set("needs_oauth".to_owned());
             active.last_error = Set(Some("OAuth token was not accepted".to_owned()));
         }
@@ -642,6 +698,15 @@ fn server_response(server: mcp_server::Model) -> McpServerResponse {
         last_error: server.last_error,
         created_at: server.created_at.to_rfc3339(),
         updated_at: server.updated_at.to_rfc3339(),
+    }
+}
+
+fn token_required_message(had_token: bool) -> String {
+    if had_token {
+        "The MCP API key was not accepted. Create a new key and add it as the bearer token."
+            .to_owned()
+    } else {
+        "Add a Produktive MCP API key as the bearer token.".to_owned()
     }
 }
 
