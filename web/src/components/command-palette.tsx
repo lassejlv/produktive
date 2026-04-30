@@ -126,6 +126,13 @@ export function CommandPalette() {
       },
       {
         type: "action" as const,
+        key: "go-overview",
+        label: "Go to Overview",
+        hint: "G O",
+        run: () => navigate({ to: "/workspace" }),
+      },
+      {
+        type: "action" as const,
         key: "go-issues",
         label: "Go to Issues",
         hint: "G I",

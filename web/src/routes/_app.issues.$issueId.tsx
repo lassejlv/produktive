@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type ChangeEvent,
   useEffect,
@@ -26,6 +26,7 @@ import {
   createIssue,
   createIssueComment,
   listIssueSubscribers,
+  listMembers,
   subscribeToIssue,
   unsubscribeFromIssue,
   uploadIssueAttachment,
@@ -50,6 +51,8 @@ import {
   useDeleteIssue,
   useUpdateIssue,
 } from "@/lib/mutations/issues";
+import { useLabelsQuery } from "@/lib/queries/labels";
+import { useProjectsQuery } from "@/lib/queries/projects";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/issues/$issueId")({
@@ -93,10 +96,32 @@ export function IssueDetail({
   const issueQuery = useIssueDetailQuery(issueId);
   const historyQuery = useIssueHistoryQuery(issueId);
   const commentsQuery = useIssueCommentsQuery(issueId);
+  const projectsQuery = useProjectsQuery();
+  const labelsQuery = useLabelsQuery();
+  const membersQuery = useQuery({
+    queryKey: queryKeys.members,
+    queryFn: () => listMembers().then((r) => r.members),
+    staleTime: 60_000,
+  });
   const issue = issueQuery.data ?? null;
   const history = historyQuery.data ?? [];
   const comments = commentsQuery.data ?? [];
   const isLoading = issueQuery.isPending;
+
+  const lookups = useMemo<Lookups>(
+    () => ({
+      projects: new Map(
+        (projectsQuery.data ?? []).map((p) => [p.id, p.name]),
+      ),
+      members: new Map(
+        (membersQuery.data ?? []).map((m) => [m.id, m.name]),
+      ),
+      labels: new Map(
+        (labelsQuery.data ?? []).map((l) => [l.id, l.name]),
+      ),
+    }),
+    [projectsQuery.data, membersQuery.data, labelsQuery.data],
+  );
 
   const updateIssueMutation = useUpdateIssue();
   const deleteIssueMutation = useDeleteIssue();
@@ -513,10 +538,7 @@ export function IssueDetail({
               ) : null}
 
               <section className="mt-14 border-t border-border-subtle pt-8">
-                <h2 className="mb-5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
-                  Activity
-                </h2>
-                <IssueTimeline items={timeline} />
+                <IssueTimeline items={timeline} lookups={lookups} />
                 <div className="mt-6">
                   <CommentComposer
                     value={commentBody}
@@ -923,142 +945,258 @@ function AttachmentRail({ attachments }: { attachments: IssueAttachment[] }) {
   );
 }
 
+type Lookups = {
+  projects: Map<string, string>;
+  members: Map<string, string>;
+  labels: Map<string, string>;
+};
+
 type TimelineItem =
-  | { type: "event"; date: string; event: IssueHistoryEvent }
-  | { type: "comment"; date: string; comment: IssueComment };
+  | {
+      type: "created";
+      key: string;
+      date: string;
+      actor: IssueHistoryEvent["actor"];
+    }
+  | {
+      type: "attachment";
+      key: string;
+      date: string;
+      actor: IssueHistoryEvent["actor"];
+      change: IssueHistoryChange;
+    }
+  | {
+      type: "change";
+      key: string;
+      date: string;
+      actor: IssueHistoryEvent["actor"];
+      change: IssueHistoryChange;
+    }
+  | { type: "comment"; key: string; date: string; comment: IssueComment };
 
 function buildTimeline(
   events: IssueHistoryEvent[],
   comments: IssueComment[],
 ): TimelineItem[] {
-  return [
-    ...events.map((event) => ({
-      type: "event" as const,
-      date: event.createdAt,
-      event,
-    })),
-    ...comments.map((comment) => ({
-      type: "comment" as const,
+  const items: TimelineItem[] = [];
+  for (const event of events) {
+    if (event.action === "created") {
+      items.push({
+        type: "created",
+        key: `created-${event.id}`,
+        date: event.createdAt,
+        actor: event.actor,
+      });
+      continue;
+    }
+    if (event.action === "attachment_added") {
+      const change = event.changes[0];
+      if (change) {
+        items.push({
+          type: "attachment",
+          key: `att-${event.id}`,
+          date: event.createdAt,
+          actor: event.actor,
+          change,
+        });
+      }
+      continue;
+    }
+    const meaningful = event.changes.filter(isMeaningfulChange);
+    meaningful.forEach((change, index) => {
+      items.push({
+        type: "change",
+        key: `change-${event.id}-${change.field}-${index}`,
+        date: event.createdAt,
+        actor: event.actor,
+        change,
+      });
+    });
+  }
+  for (const comment of comments) {
+    items.push({
+      type: "comment",
+      key: `comment-${comment.id}`,
       date: comment.createdAt,
       comment,
-    })),
-  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    });
+  }
+  return items.sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+  );
 }
 
-function IssueTimeline({ items }: { items: TimelineItem[] }) {
+function IssueTimeline({
+  items,
+  lookups,
+}: {
+  items: TimelineItem[];
+  lookups: Lookups;
+}) {
   if (items.length === 0) {
-    return (
-      <p className="text-[13px] text-fg-faint">No activity yet.</p>
-    );
+    return <p className="text-[13px] text-fg-faint">No activity yet.</p>;
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      {items.map((item) =>
-        item.type === "comment" ? (
-          <CommentTimelineItem
-            key={`comment-${item.comment.id}`}
-            comment={item.comment}
-          />
-        ) : (
-          <EventTimelineItem key={`event-${item.event.id}`} event={item.event} />
-        ),
-      )}
-    </div>
+    <ol className="relative flex flex-col">
+      <span
+        aria-hidden
+        className="absolute left-[11px] top-2 bottom-2 w-px bg-border-subtle"
+      />
+      {items.map((item) => (
+        <li key={item.key} className="relative">
+          {item.type === "comment" ? (
+            <CommentRow comment={item.comment} />
+          ) : (
+            <EventRow item={item} lookups={lookups} />
+          )}
+        </li>
+      ))}
+    </ol>
   );
 }
 
-function CommentTimelineItem({ comment }: { comment: IssueComment }) {
+function CommentRow({ comment }: { comment: IssueComment }) {
   return (
-    <article className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2 text-[12.5px]">
+    <article className="relative flex gap-3 py-3">
+      <span className="relative z-10 mt-0.5 grid size-[22px] shrink-0 place-items-center rounded-full bg-bg">
         <Avatar name={comment.author?.name} image={comment.author?.image} />
-        <span className="font-medium text-fg">
-          {comment.author?.name ?? "Unknown user"}
-        </span>
-        <span className="text-fg-faint">·</span>
-        <span className="text-[11.5px] text-fg-faint">
-          {formatDate(comment.createdAt)}
-        </span>
-      </div>
-      <div className="pl-7 text-[14px] leading-[1.65] text-fg">
-        <ChatMarkdown content={comment.body} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2 text-[12.5px]">
+          <span className="font-medium text-fg">
+            {comment.author?.name ?? "Unknown user"}
+          </span>
+          <span className="text-[11.5px] text-fg-faint">
+            {formatDate(comment.createdAt)}
+          </span>
+        </div>
+        <div className="mt-1 text-[14px] leading-[1.6] text-fg">
+          <ChatMarkdown content={comment.body} />
+        </div>
       </div>
     </article>
   );
 }
 
-function EventTimelineItem({ event }: { event: IssueHistoryEvent }) {
+function EventRow({
+  item,
+  lookups,
+}: {
+  item: Exclude<TimelineItem, { type: "comment" }>;
+  lookups: Lookups;
+}) {
+  const summary = describeEvent(item, lookups);
   return (
-    <article className="flex flex-col gap-0.5 text-[12.5px] text-fg-muted">
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className="text-fg">{event.actor?.name ?? "Unknown user"}</span>
-        <span>{eventActionLabel(event.action)}</span>
-        <span className="text-fg-faint">·</span>
-        <span className="text-[11.5px] text-fg-faint">
-          {formatDate(event.createdAt)}
+    <div className="relative flex items-center gap-3 py-1.5">
+      <span className="relative z-10 grid size-[22px] shrink-0 place-items-center bg-bg">
+        <span className="size-[7px] rounded-full border border-border bg-surface" />
+      </span>
+      <div className="min-w-0 flex-1 truncate text-[12.5px] text-fg-muted">
+        <span className="text-fg">
+          {item.actor?.name ?? "Someone"}
+        </span>{" "}
+        {summary}
+        <span className="ml-2 text-[11.5px] text-fg-faint">
+          {formatDate(item.date)}
         </span>
       </div>
-      {event.changes.length > 0 ? (
-        <div className="flex flex-col gap-0.5 text-[12px] text-fg-faint">
-          {event.changes.map((change, index) => (
-            <IssueChangeView key={`${change.field}-${index}`} change={change} />
-          ))}
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
-function IssueChangeView({ change }: { change: IssueHistoryChange }) {
-  const label = fieldLabel(change.field);
-
-  if (change.field === "attachments") {
-    return (
-      <p className="text-xs text-fg-muted">
-        Attached <span className="font-mono text-fg">{attachmentName(change.after)}</span>
-      </p>
-    );
-  }
-
-  if (
-    change.field === "description" ||
-    longValue(change.before) ||
-    longValue(change.after)
-  ) {
-    return (
-      <details className="rounded-md border border-border-subtle bg-bg px-3 py-2">
-        <summary className="cursor-pointer select-none text-xs text-fg-muted">
-          Changed {label}
-        </summary>
-        <div className="mt-2 grid gap-2 md:grid-cols-2">
-          <DiffBlock label="Before" value={change.before} />
-          <DiffBlock label="After" value={change.after} />
-        </div>
-      </details>
-    );
-  }
-
-  return (
-    <p className="text-xs text-fg-muted">
-      {label} from{" "}
-      <span className="font-mono text-fg">{displayValue(change.before)}</span>{" "}
-      to <span className="font-mono text-fg">{displayValue(change.after)}</span>
-    </p>
-  );
-}
-
-function DiffBlock({ label, value }: { label: string; value: unknown }) {
-  return (
-    <div className="min-w-0 rounded-md border border-border-subtle bg-surface">
-      <p className="border-b border-border-subtle px-2 py-1 text-[11px] text-fg-faint">
-        {label}
-      </p>
-      <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words p-2 font-mono text-[11px] leading-relaxed text-fg-muted">
-        {displayValue(value)}
-      </pre>
     </div>
   );
+}
+
+function describeEvent(
+  item: Exclude<TimelineItem, { type: "comment" }>,
+  lookups: Lookups,
+): React.ReactNode {
+  if (item.type === "created") return <>created the issue</>;
+  if (item.type === "attachment") {
+    return (
+      <>
+        attached <Token>{attachmentName(item.change.after)}</Token>
+      </>
+    );
+  }
+  return describeChange(item.change, lookups);
+}
+
+function describeChange(
+  change: IssueHistoryChange,
+  lookups: Lookups,
+): React.ReactNode {
+  switch (change.field) {
+    case "title":
+      return <>renamed the issue</>;
+    case "description":
+      return <>edited the description</>;
+    case "status": {
+      const after = formatToken(change.after);
+      return (
+        <>
+          set status to <Token>{after}</Token>
+        </>
+      );
+    }
+    case "priority": {
+      const after = formatToken(change.after);
+      return (
+        <>
+          set priority to <Token>{after}</Token>
+        </>
+      );
+    }
+    case "assignedToId": {
+      const name = resolveId(change.after, lookups.members);
+      if (!name) return <>removed the assignee</>;
+      return (
+        <>
+          assigned <Token>{name}</Token>
+        </>
+      );
+    }
+    case "projectId": {
+      const name = resolveId(change.after, lookups.projects);
+      if (!name) return <>removed the project</>;
+      return (
+        <>
+          moved to <Token>{name}</Token>
+        </>
+      );
+    }
+    case "labelIds": {
+      const before = toIdArray(change.before);
+      const after = toIdArray(change.after);
+      const added = after.filter((id) => !before.includes(id));
+      const removed = before.filter((id) => !after.includes(id));
+      const names = (ids: string[]) =>
+        ids.map((id) => lookups.labels.get(id) ?? "label").join(", ");
+      if (added.length && !removed.length)
+        return (
+          <>
+            added <Token>{names(added)}</Token>
+          </>
+        );
+      if (removed.length && !added.length)
+        return (
+          <>
+            removed <Token>{names(removed)}</Token>
+          </>
+        );
+      return <>updated labels</>;
+    }
+    case "parentId":
+      return isEmpty(change.after) ? (
+        <>removed the parent issue</>
+      ) : (
+        <>set the parent issue</>
+      );
+    default:
+      return <>updated {fieldLabel(change.field).toLowerCase()}</>;
+  }
+}
+
+function Token({ children }: { children: React.ReactNode }) {
+  return <span className="font-medium text-fg">{children}</span>;
 }
 
 function CommentComposer({
@@ -1072,9 +1210,17 @@ function CommentComposer({
   onChange: (value: string) => void;
   onSubmit: () => void;
 }) {
+  const [focused, setFocused] = useState(false);
   const empty = value.trim().length === 0;
   return (
-    <div className="flex flex-col gap-1.5">
+    <div
+      className={cn(
+        "flex flex-col gap-2 rounded-[10px] border bg-surface/30 px-3.5 py-3 transition-colors",
+        focused
+          ? "border-border bg-surface/60"
+          : "border-border-subtle hover:border-border",
+      )}
+    >
       <label className="sr-only" htmlFor="issue-comment">
         Comment
       </label>
@@ -1083,6 +1229,8 @@ function CommentComposer({
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         onKeyDown={(event) => {
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             event.preventDefault();
@@ -1091,7 +1239,7 @@ function CommentComposer({
         }}
         placeholder="Add a comment…"
         rows={2}
-        className="min-h-[44px] w-full resize-none border-0 bg-transparent p-0 text-[14px] leading-[1.65] text-fg outline-none placeholder:text-fg-faint disabled:opacity-60"
+        className="min-h-[40px] w-full resize-none border-0 bg-transparent p-0 text-[14px] leading-[1.6] text-fg outline-none placeholder:text-fg-faint disabled:opacity-60"
       />
       <div className="flex items-center justify-between gap-3">
         <span className="text-[11px] text-fg-faint">
@@ -1105,7 +1253,7 @@ function CommentComposer({
             "inline-flex h-7 items-center rounded-[6px] px-2.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed",
             empty || disabled
               ? "text-fg-faint"
-              : "text-accent hover:bg-accent/10",
+              : "bg-fg text-bg hover:bg-fg/90",
           )}
         >
           {disabled ? "Sending…" : "Reply"}
@@ -1113,6 +1261,58 @@ function CommentComposer({
       </div>
     </div>
   );
+}
+
+function isMeaningfulChange(change: IssueHistoryChange): boolean {
+  if (isEmpty(change.before) && isEmpty(change.after)) return false;
+  if (valuesEqual(change.before, change.after)) return false;
+  if (change.field === "labelIds") {
+    const before = toIdArray(change.before);
+    const after = toIdArray(change.after);
+    if (
+      before.length === after.length &&
+      before.every((id) => after.includes(id))
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isEmpty(value: unknown): boolean {
+  if (value === null || value === undefined || value === "") return true;
+  if (Array.isArray(value) && value.length === 0) return true;
+  return false;
+}
+
+function valuesEqual(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    return a.every((item, index) => item === b[index]);
+  }
+  return a === b;
+}
+
+function toIdArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((entry) => String(entry));
+}
+
+function resolveId(
+  value: unknown,
+  map: Map<string, string>,
+): string | null {
+  if (typeof value !== "string" || value.length === 0) return null;
+  return map.get(value) ?? null;
+}
+
+function formatToken(value: unknown): string {
+  if (typeof value === "string" && value.length > 0) {
+    return value
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return displayValue(value);
 }
 
 function IssueDetailSkeleton() {
@@ -1131,13 +1331,6 @@ function IssueDetailSkeleton() {
   );
 }
 
-function eventActionLabel(action: string) {
-  if (action === "created") return "created this issue";
-  if (action === "attachment_added") return "attached a file";
-  if (action === "updated") return "updated this issue";
-  return action.split("_").join(" ");
-}
-
 function fieldLabel(field: string) {
   const labels: Record<string, string> = {
     title: "Title",
@@ -1145,6 +1338,9 @@ function fieldLabel(field: string) {
     status: "Status",
     priority: "Priority",
     assignedToId: "Assignee",
+    projectId: "Project",
+    labelIds: "Labels",
+    parentId: "Parent",
     attachments: "Attachments",
   };
   return labels[field] ?? field;
@@ -1155,11 +1351,6 @@ function displayValue(value: unknown) {
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return JSON.stringify(value, null, 2);
-}
-
-function longValue(value: unknown) {
-  const displayed = displayValue(value);
-  return displayed.length > 80 || displayed.includes("\n");
 }
 
 function attachmentName(value: unknown) {

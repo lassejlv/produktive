@@ -385,6 +385,20 @@ function AppLayout() {
             <div className="flex flex-col gap-px">
               <button
                 type="button"
+                onClick={() => void navigate({ to: "/workspace" })}
+                className={cn(
+                  "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
+                  pathname === "/workspace"
+                    ? "bg-surface-2 text-fg [&_svg]:text-fg"
+                    : "text-fg-muted hover:bg-surface hover:text-fg",
+                )}
+              >
+                <OverviewIcon />
+                <span className="flex-1 truncate">Overview</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => void navigate({ to: "/issues" })}
                 className={cn(
                   "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors",
@@ -824,6 +838,49 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
         );
       })}
     </div>
+  );
+}
+
+function OverviewIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <rect
+        x="2"
+        y="2"
+        width="4"
+        height="4"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <rect
+        x="8"
+        y="2"
+        width="4"
+        height="4"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <rect
+        x="2"
+        y="8"
+        width="4"
+        height="4"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <rect
+        x="8"
+        y="8"
+        width="4"
+        height="4"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+    </svg>
   );
 }
 
