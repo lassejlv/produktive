@@ -105,6 +105,76 @@
     --color-sidebar-border: #1d1b24;
   }
 
+  /* Tokyo Night — soft navy with editor-style accents */
+  :root[data-theme="tokyo-night"] {
+    --color-bg: #1a1b26;
+    --color-surface: #1f2335;
+    --color-surface-2: #24283b;
+    --color-surface-3: #2a2e44;
+    --color-border: #2f334d;
+    --color-border-subtle: #232841;
+    --color-fg: #c0caf5;
+    --color-fg-muted: #9aa5ce;
+    --color-fg-faint: #545c7e;
+    --color-accent: #7aa2f7;
+    --color-accent-hover: #94b3f9;
+    --color-success: #9ece6a;
+    --color-warning: #e0af68;
+    --color-danger: #f7768e;
+
+    --color-background: #1a1b26;
+    --color-foreground: #c0caf5;
+    --color-card: #1f2335;
+    --color-card-foreground: #c0caf5;
+    --color-primary: #c0caf5;
+    --color-primary-foreground: #1a1b26;
+    --color-muted: #24283b;
+    --color-muted-foreground: #9aa5ce;
+    --color-accent-foreground: #1a1b26;
+    --color-input: #2f334d;
+    --color-ring: #7aa2f7;
+    --color-sidebar: #16161e;
+    --color-sidebar-foreground: #c0caf5;
+    --color-sidebar-accent: #24283b;
+    --color-sidebar-accent-foreground: #c0caf5;
+    --color-sidebar-border: #1f2030;
+  }
+
+  /* Vercel — true black with electric blue */
+  :root[data-theme="vercel"] {
+    --color-bg: #000000;
+    --color-surface: #0a0a0a;
+    --color-surface-2: #111111;
+    --color-surface-3: #1a1a1a;
+    --color-border: #2e2e2e;
+    --color-border-subtle: #1a1a1a;
+    --color-fg: #ededed;
+    --color-fg-muted: #888888;
+    --color-fg-faint: #545454;
+    --color-accent: #0070f3;
+    --color-accent-hover: #338cf5;
+    --color-success: #00ac4f;
+    --color-warning: #f5a623;
+    --color-danger: #e00000;
+
+    --color-background: #000000;
+    --color-foreground: #ededed;
+    --color-card: #0a0a0a;
+    --color-card-foreground: #ededed;
+    --color-primary: #ededed;
+    --color-primary-foreground: #000000;
+    --color-muted: #111111;
+    --color-muted-foreground: #888888;
+    --color-accent-foreground: #ffffff;
+    --color-input: #2e2e2e;
+    --color-ring: #0070f3;
+    --color-sidebar: #050505;
+    --color-sidebar-foreground: #ededed;
+    --color-sidebar-accent: #111111;
+    --color-sidebar-accent-foreground: #ededed;
+    --color-sidebar-border: #161616;
+  }
+
   /* Midnight — cobalt cool dark */
   :root[data-theme="midnight"] {
     --color-bg: #07080d;

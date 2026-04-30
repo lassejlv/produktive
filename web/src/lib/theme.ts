@@ -1,4 +1,10 @@
-export type ThemeName = "ember" | "slate" | "midnight" | "light";
+export type ThemeName =
+  | "ember"
+  | "slate"
+  | "tokyo-night"
+  | "midnight"
+  | "vercel"
+  | "light";
 
 export const THEMES: Array<{
   id: ThemeName;
@@ -22,11 +28,25 @@ export const THEMES: Array<{
     swatchAccent: "#e07a3c",
   },
   {
+    id: "tokyo-night",
+    label: "Tokyo Night",
+    hint: "Soft navy with editor accents.",
+    swatchBg: "#1a1b26",
+    swatchAccent: "#7aa2f7",
+  },
+  {
     id: "midnight",
     label: "Midnight",
     hint: "Cobalt cool dark.",
     swatchBg: "#07080d",
     swatchAccent: "#6a8cff",
+  },
+  {
+    id: "vercel",
+    label: "Vercel",
+    hint: "True black with electric blue.",
+    swatchBg: "#000000",
+    swatchAccent: "#0070f3",
   },
   {
     id: "light",
@@ -43,11 +63,20 @@ const STORAGE_KEY = "produktive-theme";
 const META_BG: Record<ThemeName, string> = {
   ember: "#0b0a0c",
   slate: "#0d0d0f",
+  "tokyo-night": "#1a1b26",
   midnight: "#07080d",
+  vercel: "#000000",
   light: "#faf7f2",
 };
 
-const VALID = new Set<ThemeName>(["ember", "slate", "midnight", "light"]);
+const VALID = new Set<ThemeName>([
+  "ember",
+  "slate",
+  "tokyo-night",
+  "midnight",
+  "vercel",
+  "light",
+]);
 
 export function readStoredTheme(): ThemeName {
   if (typeof window === "undefined") return DEFAULT_THEME;

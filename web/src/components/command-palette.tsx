@@ -178,11 +178,29 @@ export function CommandPalette() {
       },
       {
         type: "action" as const,
+        key: "theme-tokyo-night",
+        label: "Theme: Tokyo Night",
+        run: () => {
+          applyTheme("tokyo-night");
+          toast.success("Tokyo Night theme applied");
+        },
+      },
+      {
+        type: "action" as const,
         key: "theme-midnight",
         label: "Theme: Midnight (cobalt dark)",
         run: () => {
           applyTheme("midnight");
           toast.success("Midnight theme applied");
+        },
+      },
+      {
+        type: "action" as const,
+        key: "theme-vercel",
+        label: "Theme: Vercel",
+        run: () => {
+          applyTheme("vercel");
+          toast.success("Vercel theme applied");
         },
       },
       {
