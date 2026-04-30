@@ -102,9 +102,12 @@ function TabPill({
         type="button"
         onClick={onClose}
         aria-label={`Close ${tab.title}`}
+        tabIndex={hover || active ? 0 : -1}
         className={cn(
           "grid size-4 shrink-0 place-items-center rounded-[4px] text-fg-faint transition-opacity hover:bg-surface-3 hover:text-fg",
-          hover || active ? "opacity-100" : "opacity-0",
+          hover || active
+            ? "opacity-100"
+            : "pointer-events-none opacity-0",
         )}
       >
         <CloseIcon />
