@@ -452,6 +452,14 @@ export type GithubRepositoryInput = {
   importIntervalMinutes?: number;
 };
 
+export type GithubRepositoryOption = {
+  owner: string;
+  repo: string;
+  private: boolean;
+  archived: boolean;
+  fork: boolean;
+};
+
 export const getGithubConnection = () => request<GithubConnection>("/api/github/connection");
 
 export const startGithubOAuth = () =>
@@ -461,6 +469,11 @@ export const disconnectGithub = () => request<void>("/api/github/connection", { 
 
 export const listGithubRepositories = () =>
   request<{ repositories: GithubRepository[] }>("/api/github/repositories");
+
+export const searchGithubRepositories = (params: { q: string }) =>
+  request<{ repositories: GithubRepositoryOption[] }>(
+    `/api/github/repository-search?q=${encodeURIComponent(params.q)}`,
+  );
 
 export const createGithubRepository = (input: GithubRepositoryInput) =>
   request<{ repository: GithubRepository }>("/api/github/repositories", {

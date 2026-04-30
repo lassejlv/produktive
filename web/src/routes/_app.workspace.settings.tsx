@@ -8,6 +8,7 @@ import { LoadingTip } from "@/components/ui/loading-tip";
 import { AiSettings, McpTemplatesSettings } from "@/components/workspace/ai-settings";
 import { BillingSettings } from "@/components/workspace/billing-settings";
 import { DangerSettings } from "@/components/workspace/danger-settings";
+import { GithubRepoPicker } from "@/components/workspace/github-repo-picker";
 import { MembersSettings } from "@/components/workspace/members-settings";
 import { SettingRow, SettingsSkeleton } from "@/components/workspace/setting-row";
 import {
@@ -327,6 +328,19 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
     parsedInterval >= 15 &&
     busy === null;
 
+  const excludedKeys = useMemo(
+    () =>
+      new Set(
+        repositories.map((r) => `${r.owner}/${r.repo}`.toLowerCase()),
+      ),
+    [repositories],
+  );
+
+  const pickerSelection =
+    normalizedOwner.length > 0 && normalizedRepo.length > 0
+      ? { owner: normalizedOwner, repo: normalizedRepo }
+      : null;
+
   const onConnect = async () => {
     if (!canEdit) return;
     setBusy("connect");
@@ -491,24 +505,16 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
 
       <form onSubmit={(event) => void onCreateRepository(event)}>
         <SettingRow label="Add repo">
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_100px]">
-            <Input
-              value={owner}
-              onChange={(event) => {
-                setOwner(event.target.value);
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_100px]">
+            <GithubRepoPicker
+              selected={pickerSelection}
+              excludedKeys={excludedKeys}
+              disabled={inputsDisabled}
+              onSelect={({ owner: nextOwner, repo: nextRepo }) => {
+                setOwner(nextOwner);
+                setRepo(nextRepo);
                 setPreview(null);
               }}
-              placeholder="owner"
-              disabled={inputsDisabled}
-            />
-            <Input
-              value={repo}
-              onChange={(event) => {
-                setRepo(event.target.value);
-                setPreview(null);
-              }}
-              placeholder="repository"
-              disabled={inputsDisabled}
             />
             <Input
               value={intervalMinutes}

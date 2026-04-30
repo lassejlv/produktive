@@ -35,6 +35,8 @@ export const queryKeys = {
   github: {
     connection: ["github", "connection"] as const,
     repositories: ["github", "repositories"] as const,
+    repositorySearch: (q: string) =>
+      ["github", "repository-search", q] as const,
   },
   members: ["members"] as const,
   invitations: ["invitations"] as const,

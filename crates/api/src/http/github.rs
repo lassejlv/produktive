@@ -55,6 +55,7 @@ pub fn routes() -> Router<AppState> {
             post(preview_repository_import),
         )
         .route("/repositories/{id}/import", post(run_repository_import))
+        .route("/repository-search", get(search_repositories))
         .route("/import/preview", post(preview_import))
         .route("/import", post(run_import))
 }
@@ -210,6 +211,50 @@ struct GithubUser {
 struct GithubLabel {
     name: String,
     color: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchRepositoriesQuery {
+    q: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RepositoryOption {
+    owner: String,
+    repo: String,
+    private: bool,
+    archived: bool,
+    fork: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchRepositoriesResponse {
+    repositories: Vec<RepositoryOption>,
+}
+
+#[derive(Deserialize)]
+struct GithubRepoOwner {
+    login: String,
+}
+
+#[derive(Deserialize)]
+struct GithubRepoSummary {
+    name: String,
+    owner: GithubRepoOwner,
+    #[serde(default)]
+    private: bool,
+    #[serde(default)]
+    archived: bool,
+    #[serde(default)]
+    fork: bool,
+}
+
+#[derive(Deserialize)]
+struct GithubSearchEnvelope {
+    items: Vec<GithubRepoSummary>,
 }
 
 async fn get_connection(
@@ -439,6 +484,62 @@ async fn run_repository_import(
     let result = import_source(&state, &auth, &row.owner, &row.repo).await?;
     update_repository_import_state(&state, row, Ok(&result)).await?;
     Ok(Json(result))
+}
+
+async fn search_repositories(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(params): Query<SearchRepositoriesQuery>,
+) -> Result<Json<SearchRepositoriesResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    let connection = find_connection(&state, &auth.organization.id)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("Connect GitHub before searching".to_owned()))?;
+    let token = decrypt_secret(
+        &state.config.mcp_token_key(),
+        &connection.access_token_ciphertext,
+    )
+    .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?;
+    let trimmed = params.q.as_deref().map(str::trim).unwrap_or("");
+
+    let summaries: Vec<GithubRepoSummary> = if trimmed.is_empty() {
+        github_request(&token, "/user/repos")
+            .query(&[("sort", "updated"), ("per_page", "100")])
+            .send()
+            .await
+            .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?
+            .error_for_status()
+            .map_err(github_reqwest_error)?
+            .json::<Vec<GithubRepoSummary>>()
+            .await
+            .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?
+    } else {
+        let q = format!("{trimmed} user:{} fork:true", connection.github_login);
+        github_request(&token, "/search/repositories")
+            .query(&[("q", q.as_str()), ("per_page", "30")])
+            .send()
+            .await
+            .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?
+            .error_for_status()
+            .map_err(github_reqwest_error)?
+            .json::<GithubSearchEnvelope>()
+            .await
+            .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?
+            .items
+    };
+
+    let repositories = summaries
+        .into_iter()
+        .map(|summary| RepositoryOption {
+            owner: summary.owner.login,
+            repo: summary.name,
+            private: summary.private,
+            archived: summary.archived,
+            fork: summary.fork,
+        })
+        .collect();
+
+    Ok(Json(SearchRepositoriesResponse { repositories }))
 }
 
 async fn preview_import(
