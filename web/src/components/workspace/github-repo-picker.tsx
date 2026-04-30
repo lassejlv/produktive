@@ -34,35 +34,36 @@ export function GithubRepoPicker({
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [coords, setCoords] = useState<{ left: number; top: number } | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    const trimmed = query.trim();
-    const timer = setTimeout(() => setDebouncedQuery(trimmed), 200);
-    return () => clearTimeout(timer);
-  }, [query]);
+  const searchQuery = useGithubRepositorySearchQuery("", open);
 
-  const searchQuery = useGithubRepositorySearchQuery(debouncedQuery, open);
+  const trimmedQuery = query.trim();
+  const lowerQuery = trimmedQuery.toLowerCase();
 
   const visible = useMemo(() => {
     const repos = searchQuery.data ?? [];
-    return repos
+    const matched = lowerQuery
+      ? repos.filter((r) => {
+          const key = `${r.owner}/${r.repo}`.toLowerCase();
+          return key.includes(lowerQuery);
+        })
+      : repos;
+    return matched
       .filter((r) => !excludedKeys.has(`${r.owner}/${r.repo}`.toLowerCase()))
       .slice(0, MAX_RESULTS);
-  }, [searchQuery.data, excludedKeys]);
+  }, [searchQuery.data, lowerQuery, excludedKeys]);
 
-  const trimmedQuery = query.trim();
   const manualMatch =
     REPO_PATTERN.test(trimmedQuery) &&
     !visible.some(
-      (r) => `${r.owner}/${r.repo}`.toLowerCase() === trimmedQuery.toLowerCase(),
+      (r) => `${r.owner}/${r.repo}`.toLowerCase() === lowerQuery,
     ) &&
-    !excludedKeys.has(trimmedQuery.toLowerCase())
+    !excludedKeys.has(lowerQuery)
       ? trimmedQuery
       : null;
 
@@ -70,7 +71,7 @@ export function GithubRepoPicker({
 
   useEffect(() => {
     setActiveIndex(0);
-  }, [debouncedQuery, totalOptions]);
+  }, [lowerQuery, totalOptions]);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -117,7 +118,6 @@ export function GithubRepoPicker({
   useEffect(() => {
     if (!open) {
       setQuery("");
-      setDebouncedQuery("");
       return;
     }
     requestAnimationFrame(() => inputRef.current?.focus());
