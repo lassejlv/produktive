@@ -1,6 +1,5 @@
 use crate::{
     agent_tools::{self, registry},
-    ai_models::is_valid_model,
     auth::{require_auth, AuthContext},
     error::ApiError,
     mcp,
@@ -298,6 +297,8 @@ async fn resolve_model(
     auth: &AuthContext,
     requested: Option<String>,
 ) -> Result<String, ApiError> {
+    use crate::ai_models::AI_MODELS;
+
     let trimmed = requested
         .as_deref()
         .map(str::trim)
@@ -305,20 +306,19 @@ async fn resolve_model(
     let Some(value) = trimmed else {
         return Ok(state.config.ai_model.clone());
     };
-    if !is_valid_model(value) {
+    let Some(info) = AI_MODELS.iter().find(|model| model.id == value) else {
         return Ok(state.config.ai_model.clone());
+    };
+    if info.requires_pro {
+        super::billing::require_pro(state, auth)
+            .await
+            .map_err(|err| match err {
+                ApiError::Forbidden(_) => {
+                    ApiError::Forbidden("Pro plan required for this model".to_owned())
+                }
+                other => other,
+            })?;
     }
-    if value == state.config.ai_model {
-        return Ok(value.to_owned());
-    }
-    super::billing::require_pro(state, auth)
-        .await
-        .map_err(|err| match err {
-            ApiError::Forbidden(_) => {
-                ApiError::Forbidden("Pro plan required to switch models".to_owned())
-            }
-            other => other,
-        })?;
     Ok(value.to_owned())
 }
 

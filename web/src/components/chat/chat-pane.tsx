@@ -79,14 +79,16 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
 
   useEffect(() => {
     if (availableModels.length === 0) return;
-    if (
-      selectedModel &&
-      availableModels.some((entry) => entry.id === selectedModel)
-    ) {
-      return;
-    }
+    const current = selectedModel
+      ? availableModels.find((entry) => entry.id === selectedModel)
+      : null;
+    const isUsable = current && (!current.requiresPro || isPro);
+    if (isUsable) return;
     setSelectedModel(defaultModelId);
-  }, [availableModels, defaultModelId, selectedModel]);
+    if (typeof window !== "undefined" && defaultModelId) {
+      window.localStorage.setItem(MODEL_STORAGE_KEY, defaultModelId);
+    }
+  }, [availableModels, defaultModelId, selectedModel, isPro]);
 
   const handleModelChange = (modelId: string) => {
     const next = availableModels.find((entry) => entry.id === modelId);

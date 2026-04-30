@@ -32,6 +32,3 @@ pub const AI_MODELS: &[AiModelInfo] = &[
     },
 ];
 
-pub fn is_valid_model(id: &str) -> bool {
-    AI_MODELS.iter().any(|model| model.id == id)
-}
