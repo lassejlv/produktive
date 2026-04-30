@@ -28,6 +28,7 @@ pub struct Config {
     pub polar_pro_product_id: String,
     pub polar_webhook_secret: String,
     pub mcp_token_encryption_key: Option<String>,
+    pub enable_dev_triggers: bool,
     pub storage: Option<StorageConfig>,
 }
 
@@ -91,6 +92,9 @@ impl Config {
             polar_webhook_secret: required_env("POLAR_WEBHOOK_SECRET")
                 .context("POLAR_WEBHOOK_SECRET is required")?,
             mcp_token_encryption_key: optional_env("MCP_TOKEN_ENCRYPTION_KEY"),
+            enable_dev_triggers: env_or_default("ENABLE_DEV_TRIGGERS", "false")
+                .parse()
+                .context("ENABLE_DEV_TRIGGERS must be true or false")?,
             storage: StorageConfig::from_env()?,
         })
     }

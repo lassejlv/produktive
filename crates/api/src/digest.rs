@@ -1,7 +1,10 @@
 use crate::{
     email::{send_progress_digest_email, ProgressDigest},
+    error::ApiError,
+    http::preferences::for_user as prefs_for_user,
     state::AppState,
 };
+use serde::Serialize;
 use chrono::{DateTime, Datelike, Duration, FixedOffset, TimeZone, Utc};
 use hmac::{Hmac, Mac};
 use produktive_entity::{
@@ -393,3 +396,114 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriggerOutcome {
+    pub sent: bool,
+    pub reason: Option<&'static str>,
+    pub sent_to: Option<String>,
+    pub org_name: Option<String>,
+    pub closed: usize,
+    pub on_plate: usize,
+    pub comments: usize,
+    pub touched: usize,
+}
+
+/// Force-send a progress digest for a single user, bypassing scheduling and
+/// opt-out checks. Used by the dev trigger endpoint. Always advances the
+/// `last_progress_email_at` and `next_progress_email_at` columns to keep the
+/// scheduler's view consistent with reality.
+pub async fn trigger_for_user(
+    state: &AppState,
+    user_id: &str,
+) -> Result<TriggerOutcome, ApiError> {
+    let prefs = prefs_for_user(state, user_id).await?;
+
+    let user = user::Entity::find_by_id(user_id).one(&state.db).await?;
+    let user = match user {
+        Some(value) => value,
+        None => {
+            return Ok(TriggerOutcome {
+                sent: false,
+                reason: Some("user not found"),
+                sent_to: None,
+                org_name: None,
+                closed: 0,
+                on_plate: 0,
+                comments: 0,
+                touched: 0,
+            });
+        }
+    };
+
+    let org_id = match resolve_org(&state.db, user_id).await? {
+        Some(id) => id,
+        None => {
+            return Ok(TriggerOutcome {
+                sent: false,
+                reason: Some("user has no active session and no org membership"),
+                sent_to: Some(user.email),
+                org_name: None,
+                closed: 0,
+                on_plate: 0,
+                comments: 0,
+                touched: 0,
+            });
+        }
+    };
+
+    let now = Utc::now().fixed_offset();
+    let since = prefs
+        .last_progress_email_at
+        .unwrap_or(now - Duration::days(DEFAULT_LOOKBACK_DAYS));
+    let aggregated = aggregate_progress(&state.db, user_id, &org_id, since).await?;
+
+    let org = organization::Entity::find_by_id(&org_id).one(&state.db).await?;
+    let org_name = org
+        .map(|o| o.name)
+        .unwrap_or_else(|| "your workspace".into());
+
+    let settings_url = format!("{}/account", state.config.app_url);
+    let unsubscribe_url = build_unsubscribe_url(state, user_id);
+
+    let digest = ProgressDigest {
+        closed_count: aggregated.closed_count,
+        closed_titles: &aggregated.closed_titles,
+        plate_count: aggregated.plate_count,
+        plate_titles: &aggregated.plate_titles,
+        comments_posted: aggregated.comments_posted,
+        issues_touched: aggregated.issues_touched,
+    };
+
+    send_progress_digest_email(
+        state,
+        &user.email,
+        &user.name,
+        &org_name,
+        &digest,
+        &settings_url,
+        &unsubscribe_url,
+    )
+    .await?;
+
+    let mut active = prefs.into_active_model();
+    active.last_progress_email_at = Set(Some(now));
+    active.next_progress_email_at = Set(Some(jitter_future(
+        now,
+        NEXT_SEND_DAYS_MIN,
+        NEXT_SEND_DAYS_MAX,
+    )));
+    active.updated_at = Set(now);
+    active.update(&state.db).await?;
+
+    Ok(TriggerOutcome {
+        sent: true,
+        reason: None,
+        sent_to: Some(user.email),
+        org_name: Some(org_name),
+        closed: aggregated.closed_count,
+        on_plate: aggregated.plate_count,
+        comments: aggregated.comments_posted,
+        touched: aggregated.issues_touched,
+    })
+}
