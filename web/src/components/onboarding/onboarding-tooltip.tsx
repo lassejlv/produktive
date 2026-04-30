@@ -7,6 +7,7 @@ export type OnboardingTooltipProps = {
   total: number;
   title: string;
   body: string;
+  link?: { url: string; label: string };
   ctaLabel?: string;
   onBack: () => void;
   onNext: () => void;
@@ -19,6 +20,7 @@ export function OnboardingTooltip({
   total,
   title,
   body,
+  link,
   ctaLabel,
   onBack,
   onNext,
@@ -73,6 +75,18 @@ export function OnboardingTooltip({
       >
         {body}
       </p>
+
+      {link ? (
+        <a
+          href={link.url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex w-fit items-center gap-1 text-[12.5px] text-accent transition-colors hover:text-fg"
+        >
+          {link.label}
+          <span aria-hidden>↗</span>
+        </a>
+      ) : null}
 
       <div className="flex items-center justify-between gap-3 pt-1">
         <div className="flex items-center gap-1.5" aria-hidden>

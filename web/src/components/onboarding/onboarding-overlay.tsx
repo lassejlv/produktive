@@ -33,6 +33,7 @@ export function OnboardingOverlay() {
     total: onboarding.totalSteps,
     title: onboarding.step.title,
     body: onboarding.step.body,
+    link: onboarding.step.link,
     ctaLabel: onboarding.step.ctaLabel,
     onBack: onboarding.back,
     onNext: onboarding.next,

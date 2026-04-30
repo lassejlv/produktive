@@ -6,6 +6,7 @@ export type StepId =
   | "issue-detail"
   | "fields"
   | "project-switcher"
+  | "github-sync"
   | "done";
 
 export type SignalName = "issue-created" | "priority-or-assignee-changed";
@@ -17,6 +18,7 @@ export type OnboardingStep = {
   target: string | null;
   title: string;
   body: string;
+  link?: { url: string; label: string };
   placement?: "top" | "bottom" | "left" | "right";
   await: AwaitMode;
   ctaLabel?: string;
@@ -90,10 +92,21 @@ export const STEPS: OnboardingStep[] = [
     await: "next",
   },
   {
+    id: "github-sync",
+    target: null,
+    title: "Sync from GitHub",
+    body: "Already tracking issues elsewhere? Connect a repo from Workspace settings → GitHub to import existing issues and keep them in sync automatically.",
+    await: "next",
+  },
+  {
     id: "done",
     target: null,
     title: "You're all set 🎉",
-    body: "You now know the basics of Produktive. Have fun shipping.",
+    body: "You now know the basics of Produktive. It's also fully open source — contributions, issues, and stars are all welcome.",
+    link: {
+      url: "https://github.com/lassejlv/produktive",
+      label: "View on GitHub",
+    },
     await: "next",
     ctaLabel: "Start working",
   },
