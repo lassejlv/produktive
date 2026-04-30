@@ -14,18 +14,23 @@ import {
   type Invitation,
   type GithubConnection,
   type GithubImportPreview,
+  type GithubRepository,
   type McpApiKey,
   type Member,
   createMcpApiKey,
+  createGithubRepository,
+  deleteGithubRepository,
   disconnectGithub,
   getGithubConnection,
-  importGithubIssues,
+  importGithubRepositoryIssues,
+  listGithubRepositories,
   listMcpApiKeys,
   listInvitations,
   listMembers,
-  previewGithubImport,
+  previewGithubRepositoryImport,
   revokeMcpApiKey,
   startGithubOAuth,
+  updateGithubRepository,
 } from "@/lib/api";
 import { refreshSession, updateActiveOrganization, useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
@@ -264,11 +269,15 @@ function WorkspaceSettingsPage() {
 
 function GithubSettings({ canEdit }: { canEdit: boolean }) {
   const [connection, setConnection] = useState<GithubConnection | null>(null);
+  const [repositories, setRepositories] = useState<GithubRepository[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [owner, setOwner] = useState("");
   const [repo, setRepo] = useState("");
+  const [intervalMinutes, setIntervalMinutes] = useState("360");
+  const [autoImportEnabled, setAutoImportEnabled] = useState(false);
   const [preview, setPreview] = useState<GithubImportPreview | null>(null);
+  const [previewRepoId, setPreviewRepoId] = useState<string | null>(null);
   const { confirm, dialog } = useConfirmDialog();
 
   useEffect(() => {
@@ -284,12 +293,14 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
 
   useEffect(() => {
     let mounted = true;
-    void getGithubConnection()
-      .then((response) => {
-        if (mounted) setConnection(response);
+    void Promise.all([getGithubConnection(), listGithubRepositories()])
+      .then(([connectionResponse, repositoriesResponse]) => {
+        if (!mounted) return;
+        setConnection(connectionResponse);
+        setRepositories(repositoriesResponse.repositories);
       })
       .catch((error) => {
-        toast.error(error instanceof Error ? error.message : "Failed to load GitHub connection");
+        toast.error(error instanceof Error ? error.message : "Failed to load GitHub settings");
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -301,11 +312,14 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
 
   const normalizedOwner = owner.trim();
   const normalizedRepo = repo.trim();
-  const canImport =
+  const parsedInterval = Number.parseInt(intervalMinutes, 10);
+  const canCreateRepository =
     canEdit &&
     connection?.connected &&
     normalizedOwner.length > 0 &&
     normalizedRepo.length > 0 &&
+    Number.isFinite(parsedInterval) &&
+    parsedInterval >= 15 &&
     busy === null;
 
   const onConnect = async () => {
@@ -333,6 +347,7 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
           await disconnectGithub();
           setConnection({ connected: false, login: null, scope: null, connectedAt: null });
           setPreview(null);
+          setPreviewRepoId(null);
           toast.success("GitHub disconnected");
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "Failed to disconnect GitHub");
@@ -343,31 +358,54 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
     });
   };
 
-  const onPreview = async () => {
-    if (!canImport) return;
-    setBusy("preview");
+  const onCreateRepository = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canCreateRepository) return;
+    setBusy("create-repository");
     try {
-      const response = await previewGithubImport({
+      const response = await createGithubRepository({
         owner: normalizedOwner,
         repo: normalizedRepo,
+        autoImportEnabled,
+        importIntervalMinutes: parsedInterval,
       });
+      setRepositories((current) => [response.repository, ...current]);
+      setOwner("");
+      setRepo("");
+      setPreview(null);
+      setPreviewRepoId(null);
+      toast.success("GitHub repository added");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to add GitHub repository");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onPreview = async (repository: GithubRepository) => {
+    if (!canEdit || busy !== null) return;
+    setBusy(`preview:${repository.id}`);
+    try {
+      const response = await previewGithubRepositoryImport(repository.id);
       setPreview(response);
+      setPreviewRepoId(repository.id);
     } catch (error) {
       setPreview(null);
+      setPreviewRepoId(null);
       toast.error(error instanceof Error ? error.message : "Failed to preview import");
     } finally {
       setBusy(null);
     }
   };
 
-  const onImport = async () => {
-    if (!canImport) return;
-    setBusy("import");
+  const onImport = async (repository: GithubRepository) => {
+    if (!canEdit || busy !== null) return;
+    setBusy(`import:${repository.id}`);
     try {
-      const result = await importGithubIssues({
-        owner: normalizedOwner,
-        repo: normalizedRepo,
-      });
+      const result = await importGithubRepositoryIssues(repository.id);
+      const refreshed = await listGithubRepositories();
+      setRepositories(refreshed.repositories);
+      setPreviewRepoId(null);
       setPreview(null);
       toast.success(`Imported ${result.imported}, updated ${result.updated}`);
     } catch (error) {
@@ -375,6 +413,54 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
     } finally {
       setBusy(null);
     }
+  };
+
+  const onUpdateRepository = async (
+    repository: GithubRepository,
+    patch: {
+      autoImportEnabled?: boolean;
+      importIntervalMinutes?: number;
+    },
+  ) => {
+    if (!canEdit || busy !== null) return;
+    setBusy(`update:${repository.id}`);
+    try {
+      const response = await updateGithubRepository(repository.id, patch);
+      setRepositories((current) =>
+        current.map((item) => (item.id === repository.id ? response.repository : item)),
+      );
+      toast.success("GitHub repository updated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update repository");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onDeleteRepository = (repository: GithubRepository) => {
+    if (!canEdit) return;
+    confirm({
+      title: `Remove ${repository.owner}/${repository.repo}?`,
+      description: "Imported Produktive issues stay in the workspace, but this repo stops syncing.",
+      confirmLabel: "Remove repository",
+      destructive: true,
+      onConfirm: async () => {
+        setBusy(`delete:${repository.id}`);
+        try {
+          await deleteGithubRepository(repository.id);
+          setRepositories((current) => current.filter((item) => item.id !== repository.id));
+          if (previewRepoId === repository.id) {
+            setPreview(null);
+            setPreviewRepoId(null);
+          }
+          toast.success("GitHub repository removed");
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Failed to remove repository");
+        } finally {
+          setBusy(null);
+        }
+      },
+    });
   };
 
   if (loading) {
@@ -403,73 +489,86 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
         )}
       </SettingRow>
 
-      <SettingRow label="Owner">
-        <Input
-          value={owner}
-          onChange={(event) => {
-            setOwner(event.target.value);
-            setPreview(null);
-          }}
-          placeholder="owner"
-          disabled={inputsDisabled}
-        />
-      </SettingRow>
-
-      <SettingRow label="Repository">
-        <Input
-          value={repo}
-          onChange={(event) => {
-            setRepo(event.target.value);
-            setPreview(null);
-          }}
-          placeholder="repository"
-          disabled={inputsDisabled}
-        />
-      </SettingRow>
-
-      {preview ? (
-        <SettingRow label="Preview">
-          <span className="text-fg">{preview.total} issues</span>
-          <div className="mt-0.5 text-[12px] text-fg-muted">
-            {preview.newIssues} new · {preview.updateIssues} updates · {preview.labels} labels ·{" "}
-            {preview.skippedPullRequests} PRs skipped
+      <form onSubmit={(event) => void onCreateRepository(event)}>
+        <SettingRow label="Add repo">
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_100px]">
+            <Input
+              value={owner}
+              onChange={(event) => {
+                setOwner(event.target.value);
+                setPreview(null);
+              }}
+              placeholder="owner"
+              disabled={inputsDisabled}
+            />
+            <Input
+              value={repo}
+              onChange={(event) => {
+                setRepo(event.target.value);
+                setPreview(null);
+              }}
+              placeholder="repository"
+              disabled={inputsDisabled}
+            />
+            <Input
+              value={intervalMinutes}
+              onChange={(event) => setIntervalMinutes(event.target.value)}
+              inputMode="numeric"
+              placeholder="min"
+              aria-label="Auto import interval in minutes"
+              disabled={inputsDisabled}
+            />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-3 text-[11.5px] text-fg-faint">
+            <label className="inline-flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={autoImportEnabled}
+                disabled={inputsDisabled}
+                onChange={(event) => setAutoImportEnabled(event.target.checked)}
+                className="h-3.5 w-3.5 accent-fg"
+              />
+              Auto import
+            </label>
+            <Button type="submit" size="sm" disabled={!canCreateRepository}>
+              {busy === "create-repository" ? "Adding…" : "Add"}
+            </Button>
           </div>
         </SettingRow>
-      ) : null}
+      </form>
+
+      {repositories.length === 0 ? (
+        <SettingRow label="Repositories">
+          <span className="text-fg-muted">No repositories added.</span>
+        </SettingRow>
+      ) : (
+        repositories.map((repository) => (
+          <GithubRepositoryRow
+            key={repository.id}
+            repository={repository}
+            canEdit={canEdit}
+            busy={busy}
+            preview={previewRepoId === repository.id ? preview : null}
+            onPreview={onPreview}
+            onImport={onImport}
+            onUpdate={onUpdateRepository}
+            onDelete={onDeleteRepository}
+          />
+        ))
+      )}
 
       {canEdit ? (
         <div className="flex flex-wrap justify-end gap-2 pt-4">
           {connection?.connected ? (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={busy !== null}
-                onClick={onDisconnect}
-              >
-                {busy === "disconnect" ? "Disconnecting…" : "Disconnect"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!canImport}
-                onClick={() => void onPreview()}
-              >
-                {busy === "preview" ? "Previewing…" : "Preview"}
-              </Button>
-              {preview ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!canImport}
-                  onClick={() => void onImport()}
-                >
-                  {busy === "import" ? "Importing…" : "Import"}
-                </Button>
-              ) : null}
-            </>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy !== null}
+              onClick={onDisconnect}
+            >
+              {busy === "disconnect" ? "Disconnecting…" : "Disconnect"}
+            </Button>
           ) : (
             <Button
               type="button"
@@ -482,6 +581,139 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
           )}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function GithubRepositoryRow({
+  repository,
+  canEdit,
+  busy,
+  preview,
+  onPreview,
+  onImport,
+  onUpdate,
+  onDelete,
+}: {
+  repository: GithubRepository;
+  canEdit: boolean;
+  busy: string | null;
+  preview: GithubImportPreview | null;
+  onPreview: (repository: GithubRepository) => void;
+  onImport: (repository: GithubRepository) => void;
+  onUpdate: (
+    repository: GithubRepository,
+    patch: { autoImportEnabled?: boolean; importIntervalMinutes?: number },
+  ) => void;
+  onDelete: (repository: GithubRepository) => void;
+}) {
+  const [intervalDraft, setIntervalDraft] = useState(String(repository.importIntervalMinutes));
+
+  useEffect(() => {
+    setIntervalDraft(String(repository.importIntervalMinutes));
+  }, [repository.importIntervalMinutes]);
+
+  const parsedInterval = Number.parseInt(intervalDraft, 10);
+  const intervalValid = Number.isFinite(parsedInterval) && parsedInterval >= 15;
+  const intervalDirty = parsedInterval !== repository.importIntervalMinutes;
+
+  const statusLabel = repository.lastImportStatus === "error"
+    ? "Error"
+    : repository.autoImportEnabled
+      ? "Auto"
+      : "Manual";
+
+  return (
+    <div className="grid gap-2 border-b border-border-subtle py-3 text-[13px] md:grid-cols-[140px_minmax(0,1fr)]">
+      <div className="text-fg-faint">{statusLabel}</div>
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-mono text-fg">
+            {repository.owner}/{repository.repo}
+          </div>
+          <div className="mt-0.5 text-[11.5px] text-fg-faint">
+            {repository.lastImportedAt
+              ? `Last import ${formatDate(repository.lastImportedAt)}`
+              : "Never imported"}
+            {repository.nextImportAt && repository.autoImportEnabled
+              ? ` · Next ${formatDate(repository.nextImportAt)}`
+              : ""}
+          </div>
+          {repository.lastImportStatus === "error" && repository.lastImportError ? (
+            <div className="mt-0.5 text-[11.5px] text-danger">{repository.lastImportError}</div>
+          ) : null}
+          {preview ? (
+            <div className="mt-1 text-[11.5px] text-fg-muted">
+              {preview.total} issues · {preview.newIssues} new · {preview.updateIssues} updates ·{" "}
+              {preview.labels} labels · {preview.skippedPullRequests} PRs skipped
+            </div>
+          ) : null}
+          <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[11.5px] text-fg-faint">
+            <label className="inline-flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={repository.autoImportEnabled}
+                disabled={!canEdit || busy !== null}
+                onChange={(event) =>
+                  onUpdate(repository, { autoImportEnabled: event.target.checked })
+                }
+                className="h-3.5 w-3.5 accent-fg"
+              />
+              Auto import
+            </label>
+            <span className="inline-flex items-center gap-1.5">
+              <Input
+                value={intervalDraft}
+                onChange={(event) => setIntervalDraft(event.target.value)}
+                inputMode="numeric"
+                disabled={!canEdit || busy !== null}
+                aria-label={`Import interval for ${repository.owner}/${repository.repo}`}
+                className="h-7 w-16"
+              />
+              min
+              {intervalDirty ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={!canEdit || busy !== null || !intervalValid}
+                  onClick={() => onUpdate(repository, { importIntervalMinutes: parsedInterval })}
+                >
+                  {busy === `update:${repository.id}` ? "Saving…" : "Save"}
+                </Button>
+              ) : null}
+            </span>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!canEdit || busy !== null}
+            onClick={() => onPreview(repository)}
+          >
+            {busy === `preview:${repository.id}` ? "Previewing…" : "Preview"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!canEdit || busy !== null}
+            onClick={() => onImport(repository)}
+          >
+            {busy === `import:${repository.id}` ? "Importing…" : "Import"}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={!canEdit || busy !== null}
+            onClick={() => onDelete(repository)}
+          >
+            {busy === `delete:${repository.id}` ? "Removing…" : "Remove"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

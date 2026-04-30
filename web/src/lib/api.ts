@@ -428,12 +428,64 @@ export type GithubImportResult = {
   labels: number;
 };
 
+export type GithubRepository = {
+  id: string;
+  owner: string;
+  repo: string;
+  autoImportEnabled: boolean;
+  importIntervalMinutes: number;
+  lastImportedAt: string | null;
+  nextImportAt: string | null;
+  lastImportStatus: string | null;
+  lastImportError: string | null;
+  lastImportedCount: number;
+  lastUpdatedCount: number;
+  lastSkippedCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GithubRepositoryInput = {
+  owner: string;
+  repo: string;
+  autoImportEnabled?: boolean;
+  importIntervalMinutes?: number;
+};
+
 export const getGithubConnection = () => request<GithubConnection>("/api/github/connection");
 
 export const startGithubOAuth = () =>
   request<{ url: string }>("/api/github/oauth/start", { method: "POST" });
 
 export const disconnectGithub = () => request<void>("/api/github/connection", { method: "DELETE" });
+
+export const listGithubRepositories = () =>
+  request<{ repositories: GithubRepository[] }>("/api/github/repositories");
+
+export const createGithubRepository = (input: GithubRepositoryInput) =>
+  request<{ repository: GithubRepository }>("/api/github/repositories", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const updateGithubRepository = (id: string, patch: Partial<GithubRepositoryInput>) =>
+  request<{ repository: GithubRepository }>(`/api/github/repositories/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+
+export const deleteGithubRepository = (id: string) =>
+  request<void>(`/api/github/repositories/${id}`, { method: "DELETE" });
+
+export const previewGithubRepositoryImport = (id: string) =>
+  request<GithubImportPreview>(`/api/github/repositories/${id}/preview`, {
+    method: "POST",
+  });
+
+export const importGithubRepositoryIssues = (id: string) =>
+  request<GithubImportResult>(`/api/github/repositories/${id}/import`, {
+    method: "POST",
+  });
 
 export const previewGithubImport = (input: { owner: string; repo: string }) =>
   request<GithubImportPreview>("/api/github/import/preview", {

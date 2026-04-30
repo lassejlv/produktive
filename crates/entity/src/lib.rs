@@ -5,6 +5,7 @@ pub mod favorite;
 pub mod github_connection;
 pub mod github_imported_issue;
 pub mod github_oauth_state;
+pub mod github_repository;
 pub mod invitation;
 pub mod issue;
 pub mod issue_comment;

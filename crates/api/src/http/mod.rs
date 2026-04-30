@@ -25,7 +25,7 @@ pub use billing::routes as billing_routes;
 pub use chats::routes as chat_routes;
 pub use cors::cors_layer;
 pub use favorites::routes as favorite_routes;
-pub use github::routes as github_routes;
+pub use github::{routes as github_routes, spawn_auto_importer as spawn_github_auto_importer};
 pub use inbox::routes as inbox_routes;
 pub use invitations::{org_routes as org_invitation_routes, public_routes as invitation_routes};
 pub use issues::routes as issue_routes;

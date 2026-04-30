@@ -6,7 +6,7 @@ use crate::{
     state::AppState,
 };
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::Redirect,
     routing::{get, post},
@@ -15,11 +15,13 @@ use axum::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use produktive_entity::{
-    github_connection, github_imported_issue, github_oauth_state, issue, label, member,
+    github_connection, github_imported_issue, github_oauth_state, github_repository, issue, label,
+    member, user,
 };
 use reqwest::header::{HeaderMap as ReqwestHeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter,
+    QueryOrder, Set, TryIntoModel,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -31,14 +33,43 @@ const GITHUB_AUTH_URL: &str = "https://github.com/login/oauth/authorize";
 const GITHUB_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 const GITHUB_API_VERSION: &str = "2026-03-10";
 const GITHUB_SCOPE: &str = "repo";
+const MIN_IMPORT_INTERVAL_MINUTES: i32 = 15;
+const DEFAULT_IMPORT_INTERVAL_MINUTES: i32 = 360;
+const AUTO_IMPORT_TICK_SECONDS: u64 = 60;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/connection", get(get_connection).delete(delete_connection))
         .route("/oauth/start", post(start_oauth))
         .route("/oauth/callback", get(oauth_callback))
+        .route(
+            "/repositories",
+            get(list_repositories).post(create_repository),
+        )
+        .route(
+            "/repositories/{id}",
+            axum::routing::patch(update_repository).delete(delete_repository),
+        )
+        .route(
+            "/repositories/{id}/preview",
+            post(preview_repository_import),
+        )
+        .route("/repositories/{id}/import", post(run_repository_import))
         .route("/import/preview", post(preview_import))
         .route("/import", post(run_import))
+}
+
+pub fn spawn_auto_importer(state: AppState) {
+    tokio::spawn(async move {
+        let mut ticker =
+            tokio::time::interval(std::time::Duration::from_secs(AUTO_IMPORT_TICK_SECONDS));
+        loop {
+            ticker.tick().await;
+            if let Err(error) = run_due_auto_imports(&state).await {
+                tracing::warn!(%error, "github auto import tick failed");
+            }
+        }
+    });
 }
 
 #[derive(Serialize)]
@@ -70,6 +101,55 @@ struct ImportRequest {
     repo: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RepositoryRequest {
+    owner: String,
+    repo: String,
+    auto_import_enabled: Option<bool>,
+    import_interval_minutes: Option<i32>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RepositoryPatchRequest {
+    owner: Option<String>,
+    repo: Option<String>,
+    auto_import_enabled: Option<bool>,
+    import_interval_minutes: Option<i32>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RepositoryListResponse {
+    repositories: Vec<RepositoryResponse>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RepositoryEnvelope {
+    repository: RepositoryResponse,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RepositoryResponse {
+    id: String,
+    owner: String,
+    repo: String,
+    auto_import_enabled: bool,
+    import_interval_minutes: i32,
+    last_imported_at: Option<String>,
+    next_import_at: Option<String>,
+    last_import_status: Option<String>,
+    last_import_error: Option<String>,
+    last_imported_count: i32,
+    last_updated_count: i32,
+    last_skipped_count: i32,
+    created_at: String,
+    updated_at: String,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ImportPreviewResponse {
@@ -82,7 +162,7 @@ struct ImportPreviewResponse {
     labels: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ImportResponse {
     owner: String,
@@ -160,7 +240,7 @@ async fn start_oauth(
 ) -> Result<Json<OAuthStartResponse>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     require_owner(&state, &auth).await?;
-    let client_id = github_client_id(&state)?;
+    let client_id = github_client_id()?;
     let state_value = Uuid::new_v4().to_string();
     let code_verifier = pkce_code_verifier();
     let redirect_uri = github_redirect_uri(&state);
@@ -234,6 +314,133 @@ async fn oauth_callback(
     )))
 }
 
+async fn list_repositories(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<RepositoryListResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    let rows = github_repository::Entity::find()
+        .filter(github_repository::Column::OrganizationId.eq(&auth.organization.id))
+        .order_by_asc(github_repository::Column::Owner)
+        .order_by_asc(github_repository::Column::Repo)
+        .all(&state.db)
+        .await?;
+    Ok(Json(RepositoryListResponse {
+        repositories: rows.into_iter().map(repository_response).collect(),
+    }))
+}
+
+async fn create_repository(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<RepositoryRequest>,
+) -> Result<(StatusCode, Json<RepositoryEnvelope>), ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    require_owner(&state, &auth).await?;
+    let (owner, repo) = normalize_owner_repo(&payload.owner, &payload.repo)?;
+    ensure_unique_repository(&state, &auth.organization.id, &owner, &repo, None).await?;
+    let interval = normalize_interval(payload.import_interval_minutes)?;
+    let auto_import_enabled = payload.auto_import_enabled.unwrap_or(false);
+    let now = now();
+    let row = github_repository::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        organization_id: Set(auth.organization.id),
+        owner: Set(owner),
+        repo: Set(repo),
+        auto_import_enabled: Set(auto_import_enabled),
+        import_interval_minutes: Set(interval),
+        last_imported_at: Set(None),
+        next_import_at: Set(if auto_import_enabled { Some(now) } else { None }),
+        last_import_status: Set(None),
+        last_import_error: Set(None),
+        last_imported_count: Set(0),
+        last_updated_count: Set(0),
+        last_skipped_count: Set(0),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(&state.db)
+    .await?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(RepositoryEnvelope {
+            repository: repository_response(row),
+        }),
+    ))
+}
+
+async fn update_repository(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(payload): Json<RepositoryPatchRequest>,
+) -> Result<Json<RepositoryEnvelope>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    require_owner(&state, &auth).await?;
+    let row = find_repository(&state, &auth.organization.id, &id).await?;
+    let mut active = row.clone().into_active_model();
+    let next_owner = payload.owner.as_deref().unwrap_or(&row.owner);
+    let next_repo = payload.repo.as_deref().unwrap_or(&row.repo);
+    let (owner, repo) = normalize_owner_repo(next_owner, next_repo)?;
+    if owner != row.owner || repo != row.repo {
+        ensure_unique_repository(&state, &auth.organization.id, &owner, &repo, Some(&id)).await?;
+        active.owner = Set(owner);
+        active.repo = Set(repo);
+        active.last_import_status = Set(None);
+        active.last_import_error = Set(None);
+        active.last_imported_at = Set(None);
+    }
+    if let Some(interval) = payload.import_interval_minutes {
+        active.import_interval_minutes = Set(normalize_interval(Some(interval))?);
+    }
+    if let Some(enabled) = payload.auto_import_enabled {
+        active.auto_import_enabled = Set(enabled);
+        active.next_import_at = Set(if enabled { Some(now()) } else { None });
+    }
+    active.updated_at = Set(now());
+    let updated = active.update(&state.db).await?;
+    Ok(Json(RepositoryEnvelope {
+        repository: repository_response(updated),
+    }))
+}
+
+async fn delete_repository(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    require_owner(&state, &auth).await?;
+    let row = find_repository(&state, &auth.organization.id, &id).await?;
+    row.delete(&state.db).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn preview_repository_import(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ImportPreviewResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    require_owner(&state, &auth).await?;
+    let row = find_repository(&state, &auth.organization.id, &id).await?;
+    preview_import_for_source(&state, &auth.organization.id, &row.owner, &row.repo).await
+}
+
+async fn run_repository_import(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<ImportResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    require_owner(&state, &auth).await?;
+    let row = find_repository(&state, &auth.organization.id, &id).await?;
+    let result = import_source(&state, &auth, &row.owner, &row.repo).await?;
+    update_repository_import_state(&state, row, Ok(&result)).await?;
+    Ok(Json(result))
+}
+
 async fn preview_import(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -242,32 +449,7 @@ async fn preview_import(
     let auth = require_auth(&headers, &state).await?;
     require_owner(&state, &auth).await?;
     let (owner, repo) = normalize_repo(payload)?;
-    let token = load_access_token(&state, &auth.organization.id).await?;
-    let (issues, skipped_pull_requests) = fetch_repo_issues(&token, &owner, &repo).await?;
-    let mappings = github_imported_issue::Entity::find()
-        .filter(github_imported_issue::Column::OrganizationId.eq(&auth.organization.id))
-        .filter(github_imported_issue::Column::Owner.eq(&owner))
-        .filter(github_imported_issue::Column::Repo.eq(&repo))
-        .all(&state.db)
-        .await?;
-    let existing_numbers: std::collections::HashSet<i32> = mappings
-        .into_iter()
-        .map(|mapping| mapping.github_issue_number)
-        .collect();
-    let labels = unique_label_names(&issues).len();
-    let update_issues = issues
-        .iter()
-        .filter(|issue| existing_numbers.contains(&issue.number))
-        .count();
-    Ok(Json(ImportPreviewResponse {
-        owner,
-        repo,
-        total: issues.len(),
-        new_issues: issues.len().saturating_sub(update_issues),
-        update_issues,
-        skipped_pull_requests,
-        labels,
-    }))
+    preview_import_for_source(&state, &auth.organization.id, &owner, &repo).await
 }
 
 async fn run_import(
@@ -278,14 +460,56 @@ async fn run_import(
     let auth = require_auth(&headers, &state).await?;
     require_owner(&state, &auth).await?;
     let (owner, repo) = normalize_repo(payload)?;
-    let token = load_access_token(&state, &auth.organization.id).await?;
-    let (issues, skipped_pull_requests) = fetch_repo_issues(&token, &owner, &repo).await?;
+    Ok(Json(import_source(&state, &auth, &owner, &repo).await?))
+}
+
+async fn preview_import_for_source(
+    state: &AppState,
+    organization_id: &str,
+    owner: &str,
+    repo: &str,
+) -> Result<Json<ImportPreviewResponse>, ApiError> {
+    let token = load_access_token(state, organization_id).await?;
+    let (issues, skipped_pull_requests) = fetch_repo_issues(&token, owner, repo).await?;
+    let mappings = github_imported_issue::Entity::find()
+        .filter(github_imported_issue::Column::OrganizationId.eq(organization_id))
+        .filter(github_imported_issue::Column::Owner.eq(owner))
+        .filter(github_imported_issue::Column::Repo.eq(repo))
+        .all(&state.db)
+        .await?;
+    let existing_numbers: std::collections::HashSet<i32> = mappings
+        .into_iter()
+        .map(|mapping| mapping.github_issue_number)
+        .collect();
+    let update_issues = issues
+        .iter()
+        .filter(|issue| existing_numbers.contains(&issue.number))
+        .count();
+    Ok(Json(ImportPreviewResponse {
+        owner: owner.to_owned(),
+        repo: repo.to_owned(),
+        total: issues.len(),
+        new_issues: issues.len().saturating_sub(update_issues),
+        update_issues,
+        skipped_pull_requests,
+        labels: unique_label_names(&issues).len(),
+    }))
+}
+
+async fn import_source(
+    state: &AppState,
+    auth: &AuthContext,
+    owner: &str,
+    repo: &str,
+) -> Result<ImportResponse, ApiError> {
+    let token = load_access_token(state, &auth.organization.id).await?;
+    let (issues, skipped_pull_requests) = fetch_repo_issues(&token, owner, repo).await?;
     let mut imported = 0;
     let mut updated = 0;
     let mut label_names = std::collections::HashSet::new();
 
     for github_issue in issues {
-        let label_ids = labels_for_github_issue(&state, &auth, &github_issue).await?;
+        let label_ids = labels_for_github_issue(state, auth, &github_issue).await?;
         label_names.extend(
             github_issue
                 .labels
@@ -293,20 +517,117 @@ async fn run_import(
                 .map(|label| label.name.trim().to_lowercase())
                 .filter(|name| !name.is_empty()),
         );
-        match import_one_issue(&state, &auth, &owner, &repo, &github_issue, &label_ids).await? {
+        match import_one_issue(state, auth, owner, repo, &github_issue, &label_ids).await? {
             ImportOutcome::Created => imported += 1,
             ImportOutcome::Updated => updated += 1,
         }
     }
 
-    Ok(Json(ImportResponse {
-        owner,
-        repo,
+    Ok(ImportResponse {
+        owner: owner.to_owned(),
+        repo: repo.to_owned(),
         imported,
         updated,
         skipped_pull_requests,
         labels: label_names.len(),
-    }))
+    })
+}
+
+async fn run_due_auto_imports(state: &AppState) -> Result<(), ApiError> {
+    let due = github_repository::Entity::find()
+        .filter(github_repository::Column::AutoImportEnabled.eq(true))
+        .filter(github_repository::Column::NextImportAt.lte(now()))
+        .order_by_asc(github_repository::Column::NextImportAt)
+        .all(&state.db)
+        .await?;
+    for repo in due {
+        let auth = match auto_import_auth(state, &repo.organization_id).await {
+            Ok(auth) => auth,
+            Err(error) => {
+                update_repository_import_state(state, repo, Err(error.to_string())).await?;
+                continue;
+            }
+        };
+        let result = import_source(state, &auth, &repo.owner, &repo.repo).await;
+        match result {
+            Ok(result) => update_repository_import_state(state, repo, Ok(&result)).await?,
+            Err(error) => {
+                update_repository_import_state(state, repo, Err(error.to_string())).await?
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn auto_import_auth(
+    state: &AppState,
+    organization_id: &str,
+) -> Result<AuthContext, ApiError> {
+    let connection = github_connection::Entity::find()
+        .filter(github_connection::Column::OrganizationId.eq(organization_id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("Connect GitHub before importing".to_owned()))?;
+    let user_id = connection
+        .connected_by_id
+        .ok_or_else(|| ApiError::BadRequest("GitHub connection has no owner".to_owned()))?;
+    let user = user::Entity::find_by_id(&user_id)
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    let organization = produktive_entity::organization::Entity::find_by_id(organization_id)
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    let session = produktive_entity::session::ActiveModel {
+        id: Set("github-auto-import".to_owned()),
+        user_id: Set(user.id.clone()),
+        active_organization_id: Set(organization.id.clone()),
+        expires_at: Set(now() + Duration::minutes(5)),
+        revoked_at: Set(None),
+        created_at: Set(now()),
+        updated_at: Set(now()),
+    };
+    Ok(AuthContext {
+        user,
+        session: session.try_into_model().map_err(|error| {
+            ApiError::Internal(anyhow::anyhow!(
+                "failed to create auto import context: {error}"
+            ))
+        })?,
+        organization,
+    })
+}
+
+async fn update_repository_import_state(
+    state: &AppState,
+    repo: github_repository::Model,
+    result: Result<&ImportResponse, String>,
+) -> Result<(), ApiError> {
+    let now = now();
+    let mut active = repo.clone().into_active_model();
+    active.last_imported_at = Set(Some(now));
+    active.updated_at = Set(now);
+    active.next_import_at = Set(if repo.auto_import_enabled {
+        Some(now + Duration::minutes(repo.import_interval_minutes.into()))
+    } else {
+        None
+    });
+    match result {
+        Ok(result) => {
+            active.last_import_status = Set(Some("success".to_owned()));
+            active.last_import_error = Set(None);
+            active.last_imported_count = Set(result.imported as i32);
+            active.last_updated_count = Set(result.updated as i32);
+            active.last_skipped_count = Set(result.skipped_pull_requests as i32);
+        }
+        Err(error) => {
+            active.last_import_status = Set(Some("error".to_owned()));
+            active.last_import_error = Set(Some(error.chars().take(500).collect()));
+        }
+    }
+    active.update(&state.db).await?;
+    Ok(())
 }
 
 enum ImportOutcome {
@@ -512,8 +833,7 @@ async fn find_or_create_label(
 }
 
 fn normalize_label_name(name: &str) -> String {
-    let trimmed = name.trim();
-    let truncated: String = trimmed.chars().take(48).collect();
+    let truncated: String = name.trim().chars().take(48).collect();
     if truncated.is_empty() {
         "github".to_owned()
     } else {
@@ -578,8 +898,8 @@ async fn exchange_oauth_code(
     oauth_state: &github_oauth_state::Model,
     code: &str,
 ) -> Result<GithubTokenResponse, ApiError> {
-    let client_id = github_client_id(state)?;
-    let client_secret = github_client_secret(state)?;
+    let client_id = github_client_id()?;
+    let client_secret = github_client_secret()?;
     let response = reqwest::Client::new()
         .post(GITHUB_TOKEN_URL)
         .header(ACCEPT, "application/json")
@@ -751,6 +1071,40 @@ async fn find_connection(
         .await?)
 }
 
+async fn find_repository(
+    state: &AppState,
+    organization_id: &str,
+    id: &str,
+) -> Result<github_repository::Model, ApiError> {
+    github_repository::Entity::find_by_id(id)
+        .filter(github_repository::Column::OrganizationId.eq(organization_id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("GitHub repository not found".to_owned()))
+}
+
+async fn ensure_unique_repository(
+    state: &AppState,
+    organization_id: &str,
+    owner: &str,
+    repo: &str,
+    exclude_id: Option<&str>,
+) -> Result<(), ApiError> {
+    let mut select = github_repository::Entity::find()
+        .filter(github_repository::Column::OrganizationId.eq(organization_id))
+        .filter(github_repository::Column::Owner.eq(owner))
+        .filter(github_repository::Column::Repo.eq(repo));
+    if let Some(id) = exclude_id {
+        select = select.filter(github_repository::Column::Id.ne(id));
+    }
+    if select.one(&state.db).await?.is_some() {
+        return Err(ApiError::Conflict(
+            "This GitHub repository is already added".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 fn connection_response(connection: Option<github_connection::Model>) -> ConnectionResponse {
     match connection {
         Some(connection) => ConnectionResponse {
@@ -765,6 +1119,25 @@ fn connection_response(connection: Option<github_connection::Model>) -> Connecti
             scope: None,
             connected_at: None,
         },
+    }
+}
+
+fn repository_response(row: github_repository::Model) -> RepositoryResponse {
+    RepositoryResponse {
+        id: row.id,
+        owner: row.owner,
+        repo: row.repo,
+        auto_import_enabled: row.auto_import_enabled,
+        import_interval_minutes: row.import_interval_minutes,
+        last_imported_at: row.last_imported_at.map(|date| date.to_rfc3339()),
+        next_import_at: row.next_import_at.map(|date| date.to_rfc3339()),
+        last_import_status: row.last_import_status,
+        last_import_error: row.last_import_error,
+        last_imported_count: row.last_imported_count,
+        last_updated_count: row.last_updated_count,
+        last_skipped_count: row.last_skipped_count,
+        created_at: row.created_at.to_rfc3339(),
+        updated_at: row.updated_at.to_rfc3339(),
     }
 }
 
@@ -854,14 +1227,28 @@ fn github_color_to_label_color(hex: &str) -> String {
 }
 
 fn normalize_repo(payload: ImportRequest) -> Result<(String, String), ApiError> {
-    let owner = payload.owner.trim().to_lowercase();
-    let repo = payload.repo.trim().to_lowercase();
+    normalize_owner_repo(&payload.owner, &payload.repo)
+}
+
+fn normalize_owner_repo(owner: &str, repo: &str) -> Result<(String, String), ApiError> {
+    let owner = owner.trim().to_lowercase();
+    let repo = repo.trim().to_lowercase();
     if !valid_repo_part(&owner) || !valid_repo_part(&repo) {
         return Err(ApiError::BadRequest(
             "Use a valid GitHub owner and repository name".to_owned(),
         ));
     }
     Ok((owner, repo))
+}
+
+fn normalize_interval(value: Option<i32>) -> Result<i32, ApiError> {
+    let value = value.unwrap_or(DEFAULT_IMPORT_INTERVAL_MINUTES);
+    if value < MIN_IMPORT_INTERVAL_MINUTES {
+        return Err(ApiError::BadRequest(format!(
+            "Auto import interval must be at least {MIN_IMPORT_INTERVAL_MINUTES} minutes"
+        )));
+    }
+    Ok(value)
 }
 
 fn valid_repo_part(value: &str) -> bool {
@@ -888,19 +1275,15 @@ fn github_reqwest_error(error: reqwest::Error) -> ApiError {
     ApiError::Internal(anyhow::anyhow!(error))
 }
 
-fn github_client_id(state: &AppState) -> Result<String, ApiError> {
+fn github_client_id() -> Result<String, ApiError> {
     std::env::var("GITHUB_OAUTH_CLIENT_ID")
         .map(|value| value.trim().to_owned())
         .ok()
         .filter(|value| !value.is_empty())
         .ok_or_else(|| ApiError::BadRequest("GitHub OAuth is not configured".to_owned()))
-        .map_err(|error| {
-            let _ = &state.config.app_url;
-            error
-        })
 }
 
-fn github_client_secret(_state: &AppState) -> Result<String, ApiError> {
+fn github_client_secret() -> Result<String, ApiError> {
     std::env::var("GITHUB_OAUTH_CLIENT_SECRET")
         .map(|value| value.trim().to_owned())
         .ok()
