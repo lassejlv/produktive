@@ -36,14 +36,11 @@ async fn list_models(
     let default_id = state.config.ai_model.clone();
     let models = AI_MODELS
         .iter()
-        .map(|model| {
-            let is_default = model.id == default_id;
-            ModelEntry {
-                id: model.id,
-                name: model.name,
-                is_default,
-                requires_pro: !is_default,
-            }
+        .map(|model| ModelEntry {
+            id: model.id,
+            name: model.name,
+            is_default: model.id == default_id,
+            requires_pro: model.requires_pro,
         })
         .collect();
 

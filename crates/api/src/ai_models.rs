@@ -6,24 +6,29 @@
 pub struct AiModelInfo {
     pub id: &'static str,
     pub name: &'static str,
+    pub requires_pro: bool,
 }
 
 pub const AI_MODELS: &[AiModelInfo] = &[
     AiModelInfo {
         id: "kimi-k2.6",
         name: "Kimi K2.6",
+        requires_pro: true,
     },
     AiModelInfo {
         id: "glm-5.1",
         name: "GLM 5.1",
+        requires_pro: false,
     },
     AiModelInfo {
         id: "deepseek-v4-pro",
         name: "DeepSeek V4 Pro",
+        requires_pro: true,
     },
     AiModelInfo {
         id: "deepseek-v4-flash",
         name: "DeepSeek V4 Flash",
+        requires_pro: false,
     },
 ];
 
