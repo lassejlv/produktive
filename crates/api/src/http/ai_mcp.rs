@@ -145,7 +145,7 @@ async fn create_server(
     let access_token = payload
         .access_token
         .as_deref()
-        .map(str::trim)
+        .map(normalize_bearer_token)
         .filter(|token| !token.is_empty())
         .map(ToOwned::to_owned);
     let probe = probe_server(&url, access_token.clone()).await;
@@ -245,7 +245,7 @@ async fn update_server(
     let access_token = payload
         .access_token
         .as_deref()
-        .map(str::trim)
+        .map(normalize_bearer_token)
         .filter(|token| !token.is_empty())
         .map(ToOwned::to_owned);
     let mut token_to_store = None;
@@ -708,6 +708,16 @@ fn token_required_message(had_token: bool) -> String {
     } else {
         "Add a Produktive MCP API key as the bearer token.".to_owned()
     }
+}
+
+fn normalize_bearer_token(value: &str) -> &str {
+    let value = value.trim();
+    value
+        .get(..7)
+        .filter(|prefix| prefix.eq_ignore_ascii_case("bearer "))
+        .and_then(|_| value.get(7..))
+        .unwrap_or(value)
+        .trim()
 }
 
 fn oauth_authorization_url(

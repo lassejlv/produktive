@@ -5,24 +5,24 @@ use produktive_entity::{
     issue, issue_comment, issue_event, mcp_api_key, member, organization, user,
 };
 use rust_mcp_sdk::{
+    McpServer,
     auth::{AuthInfo, AuthProvider, AuthenticationError, OauthEndpoint},
     error::SdkResult,
-    macros::{mcp_tool, JsonSchema},
-    mcp_http::{http, GenericBody, GenericBodyExt, McpAppState},
-    mcp_server::{hyper_server, HyperServerOptions, ServerHandler, ToMcpServerHandler},
+    macros::{JsonSchema, mcp_tool},
+    mcp_http::{GenericBody, GenericBodyExt, McpAppState, http},
+    mcp_server::{HyperServerOptions, ServerHandler, ToMcpServerHandler, hyper_server},
     schema::{
-        schema_utils::CallToolError, CallToolRequestParams, CallToolResult, Implementation,
-        InitializeResult, ListToolsResult, PaginatedRequestParams, ProtocolVersion, RpcError,
-        ServerCapabilities, ServerCapabilitiesTools, TextContent,
+        CallToolRequestParams, CallToolResult, Implementation, InitializeResult, ListToolsResult,
+        PaginatedRequestParams, ProtocolVersion, RpcError, ServerCapabilities,
+        ServerCapabilitiesTools, TextContent, schema_utils::CallToolError,
     },
-    McpServer,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Database, DatabaseConnection, EntityTrait, IntoActiveModel,
     QueryFilter, QueryOrder, QuerySelect, Set,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
@@ -40,7 +40,8 @@ struct ProduktiveAuthProvider {
 #[async_trait]
 impl AuthProvider for ProduktiveAuthProvider {
     async fn verify_token(&self, access_token: String) -> Result<AuthInfo, AuthenticationError> {
-        let hash = hash_token(&access_token);
+        let access_token = normalize_bearer_token(&access_token);
+        let hash = hash_token(access_token);
         let now = Utc::now().fixed_offset();
         let key = mcp_api_key::Entity::find()
             .filter(mcp_api_key::Column::TokenHash.eq(hash))
@@ -780,6 +781,16 @@ fn hash_token(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     hex::encode(hasher.finalize())
+}
+
+fn normalize_bearer_token(value: &str) -> &str {
+    let value = value.trim();
+    value
+        .get(..7)
+        .filter(|prefix| prefix.eq_ignore_ascii_case("bearer "))
+        .and_then(|_| value.get(7..))
+        .unwrap_or(value)
+        .trim()
 }
 
 fn required(value: String, field: &str) -> Result<String, CallToolError> {
