@@ -45,6 +45,12 @@ type EmailCredentials = {
   name?: string;
 };
 
+type SessionState = {
+  data: AuthSession | null;
+  error: Error | null;
+  status: "initial" | "loading" | "ready" | "error";
+};
+
 const requestAuth = async (
   path: string,
   body?: Record<string, unknown>,
@@ -121,6 +127,34 @@ const requestJson = async <T>(
   return response.json() as Promise<T>;
 };
 
+let sessionState: SessionState = {
+  data: null,
+  error: null,
+  status: "initial",
+};
+const sessionSubscribers = new Set<() => void>();
+let inflightSessionFetch: Promise<void> | null = null;
+let sessionWriteVersion = 0;
+
+const notifySessionSubscribers = () => {
+  for (const fn of sessionSubscribers) fn();
+};
+
+const applySessionResult = (result: AuthResult): AuthResult => {
+  if (!result.error && result.data) {
+    sessionWriteVersion += 1;
+    sessionState = { data: result.data, error: null, status: "ready" };
+    notifySessionSubscribers();
+  }
+  return result;
+};
+
+const clearSession = () => {
+  sessionWriteVersion += 1;
+  sessionState = { data: null, error: null, status: "ready" };
+  notifySessionSubscribers();
+};
+
 export const listOrganizations = () =>
   requestJson<OrganizationsListResponse>("/api/auth/organizations");
 
@@ -171,14 +205,16 @@ export const deleteAccount = (confirm: string) =>
 export const authClient = {
   signIn: {
     email: ({ email, password }: EmailCredentials) =>
-      requestAuth("/api/auth/sign-in", { email, password }),
+      requestAuth("/api/auth/sign-in", { email, password }).then(
+        applySessionResult,
+      ),
   },
   signUp: {
     email: ({ email, password, name }: EmailCredentials) =>
       requestEmpty("/api/auth/sign-up", { email, password, name }),
   },
   verifyEmail: ({ token }: { token: string }) =>
-    requestAuth("/api/auth/verify-email", { token }),
+    requestAuth("/api/auth/verify-email", { token }).then(applySessionResult),
   requestPasswordReset: ({ email }: { email: string }) =>
     requestEmpty("/api/auth/request-password-reset", { email }),
   resetPassword: ({ token, password }: { token: string; password: string }) =>
@@ -194,30 +230,17 @@ export const signOut = async () => {
     method: "POST",
     credentials: "include",
   });
-};
-
-type SessionState = {
-  data: AuthSession | null;
-  error: Error | null;
-  status: "initial" | "loading" | "ready" | "error";
-};
-
-let sessionState: SessionState = {
-  data: null,
-  error: null,
-  status: "initial",
-};
-const sessionSubscribers = new Set<() => void>();
-let inflightSessionFetch: Promise<void> | null = null;
-
-const notifySessionSubscribers = () => {
-  for (const fn of sessionSubscribers) fn();
+  clearSession();
 };
 
 const fetchSession = async () => {
+  const requestVersion = sessionWriteVersion;
   sessionState = { ...sessionState, status: "loading" };
   notifySessionSubscribers();
   const result = await authClient.getSession();
+  if (requestVersion !== sessionWriteVersion) {
+    return;
+  }
   if (result.error) {
     sessionState = {
       data: null,
