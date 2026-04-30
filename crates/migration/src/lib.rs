@@ -50,6 +50,8 @@ mod m20260501_000023_add_user_onboarding;
 mod m20260501_000024_create_github_integration;
 #[path = "../migrations/m20260501_000025_create_github_repositories.rs"]
 mod m20260501_000025_create_github_repositories;
+#[path = "../migrations/m20260501_000026_add_progress_email_columns.rs"]
+mod m20260501_000026_add_progress_email_columns;
 
 pub struct Migrator;
 
@@ -82,6 +84,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260501_000023_add_user_onboarding::Migration),
             Box::new(m20260501_000024_create_github_integration::Migration),
             Box::new(m20260501_000025_create_github_repositories::Migration),
+            Box::new(m20260501_000026_add_progress_email_columns::Migration),
         ]
     }
 }

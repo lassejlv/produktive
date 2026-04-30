@@ -16,6 +16,7 @@ pub struct PreferencesResponse {
     pub email_paused: bool,
     pub email_assignments: bool,
     pub email_comments: bool,
+    pub email_progress: bool,
 }
 
 impl From<notification_preference::Model> for PreferencesResponse {
@@ -24,6 +25,7 @@ impl From<notification_preference::Model> for PreferencesResponse {
             email_paused: model.email_paused,
             email_assignments: model.email_assignments,
             email_comments: model.email_comments,
+            email_progress: model.email_progress,
         }
     }
 }
@@ -34,6 +36,7 @@ pub struct PreferencesPatch {
     pub email_paused: Option<bool>,
     pub email_assignments: Option<bool>,
     pub email_comments: Option<bool>,
+    pub email_progress: Option<bool>,
 }
 
 pub async fn for_user(
@@ -55,6 +58,9 @@ pub async fn for_user(
         email_paused: Set(false),
         email_assignments: Set(true),
         email_comments: Set(true),
+        email_progress: Set(true),
+        next_progress_email_at: Set(None),
+        last_progress_email_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     }
@@ -89,6 +95,12 @@ async fn patch_preferences(
     }
     if let Some(value) = payload.email_comments {
         active.email_comments = Set(value);
+    }
+    if let Some(value) = payload.email_progress {
+        active.email_progress = Set(value);
+        if value {
+            active.next_progress_email_at = Set(None);
+        }
     }
     active.updated_at = Set(Utc::now().fixed_offset());
     let updated = active.update(&state.db).await?;

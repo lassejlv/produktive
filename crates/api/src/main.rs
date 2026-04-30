@@ -2,6 +2,7 @@ mod agent_tools;
 mod ai_models;
 mod auth;
 mod config;
+mod digest;
 mod email;
 mod error;
 mod http;
@@ -18,7 +19,8 @@ use http::{
     ai_mcp_routes, ai_routes, auth_routes, billing_routes, chat_routes, cors_layer,
     favorite_routes, github_routes, inbox_routes, invitation_routes, issue_routes, label_routes,
     mcp_key_routes, member_routes, onboarding_routes, org_invitation_routes, preferences_routes,
-    project_routes, realtime_routes, spawn_github_auto_importer, waitlist_routes,
+    project_routes, realtime_routes, spawn_github_auto_importer, unsubscribe_routes,
+    waitlist_routes,
 };
 use polar_rs::{Polar, PolarConfig};
 use produktive_ai::AiClient;
@@ -67,6 +69,7 @@ async fn main() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to build Polar client: {e}"))?;
     let state = AppState::new(db, config.clone(), ai, polar);
     spawn_github_auto_importer(state.clone());
+    digest::spawn_progress_digest_scheduler(state.clone());
     let spa_service = ServeDir::new(&config.web_dist_dir).fallback(ServeFile::new(format!(
         "{}/index.html",
         config.web_dist_dir
@@ -91,6 +94,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/members", member_routes())
         .nest("/api/projects", project_routes())
         .nest("/api/realtime", realtime_routes())
+        .nest("/api/unsubscribe", unsubscribe_routes())
         .fallback_service(spa_service)
         .layer(TraceLayer::new_for_http())
         .layer(cors_layer(&config))

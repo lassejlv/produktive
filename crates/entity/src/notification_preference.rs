@@ -10,6 +10,9 @@ pub struct Model {
     pub email_paused: bool,
     pub email_assignments: bool,
     pub email_comments: bool,
+    pub email_progress: bool,
+    pub next_progress_email_at: Option<DateTimeWithTimeZone>,
+    pub last_progress_email_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

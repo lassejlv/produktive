@@ -16,6 +16,7 @@ pub mod onboarding;
 pub mod preferences;
 pub mod projects;
 mod realtime;
+mod unsubscribe;
 mod waitlist;
 
 pub use ai::routes as ai_routes;
@@ -36,4 +37,5 @@ pub use onboarding::routes as onboarding_routes;
 pub use preferences::routes as preferences_routes;
 pub use projects::routes as project_routes;
 pub use realtime::routes as realtime_routes;
+pub use unsubscribe::routes as unsubscribe_routes;
 pub use waitlist::routes as waitlist_routes;

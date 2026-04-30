@@ -79,6 +79,152 @@ pub async fn send_invitation_email(
     send_email(state, to, &subject, html, text).await
 }
 
+pub struct ProgressDigest<'a> {
+    pub closed_count: usize,
+    pub closed_titles: &'a [String],
+    pub plate_count: usize,
+    pub plate_titles: &'a [String],
+    pub comments_posted: usize,
+    pub issues_touched: usize,
+}
+
+pub async fn send_progress_digest_email(
+    state: &AppState,
+    to: &str,
+    name: &str,
+    org_name: &str,
+    digest: &ProgressDigest<'_>,
+    settings_url: &str,
+    unsubscribe_url: &str,
+) -> Result<(), ApiError> {
+    let subject = format!("Your week on {}", org_name);
+
+    let closed_html = render_section_html(
+        digest.closed_count,
+        digest.closed_titles,
+        &format!("You closed {} {} since last time", digest.closed_count, plural(digest.closed_count, "issue", "issues")),
+        "You haven't closed anything since last time.",
+    );
+    let plate_html = render_section_html(
+        digest.plate_count,
+        digest.plate_titles,
+        &format!("Still on your plate ({} active)", digest.plate_count),
+        "Nothing on your plate.",
+    );
+
+    let html = format!(
+        "<div style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#111;max-width:560px\">\
+<p>Hi {name},</p>\
+{closed_html}\
+{plate_html}\
+<p style=\"color:#555\">You posted <strong>{comments}</strong> {comment_word} and updated <strong>{touched}</strong> {issue_word}.</p>\
+<p style=\"color:#888;font-size:12px;margin-top:32px;border-top:1px solid #eee;padding-top:16px\">\
+\u{2014} <a href=\"{settings_url}\" style=\"color:#888\">Manage emails</a>\
+&nbsp;\u{00b7}&nbsp;\
+<a href=\"{unsubscribe_url}\" style=\"color:#888\">Unsubscribe from these</a>\
+</p>\
+</div>",
+        name = html_escape(name),
+        comments = digest.comments_posted,
+        comment_word = plural(digest.comments_posted, "comment", "comments"),
+        touched = digest.issues_touched,
+        issue_word = plural(digest.issues_touched, "issue", "issues"),
+    );
+
+    let text = format!(
+        "Hi {name},\n\n{closed}\n\n{plate}\n\nYou posted {comments} {comment_word} and updated {touched} {issue_word}.\n\n\u{2014} manage emails: {settings_url}\n\u{2014} unsubscribe from these: {unsubscribe_url}\n",
+        closed = render_section_text(
+            digest.closed_count,
+            digest.closed_titles,
+            &format!("You closed {} {} since last time:", digest.closed_count, plural(digest.closed_count, "issue", "issues")),
+            "You haven't closed anything since last time.",
+        ),
+        plate = render_section_text(
+            digest.plate_count,
+            digest.plate_titles,
+            &format!("Still on your plate ({} active):", digest.plate_count),
+            "Nothing on your plate.",
+        ),
+        comments = digest.comments_posted,
+        comment_word = plural(digest.comments_posted, "comment", "comments"),
+        touched = digest.issues_touched,
+        issue_word = plural(digest.issues_touched, "issue", "issues"),
+    );
+
+    let resend = Resend::new(&state.config.resend_api_key);
+    let email = CreateEmailBaseOptions::new(&state.config.resend_from_email, [to], &subject)
+        .with_html(&html)
+        .with_text(&text)
+        .with_header("List-Unsubscribe", &format!("<{}>", unsubscribe_url))
+        .with_header("List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
+
+    resend
+        .emails
+        .send(email)
+        .await
+        .map_err(|error| ApiError::Internal(anyhow::anyhow!(error.to_string())))?;
+
+    Ok(())
+}
+
+fn render_section_html(
+    count: usize,
+    titles: &[String],
+    heading: &str,
+    empty_text: &str,
+) -> String {
+    if count == 0 {
+        return format!("<p style=\"color:#555\">{}</p>", html_escape(empty_text));
+    }
+    let mut items = String::new();
+    for title in titles {
+        items.push_str(&format!(
+            "<li style=\"margin:2px 0\">{}</li>",
+            html_escape(title)
+        ));
+    }
+    let extra = count.saturating_sub(titles.len());
+    if extra > 0 {
+        items.push_str(&format!(
+            "<li style=\"margin:2px 0;color:#888\">+{} more</li>",
+            extra
+        ));
+    }
+    format!(
+        "<p style=\"margin-bottom:4px\"><strong>{}</strong></p><ul style=\"margin-top:4px;padding-left:20px;color:#222\">{}</ul>",
+        html_escape(heading),
+        items
+    )
+}
+
+fn render_section_text(
+    count: usize,
+    titles: &[String],
+    heading: &str,
+    empty_text: &str,
+) -> String {
+    if count == 0 {
+        return empty_text.to_owned();
+    }
+    let mut out = String::from(heading);
+    for title in titles {
+        out.push_str(&format!("\n  \u{2022} {}", title));
+    }
+    let extra = count.saturating_sub(titles.len());
+    if extra > 0 {
+        out.push_str(&format!("\n  \u{2022} +{} more", extra));
+    }
+    out
+}
+
+fn plural<'a>(count: usize, one: &'a str, many: &'a str) -> &'a str {
+    if count == 1 {
+        one
+    } else {
+        many
+    }
+}
+
 fn html_escape(value: &str) -> String {
     value
         .replace('&', "&amp;")

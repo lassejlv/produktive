@@ -237,6 +237,7 @@ export type NotificationPreferences = {
   emailPaused: boolean;
   emailAssignments: boolean;
   emailComments: boolean;
+  emailProgress: boolean;
 };
 
 export const getMyPreferences = () => request<NotificationPreferences>("/api/me/preferences");

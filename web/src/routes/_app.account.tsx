@@ -237,6 +237,13 @@ function NotificationPrefsSection() {
             disabled={prefs.emailPaused}
             onChange={(value) => void apply({ emailComments: value })}
           />
+          <ToggleRow
+            label="Progress recap"
+            hint="A short personal recap of what you closed and what's still on your plate. Sent on a random day each week so it never feels routine."
+            checked={prefs.emailProgress}
+            disabled={prefs.emailPaused}
+            onChange={(value) => void apply({ emailProgress: value })}
+          />
         </div>
       )}
     </Section>
