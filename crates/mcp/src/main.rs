@@ -2,27 +2,28 @@ use anyhow::Context;
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, Utc};
 use produktive_entity::{
-    issue, issue_comment, issue_event, mcp_api_key, member, organization, user,
+    issue, issue_comment, issue_event, issue_label, label, mcp_api_key, member, organization,
+    project, user,
 };
 use rust_mcp_sdk::{
-    McpServer,
     auth::{AuthInfo, AuthProvider, AuthenticationError, OauthEndpoint},
     error::SdkResult,
-    macros::{JsonSchema, mcp_tool},
-    mcp_http::{GenericBody, GenericBodyExt, McpAppState, http},
-    mcp_server::{HyperServerOptions, ServerHandler, ToMcpServerHandler, hyper_server},
+    macros::{mcp_tool, JsonSchema},
+    mcp_http::{http, GenericBody, GenericBodyExt, McpAppState},
+    mcp_server::{hyper_server, HyperServerOptions, ServerHandler, ToMcpServerHandler},
     schema::{
-        CallToolRequestParams, CallToolResult, Implementation, InitializeResult, ListToolsResult,
-        PaginatedRequestParams, ProtocolVersion, RpcError, ServerCapabilities,
-        ServerCapabilitiesTools, TextContent, schema_utils::CallToolError,
+        schema_utils::CallToolError, CallToolRequestParams, CallToolResult, Implementation,
+        InitializeResult, ListToolsResult, PaginatedRequestParams, ProtocolVersion, RpcError,
+        ServerCapabilities, ServerCapabilitiesTools, TextContent,
     },
+    McpServer,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Database, DatabaseConnection, EntityTrait, IntoActiveModel,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use serde_json::{Map, Value, json};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
@@ -133,6 +134,12 @@ impl ServerHandler for ProduktiveHandler {
                 CurrentWorkspaceTool::tool(),
                 SelectWorkspaceTool::tool(),
                 ListMembersTool::tool(),
+                ListLabelsTool::tool(),
+                CreateLabelTool::tool(),
+                UpdateLabelTool::tool(),
+                ListProjectsTool::tool(),
+                CreateProjectTool::tool(),
+                UpdateProjectTool::tool(),
                 ListIssuesTool::tool(),
                 GetIssueTool::tool(),
                 CreateIssueTool::tool(),
@@ -167,6 +174,30 @@ impl ServerHandler for ProduktiveHandler {
                 select_workspace(&self.state, &ctx, args).await
             }
             name if name == ListMembersTool::tool_name() => list_members(&self.state, &ctx).await,
+            name if name == ListLabelsTool::tool_name() => {
+                let args: ListLabelsTool = parse_args(&params)?;
+                list_labels(&self.state, &ctx, args).await
+            }
+            name if name == CreateLabelTool::tool_name() => {
+                let args: CreateLabelTool = parse_args(&params)?;
+                create_label(&self.state, &ctx, args).await
+            }
+            name if name == UpdateLabelTool::tool_name() => {
+                let args: UpdateLabelTool = parse_args(&params)?;
+                update_label(&self.state, &ctx, args).await
+            }
+            name if name == ListProjectsTool::tool_name() => {
+                let args: ListProjectsTool = parse_args(&params)?;
+                list_projects(&self.state, &ctx, args).await
+            }
+            name if name == CreateProjectTool::tool_name() => {
+                let args: CreateProjectTool = parse_args(&params)?;
+                create_project(&self.state, &ctx, args).await
+            }
+            name if name == UpdateProjectTool::tool_name() => {
+                let args: UpdateProjectTool = parse_args(&params)?;
+                update_project(&self.state, &ctx, args).await
+            }
             name if name == ListIssuesTool::tool_name() => {
                 let args: ListIssuesTool = parse_args(&params)?;
                 list_issues(&self.state, &ctx, args).await
@@ -265,6 +296,80 @@ struct SelectWorkspaceTool {
 struct ListMembersTool {}
 
 #[mcp_tool(
+    name = "list_labels",
+    description = "List labels in the selected workspace. By default archived labels are hidden."
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema, Default)]
+struct ListLabelsTool {
+    include_archived: Option<bool>,
+}
+
+#[mcp_tool(
+    name = "create_label",
+    description = "Create a label in the selected workspace."
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+struct CreateLabelTool {
+    name: String,
+    description: Option<String>,
+    color: Option<String>,
+}
+
+#[mcp_tool(
+    name = "update_label",
+    description = "Update a label. Set archived to true or false to archive or restore it."
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+struct UpdateLabelTool {
+    id: String,
+    name: Option<String>,
+    description: Option<String>,
+    color: Option<String>,
+    archived: Option<bool>,
+}
+
+#[mcp_tool(
+    name = "list_projects",
+    description = "List projects in the selected workspace. By default archived projects are hidden."
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema, Default)]
+struct ListProjectsTool {
+    include_archived: Option<bool>,
+}
+
+#[mcp_tool(
+    name = "create_project",
+    description = "Create a project in the selected workspace."
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+struct CreateProjectTool {
+    name: String,
+    description: Option<String>,
+    status: Option<String>,
+    color: Option<String>,
+    icon: Option<String>,
+    lead_id: Option<String>,
+    target_date: Option<String>,
+}
+
+#[mcp_tool(
+    name = "update_project",
+    description = "Update a project. Set archived to true or false to archive or restore it."
+)]
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+struct UpdateProjectTool {
+    id: String,
+    name: Option<String>,
+    description: Option<String>,
+    status: Option<String>,
+    color: Option<String>,
+    icon: Option<String>,
+    lead_id: Option<String>,
+    target_date: Option<String>,
+    archived: Option<bool>,
+}
+
+#[mcp_tool(
     name = "list_issues",
     description = "List issues in the selected workspace. Optional filters: status, priority, assigned_to_id. Returns newest issues first."
 )]
@@ -273,6 +378,11 @@ struct ListIssuesTool {
     status: Option<String>,
     priority: Option<String>,
     assigned_to_id: Option<String>,
+    project_id: Option<String>,
+    /// Filter to issues containing this label id.
+    label_id: Option<String>,
+    /// Filter to issues containing any of these label ids.
+    label_ids: Option<Vec<String>>,
     limit: Option<u64>,
 }
 
@@ -293,6 +403,8 @@ struct CreateIssueTool {
     status: Option<String>,
     priority: Option<String>,
     assigned_to_id: Option<String>,
+    project_id: Option<String>,
+    label_ids: Option<Vec<String>>,
 }
 
 #[mcp_tool(
@@ -307,6 +419,8 @@ struct UpdateIssueTool {
     status: Option<String>,
     priority: Option<String>,
     assigned_to_id: Option<String>,
+    project_id: Option<String>,
+    label_ids: Option<Vec<String>>,
 }
 
 #[mcp_tool(
@@ -424,6 +538,214 @@ async fn list_members(state: &AppState, ctx: &RequestContext) -> Result<Value, C
     Ok(json!({ "members": members }))
 }
 
+async fn list_labels(
+    state: &AppState,
+    ctx: &RequestContext,
+    args: ListLabelsTool,
+) -> Result<Value, CallToolError> {
+    let organization_id = ctx.require_workspace()?;
+    let mut select = label::Entity::find()
+        .filter(label::Column::OrganizationId.eq(organization_id))
+        .order_by_asc(label::Column::Name);
+    if !args.include_archived.unwrap_or(false) {
+        select = select.filter(label::Column::ArchivedAt.is_null());
+    }
+
+    let rows = select.all(&state.db).await.map_err(db_tool_error)?;
+    let mut labels = Vec::with_capacity(rows.len());
+    for row in rows {
+        labels.push(label_json(state, row).await?);
+    }
+    Ok(json!({ "labels": labels }))
+}
+
+async fn create_label(
+    state: &AppState,
+    ctx: &RequestContext,
+    args: CreateLabelTool,
+) -> Result<Value, CallToolError> {
+    let organization_id = ctx.require_workspace()?;
+    let name = required(args.name, "name")?;
+    if name.chars().count() > 48 {
+        return Err(tool_error("Label name must be 48 characters or fewer"));
+    }
+    ensure_unique_label_name(state, organization_id, &name, None).await?;
+
+    let now = Utc::now().fixed_offset();
+    let row = label::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        organization_id: Set(organization_id.to_owned()),
+        name: Set(name),
+        description: Set(non_empty(args.description)),
+        color: Set(normalize_color(args.color.as_deref(), "gray")),
+        created_by_id: Set(Some(ctx.user_id.clone())),
+        archived_at: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(&state.db)
+    .await
+    .map_err(db_tool_error)?;
+
+    Ok(json!({ "label": label_json(state, row).await? }))
+}
+
+async fn update_label(
+    state: &AppState,
+    ctx: &RequestContext,
+    args: UpdateLabelTool,
+) -> Result<Value, CallToolError> {
+    let organization_id = ctx.require_workspace()?;
+    let id = required(args.id, "id")?;
+    let existing = find_label(state, organization_id, &id).await?;
+    let existing_id = existing.id.clone();
+    let mut active = existing.into_active_model();
+
+    if let Some(name) = args.name {
+        let name = required(name, "name")?;
+        if name.chars().count() > 48 {
+            return Err(tool_error("Label name must be 48 characters or fewer"));
+        }
+        ensure_unique_label_name(state, organization_id, &name, Some(&existing_id)).await?;
+        active.name = Set(name);
+    }
+    if let Some(description) = args.description {
+        active.description = Set(non_empty(Some(description)));
+    }
+    if let Some(color) = args.color {
+        active.color = Set(normalize_color(Some(&color), "gray"));
+    }
+    if let Some(archived) = args.archived {
+        active.archived_at = Set(if archived {
+            Some(Utc::now().fixed_offset())
+        } else {
+            None
+        });
+    }
+    active.updated_at = Set(Utc::now().fixed_offset());
+
+    let updated = active.update(&state.db).await.map_err(db_tool_error)?;
+    Ok(json!({ "label": label_json(state, updated).await? }))
+}
+
+async fn list_projects(
+    state: &AppState,
+    ctx: &RequestContext,
+    args: ListProjectsTool,
+) -> Result<Value, CallToolError> {
+    let organization_id = ctx.require_workspace()?;
+    let mut select = project::Entity::find()
+        .filter(project::Column::OrganizationId.eq(organization_id))
+        .order_by_asc(project::Column::ArchivedAt)
+        .order_by_asc(project::Column::SortOrder)
+        .order_by_desc(project::Column::CreatedAt);
+    if !args.include_archived.unwrap_or(false) {
+        select = select.filter(project::Column::ArchivedAt.is_null());
+    }
+
+    let rows = select.all(&state.db).await.map_err(db_tool_error)?;
+    let mut projects = Vec::with_capacity(rows.len());
+    for row in rows {
+        projects.push(project_json(state, row).await?);
+    }
+    Ok(json!({ "projects": projects }))
+}
+
+async fn create_project(
+    state: &AppState,
+    ctx: &RequestContext,
+    args: CreateProjectTool,
+) -> Result<Value, CallToolError> {
+    let organization_id = ctx.require_workspace()?;
+    let name = required(args.name, "name")?;
+    let lead_id = normalize_optional_string(args.lead_id);
+    if let Some(id) = lead_id.as_deref() {
+        ensure_member(state, id, organization_id).await?;
+    }
+    let target_date = parse_optional_date(args.target_date.as_deref())?;
+    let next_order = project::Entity::find()
+        .filter(project::Column::OrganizationId.eq(organization_id))
+        .select_only()
+        .column_as(project::Column::SortOrder.max(), "max_order")
+        .into_tuple::<Option<i32>>()
+        .one(&state.db)
+        .await
+        .map_err(db_tool_error)?
+        .flatten()
+        .unwrap_or(0)
+        + 1;
+    let now = Utc::now().fixed_offset();
+    let row = project::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        organization_id: Set(organization_id.to_owned()),
+        name: Set(name),
+        description: Set(non_empty(args.description)),
+        status: Set(normalize_project_status(args.status.as_deref())),
+        color: Set(normalize_color(args.color.as_deref(), "blue")),
+        icon: Set(normalize_optional_string(args.icon)),
+        lead_id: Set(lead_id),
+        target_date: Set(target_date),
+        sort_order: Set(next_order),
+        created_by_id: Set(Some(ctx.user_id.clone())),
+        archived_at: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(&state.db)
+    .await
+    .map_err(db_tool_error)?;
+
+    Ok(json!({ "project": project_json(state, row).await? }))
+}
+
+async fn update_project(
+    state: &AppState,
+    ctx: &RequestContext,
+    args: UpdateProjectTool,
+) -> Result<Value, CallToolError> {
+    let organization_id = ctx.require_workspace()?;
+    let id = required(args.id, "id")?;
+    let existing = find_project(state, organization_id, &id).await?;
+    let mut active = existing.into_active_model();
+
+    if let Some(name) = args.name {
+        active.name = Set(required(name, "name")?);
+    }
+    if let Some(description) = args.description {
+        active.description = Set(non_empty(Some(description)));
+    }
+    if let Some(status) = args.status {
+        active.status = Set(normalize_project_status(Some(&status)));
+    }
+    if let Some(color) = args.color {
+        active.color = Set(normalize_color(Some(&color), "blue"));
+    }
+    if let Some(icon) = args.icon {
+        active.icon = Set(normalize_optional_string(Some(icon)));
+    }
+    if let Some(lead_id) = args.lead_id {
+        let lead_id = normalize_optional_string(Some(lead_id));
+        if let Some(id) = lead_id.as_deref() {
+            ensure_member(state, id, organization_id).await?;
+        }
+        active.lead_id = Set(lead_id);
+    }
+    if let Some(target_date) = args.target_date {
+        active.target_date = Set(parse_optional_date(Some(&target_date))?);
+    }
+    if let Some(archived) = args.archived {
+        active.archived_at = Set(if archived {
+            Some(Utc::now().fixed_offset())
+        } else {
+            None
+        });
+    }
+    active.updated_at = Set(Utc::now().fixed_offset());
+
+    let updated = active.update(&state.db).await.map_err(db_tool_error)?;
+    Ok(json!({ "project": project_json(state, updated).await? }))
+}
+
 async fn list_issues(
     state: &AppState,
     ctx: &RequestContext,
@@ -443,6 +765,27 @@ async fn list_issues(
     }
     if let Some(assignee) = non_empty(args.assigned_to_id) {
         select = select.filter(issue::Column::AssignedToId.eq(assignee));
+    }
+    if let Some(project_id) = non_empty(args.project_id) {
+        select = select.filter(issue::Column::ProjectId.eq(project_id));
+    }
+    let mut label_ids = args.label_ids.unwrap_or_default();
+    if let Some(label_id) = args.label_id {
+        label_ids.push(label_id);
+    }
+    let label_ids = normalize_ids(label_ids);
+    if !label_ids.is_empty() {
+        validate_labels(state, organization_id, &label_ids).await?;
+        let joins = issue_label::Entity::find()
+            .filter(issue_label::Column::LabelId.is_in(label_ids))
+            .all(&state.db)
+            .await
+            .map_err(db_tool_error)?;
+        let issue_ids = normalize_ids(joins.into_iter().map(|join| join.issue_id).collect());
+        if issue_ids.is_empty() {
+            return Ok(json!({ "issues": [] }));
+        }
+        select = select.filter(issue::Column::Id.is_in(issue_ids));
     }
 
     let rows = select.all(&state.db).await.map_err(db_tool_error)?;
@@ -474,6 +817,12 @@ async fn create_issue(
     if let Some(id) = assigned_to_id.as_deref() {
         ensure_member(state, id, organization_id).await?;
     }
+    let project_id = normalize_optional_string(args.project_id);
+    if let Some(id) = project_id.as_deref() {
+        find_project(state, organization_id, id).await?;
+    }
+    let label_ids = normalize_ids(args.label_ids.unwrap_or_default());
+    validate_labels(state, organization_id, &label_ids).await?;
 
     let now = Utc::now().fixed_offset();
     let row = issue::ActiveModel {
@@ -486,7 +835,7 @@ async fn create_issue(
         created_by_id: Set(Some(ctx.user_id.clone())),
         assigned_to_id: Set(assigned_to_id),
         parent_id: Set(None),
-        project_id: Set(None),
+        project_id: Set(project_id),
         attachments: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
@@ -494,6 +843,7 @@ async fn create_issue(
     .insert(&state.db)
     .await
     .map_err(db_tool_error)?;
+    replace_issue_labels(state, &row.id, &label_ids).await?;
 
     record_event(
         state,
@@ -504,7 +854,9 @@ async fn create_issue(
         json!([
             {"field": "title", "before": null, "after": row.title},
             {"field": "status", "before": null, "after": row.status},
-            {"field": "priority", "before": null, "after": row.priority}
+            {"field": "priority", "before": null, "after": row.priority},
+            {"field": "projectId", "before": null, "after": row.project_id},
+            {"field": "labelIds", "before": null, "after": label_ids}
         ]),
     )
     .await?;
@@ -564,6 +916,37 @@ async fn update_issue(
             next.as_deref(),
         );
         active.assigned_to_id = Set(next);
+    }
+    if let Some(raw_project_id) = args.project_id {
+        let next = normalize_optional_string(Some(raw_project_id));
+        if let Some(id) = next.as_deref() {
+            find_project(state, organization_id, id).await?;
+        }
+        push_change(
+            &mut changes,
+            "projectId",
+            before.project_id.as_deref(),
+            next.as_deref(),
+        );
+        active.project_id = Set(next);
+    }
+
+    if let Some(label_ids) = args.label_ids {
+        let label_ids = normalize_ids(label_ids);
+        validate_labels(state, organization_id, &label_ids).await?;
+        let before_label_ids = labels_for_issue(state, &before.id)
+            .await?
+            .into_iter()
+            .map(|label| label.id)
+            .collect::<Vec<_>>();
+        if before_label_ids != label_ids {
+            changes.push(json!({
+                "field": "labelIds",
+                "before": before_label_ids,
+                "after": label_ids,
+            }));
+            replace_issue_labels(state, &before.id, &label_ids).await?;
+        }
     }
 
     active.updated_at = Set(Utc::now().fixed_offset());
@@ -651,6 +1034,32 @@ async fn find_issue(
         .ok_or_else(|| tool_error(format!("Issue {id} not found")))
 }
 
+async fn find_label(
+    state: &AppState,
+    organization_id: &str,
+    id: &str,
+) -> Result<label::Model, CallToolError> {
+    label::Entity::find_by_id(id)
+        .filter(label::Column::OrganizationId.eq(organization_id))
+        .one(&state.db)
+        .await
+        .map_err(db_tool_error)?
+        .ok_or_else(|| tool_error(format!("Label {id} not found")))
+}
+
+async fn find_project(
+    state: &AppState,
+    organization_id: &str,
+    id: &str,
+) -> Result<project::Model, CallToolError> {
+    project::Entity::find_by_id(id)
+        .filter(project::Column::OrganizationId.eq(organization_id))
+        .one(&state.db)
+        .await
+        .map_err(db_tool_error)?
+        .ok_or_else(|| tool_error(format!("Project {id} not found")))
+}
+
 async fn issue_json(
     state: &AppState,
     issue: &issue::Model,
@@ -664,6 +1073,27 @@ async fn issue_json(
             .map(|user| json!({ "id": user.id, "name": user.name, "email": user.email })),
         None => None,
     };
+    let project = match issue.project_id.as_deref() {
+        Some(id) => project::Entity::find_by_id(id)
+            .one(&state.db)
+            .await
+            .map_err(db_tool_error)?
+            .map(|project| {
+                json!({
+                    "id": project.id,
+                    "name": project.name,
+                    "status": project.status,
+                    "color": project.color,
+                    "icon": project.icon,
+                })
+            }),
+        None => None,
+    };
+    let labels = labels_for_issue(state, &issue.id)
+        .await?
+        .into_iter()
+        .map(|label| json!({ "id": label.id, "name": label.name, "color": label.color }))
+        .collect::<Vec<_>>();
 
     let mut value = json!({
         "id": issue.id,
@@ -671,6 +1101,8 @@ async fn issue_json(
         "status": issue.status,
         "priority": issue.priority,
         "assigned_to": assigned_to,
+        "project": project,
+        "labels": labels,
         "created_at": issue.created_at.to_rfc3339(),
         "updated_at": issue.updated_at.to_rfc3339(),
     });
@@ -693,6 +1125,90 @@ async fn issue_json(
             .unwrap_or(Value::Null);
     }
     Ok(value)
+}
+
+async fn label_json(state: &AppState, row: label::Model) -> Result<Value, CallToolError> {
+    let issue_count = issue_label::Entity::find()
+        .filter(issue_label::Column::LabelId.eq(&row.id))
+        .count(&state.db)
+        .await
+        .map_err(db_tool_error)?;
+    Ok(json!({
+        "id": row.id,
+        "name": row.name,
+        "description": row.description,
+        "color": row.color,
+        "archived_at": row.archived_at.map(|value| value.to_rfc3339()),
+        "created_at": row.created_at.to_rfc3339(),
+        "updated_at": row.updated_at.to_rfc3339(),
+        "issue_count": issue_count,
+    }))
+}
+
+async fn project_json(state: &AppState, row: project::Model) -> Result<Value, CallToolError> {
+    let lead = match row.lead_id.as_deref() {
+        Some(id) => user::Entity::find_by_id(id)
+            .one(&state.db)
+            .await
+            .map_err(db_tool_error)?
+            .map(|user| json!({ "id": user.id, "name": user.name, "email": user.email, "image": user.image })),
+        None => None,
+    };
+    let issue_count = issue::Entity::find()
+        .filter(issue::Column::OrganizationId.eq(&row.organization_id))
+        .filter(issue::Column::ProjectId.eq(&row.id))
+        .count(&state.db)
+        .await
+        .map_err(db_tool_error)?;
+    let done_count = issue::Entity::find()
+        .filter(issue::Column::OrganizationId.eq(&row.organization_id))
+        .filter(issue::Column::ProjectId.eq(&row.id))
+        .filter(issue::Column::Status.eq("done"))
+        .count(&state.db)
+        .await
+        .map_err(db_tool_error)?;
+    let mut backlog = 0_u64;
+    let mut todo = 0_u64;
+    let mut in_progress = 0_u64;
+    let mut done = 0_u64;
+    let issues = issue::Entity::find()
+        .filter(issue::Column::OrganizationId.eq(&row.organization_id))
+        .filter(issue::Column::ProjectId.eq(&row.id))
+        .all(&state.db)
+        .await
+        .map_err(db_tool_error)?;
+    for issue in issues {
+        match issue.status.as_str() {
+            "backlog" => backlog += 1,
+            "todo" => todo += 1,
+            "in-progress" => in_progress += 1,
+            "done" => done += 1,
+            _ => {}
+        }
+    }
+    Ok(json!({
+        "id": row.id,
+        "name": row.name,
+        "description": row.description,
+        "status": row.status,
+        "color": row.color,
+        "icon": row.icon,
+        "lead_id": row.lead_id,
+        "lead": lead,
+        "target_date": row.target_date.map(|value| value.to_rfc3339()),
+        "sort_order": row.sort_order,
+        "archived_at": row.archived_at.map(|value| value.to_rfc3339()),
+        "created_at": row.created_at.to_rfc3339(),
+        "updated_at": row.updated_at.to_rfc3339(),
+        "issue_count": issue_count,
+        "done_count": done_count,
+        "status_breakdown": {
+            "backlog": backlog,
+            "todo": todo,
+            "in_progress": in_progress,
+            "done": done,
+        },
+    }))
 }
 
 async fn comment_json(
@@ -750,6 +1266,101 @@ async fn ensure_member(
     } else {
         Err(tool_error("User is not a member of that workspace"))
     }
+}
+
+async fn validate_labels(
+    state: &AppState,
+    organization_id: &str,
+    label_ids: &[String],
+) -> Result<(), CallToolError> {
+    if label_ids.is_empty() {
+        return Ok(());
+    }
+    let rows = label::Entity::find()
+        .filter(label::Column::OrganizationId.eq(organization_id))
+        .filter(label::Column::Id.is_in(label_ids.iter().cloned()))
+        .all(&state.db)
+        .await
+        .map_err(db_tool_error)?;
+    if rows.len() != label_ids.len() {
+        return Err(tool_error("One or more labels are invalid"));
+    }
+    if rows.iter().any(|row| row.archived_at.is_some()) {
+        return Err(tool_error("Cannot attach an archived label"));
+    }
+    Ok(())
+}
+
+async fn replace_issue_labels(
+    state: &AppState,
+    issue_id: &str,
+    label_ids: &[String],
+) -> Result<(), CallToolError> {
+    issue_label::Entity::delete_many()
+        .filter(issue_label::Column::IssueId.eq(issue_id))
+        .exec(&state.db)
+        .await
+        .map_err(db_tool_error)?;
+    if label_ids.is_empty() {
+        return Ok(());
+    }
+    let now = Utc::now().fixed_offset();
+    for label_id in label_ids {
+        issue_label::ActiveModel {
+            id: Set(Uuid::new_v4().to_string()),
+            issue_id: Set(issue_id.to_owned()),
+            label_id: Set(label_id.clone()),
+            created_at: Set(now),
+        }
+        .insert(&state.db)
+        .await
+        .map_err(db_tool_error)?;
+    }
+    Ok(())
+}
+
+async fn labels_for_issue(
+    state: &AppState,
+    issue_id: &str,
+) -> Result<Vec<label::Model>, CallToolError> {
+    let joins = issue_label::Entity::find()
+        .filter(issue_label::Column::IssueId.eq(issue_id))
+        .all(&state.db)
+        .await
+        .map_err(db_tool_error)?;
+    if joins.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ids = joins
+        .into_iter()
+        .map(|join| join.label_id)
+        .collect::<Vec<_>>();
+    label::Entity::find()
+        .filter(label::Column::Id.is_in(ids))
+        .order_by_asc(label::Column::Name)
+        .all(&state.db)
+        .await
+        .map_err(db_tool_error)
+}
+
+async fn ensure_unique_label_name(
+    state: &AppState,
+    organization_id: &str,
+    name: &str,
+    exclude_id: Option<&str>,
+) -> Result<(), CallToolError> {
+    let lowered = name.to_lowercase();
+    let mut select = label::Entity::find()
+        .filter(label::Column::OrganizationId.eq(organization_id))
+        .filter(label::Column::ArchivedAt.is_null());
+    if let Some(id) = exclude_id {
+        select = select.filter(label::Column::Id.ne(id));
+    }
+    let rows = select.all(&state.db).await.map_err(db_tool_error)?;
+    if rows.iter().any(|row| row.name.to_lowercase() == lowered) {
+        return Err(tool_error("A label with this name already exists"));
+    }
+    Ok(())
 }
 
 async fn record_event(
@@ -835,6 +1446,64 @@ fn normalize_assignee(value: Option<String>) -> Option<String> {
     non_empty(value)
 }
 
+fn normalize_optional_string(value: Option<String>) -> Option<String> {
+    non_empty(value)
+}
+
+fn normalize_ids(ids: Vec<String>) -> Vec<String> {
+    ids.into_iter()
+        .filter_map(|id| non_empty(Some(id)))
+        .fold(Vec::new(), |mut acc, id| {
+            if !acc.contains(&id) {
+                acc.push(id);
+            }
+            acc
+        })
+}
+
+fn normalize_color(value: Option<&str>, default: &str) -> String {
+    let allowed = [
+        "blue", "green", "orange", "purple", "pink", "red", "yellow", "gray",
+    ];
+    let value = value.unwrap_or(default).trim();
+    if allowed.contains(&value) {
+        value.to_owned()
+    } else {
+        default.to_owned()
+    }
+}
+
+fn normalize_project_status(value: Option<&str>) -> String {
+    let value = value.unwrap_or("planned").trim();
+    match value {
+        "planned" | "in-progress" | "completed" | "cancelled" => value.to_owned(),
+        _ => "planned".to_owned(),
+    }
+}
+
+fn parse_optional_date(
+    value: Option<&str>,
+) -> Result<Option<DateTime<FixedOffset>>, CallToolError> {
+    let Some(raw) = value else {
+        return Ok(None);
+    };
+    let value = raw.trim();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if let Ok(date_time) = DateTime::parse_from_rfc3339(value) {
+        return Ok(Some(date_time));
+    }
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d") {
+        if let Some(date_time) = date.and_hms_opt(0, 0, 0) {
+            return Ok(Some(date_time.and_utc().fixed_offset()));
+        }
+    }
+    Err(tool_error(
+        "Invalid target date format. Use RFC3339 or YYYY-MM-DD.",
+    ))
+}
+
 fn push_change(changes: &mut Vec<Value>, field: &str, before: Option<&str>, after: Option<&str>) {
     if before != after {
         changes.push(json!({
@@ -896,7 +1565,10 @@ async fn main() -> SdkResult<()> {
             name: "produktive-mcp".into(),
             version: env!("CARGO_PKG_VERSION").into(),
             title: Some("Produktive MCP".into()),
-            description: Some("MCP server for Produktive workspaces, members, and issues.".into()),
+            description: Some(
+                "MCP server for Produktive workspaces, members, labels, projects, and issues."
+                    .into(),
+            ),
             icons: vec![],
             website_url: Some("https://produktive.app".into()),
         },
