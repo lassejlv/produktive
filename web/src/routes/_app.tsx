@@ -45,10 +45,18 @@ import { useChats } from "@/lib/use-chats";
 import { useFavorites } from "@/lib/use-favorites";
 import { useInbox } from "@/lib/use-inbox";
 import { useProjects } from "@/lib/use-projects";
-import { useUserPreferences } from "@/lib/use-user-preferences";
+import { tabsQueryOptions } from "@/lib/use-tabs";
+import {
+  userPreferencesQueryOptions,
+  useUserPreferences,
+} from "@/lib/use-user-preferences";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app")({
+  loader: ({ context }) => {
+    void context.queryClient.prefetchQuery(tabsQueryOptions());
+    void context.queryClient.prefetchQuery(userPreferencesQueryOptions());
+  },
   component: AppLayout,
 });
 

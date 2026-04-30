@@ -28,6 +28,24 @@ export function useTabs() {
 
   const open = useMutation({
     mutationFn: openTab,
+    onMutate: async (input) => {
+      await qc.cancelQueries({ queryKey: queryKeys.tabs });
+      const previous = qc.getQueryData<WorkspaceTab[]>(queryKeys.tabs) ?? [];
+      const tempId = `temp:${input.tabType}:${input.targetId}`;
+      const optimistic: WorkspaceTab = {
+        id: tempId,
+        tabType: input.tabType,
+        targetId: input.targetId,
+        title: input.title,
+        openedAt: new Date().toISOString(),
+      };
+      const others = previous.filter(
+        (tab) =>
+          !(tab.tabType === input.tabType && tab.targetId === input.targetId),
+      );
+      qc.setQueryData<WorkspaceTab[]>(queryKeys.tabs, [...others, optimistic]);
+      return { previous };
+    },
     onSuccess: (created) => {
       qc.setQueryData<WorkspaceTab[]>(queryKeys.tabs, (existing) => {
         const others = (existing ?? []).filter(
@@ -37,11 +55,17 @@ export function useTabs() {
         return [...others, created];
       });
     },
+    onError: (_error, _input, context) => {
+      if (context?.previous !== undefined) {
+        qc.setQueryData(queryKeys.tabs, context.previous);
+      }
+    },
   });
 
   const close = useMutation({
     mutationFn: closeTab,
-    onMutate: (id) => {
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: queryKeys.tabs });
       const previous = qc.getQueryData<WorkspaceTab[]>(queryKeys.tabs);
       qc.setQueryData<WorkspaceTab[]>(
         queryKeys.tabs,
