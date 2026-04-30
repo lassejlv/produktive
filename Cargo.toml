@@ -4,6 +4,7 @@ members = [
     "crates/api",
     "crates/autumn-rs",
     "crates/entity",
+    "crates/mcp",
     "crates/migration",
     "crates/polar",
 ]
@@ -16,6 +17,7 @@ license = "AGPL-3.0"
 [workspace.dependencies]
 anyhow = "1.0"
 aes-gcm = "0.10"
+async-trait = "0.1"
 async-stream = "0.3"
 argon2 = "0.5"
 axum = "0.8"

@@ -9,6 +9,7 @@ pub mod issue_event;
 pub mod issue_label;
 pub mod issue_subscriber;
 pub mod label;
+pub mod mcp_api_key;
 pub mod mcp_oauth_client;
 pub mod mcp_oauth_state;
 pub mod mcp_oauth_token;
