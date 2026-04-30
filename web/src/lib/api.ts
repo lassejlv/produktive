@@ -402,6 +402,51 @@ export const createMcpApiKey = (input: { name?: string; expiresInDays?: number }
 export const revokeMcpApiKey = (id: string) =>
   request<void>(`/api/mcp/keys/${id}`, { method: "DELETE" });
 
+export type GithubConnection = {
+  connected: boolean;
+  login: string | null;
+  scope: string | null;
+  connectedAt: string | null;
+};
+
+export type GithubImportPreview = {
+  owner: string;
+  repo: string;
+  total: number;
+  newIssues: number;
+  updateIssues: number;
+  skippedPullRequests: number;
+  labels: number;
+};
+
+export type GithubImportResult = {
+  owner: string;
+  repo: string;
+  imported: number;
+  updated: number;
+  skippedPullRequests: number;
+  labels: number;
+};
+
+export const getGithubConnection = () => request<GithubConnection>("/api/github/connection");
+
+export const startGithubOAuth = () =>
+  request<{ url: string }>("/api/github/oauth/start", { method: "POST" });
+
+export const disconnectGithub = () => request<void>("/api/github/connection", { method: "DELETE" });
+
+export const previewGithubImport = (input: { owner: string; repo: string }) =>
+  request<GithubImportPreview>("/api/github/import/preview", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const importGithubIssues = (input: { owner: string; repo: string }) =>
+  request<GithubImportResult>("/api/github/import", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
 export type Invitation = {
   id: string;
   email: string;

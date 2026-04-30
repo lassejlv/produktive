@@ -46,6 +46,8 @@ mod m20260429_000021_create_organization_subscriptions;
 mod m20260430_000022_create_mcp_api_keys;
 #[path = "../migrations/m20260501_000023_add_user_onboarding.rs"]
 mod m20260501_000023_add_user_onboarding;
+#[path = "../migrations/m20260501_000024_create_github_integration.rs"]
+mod m20260501_000024_create_github_integration;
 
 pub struct Migrator;
 
@@ -76,6 +78,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260429_000021_create_organization_subscriptions::Migration),
             Box::new(m20260430_000022_create_mcp_api_keys::Migration),
             Box::new(m20260501_000023_add_user_onboarding::Migration),
+            Box::new(m20260501_000024_create_github_integration::Migration),
         ]
     }
 }

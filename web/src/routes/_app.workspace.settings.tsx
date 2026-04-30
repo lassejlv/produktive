@@ -12,13 +12,20 @@ import { MembersSettings } from "@/components/workspace/members-settings";
 import { SettingRow, SettingsSkeleton } from "@/components/workspace/setting-row";
 import {
   type Invitation,
+  type GithubConnection,
+  type GithubImportPreview,
   type McpApiKey,
   type Member,
   createMcpApiKey,
+  disconnectGithub,
+  getGithubConnection,
+  importGithubIssues,
   listMcpApiKeys,
   listInvitations,
   listMembers,
+  previewGithubImport,
   revokeMcpApiKey,
+  startGithubOAuth,
 } from "@/lib/api";
 import { refreshSession, updateActiveOrganization, useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
@@ -27,7 +34,15 @@ export const Route = createFileRoute("/_app/workspace/settings")({
   component: WorkspaceSettingsPage,
 });
 
-type SettingsSectionId = "general" | "members" | "billing" | "mcp" | "ai" | "templates" | "danger";
+type SettingsSectionId =
+  | "general"
+  | "members"
+  | "billing"
+  | "github"
+  | "mcp"
+  | "ai"
+  | "templates"
+  | "danger";
 
 type SettingsSection = {
   id: SettingsSectionId;
@@ -53,6 +68,12 @@ const settingsSections: SettingsSection[] = [
     id: "billing",
     label: "Billing",
     description: "Plan, payment, and invoices",
+    group: "main",
+  },
+  {
+    id: "github",
+    label: "GitHub",
+    description: "Import repository issues",
     group: "main",
   },
   {
@@ -224,6 +245,7 @@ function WorkspaceSettingsPage() {
             />
           ) : null}
           {activeSection === "billing" ? <BillingSettings /> : null}
+          {activeSection === "github" ? <GithubSettings canEdit={canEditWorkspace} /> : null}
           {activeSection === "mcp" ? <McpKeySettings /> : null}
           {activeSection === "ai" ? <AiSettings /> : null}
           {activeSection === "templates" ? <McpTemplatesSettings /> : null}
@@ -236,6 +258,230 @@ function WorkspaceSettingsPage() {
           ) : null}
         </main>
       </div>
+    </div>
+  );
+}
+
+function GithubSettings({ canEdit }: { canEdit: boolean }) {
+  const [connection, setConnection] = useState<GithubConnection | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [owner, setOwner] = useState("");
+  const [repo, setRepo] = useState("");
+  const [preview, setPreview] = useState<GithubImportPreview | null>(null);
+  const { confirm, dialog } = useConfirmDialog();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const github = params.get("github");
+    const message = params.get("message");
+    if (github === "oauth_connected") {
+      toast.success("GitHub connected");
+    } else if (github === "oauth_error") {
+      toast.error(message || "GitHub connection failed");
+    }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    void getGithubConnection()
+      .then((response) => {
+        if (mounted) setConnection(response);
+      })
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : "Failed to load GitHub connection");
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const normalizedOwner = owner.trim();
+  const normalizedRepo = repo.trim();
+  const canImport =
+    canEdit &&
+    connection?.connected &&
+    normalizedOwner.length > 0 &&
+    normalizedRepo.length > 0 &&
+    busy === null;
+
+  const onConnect = async () => {
+    if (!canEdit) return;
+    setBusy("connect");
+    try {
+      const response = await startGithubOAuth();
+      window.location.href = response.url;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to start GitHub OAuth");
+      setBusy(null);
+    }
+  };
+
+  const onDisconnect = () => {
+    if (!canEdit) return;
+    confirm({
+      title: "Disconnect GitHub?",
+      description: "Future imports will stop until an owner connects GitHub again.",
+      confirmLabel: "Disconnect",
+      destructive: true,
+      onConfirm: async () => {
+        setBusy("disconnect");
+        try {
+          await disconnectGithub();
+          setConnection({ connected: false, login: null, scope: null, connectedAt: null });
+          setPreview(null);
+          toast.success("GitHub disconnected");
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Failed to disconnect GitHub");
+        } finally {
+          setBusy(null);
+        }
+      },
+    });
+  };
+
+  const onPreview = async () => {
+    if (!canImport) return;
+    setBusy("preview");
+    try {
+      const response = await previewGithubImport({
+        owner: normalizedOwner,
+        repo: normalizedRepo,
+      });
+      setPreview(response);
+    } catch (error) {
+      setPreview(null);
+      toast.error(error instanceof Error ? error.message : "Failed to preview import");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onImport = async () => {
+    if (!canImport) return;
+    setBusy("import");
+    try {
+      const result = await importGithubIssues({
+        owner: normalizedOwner,
+        repo: normalizedRepo,
+      });
+      setPreview(null);
+      toast.success(`Imported ${result.imported}, updated ${result.updated}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to import GitHub issues");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (loading) {
+    return <SettingsSkeleton rows={4} />;
+  }
+
+  const inputsDisabled = !canEdit || !connection?.connected || busy !== null;
+
+  return (
+    <div>
+      {dialog}
+
+      <SettingRow label="Status">
+        {connection?.connected ? (
+          <>
+            <span className="text-fg">Connected as {connection.login}</span>
+            <div className="mt-0.5 text-[12px] text-fg-muted">
+              {connection.connectedAt ? `Connected ${formatDate(connection.connectedAt)}` : null}
+              {connection.scope ? ` · ${connection.scope}` : null}
+            </div>
+          </>
+        ) : (
+          <span className="text-fg-muted">
+            {canEdit ? "Not connected." : "Only owners can connect GitHub."}
+          </span>
+        )}
+      </SettingRow>
+
+      <SettingRow label="Owner">
+        <Input
+          value={owner}
+          onChange={(event) => {
+            setOwner(event.target.value);
+            setPreview(null);
+          }}
+          placeholder="owner"
+          disabled={inputsDisabled}
+        />
+      </SettingRow>
+
+      <SettingRow label="Repository">
+        <Input
+          value={repo}
+          onChange={(event) => {
+            setRepo(event.target.value);
+            setPreview(null);
+          }}
+          placeholder="repository"
+          disabled={inputsDisabled}
+        />
+      </SettingRow>
+
+      {preview ? (
+        <SettingRow label="Preview">
+          <span className="text-fg">{preview.total} issues</span>
+          <div className="mt-0.5 text-[12px] text-fg-muted">
+            {preview.newIssues} new · {preview.updateIssues} updates · {preview.labels} labels ·{" "}
+            {preview.skippedPullRequests} PRs skipped
+          </div>
+        </SettingRow>
+      ) : null}
+
+      {canEdit ? (
+        <div className="flex flex-wrap justify-end gap-2 pt-4">
+          {connection?.connected ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busy !== null}
+                onClick={onDisconnect}
+              >
+                {busy === "disconnect" ? "Disconnecting…" : "Disconnect"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!canImport}
+                onClick={() => void onPreview()}
+              >
+                {busy === "preview" ? "Previewing…" : "Preview"}
+              </Button>
+              {preview ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!canImport}
+                  onClick={() => void onImport()}
+                >
+                  {busy === "import" ? "Importing…" : "Import"}
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy === "connect"}
+              onClick={() => void onConnect()}
+            >
+              {busy === "connect" ? "Opening…" : "Connect GitHub"}
+            </Button>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -302,8 +548,7 @@ function McpKeySettings() {
   const onRevoke = (key: McpApiKey) => {
     confirm({
       title: `Revoke ${key.name}?`,
-      description:
-        "Any client using this key will lose access immediately. This cannot be undone.",
+      description: "Any client using this key will lose access immediately. This cannot be undone.",
       confirmLabel: "Revoke key",
       destructive: true,
       onConfirm: async () => {
@@ -401,12 +646,7 @@ function McpKeySettings() {
         </SettingRow>
       ) : (
         activeKeys.map((key) => (
-          <KeyRow
-            key={key.id}
-            item={key}
-            busy={busy === key.id}
-            onRevoke={() => onRevoke(key)}
-          />
+          <KeyRow key={key.id} item={key} busy={busy === key.id} onRevoke={() => onRevoke(key)} />
         ))
       )}
 
