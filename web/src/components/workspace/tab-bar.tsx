@@ -32,8 +32,8 @@ export function TabBar({ enabled }: Props) {
   const activeId = activeTargetFor(pathname);
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-3 pb-3">
-      <div className="pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-[10px] border border-border-subtle bg-surface/95 p-1 shadow-[0_18px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+    <div className="sticky bottom-0 z-30 border-t border-border-subtle bg-bg/95 backdrop-blur">
+      <div className="flex h-10 items-center gap-0.5 overflow-x-auto px-2">
         {tabs.map((tab) => (
           <TabPill
             key={tab.id}
