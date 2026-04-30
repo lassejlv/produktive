@@ -1,6 +1,6 @@
 use anyhow::Context;
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, FixedOffset, Utc};
 use produktive_entity::{
     issue, issue_comment, issue_event, mcp_api_key, member, organization, user,
 };
@@ -24,7 +24,11 @@ use sea_orm::{
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration as StdDuration, SystemTime, UNIX_EPOCH},
+};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -57,11 +61,17 @@ impl AuthProvider for ProduktiveAuthProvider {
                 "MCP API key has been revoked".to_owned(),
             ));
         }
-        if key.expires_at.is_some_and(|expires_at| expires_at <= now) {
+        let expires_at = key
+            .expires_at
+            .ok_or_else(|| AuthenticationError::InvalidToken {
+                description: "MCP API key has no expiration time",
+            })?;
+        if expires_at <= now {
             return Err(AuthenticationError::InvalidOrExpiredToken(
                 "MCP API key has expired".to_owned(),
             ));
         }
+        let expires_at = system_time_from_datetime(expires_at)?;
 
         let mut active = key.clone().into_active_model();
         active.last_used_at = Set(Some(now));
@@ -81,7 +91,7 @@ impl AuthProvider for ProduktiveAuthProvider {
             client_id: Some("produktive-mcp".to_owned()),
             user_id: Some(key.user_id),
             scopes: Some(vec!["mcp".to_owned()]),
-            expires_at: None,
+            expires_at: Some(expires_at),
             audience: None,
             extra: Some(extra),
         })
@@ -791,6 +801,19 @@ fn normalize_bearer_token(value: &str) -> &str {
         .and_then(|_| value.get(7..))
         .unwrap_or(value)
         .trim()
+}
+
+fn system_time_from_datetime(
+    value: DateTime<FixedOffset>,
+) -> Result<SystemTime, AuthenticationError> {
+    let timestamp = value.timestamp();
+    let nanos = value.timestamp_subsec_nanos();
+    if timestamp < 0 {
+        return Err(AuthenticationError::InvalidToken {
+            description: "MCP API key has invalid expiration time",
+        });
+    }
+    Ok(UNIX_EPOCH + StdDuration::new(timestamp as u64, nanos))
 }
 
 fn required(value: String, field: &str) -> Result<String, CallToolError> {
