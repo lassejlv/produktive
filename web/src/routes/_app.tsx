@@ -669,12 +669,8 @@ function AppLayout() {
       </Sidebar>
 
       <SidebarInset>
-        <div className="flex min-h-full flex-col">
-          <div className="min-w-0 flex-1">
-            <Outlet />
-          </div>
-          <TabBar enabled={tabsEnabled} />
-        </div>
+        <Outlet />
+        <TabBar enabled={tabsEnabled} />
       </SidebarInset>
     </SidebarProvider>
   );
