@@ -1,5 +1,5 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   HashIcon,
   InboxIcon,
@@ -19,21 +19,138 @@ type Props = {
   enabled: boolean;
 };
 
+const POSITION_STORAGE_KEY = "produktive:tabbar-position";
+const VIEWPORT_MARGIN = 8;
+
+type Position = { x: number; y: number };
+
 export function TabBar({ enabled }: Props) {
   const { tabs, close } = useTabs();
   const navigate = useNavigate();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
+  const [position, setPosition] = useState<Position | null>(() =>
+    readStoredPosition(),
+  );
+  const [dragging, setDragging] = useState(false);
+  const barRef = useRef<HTMLDivElement | null>(null);
+  const dragOffsetRef = useRef<Position>({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (event: PointerEvent) => {
+      const node = barRef.current;
+      if (!node) return;
+      const width = node.offsetWidth;
+      const height = node.offsetHeight;
+      const rawX = event.clientX - dragOffsetRef.current.x;
+      const rawY = event.clientY - dragOffsetRef.current.y;
+      const x = clamp(rawX, VIEWPORT_MARGIN, window.innerWidth - width - VIEWPORT_MARGIN);
+      const y = clamp(rawY, VIEWPORT_MARGIN, window.innerHeight - height - VIEWPORT_MARGIN);
+      setPosition({ x, y });
+    };
+    const onUp = () => setDragging(false);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [dragging]);
+
+  useEffect(() => {
+    if (dragging) return;
+    if (!position) return;
+    window.localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify(position));
+  }, [dragging, position]);
+
+  useEffect(() => {
+    if (!position) return;
+    const onResize = () => {
+      const node = barRef.current;
+      if (!node) return;
+      const width = node.offsetWidth;
+      const height = node.offsetHeight;
+      setPosition((current) => {
+        if (!current) return current;
+        return {
+          x: clamp(current.x, VIEWPORT_MARGIN, window.innerWidth - width - VIEWPORT_MARGIN),
+          y: clamp(current.y, VIEWPORT_MARGIN, window.innerHeight - height - VIEWPORT_MARGIN),
+        };
+      });
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [position]);
 
   if (!enabled) return null;
   if (tabs.length === 0) return null;
 
   const activeId = activeTargetFor(pathname);
 
+  const startDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const node = barRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    dragOffsetRef.current = {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+    if (!position) {
+      setPosition({ x: rect.left, y: rect.top });
+    }
+    setDragging(true);
+    event.preventDefault();
+  };
+
+  const resetPosition = () => {
+    setPosition(null);
+    window.localStorage.removeItem(POSITION_STORAGE_KEY);
+  };
+
+  const wrapperStyle: React.CSSProperties = position
+    ? {
+        position: "fixed",
+        left: position.x,
+        top: position.y,
+        right: "auto",
+        bottom: "auto",
+      }
+    : {};
+
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-3 pb-3">
-      <div className="pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-[10px] border border-border-subtle bg-surface/95 p-1 shadow-[0_18px_40px_rgba(0,0,0,0.35)] backdrop-blur">
+    <div
+      className={cn(
+        "pointer-events-none z-30",
+        position
+          ? ""
+          : "fixed inset-x-0 bottom-0 flex justify-center px-3 pb-3",
+      )}
+      style={wrapperStyle}
+    >
+      <div
+        ref={barRef}
+        className={cn(
+          "pointer-events-auto flex max-w-full items-center gap-0.5 overflow-x-auto rounded-[10px] border border-border-subtle bg-surface/95 p-1 shadow-[0_18px_40px_rgba(0,0,0,0.35)] backdrop-blur",
+          dragging && "select-none",
+        )}
+      >
+        <button
+          type="button"
+          onPointerDown={startDrag}
+          onDoubleClick={resetPosition}
+          aria-label="Drag tab bar (double-click to reset)"
+          title="Drag to move · double-click to reset"
+          className={cn(
+            "grid h-7 w-4 shrink-0 place-items-center text-fg-faint transition-colors hover:text-fg",
+            dragging ? "cursor-grabbing" : "cursor-grab",
+          )}
+        >
+          <GripIcon />
+        </button>
         {tabs.map((tab) => (
           <TabPill
             key={tab.id}
@@ -234,6 +351,44 @@ function CloseIcon() {
       />
     </svg>
   );
+}
+
+function GripIcon() {
+  return (
+    <svg width="6" height="12" viewBox="0 0 6 12" fill="currentColor" aria-hidden>
+      <circle cx="1.5" cy="2" r="0.9" />
+      <circle cx="4.5" cy="2" r="0.9" />
+      <circle cx="1.5" cy="6" r="0.9" />
+      <circle cx="4.5" cy="6" r="0.9" />
+      <circle cx="1.5" cy="10" r="0.9" />
+      <circle cx="4.5" cy="10" r="0.9" />
+    </svg>
+  );
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (max < min) return min;
+  return Math.min(Math.max(value, min), max);
+}
+
+function readStoredPosition(): Position | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(POSITION_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Position;
+    if (
+      typeof parsed?.x === "number" &&
+      typeof parsed?.y === "number" &&
+      Number.isFinite(parsed.x) &&
+      Number.isFinite(parsed.y)
+    ) {
+      return parsed;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 
 function activeTargetFor(pathname: string): {
