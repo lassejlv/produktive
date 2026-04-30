@@ -165,8 +165,7 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
 
 export const listIssues = () => request<{ issues: Issue[] }>("/api/issues");
 
-export const getIssue = (id: string) =>
-  request<{ issue: Issue }>(`/api/issues/${id}`);
+export const getIssue = (id: string) => request<{ issue: Issue }>(`/api/issues/${id}`);
 
 export const getIssueHistory = (id: string) =>
   request<{ events: IssueHistoryEvent[] }>(`/api/issues/${id}/history`);
@@ -240,8 +239,7 @@ export type NotificationPreferences = {
   emailComments: boolean;
 };
 
-export const getMyPreferences = () =>
-  request<NotificationPreferences>("/api/me/preferences");
+export const getMyPreferences = () => request<NotificationPreferences>("/api/me/preferences");
 
 export const updateMyPreferences = (patch: Partial<NotificationPreferences>) =>
   request<NotificationPreferences>("/api/me/preferences", {
@@ -273,11 +271,9 @@ export type PricingPlan = {
   recurringInterval: string | null;
 };
 
-export const getPricingPlans = () =>
-  request<{ plans: PricingPlan[] }>("/api/billing/plans");
+export const getPricingPlans = () => request<{ plans: PricingPlan[] }>("/api/billing/plans");
 
-export const getBillingStatus = () =>
-  request<BillingStatus>("/api/billing/status");
+export const getBillingStatus = () => request<BillingStatus>("/api/billing/status");
 
 export const startBillingCheckout = () =>
   request<{ url: string }>("/api/billing/checkout", { method: "POST" });
@@ -318,8 +314,7 @@ export type McpServerEnvelope = {
   oauthUrl: string | null;
 };
 
-export const listMcpServers = () =>
-  request<{ servers: McpServer[] }>("/api/ai/mcp/servers");
+export const listMcpServers = () => request<{ servers: McpServer[] }>("/api/ai/mcp/servers");
 
 export type AiModel = {
   id: string;
@@ -333,23 +328,15 @@ export type AiModelsResponse = {
   defaultId: string;
 };
 
-export const listAiModels = () =>
-  request<AiModelsResponse>("/api/ai/models");
+export const listAiModels = () => request<AiModelsResponse>("/api/ai/models");
 
-export const createMcpServer = (input: {
-  name?: string;
-  url: string;
-  accessToken?: string;
-}) =>
+export const createMcpServer = (input: { name?: string; url: string; accessToken?: string }) =>
   request<McpServerEnvelope>("/api/ai/mcp/servers", {
     method: "POST",
     body: JSON.stringify(input),
   });
 
-export const updateMcpServer = (
-  id: string,
-  patch: { name?: string; enabled?: boolean },
-) =>
+export const updateMcpServer = (id: string, patch: { name?: string; enabled?: boolean }) =>
   request<McpServerEnvelope>(`/api/ai/mcp/servers/${id}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
@@ -367,6 +354,29 @@ export const startMcpServerOAuth = (id: string) =>
   request<{ url: string }>(`/api/ai/mcp/servers/${id}/oauth/start`, {
     method: "POST",
   });
+
+export type McpApiKey = {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  activeOrganizationId: string | null;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const listMcpApiKeys = () => request<{ keys: McpApiKey[] }>("/api/mcp/keys");
+
+export const createMcpApiKey = (input: { name?: string; expiresInDays?: number }) =>
+  request<{ key: McpApiKey; token: string }>("/api/mcp/keys", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const revokeMcpApiKey = (id: string) =>
+  request<void>(`/api/mcp/keys/${id}`, { method: "DELETE" });
 
 export type Invitation = {
   id: string;
@@ -387,16 +397,12 @@ export const createInvitation = (email: string) =>
   });
 
 export const revokeInvitation = (id: string) =>
-  request<{ invitations: Invitation[] }>(
-    `/api/organizations/me/invitations/${id}`,
-    { method: "DELETE" },
-  );
+  request<{ invitations: Invitation[] }>(`/api/organizations/me/invitations/${id}`, {
+    method: "DELETE",
+  });
 
 export const resendInvitation = (id: string) =>
-  request<Invitation>(
-    `/api/organizations/me/invitations/${id}/resend`,
-    { method: "POST" },
-  );
+  request<Invitation>(`/api/organizations/me/invitations/${id}/resend`, { method: "POST" });
 
 export type InvitationLookup = {
   valid: boolean;
@@ -409,9 +415,7 @@ export type InvitationLookup = {
 };
 
 export const lookupInvitation = (token: string) =>
-  request<InvitationLookup>(
-    `/api/invitations/lookup?token=${encodeURIComponent(token)}`,
-  );
+  request<InvitationLookup>(`/api/invitations/lookup?token=${encodeURIComponent(token)}`);
 
 export type AcceptInvitationResponse = {
   user: {
@@ -486,8 +490,7 @@ export const listProjects = (includeArchived = false) => {
   return request<{ projects: Project[] }>(`/api/projects${qs}`);
 };
 
-export const getProject = (id: string) =>
-  request<{ project: Project }>(`/api/projects/${id}`);
+export const getProject = (id: string) => request<{ project: Project }>(`/api/projects/${id}`);
 
 export const createProject = (input: CreateProjectInput) =>
   request<{ project: Project }>("/api/projects", {
@@ -530,8 +533,7 @@ export const listLabels = (includeArchived = false) => {
   return request<{ labels: Label[] }>(`/api/labels${qs}`);
 };
 
-export const getLabel = (id: string) =>
-  request<{ label: Label }>(`/api/labels/${id}`);
+export const getLabel = (id: string) => request<{ label: Label }>(`/api/labels/${id}`);
 
 export const createLabel = (input: CreateLabelInput) =>
   request<{ label: Label }>("/api/labels", {
@@ -545,8 +547,7 @@ export const updateLabel = (id: string, patch: UpdateLabelInput) =>
     body: JSON.stringify(patch),
   });
 
-export const deleteLabel = (id: string) =>
-  request<void>(`/api/labels/${id}`, { method: "DELETE" });
+export const deleteLabel = (id: string) => request<void>(`/api/labels/${id}`, { method: "DELETE" });
 
 export const getMemberProfile = (id: string) =>
   request<{ member: MemberProfile }>(`/api/members/${id}`);
@@ -559,8 +560,7 @@ export type Member = {
   role: string;
 };
 
-export const listMembers = () =>
-  request<{ members: Member[] }>("/api/members");
+export const listMembers = () => request<{ members: Member[] }>("/api/members");
 
 export const createIssue = (input: CreateIssueInput) =>
   request<{ issue: Issue }>("/api/issues", {
@@ -633,8 +633,7 @@ export type Favorite =
       position: number;
     };
 
-export const listFavorites = () =>
-  request<{ favorites: Favorite[] }>("/api/favorites");
+export const listFavorites = () => request<{ favorites: Favorite[] }>("/api/favorites");
 
 export const addFavorite = (targetType: FavoriteTarget, targetId: string) =>
   request<{
@@ -650,10 +649,9 @@ export const addFavorite = (targetType: FavoriteTarget, targetId: string) =>
   });
 
 export const removeFavorite = (targetType: FavoriteTarget, targetId: string) =>
-  request<{ ok: true }>(
-    `/api/favorites/by/${targetType}/${encodeURIComponent(targetId)}`,
-    { method: "DELETE" },
-  );
+  request<{ ok: true }>(`/api/favorites/by/${targetType}/${encodeURIComponent(targetId)}`, {
+    method: "DELETE",
+  });
 
 export const reorderFavorites = (favoriteIds: string[]) =>
   request<{ ok: true }>("/api/favorites/reorder", {
@@ -694,8 +692,7 @@ export type UploadedChatAttachment = {
 
 export const listChats = () => request<{ chats: Chat[] }>("/api/chats");
 
-export const createChat = () =>
-  request<{ chat: Chat }>("/api/chats", { method: "POST" });
+export const createChat = () => request<{ chat: Chat }>("/api/chats", { method: "POST" });
 
 export const getChat = (id: string) =>
   request<{ chat: Chat; messages: ChatMessageRecord[] }>(`/api/chats/${id}`);
