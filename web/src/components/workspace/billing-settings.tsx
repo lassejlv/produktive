@@ -94,7 +94,9 @@ export function BillingSettings() {
       toast.success("Pro will renew as scheduled.");
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : "Failed to resume subscription",
+        error instanceof Error
+          ? error.message
+          : "Failed to resume subscription",
       );
     } finally {
       setBusyAction(null);
@@ -128,11 +130,6 @@ export function BillingSettings() {
             ? billingDescription(activeSubscription)
             : "This workspace is on the free plan."}
         </div>
-      </SettingRow>
-      <SettingRow label="Customer">
-        <span className="block truncate font-mono text-[12px]">
-          {billing.customerId}
-        </span>
       </SettingRow>
       <SettingRow label="Access">
         <span className="text-fg-muted">
@@ -199,12 +196,11 @@ function billingDescription(subscription?: {
   if (!subscription.currentPeriodEnd) {
     return "Your workspace is on Pro.";
   }
-  return `Renews ${new Date(subscription.currentPeriodEnd * 1000).toLocaleDateString(
-    "en",
-    {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    },
-  )}`;
+  return `Renews ${new Date(
+    subscription.currentPeriodEnd * 1000,
+  ).toLocaleDateString("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })}`;
 }
