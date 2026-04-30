@@ -1,51 +1,49 @@
-import { useCallback, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import {
-  type InboxNotification,
-  listInbox,
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/lib/api";
+import { useInboxQuery, type InboxResponse } from "@/lib/queries/inbox";
+import { queryKeys } from "@/lib/queries/keys";
 
 export function useInbox() {
-  const [notifications, setNotifications] = useState<InboxNotification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+  const qc = useQueryClient();
+  const query = useInboxQuery();
+  const notifications = query.data?.notifications ?? [];
+  const unreadCount = query.data?.unreadCount ?? 0;
 
   const refresh = useCallback(async () => {
-    try {
-      const response = await listInbox();
-      setNotifications(response.notifications);
-      setUnreadCount(response.unreadCount);
-    } catch {
-      /* ignore */
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+    await qc.invalidateQueries({ queryKey: queryKeys.inbox });
+  }, [qc]);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const markRead = useCallback(async (id: string) => {
-    try {
-      const response = await markNotificationRead(id);
-      setNotifications(response.notifications);
-      setUnreadCount(response.unreadCount);
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const markRead = useCallback(
+    async (id: string) => {
+      try {
+        const response = await markNotificationRead(id);
+        qc.setQueryData<InboxResponse>(queryKeys.inbox, response);
+      } catch {
+        /* ignore */
+      }
+    },
+    [qc],
+  );
 
   const markAll = useCallback(async () => {
     try {
       const response = await markAllNotificationsRead();
-      setNotifications(response.notifications);
-      setUnreadCount(response.unreadCount);
+      qc.setQueryData<InboxResponse>(queryKeys.inbox, response);
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [qc]);
 
-  return { notifications, unreadCount, isLoading, refresh, markRead, markAll };
+  return {
+    notifications,
+    unreadCount,
+    isLoading: query.isPending,
+    refresh,
+    markRead,
+    markAll,
+  };
 }

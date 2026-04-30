@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/issue/avatar";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -9,14 +9,7 @@ import { IssueList } from "@/components/issue/issue-list";
 import { MemberPicker } from "@/components/issue/member-picker";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { ProjectStatusIcon } from "@/components/project/project-status-icon";
-import {
-  type Project,
-  createIssue,
-  deleteProject,
-  getProject,
-  updateIssue,
-  updateProject,
-} from "@/lib/api";
+import type { UpdateProjectInput } from "@/lib/api";
 import { statusLabel } from "@/lib/issue-constants";
 import { defaultDisplayOptions } from "@/lib/issue-display";
 import {
@@ -24,7 +17,13 @@ import {
   projectStatusLabel,
   projectStatusOptions,
 } from "@/lib/project-constants";
+import { useProjectDetailQuery } from "@/lib/queries/projects";
 import { useIssues } from "@/lib/use-issues";
+import { useCreateIssue, useUpdateIssue } from "@/lib/mutations/issues";
+import {
+  useDeleteProject,
+  useUpdateProject,
+} from "@/lib/mutations/projects";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/projects/$projectId")({
@@ -34,69 +33,41 @@ export const Route = createFileRoute("/_app/projects/$projectId")({
 function ProjectDetailPage() {
   const { projectId } = Route.useParams();
   const navigate = useNavigate();
-  const [project, setProject] = useState<Project | null>(null);
-  const [loading, setLoading] = useState(true);
+  const projectQuery = useProjectDetailQuery(projectId);
+  const project = projectQuery.data ?? null;
   const [menuOpen, setMenuOpen] = useState(false);
-  const { issues, addIssue, updateIssueLocal } = useIssues();
+  const { issues } = useIssues();
+  const updateProjectMutation = useUpdateProject();
+  const deleteProjectMutation = useDeleteProject();
+  const createIssueMutation = useCreateIssue();
+  const updateIssueMutation = useUpdateIssue();
   const { confirm, dialog } = useConfirmDialog();
-
-  const loadProject = async () => {
-    try {
-      const response = await getProject(projectId);
-      setProject(response.project);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to load project",
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadProject();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
 
   const projectIssues = useMemo(
     () => issues.filter((issue) => issue.projectId === projectId),
     [issues, projectId],
   );
 
-  const updateField = async (patch: Partial<Project>, body: object) => {
+  const updateField = async (patch: UpdateProjectInput) => {
     if (!project) return;
-    const previous = project;
-    setProject({ ...project, ...patch });
     try {
-      const response = await updateProject(projectId, body);
-      setProject(response.project);
+      await updateProjectMutation.mutateAsync({ id: projectId, patch });
     } catch (error) {
-      setProject(previous);
       toast.error(
         error instanceof Error ? error.message : "Failed to update",
       );
     }
   };
 
-  const handleStatus = (next: string) =>
-    void updateField({ status: next }, { status: next });
+  const handleStatus = (next: string) => void updateField({ status: next });
 
   const handleLead = (leadId: string | null) =>
-    void updateField(
-      {
-        leadId,
-        lead: null,
-      },
-      { leadId: leadId ?? "" },
-    ).then(() => loadProject());
+    void updateField({ leadId });
 
   const handleArchiveToggle = async () => {
     if (!project) return;
     const next = project.archivedAt === null;
-    await updateField(
-      { archivedAt: next ? new Date().toISOString() : null },
-      { archived: next },
-    );
+    await updateField({ archived: next });
     toast.success(next ? "Project archived" : "Project restored");
   };
 
@@ -110,7 +81,7 @@ function ProjectDetailPage() {
       destructive: true,
       onConfirm: async () => {
         try {
-          await deleteProject(projectId);
+          await deleteProjectMutation.mutateAsync(projectId);
           toast.success("Project deleted");
           await navigate({ to: "/projects" });
         } catch (error) {
@@ -124,14 +95,8 @@ function ProjectDetailPage() {
 
   const handleCreateInGroup = async (status: string, title: string) => {
     try {
-      const response = await createIssue({
-        title,
-        status,
-        projectId,
-      });
-      addIssue(response.issue);
-      // re-pull project counts
-      void loadProject();
+      await createIssueMutation.mutateAsync({ title, status, projectId });
+      void projectQuery.refetch();
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to create issue",
@@ -142,21 +107,21 @@ function ProjectDetailPage() {
   const handleMoveToStatus = async (movingId: string, nextStatus: string) => {
     const previous = issues.find((issue) => issue.id === movingId)?.status;
     if (!previous || previous === nextStatus) return;
-    updateIssueLocal(movingId, { status: nextStatus });
     try {
-      const response = await updateIssue(movingId, { status: nextStatus });
-      updateIssueLocal(movingId, response.issue);
+      await updateIssueMutation.mutateAsync({
+        id: movingId,
+        patch: { status: nextStatus },
+      });
       toast.success(`Moved to ${statusLabel[nextStatus] ?? nextStatus}`);
-      void loadProject();
+      void projectQuery.refetch();
     } catch (error) {
-      updateIssueLocal(movingId, { status: previous });
       toast.error(
         error instanceof Error ? error.message : "Failed to move issue",
       );
     }
   };
 
-  if (loading || !project) {
+  if (projectQuery.isPending || !project) {
     return (
       <main className="min-h-full bg-bg p-6">
         <p className="text-[13px] text-fg-faint">Loading project…</p>
@@ -239,7 +204,7 @@ function ProjectDetailPage() {
           <EditableTitle
             value={project.name}
             onSave={async (next) => {
-              await updateField({ name: next }, { name: next });
+              await updateField({ name: next });
             }}
           />
         </div>
@@ -292,10 +257,7 @@ function ProjectDetailPage() {
           <EditableDescription
             value={project.description}
             onSave={async (next) => {
-              await updateField(
-                { description: next || null },
-                { description: next },
-              );
+              await updateField({ description: next });
             }}
           />
         </div>

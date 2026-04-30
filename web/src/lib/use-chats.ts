@@ -1,45 +1,48 @@
-import { useCallback, useEffect, useState } from "react";
-import { type Chat, listChats } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
+import { type Chat } from "@/lib/api";
+import { useChatsQuery } from "@/lib/queries/chats";
+import { queryKeys } from "@/lib/queries/keys";
 
 export function useChats() {
-  const [chats, setChats] = useState<Chat[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const qc = useQueryClient();
+  const query = useChatsQuery();
 
   const refresh = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await listChats();
-      setChats(response.chats);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error ? loadError.message : "Failed to load chats",
+    await qc.invalidateQueries({ queryKey: queryKeys.chats });
+  }, [qc]);
+
+  const prependChat = useCallback(
+    (chat: Chat) => {
+      qc.setQueryData<Chat[]>(queryKeys.chats, (old) => {
+        if (!old) return [chat];
+        const existingIdx = old.findIndex((c) => c.id === chat.id);
+        if (existingIdx >= 0) {
+          const next = old.slice();
+          next.splice(existingIdx, 1);
+          return [chat, ...next];
+        }
+        return [chat, ...old];
+      });
+    },
+    [qc],
+  );
+
+  const removeChat = useCallback(
+    (id: string) => {
+      qc.setQueryData<Chat[]>(queryKeys.chats, (old) =>
+        old?.filter((c) => c.id !== id),
       );
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+    },
+    [qc],
+  );
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const prependChat = useCallback((chat: Chat) => {
-    setChats((current) => {
-      const existing = current.findIndex((c) => c.id === chat.id);
-      if (existing >= 0) {
-        const next = current.slice();
-        next.splice(existing, 1);
-        return [chat, ...next];
-      }
-      return [chat, ...current];
-    });
-  }, []);
-
-  const removeChat = useCallback((id: string) => {
-    setChats((current) => current.filter((c) => c.id !== id));
-  }, []);
-
-  return { chats, isLoading, error, refresh, prependChat, removeChat };
+  return {
+    chats: query.data ?? [],
+    isLoading: query.isPending,
+    error: query.error?.message ?? null,
+    refresh,
+    prependChat,
+    removeChat,
+  };
 }

@@ -25,9 +25,14 @@ import { useOnboarding } from "@/components/onboarding/onboarding-context";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DashboardSkeleton } from "@/components/issue-skeleton";
 import { IssueDetail } from "@/routes/_app.issues.$issueId";
-import { createIssue, deleteIssue, updateIssue } from "@/lib/api";
+import {
+  useCreateIssue,
+  useDeleteIssue,
+  useUpdateIssue,
+} from "@/lib/mutations/issues";
 import { statusLabel, type View, viewLabels } from "@/lib/issue-constants";
 import { useDisplayOptions } from "@/lib/issue-display";
+import { issuesQueryOptions } from "@/lib/queries/issues";
 import { useFavorites } from "@/lib/use-favorites";
 import { useIssues } from "@/lib/use-issues";
 import { useMediaQuery } from "@/lib/use-media-query";
@@ -41,6 +46,8 @@ const viewDropStatus: Record<View, string | null> = {
 };
 
 export const Route = createFileRoute("/_app/issues")({
+  loader: ({ context }) =>
+    context.queryClient.ensureQueryData(issuesQueryOptions()),
   component: IssuesPage,
 });
 
@@ -54,15 +61,10 @@ function IssuesPage() {
   const issueId = pathname.startsWith("/issues/")
     ? decodeURIComponent(pathname.slice("/issues/".length))
     : null;
-  const {
-    issues,
-    isLoading,
-    error,
-    dismissError,
-    addIssue,
-    updateIssueLocal,
-    removeIssueLocal,
-  } = useIssues();
+  const { issues, isLoading, error, dismissError, addIssue } = useIssues();
+  const createIssueMutation = useCreateIssue();
+  const updateIssueMutation = useUpdateIssue();
+  const deleteIssueMutation = useDeleteIssue();
   const [view, setView] = useState<View>("all");
   const [dragOverView, setDragOverView] = useState<View | null>(null);
   const [filters, setFilters] = useState<IssueFilters>(emptyFilters);
@@ -262,59 +264,29 @@ function IssuesPage() {
 
   const handleBulkSetStatus = async (status: string) => {
     const ids = Array.from(selectedIds);
-    const previousStatuses = new Map(
-      issues
-        .filter((issue) => ids.includes(issue.id))
-        .map((issue) => [issue.id, issue.status]),
-    );
     clearSelection();
-    for (const id of ids) {
-      updateIssueLocal(id, { status });
-    }
-    const failures: string[] = [];
-    for (const id of ids) {
-      try {
-        const response = await updateIssue(id, { status });
-        updateIssueLocal(id, response.issue);
-      } catch {
-        failures.push(id);
-        const previous = previousStatuses.get(id);
-        if (previous) updateIssueLocal(id, { status: previous });
-      }
-    }
-    if (failures.length === 0) {
+    const results = await Promise.allSettled(
+      ids.map((id) => updateIssueMutation.mutateAsync({ id, patch: { status } })),
+    );
+    const failures = results.filter((r) => r.status === "rejected").length;
+    if (failures === 0) {
       toast.success(`Moved ${ids.length} to ${statusLabel[status] ?? status}`);
     } else {
-      toast.error(`Failed for ${failures.length} issue(s)`);
+      toast.error(`Failed for ${failures} issue(s)`);
     }
   };
 
   const handleBulkSetPriority = async (priority: string) => {
     const ids = Array.from(selectedIds);
-    const previousPriorities = new Map(
-      issues
-        .filter((issue) => ids.includes(issue.id))
-        .map((issue) => [issue.id, issue.priority]),
-    );
     clearSelection();
-    for (const id of ids) {
-      updateIssueLocal(id, { priority });
-    }
-    const failures: string[] = [];
-    for (const id of ids) {
-      try {
-        const response = await updateIssue(id, { priority });
-        updateIssueLocal(id, response.issue);
-      } catch {
-        failures.push(id);
-        const previous = previousPriorities.get(id);
-        if (previous) updateIssueLocal(id, { priority: previous });
-      }
-    }
-    if (failures.length === 0) {
+    const results = await Promise.allSettled(
+      ids.map((id) => updateIssueMutation.mutateAsync({ id, patch: { priority } })),
+    );
+    const failures = results.filter((r) => r.status === "rejected").length;
+    if (failures === 0) {
       toast.success(`Updated priority for ${ids.length}`);
     } else {
-      toast.error(`Failed for ${failures.length} issue(s)`);
+      toast.error(`Failed for ${failures} issue(s)`);
     }
   };
 
@@ -328,19 +300,14 @@ function IssuesPage() {
       destructive: true,
       onConfirm: async () => {
         clearSelection();
-        const failures: string[] = [];
-        for (const id of ids) {
-          try {
-            await deleteIssue(id);
-            removeIssueLocal(id);
-          } catch {
-            failures.push(id);
-          }
-        }
-        if (failures.length === 0) {
+        const results = await Promise.allSettled(
+          ids.map((id) => deleteIssueMutation.mutateAsync(id)),
+        );
+        const failures = results.filter((r) => r.status === "rejected").length;
+        if (failures === 0) {
           toast.success(`Deleted ${ids.length}`);
         } else {
-          toast.error(`Failed to delete ${failures.length}`);
+          toast.error(`Failed to delete ${failures}`);
         }
       },
     });
@@ -422,8 +389,7 @@ function IssuesPage() {
 
   const handleCreateInGroup = async (status: string, title: string) => {
     try {
-      const response = await createIssue({ title, status });
-      addIssue(response.issue);
+      await createIssueMutation.mutateAsync({ title, status });
       toast.success("Issue created");
     } catch (createError) {
       toast.error(
@@ -438,13 +404,13 @@ function IssuesPage() {
     const previous = issues.find((issue) => issue.id === movingId)?.status;
     if (!previous || previous === nextStatus) return;
 
-    updateIssueLocal(movingId, { status: nextStatus });
     try {
-      const response = await updateIssue(movingId, { status: nextStatus });
-      updateIssueLocal(movingId, response.issue);
+      await updateIssueMutation.mutateAsync({
+        id: movingId,
+        patch: { status: nextStatus },
+      });
       toast.success(`Moved to ${statusLabel[nextStatus] ?? nextStatus}`);
     } catch (moveError) {
-      updateIssueLocal(movingId, { status: previous });
       toast.error(
         moveError instanceof Error ? moveError.message : "Failed to move issue",
       );

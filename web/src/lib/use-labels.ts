@@ -1,66 +1,62 @@
-import { useCallback, useEffect, useState } from "react";
-import { type Label, listLabels } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { type Label } from "@/lib/api";
+import { labelsQueryOptions, useLabelsQuery } from "@/lib/queries/labels";
+import { queryKeys } from "@/lib/queries/keys";
 
 export function useLabels(includeArchived = false) {
-  const [labels, setLabels] = useState<Label[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const qc = useQueryClient();
+  const query = useLabelsQuery(includeArchived);
 
-  const refresh = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await listLabels(includeArchived);
-      setLabels(response.labels);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error ? loadError.message : "Failed to load labels",
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [includeArchived]);
+  const refresh = async () => {
+    await qc.invalidateQueries({ queryKey: queryKeys.labels.all });
+  };
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  // React to other parts of the app creating a label.
-  useEffect(() => {
-    const handler = () => void refresh();
+    const handler = () => {
+      void qc.invalidateQueries({ queryKey: queryKeys.labels.all });
+    };
     window.addEventListener("produktive:label-created", handler);
     window.addEventListener("produktive:label-updated", handler);
     return () => {
       window.removeEventListener("produktive:label-created", handler);
       window.removeEventListener("produktive:label-updated", handler);
     };
-  }, [refresh]);
+  }, [qc]);
 
   const addLabel = (label: Label) => {
-    setLabels((current) =>
-      [...current, label].sort((a, b) => a.name.localeCompare(b.name)),
+    qc.setQueryData<Label[]>(
+      queryKeys.labels.list(includeArchived),
+      (old) =>
+        old
+          ? [...old, label].sort((a, b) => a.name.localeCompare(b.name))
+          : [label],
     );
   };
 
   const updateLabelLocal = (id: string, patch: Partial<Label>) => {
-    setLabels((current) =>
-      current.map((label) =>
-        label.id === id ? { ...label, ...patch } : label,
-      ),
+    qc.setQueryData<Label[]>(
+      queryKeys.labels.list(includeArchived),
+      (old) => old?.map((l) => (l.id === id ? { ...l, ...patch } : l)),
     );
   };
 
   const removeLabelLocal = (id: string) => {
-    setLabels((current) => current.filter((label) => label.id !== id));
+    qc.setQueryData<Label[]>(
+      queryKeys.labels.list(includeArchived),
+      (old) => old?.filter((l) => l.id !== id),
+    );
   };
 
   return {
-    labels,
-    isLoading,
-    error,
+    labels: query.data ?? [],
+    isLoading: query.isPending,
+    error: query.error?.message ?? null,
     refresh,
     addLabel,
     updateLabelLocal,
     removeLabelLocal,
   };
 }
+
+export { labelsQueryOptions };

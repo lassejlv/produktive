@@ -1,64 +1,48 @@
-import { useEffect, useState } from "react";
-import { type Issue, listIssues } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { type Issue } from "@/lib/api";
+import {
+  issuesQueryOptions,
+  useIssuesQuery,
+} from "@/lib/queries/issues";
+import { queryKeys } from "@/lib/queries/keys";
 
 export function useIssues() {
-  const [issues, setIssues] = useState<Issue[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const load = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const response = await listIssues();
-        if (isMounted) setIssues(response.issues);
-      } catch (loadError) {
-        if (isMounted) {
-          setError(
-            loadError instanceof Error ? loadError.message : "Failed to load issues",
-          );
-        }
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    };
-
-    void load();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const qc = useQueryClient();
+  const query = useIssuesQuery();
 
   const addIssue = (issue: Issue) => {
-    setIssues((current) => [issue, ...current]);
+    qc.setQueryData<Issue[]>(queryKeys.issues.list(), (old) =>
+      old ? [issue, ...old] : [issue],
+    );
   };
 
   const updateIssueLocal = (id: string, patch: Partial<Issue>) => {
-    setIssues((current) =>
-      current.map((issue) =>
+    qc.setQueryData<Issue[]>(queryKeys.issues.list(), (old) =>
+      old?.map((issue) =>
         issue.id === id ? { ...issue, ...patch } : issue,
       ),
     );
   };
 
   const removeIssueLocal = (id: string) => {
-    setIssues((current) => current.filter((issue) => issue.id !== id));
+    qc.setQueryData<Issue[]>(queryKeys.issues.list(), (old) =>
+      old?.filter((issue) => issue.id !== id),
+    );
   };
 
-  const dismissError = () => setError(null);
+  const dismissError = () => {
+    void qc.invalidateQueries({ queryKey: queryKeys.issues.list() });
+  };
 
   return {
-    issues,
-    isLoading,
-    error,
+    issues: query.data ?? [],
+    isLoading: query.isPending,
+    error: query.error?.message ?? null,
     dismissError,
     addIssue,
     updateIssueLocal,
     removeIssueLocal,
   };
 }
+
+export { issuesQueryOptions };

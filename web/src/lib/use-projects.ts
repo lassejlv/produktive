@@ -1,53 +1,49 @@
-import { useCallback, useEffect, useState } from "react";
-import { type Project, listProjects } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { type Project } from "@/lib/api";
+import {
+  projectsQueryOptions,
+  useProjectsQuery,
+} from "@/lib/queries/projects";
+import { queryKeys } from "@/lib/queries/keys";
 
 export function useProjects(includeArchived = false) {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const qc = useQueryClient();
+  const query = useProjectsQuery(includeArchived);
 
-  const refresh = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await listProjects(includeArchived);
-      setProjects(response.projects);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Failed to load projects",
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [includeArchived]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const refresh = async () => {
+    await qc.invalidateQueries({ queryKey: queryKeys.projects.all });
+  };
 
   const addProject = (project: Project) => {
-    setProjects((current) => [project, ...current]);
+    qc.setQueryData<Project[]>(
+      queryKeys.projects.list(includeArchived),
+      (old) => (old ? [project, ...old] : [project]),
+    );
   };
 
   const updateProjectLocal = (id: string, patch: Partial<Project>) => {
-    setProjects((current) =>
-      current.map((p) => (p.id === id ? { ...p, ...patch } : p)),
+    qc.setQueryData<Project[]>(
+      queryKeys.projects.list(includeArchived),
+      (old) => old?.map((p) => (p.id === id ? { ...p, ...patch } : p)),
     );
   };
 
   const removeProjectLocal = (id: string) => {
-    setProjects((current) => current.filter((p) => p.id !== id));
+    qc.setQueryData<Project[]>(
+      queryKeys.projects.list(includeArchived),
+      (old) => old?.filter((p) => p.id !== id),
+    );
   };
 
   return {
-    projects,
-    isLoading,
-    error,
+    projects: query.data ?? [],
+    isLoading: query.isPending,
+    error: query.error?.message ?? null,
     refresh,
     addProject,
     updateProjectLocal,
     removeProjectLocal,
   };
 }
+
+export { projectsQueryOptions };

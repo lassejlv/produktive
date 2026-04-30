@@ -1,6 +1,8 @@
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { routeTree } from "./routeTree.gen";
 import "./styles.css";
 
@@ -11,7 +13,18 @@ if (window.localStorage.getItem("produktive-theme") === "light") {
     ?.setAttribute("content", "#fbfbfa");
 }
 
-const router = createRouter({ routeTree });
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
+
+const router = createRouter({ routeTree, context: { queryClient } });
 
 declare module "@tanstack/react-router" {
   interface Register {
@@ -27,6 +40,9 @@ if (!rootElement) {
 
 ReactDOM.createRoot(rootElement).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+      {import.meta.env.DEV ? <ReactQueryDevtools buttonPosition="bottom-left" /> : null}
+    </QueryClientProvider>
   </StrictMode>,
 );

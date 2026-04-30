@@ -1,10 +1,11 @@
-import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { Outlet, createRootRouteWithContext } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
+import type { QueryClient } from "@tanstack/react-query";
 import { OnboardingOverlay } from "@/components/onboarding/onboarding-overlay";
 import { OnboardingProvider } from "@/components/onboarding/onboarding-context";
 import { Toaster } from "@/components/ui/sonner";
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   component: RootLayout,
 });
 

@@ -11,11 +11,12 @@ import { Avatar } from "@/components/issue/avatar";
 import { NewProjectDialog } from "@/components/project/new-project-dialog";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { ProjectStatusIcon } from "@/components/project/project-status-icon";
-import { type Project, updateProject } from "@/lib/api";
+import { type Project } from "@/lib/api";
 import {
   projectColorHex,
   projectStatusLabel,
 } from "@/lib/project-constants";
+import { useUpdateProject } from "@/lib/mutations/projects";
 import { useProjects } from "@/lib/use-projects";
 import { cn } from "@/lib/utils";
 
@@ -39,13 +40,8 @@ function ProjectsPage() {
   });
   const [view, setView] = useState<ViewKey>("active");
   const includeArchived = view === "archived" || view === "all";
-  const {
-    projects,
-    isLoading,
-    refresh,
-    addProject,
-    updateProjectLocal,
-  } = useProjects(includeArchived);
+  const { projects, isLoading, addProject } = useProjects(includeArchived);
+  const updateProjectMutation = useUpdateProject();
 
   const filtered = useMemo(() => {
     if (view === "all") return projects;
@@ -84,15 +80,13 @@ function ProjectsPage() {
 
   const handleArchiveToggle = async (project: Project) => {
     const next = project.archivedAt === null;
-    updateProjectLocal(project.id, {
-      archivedAt: next ? new Date().toISOString() : null,
-    });
     try {
-      await updateProject(project.id, { archived: next });
-      void refresh();
+      await updateProjectMutation.mutateAsync({
+        id: project.id,
+        patch: { archived: next },
+      });
       toast.success(next ? "Project archived" : "Project restored");
     } catch (error) {
-      updateProjectLocal(project.id, { archivedAt: project.archivedAt });
       toast.error(
         error instanceof Error ? error.message : "Failed to update project",
       );

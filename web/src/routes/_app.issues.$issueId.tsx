@@ -1,4 +1,5 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   type ChangeEvent,
   useEffect,
@@ -24,24 +25,45 @@ import {
   type IssueSubscriberUser,
   createIssue,
   createIssueComment,
-  deleteIssue,
-  getIssue,
-  getIssueHistory,
-  listIssueComments,
   listIssueSubscribers,
-  listIssues,
   subscribeToIssue,
   unsubscribeFromIssue,
-  updateIssue,
   uploadIssueAttachment,
 } from "@/lib/api";
 import { formatBytes, prepareChatAttachments } from "@/lib/chat-attachments";
 import { formatDate } from "@/lib/issue-constants";
 import { useOnboarding } from "@/components/onboarding/onboarding-context";
 import { useFavorites } from "@/lib/use-favorites";
+import {
+  issueCommentsQueryOptions,
+  issueDetailQueryOptions,
+  issueHistoryQueryOptions,
+  useIssueCommentsQuery,
+  useIssueDetailQuery,
+  useIssueHistoryQuery,
+  useIssueSubscribersQuery,
+  useIssuesQuery,
+} from "@/lib/queries/issues";
+import { queryKeys } from "@/lib/queries/keys";
+import {
+  useCreateIssue,
+  useDeleteIssue,
+  useUpdateIssue,
+} from "@/lib/mutations/issues";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/issues/$issueId")({
+  loader: ({ context, params }) => {
+    void context.queryClient.prefetchQuery(
+      issueHistoryQueryOptions(params.issueId),
+    );
+    void context.queryClient.prefetchQuery(
+      issueCommentsQueryOptions(params.issueId),
+    );
+    return context.queryClient.ensureQueryData(
+      issueDetailQueryOptions(params.issueId),
+    );
+  },
   component: IssueDetailPage,
 });
 
@@ -65,13 +87,21 @@ export function IssueDetail({
   siblings?: IssueDetailSiblings;
 }) {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [issue, setIssue] = useState<Issue | null>(null);
-  const [history, setHistory] = useState<IssueHistoryEvent[]>([]);
-  const [comments, setComments] = useState<IssueComment[]>([]);
+  const issueQuery = useIssueDetailQuery(issueId);
+  const historyQuery = useIssueHistoryQuery(issueId);
+  const commentsQuery = useIssueCommentsQuery(issueId);
+  const issue = issueQuery.data ?? null;
+  const history = historyQuery.data ?? [];
+  const comments = commentsQuery.data ?? [];
+  const isLoading = issueQuery.isPending;
+
+  const updateIssueMutation = useUpdateIssue();
+  const deleteIssueMutation = useDeleteIssue();
+
   const [commentBody, setCommentBody] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isCommenting, setIsCommenting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +111,10 @@ export function IssueDetail({
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const onboarding = useOnboarding();
   const pinned = isFavorite("issue", issueId);
+
+  useEffect(() => {
+    setError(issueQuery.error?.message ?? null);
+  }, [issueQuery.error]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -136,33 +170,13 @@ export function IssueDetail({
     return () => window.removeEventListener("keydown", handler);
   }, [siblings, navigate]);
 
-  const loadIssueData = async (showLoading = false) => {
-    if (showLoading) setIsLoading(true);
-    setError(null);
-
-    try {
-      const [issueResponse, historyResponse, commentsResponse] =
-        await Promise.all([
-          getIssue(issueId),
-          getIssueHistory(issueId),
-          listIssueComments(issueId),
-        ]);
-      setIssue(issueResponse.issue);
-      setHistory(historyResponse.events);
-      setComments(commentsResponse.comments);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error ? loadError.message : "Failed to load issue",
-      );
-    } finally {
-      if (showLoading) setIsLoading(false);
-    }
+  const reloadAfterChange = async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: queryKeys.issues.detail(issueId) }),
+      qc.invalidateQueries({ queryKey: queryKeys.issues.history(issueId) }),
+      qc.invalidateQueries({ queryKey: queryKeys.issues.comments(issueId) }),
+    ]);
   };
-
-  useEffect(() => {
-    void loadIssueData(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [issueId]);
 
   useEffect(() => {
     const source = new EventSource(
@@ -173,7 +187,7 @@ export function IssueDetail({
     );
 
     source.addEventListener("refresh", () => {
-      void loadIssueData(false);
+      void reloadAfterChange();
     });
     source.addEventListener("deleted", () => {
       toast.message("Issue was deleted");
@@ -189,10 +203,6 @@ export function IssueDetail({
     [history, comments],
   );
 
-  const reloadAfterChange = async () => {
-    await loadIssueData(false);
-  };
-
   const handleTogglePin = async () => {
     try {
       await toggleFavorite("issue", issueId);
@@ -202,148 +212,55 @@ export function IssueDetail({
     }
   };
 
-  const handleStatus = async (next: string) => {
+  const updateField = async (
+    patch: Parameters<typeof updateIssueMutation.mutateAsync>[0]["patch"],
+    errorLabel: string,
+    onSuccess?: () => void,
+  ) => {
     if (!issue) return;
-    const previous = issue;
-    setIssue({ ...issue, status: next });
-
     try {
-      const response = await updateIssue(issue.id, { status: next });
-      setIssue(response.issue);
+      await updateIssueMutation.mutateAsync({ id: issue.id, patch });
+      onSuccess?.();
       await reloadAfterChange();
     } catch (updateError) {
-      setIssue(previous);
-      setError(
-        updateError instanceof Error ? updateError.message : "Failed to update issue",
-      );
-    }
-  };
-
-  const handlePriority = async (next: string) => {
-    if (!issue) return;
-    const previous = issue;
-    setIssue({ ...issue, priority: next });
-
-    try {
-      const response = await updateIssue(issue.id, { priority: next });
-      setIssue(response.issue);
-      onboarding.signal("priority-or-assignee-changed");
-      await reloadAfterChange();
-    } catch (updateError) {
-      setIssue(previous);
-      setError(
-        updateError instanceof Error ? updateError.message : "Failed to update issue",
-      );
-    }
-  };
-
-  const handleTitle = async (next: string) => {
-    if (!issue) return;
-    const previous = issue;
-    setIssue({ ...issue, title: next });
-    try {
-      const response = await updateIssue(issue.id, { title: next });
-      setIssue(response.issue);
-      await reloadAfterChange();
-    } catch (updateError) {
-      setIssue(previous);
       const message =
-        updateError instanceof Error ? updateError.message : "Failed to update title";
+        updateError instanceof Error ? updateError.message : errorLabel;
       setError(message);
       toast.error(message);
     }
   };
 
-  const handleDescription = async (next: string) => {
-    if (!issue) return;
-    const previous = issue;
-    setIssue({ ...issue, description: next || null });
-    try {
-      const response = await updateIssue(issue.id, { description: next });
-      setIssue(response.issue);
-      await reloadAfterChange();
-    } catch (updateError) {
-      setIssue(previous);
-      const message =
-        updateError instanceof Error
-          ? updateError.message
-          : "Failed to update description";
-      setError(message);
-      toast.error(message);
-    }
-  };
+  const handleStatus = (next: string) =>
+    void updateField({ status: next }, "Failed to update issue");
 
-  const handleAssignee = async (memberId: string | null) => {
-    if (!issue) return;
-    const previous = issue;
-    setIssue({
-      ...issue,
-      assignedTo: memberId
-        ? issue.assignedTo && issue.assignedTo.id === memberId
-          ? issue.assignedTo
-          : null
-        : null,
-    });
-    try {
-      const response = await updateIssue(issue.id, {
-        assignedToId: memberId,
-      });
-      setIssue(response.issue);
-      onboarding.signal("priority-or-assignee-changed");
-      await reloadAfterChange();
-    } catch (updateError) {
-      setIssue(previous);
-      const message =
-        updateError instanceof Error
-          ? updateError.message
-          : "Failed to update assignee";
-      setError(message);
-      toast.error(message);
-    }
-  };
+  const handlePriority = (next: string) =>
+    void updateField({ priority: next }, "Failed to update issue", () =>
+      onboarding.signal("priority-or-assignee-changed"),
+    );
 
-  const handleLabels = async (labelIds: string[]) => {
-    if (!issue) return;
-    const previous = issue;
-    const cachedLabels = issue.labels ?? [];
-    const optimistic = labelIds
-      .map((id) => cachedLabels.find((l) => l.id === id))
-      .filter((value): value is NonNullable<typeof value> => Boolean(value));
-    setIssue({ ...issue, labels: optimistic });
-    try {
-      const response = await updateIssue(issue.id, { labelIds });
-      setIssue(response.issue);
-      await reloadAfterChange();
-    } catch (updateError) {
-      setIssue(previous);
-      toast.error(
-        updateError instanceof Error
-          ? updateError.message
-          : "Failed to update labels",
-      );
-    }
-  };
+  const handleTitle = (next: string) =>
+    void updateField({ title: next }, "Failed to update title");
 
-  const handleProject = async (projectId: string | null) => {
-    if (!issue) return;
-    const previous = issue;
-    setIssue({ ...issue, projectId, project: null });
-    try {
-      const response = await updateIssue(issue.id, {
-        projectId: projectId ?? "",
-      });
-      setIssue(response.issue);
-      await reloadAfterChange();
-      toast.success(projectId ? "Project updated" : "Project cleared");
-    } catch (updateError) {
-      setIssue(previous);
-      toast.error(
-        updateError instanceof Error
-          ? updateError.message
-          : "Failed to update project",
-      );
-    }
-  };
+  const handleDescription = (next: string) =>
+    void updateField({ description: next }, "Failed to update description");
+
+  const handleAssignee = (memberId: string | null) =>
+    void updateField(
+      { assignedToId: memberId },
+      "Failed to update assignee",
+      () => onboarding.signal("priority-or-assignee-changed"),
+    );
+
+  const handleLabels = (labelIds: string[]) =>
+    void updateField({ labelIds }, "Failed to update labels");
+
+  const handleProject = (projectId: string | null) =>
+    void updateField(
+      { projectId: projectId ?? "" },
+      "Failed to update project",
+      () =>
+        toast.success(projectId ? "Project updated" : "Project cleared"),
+    );
 
   const handleDelete = () => {
     if (!issue) return;
@@ -354,7 +271,7 @@ export function IssueDetail({
       destructive: true,
       onConfirm: async () => {
         try {
-          await deleteIssue(issue.id);
+          await deleteIssueMutation.mutateAsync(issue.id);
           void navigate({ to: "/issues" });
         } catch (deleteError) {
           const message =
@@ -377,7 +294,10 @@ export function IssueDetail({
     setError(null);
     try {
       const response = await createIssueComment(issue.id, body);
-      setComments((current) => [...current, response.comment]);
+      qc.setQueryData<IssueComment[]>(
+        queryKeys.issues.comments(issue.id),
+        (old) => (old ? [...old, response.comment] : [response.comment]),
+      );
       setCommentBody("");
       await reloadAfterChange();
     } catch (commentError) {
@@ -417,7 +337,7 @@ export function IssueDetail({
         const response = await uploadIssueAttachment(nextIssue.id, draft.file);
         nextIssue = response.issue;
       }
-      setIssue(nextIssue);
+      qc.setQueryData(queryKeys.issues.detail(issue.id), nextIssue);
       await reloadAfterChange();
       toast.success(
         result.attachments.length === 1
@@ -641,37 +561,24 @@ export function IssueDetail({
 
 function SubIssuesSection({ parentId }: { parentId: string }) {
   const navigate = useNavigate();
-  const [children, setChildren] = useState<Issue[]>([]);
-  const [loading, setLoading] = useState(true);
+  const issuesQuery = useIssuesQuery();
+  const children = useMemo(
+    () =>
+      (issuesQuery.data ?? []).filter((issue) => issue.parentId === parentId),
+    [issuesQuery.data, parentId],
+  );
+  const loading = issuesQuery.isPending;
+  const createIssueMutation = useCreateIssue();
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
-
-  const reload = async () => {
-    try {
-      const response = await listIssues();
-      setChildren(
-        response.issues.filter((issue) => issue.parentId === parentId),
-      );
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parentId]);
 
   const submit = async () => {
     const trimmed = draft.trim();
     if (!trimmed) return;
     setSubmitting(true);
     try {
-      const response = await createIssue({ title: trimmed, parentId });
-      setChildren((current) => [...current, response.issue]);
+      await createIssueMutation.mutateAsync({ title: trimmed, parentId });
       setDraft("");
       setCreating(false);
       toast.success("Sub-issue added");
@@ -806,30 +713,12 @@ function SubIssueStatusDot({ status }: { status: string }) {
 }
 
 function SubscribeStrip({ issueId }: { issueId: string }) {
-  const [subscribers, setSubscribers] = useState<IssueSubscriberUser[]>([]);
-  const [subscribed, setSubscribed] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
+  const subscribersQuery = useIssueSubscribersQuery(issueId);
+  const subscribers = subscribersQuery.data?.subscribers ?? [];
+  const subscribed = subscribersQuery.data?.subscribed ?? false;
+  const loading = subscribersQuery.isPending;
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-    void listIssueSubscribers(issueId)
-      .then((response) => {
-        if (!mounted) return;
-        setSubscribers(response.subscribers);
-        setSubscribed(response.subscribed);
-      })
-      .catch(() => {
-        /* ignore */
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [issueId]);
 
   const toggle = async () => {
     if (busy) return;
@@ -838,8 +727,7 @@ function SubscribeStrip({ issueId }: { issueId: string }) {
       const response = subscribed
         ? await unsubscribeFromIssue(issueId)
         : await subscribeToIssue(issueId);
-      setSubscribers(response.subscribers);
-      setSubscribed(response.subscribed);
+      qc.setQueryData(queryKeys.issues.subscribers(issueId), response);
       toast.success(subscribed ? "Unsubscribed" : "Subscribed");
     } catch (error) {
       toast.error(

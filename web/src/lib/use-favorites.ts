@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import {
   type Favorite,
   type FavoriteTarget,
@@ -6,47 +7,29 @@ import {
   listFavorites,
   removeFavorite as removeFavoriteApi,
 } from "@/lib/api";
+import { queryKeys } from "@/lib/queries/keys";
 
 export function useFavorites() {
-  const [favorites, setFavorites] = useState<Favorite[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const qc = useQueryClient();
+  const query = useQuery({
+    queryKey: queryKeys.favorites,
+    queryFn: () => listFavorites().then((r) => r.favorites),
+    staleTime: 60_000,
+  });
+  const favorites = query.data ?? [];
 
   const refresh = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await listFavorites();
-      setFavorites(response.favorites);
-    } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Failed to load favorites",
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const targets = useMemo(() => {
-    const set = new Set<string>();
-    for (const fav of favorites) set.add(`${fav.type}:${fav.id}`);
-    return set;
-  }, [favorites]);
+    await qc.invalidateQueries({ queryKey: queryKeys.favorites });
+  }, [qc]);
 
   const isFavorite = useCallback(
-    (type: FavoriteTarget, id: string) => targets.has(`${type}:${id}`),
-    [targets],
+    (type: FavoriteTarget, id: string) =>
+      favorites.some((fav) => fav.type === type && fav.id === id),
+    [favorites],
   );
 
   const addFavorite = useCallback(
     async (type: FavoriteTarget, id: string) => {
-      // Optimistic placeholder so the sidebar updates immediately.
       const placeholder: Favorite =
         type === "chat"
           ? {
@@ -56,43 +39,58 @@ export function useFavorites() {
               title: "…",
               position: favorites.length,
             }
-          : {
-              type: "issue",
-              id,
-              favoriteId: `pending:${id}`,
-              title: "…",
-              status: "backlog",
-              priority: "medium",
-              position: favorites.length,
-            };
-      setFavorites((current) => [...current, placeholder]);
+          : type === "project"
+            ? {
+                type: "project",
+                id,
+                favoriteId: `pending:${id}`,
+                title: "…",
+                color: "#888",
+                icon: null,
+                status: "active",
+                position: favorites.length,
+              }
+            : {
+                type: "issue",
+                id,
+                favoriteId: `pending:${id}`,
+                title: "…",
+                status: "backlog",
+                priority: "medium",
+                position: favorites.length,
+              };
+
+      qc.setQueryData<Favorite[]>(queryKeys.favorites, (old) =>
+        old ? [...old, placeholder] : [placeholder],
+      );
+
       try {
         await addFavoriteApi(type, id);
-        await refresh();
-      } catch (addError) {
-        setFavorites((current) =>
-          current.filter((fav) => fav.favoriteId !== placeholder.favoriteId),
+        await qc.invalidateQueries({ queryKey: queryKeys.favorites });
+      } catch (error) {
+        qc.setQueryData<Favorite[]>(queryKeys.favorites, (old) =>
+          old?.filter((f) => f.favoriteId !== placeholder.favoriteId),
         );
-        throw addError;
+        throw error;
       }
     },
-    [favorites.length, refresh],
+    [favorites.length, qc],
   );
 
   const removeFavorite = useCallback(
     async (type: FavoriteTarget, id: string) => {
-      const previous = favorites;
-      setFavorites((current) =>
-        current.filter((fav) => !(fav.type === type && fav.id === id)),
+      const previous = qc.getQueryData<Favorite[]>(queryKeys.favorites);
+      qc.setQueryData<Favorite[]>(queryKeys.favorites, (old) =>
+        old?.filter((f) => !(f.type === type && f.id === id)),
       );
       try {
         await removeFavoriteApi(type, id);
-      } catch (removeError) {
-        setFavorites(previous);
-        throw removeError;
+      } catch (error) {
+        if (previous) qc.setQueryData(queryKeys.favorites, previous);
+        throw error;
       }
     },
-    [favorites],
+    [qc],
   );
 
   const toggleFavorite = useCallback(
@@ -108,8 +106,8 @@ export function useFavorites() {
 
   return {
     favorites,
-    isLoading,
-    error,
+    isLoading: query.isPending,
+    error: query.error?.message ?? null,
     refresh,
     isFavorite,
     addFavorite,

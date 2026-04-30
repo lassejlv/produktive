@@ -12,26 +12,31 @@ import { MembersSettings } from "@/components/workspace/members-settings";
 import { SettingRow, SettingsSkeleton } from "@/components/workspace/setting-row";
 import {
   type Invitation,
-  type GithubConnection,
   type GithubImportPreview,
   type GithubRepository,
   type McpApiKey,
   type Member,
-  createMcpApiKey,
-  createGithubRepository,
-  deleteGithubRepository,
-  disconnectGithub,
-  getGithubConnection,
-  importGithubRepositoryIssues,
-  listGithubRepositories,
-  listMcpApiKeys,
   listInvitations,
   listMembers,
-  previewGithubRepositoryImport,
-  revokeMcpApiKey,
-  startGithubOAuth,
-  updateGithubRepository,
 } from "@/lib/api";
+import {
+  useGithubConnectionQuery,
+  useGithubRepositoriesQuery,
+} from "@/lib/queries/github";
+import { useMcpKeysQuery } from "@/lib/queries/mcp";
+import {
+  useCreateGithubRepository,
+  useDeleteGithubRepository,
+  useDisconnectGithub,
+  useImportGithubRepository,
+  usePreviewGithubRepository,
+  useStartGithubOAuth,
+  useUpdateGithubRepository,
+} from "@/lib/mutations/github";
+import {
+  useCreateMcpApiKey,
+  useRevokeMcpApiKey,
+} from "@/lib/mutations/mcp";
 import { refreshSession, updateActiveOrganization, useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -268,9 +273,21 @@ function WorkspaceSettingsPage() {
 }
 
 function GithubSettings({ canEdit }: { canEdit: boolean }) {
-  const [connection, setConnection] = useState<GithubConnection | null>(null);
-  const [repositories, setRepositories] = useState<GithubRepository[]>([]);
-  const [loading, setLoading] = useState(true);
+  const connectionQuery = useGithubConnectionQuery();
+  const connection = connectionQuery.data ?? null;
+  const repositoriesQuery = useGithubRepositoriesQuery(
+    connection?.connected === true,
+  );
+  const repositories = repositoriesQuery.data ?? [];
+
+  const startOAuth = useStartGithubOAuth();
+  const disconnect = useDisconnectGithub();
+  const createRepo = useCreateGithubRepository();
+  const updateRepo = useUpdateGithubRepository();
+  const deleteRepo = useDeleteGithubRepository();
+  const previewRepo = usePreviewGithubRepository();
+  const importRepo = useImportGithubRepository();
+
   const [busy, setBusy] = useState<string | null>(null);
   const [owner, setOwner] = useState("");
   const [repo, setRepo] = useState("");
@@ -292,23 +309,11 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
   }, []);
 
   useEffect(() => {
-    let mounted = true;
-    void Promise.all([getGithubConnection(), listGithubRepositories()])
-      .then(([connectionResponse, repositoriesResponse]) => {
-        if (!mounted) return;
-        setConnection(connectionResponse);
-        setRepositories(repositoriesResponse.repositories);
-      })
-      .catch((error) => {
-        toast.error(error instanceof Error ? error.message : "Failed to load GitHub settings");
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    const queryError = connectionQuery.error ?? repositoriesQuery.error;
+    if (queryError) {
+      toast.error(queryError.message || "Failed to load GitHub settings");
+    }
+  }, [connectionQuery.error, repositoriesQuery.error]);
 
   const normalizedOwner = owner.trim();
   const normalizedRepo = repo.trim();
@@ -326,7 +331,7 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
     if (!canEdit) return;
     setBusy("connect");
     try {
-      const response = await startGithubOAuth();
+      const response = await startOAuth.mutateAsync();
       window.location.href = response.url;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to start GitHub OAuth");
@@ -344,8 +349,7 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
       onConfirm: async () => {
         setBusy("disconnect");
         try {
-          await disconnectGithub();
-          setConnection({ connected: false, login: null, scope: null, connectedAt: null });
+          await disconnect.mutateAsync();
           setPreview(null);
           setPreviewRepoId(null);
           toast.success("GitHub disconnected");
@@ -363,13 +367,12 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
     if (!canCreateRepository) return;
     setBusy("create-repository");
     try {
-      const response = await createGithubRepository({
+      await createRepo.mutateAsync({
         owner: normalizedOwner,
         repo: normalizedRepo,
         autoImportEnabled,
         importIntervalMinutes: parsedInterval,
       });
-      setRepositories((current) => [response.repository, ...current]);
       setOwner("");
       setRepo("");
       setPreview(null);
@@ -386,7 +389,7 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
     if (!canEdit || busy !== null) return;
     setBusy(`preview:${repository.id}`);
     try {
-      const response = await previewGithubRepositoryImport(repository.id);
+      const response = await previewRepo.mutateAsync(repository.id);
       setPreview(response);
       setPreviewRepoId(repository.id);
     } catch (error) {
@@ -402,9 +405,7 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
     if (!canEdit || busy !== null) return;
     setBusy(`import:${repository.id}`);
     try {
-      const result = await importGithubRepositoryIssues(repository.id);
-      const refreshed = await listGithubRepositories();
-      setRepositories(refreshed.repositories);
+      const result = await importRepo.mutateAsync(repository.id);
       setPreviewRepoId(null);
       setPreview(null);
       toast.success(`Imported ${result.imported}, updated ${result.updated}`);
@@ -425,10 +426,7 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
     if (!canEdit || busy !== null) return;
     setBusy(`update:${repository.id}`);
     try {
-      const response = await updateGithubRepository(repository.id, patch);
-      setRepositories((current) =>
-        current.map((item) => (item.id === repository.id ? response.repository : item)),
-      );
+      await updateRepo.mutateAsync({ id: repository.id, patch });
       toast.success("GitHub repository updated");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update repository");
@@ -447,8 +445,7 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
       onConfirm: async () => {
         setBusy(`delete:${repository.id}`);
         try {
-          await deleteGithubRepository(repository.id);
-          setRepositories((current) => current.filter((item) => item.id !== repository.id));
+          await deleteRepo.mutateAsync(repository.id);
           if (previewRepoId === repository.id) {
             setPreview(null);
             setPreviewRepoId(null);
@@ -463,7 +460,10 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
     });
   };
 
-  if (loading) {
+  if (
+    connectionQuery.isPending ||
+    (connection?.connected && repositoriesQuery.isPending)
+  ) {
     return <SettingsSkeleton rows={4} />;
   }
 
@@ -719,31 +719,16 @@ function GithubRepositoryRow({
 }
 
 function McpKeySettings() {
-  const [keys, setKeys] = useState<McpApiKey[]>([]);
-  const [loading, setLoading] = useState(true);
+  const keysQuery = useMcpKeysQuery();
+  const keys = keysQuery.data ?? [];
+  const createKey = useCreateMcpApiKey();
+  const revokeKey = useRevokeMcpApiKey();
   const [name, setName] = useState("Desktop MCP");
   const [expiresInDays, setExpiresInDays] = useState("365");
   const [busy, setBusy] = useState<string | null>(null);
   const [newToken, setNewToken] = useState<string | null>(null);
   const { confirm, dialog } = useConfirmDialog();
   const serverUrl = getMcpServerUrl();
-
-  useEffect(() => {
-    let mounted = true;
-    void listMcpApiKeys()
-      .then((response) => {
-        if (mounted) setKeys(response.keys);
-      })
-      .catch((error) => {
-        toast.error(error instanceof Error ? error.message : "Failed to load MCP keys");
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   const onCopy = async (value: string, label = "Copied") => {
     try {
@@ -763,11 +748,10 @@ function McpKeySettings() {
     }
     setBusy("create");
     try {
-      const response = await createMcpApiKey({
+      const response = await createKey.mutateAsync({
         name: name.trim() || undefined,
         expiresInDays: parsed,
       });
-      setKeys((current) => [response.key, ...current]);
       setNewToken(response.token);
       toast.success("MCP key created");
     } catch (error) {
@@ -786,12 +770,7 @@ function McpKeySettings() {
       onConfirm: async () => {
         setBusy(key.id);
         try {
-          await revokeMcpApiKey(key.id);
-          setKeys((current) =>
-            current.map((item) =>
-              item.id === key.id ? { ...item, revokedAt: new Date().toISOString() } : item,
-            ),
-          );
+          await revokeKey.mutateAsync(key.id);
           toast.success("MCP key revoked");
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "Failed to revoke MCP key");
@@ -802,7 +781,7 @@ function McpKeySettings() {
     });
   };
 
-  if (loading) {
+  if (keysQuery.isPending) {
     return <SettingsSkeleton rows={4} />;
   }
 
