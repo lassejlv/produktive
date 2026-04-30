@@ -1,8 +1,16 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useState } from "react";
-import { SparkleIcon } from "@/components/chat/icons";
+import {
+  HashIcon,
+  InboxIcon,
+  IssuesIcon,
+  ProjectsIcon,
+  SettingsIcon,
+  SparkleIcon,
+} from "@/components/chat/icons";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { useProjectsQuery } from "@/lib/queries/projects";
+import { findStaticPage, type StaticPageGlyph } from "@/lib/tab-pages";
 import { useTabs } from "@/lib/use-tabs";
 import { type WorkspaceTab } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -47,6 +55,8 @@ export function TabBar({ enabled }: Props) {
                   to: "/chat/$chatId",
                   params: { chatId: tab.targetId },
                 });
+              } else if (tab.tabType === "page") {
+                void navigateToPage(navigate, tab.targetId);
               }
             }}
             onClose={() => close(tab.id)}
@@ -106,7 +116,81 @@ function TabPill({
 function TabGlyph({ tab }: { tab: WorkspaceTab }) {
   if (tab.tabType === "project") return <ProjectGlyph targetId={tab.targetId} title={tab.title} />;
   if (tab.tabType === "chat") return <SparkleIcon size={11} />;
+  if (tab.tabType === "page") {
+    const page = findStaticPage(tab.targetId);
+    return <PageGlyph glyph={page?.glyph ?? null} />;
+  }
   return <IssueDot />;
+}
+
+function PageGlyph({ glyph }: { glyph: StaticPageGlyph | null }) {
+  switch (glyph) {
+    case "issues":
+      return <IssuesIcon size={11} />;
+    case "projects":
+      return <ProjectsIcon size={11} />;
+    case "inbox":
+      return <InboxIcon size={11} />;
+    case "labels":
+      return <HashIcon size={11} />;
+    case "settings":
+      return <SettingsIcon size={11} />;
+    case "account":
+      return <PersonGlyph />;
+    case "overview":
+      return <GridGlyph />;
+    default:
+      return <IssueDot />;
+  }
+}
+
+function PersonGlyph() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <circle cx="7" cy="5" r="2" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M3 12c.5-2 2-3 4-3s3.5 1 4 3"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function GridGlyph() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <rect x="2" y="2" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="8" y="2" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="2" y="8" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="8" y="8" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
+function navigateToPage(
+  navigate: ReturnType<typeof useNavigate>,
+  path: string,
+): Promise<void> {
+  switch (path) {
+    case "/workspace":
+      return navigate({ to: "/workspace" });
+    case "/issues":
+      return navigate({ to: "/issues" });
+    case "/projects":
+      return navigate({ to: "/projects" });
+    case "/inbox":
+      return navigate({ to: "/inbox" });
+    case "/labels":
+      return navigate({ to: "/labels" });
+    case "/account":
+      return navigate({ to: "/account" });
+    case "/workspace/settings":
+      return navigate({ to: "/workspace/settings" });
+    default:
+      return Promise.resolve();
+  }
 }
 
 function ProjectGlyph({ targetId, title }: { targetId: string; title: string }) {
@@ -161,6 +245,10 @@ function activeTargetFor(pathname: string): {
   }
   if (pathname.startsWith("/chat/")) {
     return { tabType: "chat", targetId: decodeURIComponent(pathname.slice("/chat/".length)) };
+  }
+  const page = findStaticPage(pathname);
+  if (page) {
+    return { tabType: "page", targetId: page.path };
   }
   return { tabType: null, targetId: null };
 }

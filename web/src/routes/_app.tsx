@@ -41,11 +41,12 @@ import { NewLabelDialog } from "@/components/label/new-label-dialog";
 import { NewProjectDialog } from "@/components/project/new-project-dialog";
 import { updateIssue } from "@/lib/api";
 import { TabBar } from "@/components/workspace/tab-bar";
+import { findStaticPage } from "@/lib/tab-pages";
 import { useChats } from "@/lib/use-chats";
 import { useFavorites } from "@/lib/use-favorites";
 import { useInbox } from "@/lib/use-inbox";
 import { useProjects } from "@/lib/use-projects";
-import { tabsQueryOptions } from "@/lib/use-tabs";
+import { tabsQueryOptions, useRegisterTab } from "@/lib/use-tabs";
 import {
   userPreferencesQueryOptions,
   useUserPreferences,
@@ -66,6 +67,13 @@ function AppLayout() {
   const { tabsEnabled } = useUserPreferences();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
+  });
+  const staticPage = findStaticPage(pathname);
+  useRegisterTab({
+    tabType: "page",
+    targetId: staticPage?.path ?? "",
+    title: staticPage?.title ?? null,
+    enabled: tabsEnabled && Boolean(staticPage),
   });
   const { chats, isLoading: chatsLoading, removeChat } = useChats();
   const {

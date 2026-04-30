@@ -14,7 +14,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-const MAX_TABS_PER_ORG: usize = 12;
+const MAX_TABS_PER_ORG: usize = 50;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -81,21 +81,23 @@ async fn open_tab(
             "tabType, targetId, and title are required".into(),
         ));
     }
-    if !matches!(tab_type.as_str(), "issue" | "project" | "chat") {
+    if !matches!(tab_type.as_str(), "issue" | "project" | "chat" | "page") {
         return Err(ApiError::BadRequest(
-            "tabType must be one of issue, project, chat".into(),
+            "tabType must be one of issue, project, chat, page".into(),
         ));
     }
 
     let now = Utc::now().fixed_offset();
 
+    // Only update Title on conflict — leave OpenedAt frozen at first discovery
+    // so revisiting a tab doesn't reorder it.
     let on_conflict = OnConflict::columns([
         user_tab::Column::UserId,
         user_tab::Column::OrganizationId,
         user_tab::Column::TabType,
         user_tab::Column::TargetId,
     ])
-    .update_columns([user_tab::Column::Title, user_tab::Column::OpenedAt])
+    .update_columns([user_tab::Column::Title])
     .to_owned();
 
     user_tab::Entity::insert(user_tab::ActiveModel {

@@ -31,28 +31,42 @@ export function useTabs() {
     onMutate: async (input) => {
       await qc.cancelQueries({ queryKey: queryKeys.tabs });
       const previous = qc.getQueryData<WorkspaceTab[]>(queryKeys.tabs) ?? [];
-      const tempId = `temp:${input.tabType}:${input.targetId}`;
-      const optimistic: WorkspaceTab = {
-        id: tempId,
-        tabType: input.tabType,
-        targetId: input.targetId,
-        title: input.title,
-        openedAt: new Date().toISOString(),
-      };
-      const others = previous.filter(
+      const existingIndex = previous.findIndex(
         (tab) =>
-          !(tab.tabType === input.tabType && tab.targetId === input.targetId),
+          tab.tabType === input.tabType && tab.targetId === input.targetId,
       );
-      qc.setQueryData<WorkspaceTab[]>(queryKeys.tabs, [...others, optimistic]);
+      if (existingIndex >= 0) {
+        // Re-registration: refresh title in place, do NOT reorder.
+        const next = previous.slice();
+        next[existingIndex] = { ...previous[existingIndex], title: input.title };
+        qc.setQueryData<WorkspaceTab[]>(queryKeys.tabs, next);
+      } else {
+        const optimistic: WorkspaceTab = {
+          id: `temp:${input.tabType}:${input.targetId}`,
+          tabType: input.tabType,
+          targetId: input.targetId,
+          title: input.title,
+          openedAt: new Date().toISOString(),
+        };
+        qc.setQueryData<WorkspaceTab[]>(queryKeys.tabs, [...previous, optimistic]);
+      }
       return { previous };
     },
     onSuccess: (created) => {
       qc.setQueryData<WorkspaceTab[]>(queryKeys.tabs, (existing) => {
-        const others = (existing ?? []).filter(
+        const list = existing ?? [];
+        const idx = list.findIndex(
           (tab) =>
-            !(tab.tabType === created.tabType && tab.targetId === created.targetId),
+            tab.tabType === created.tabType && tab.targetId === created.targetId,
         );
-        return [...others, created];
+        if (idx >= 0) {
+          // Replace temp/old row with the server's authoritative copy at the
+          // same index — preserves the original opened_at order.
+          const next = list.slice();
+          next[idx] = created;
+          return next;
+        }
+        return [...list, created];
       });
     },
     onError: (_error, _input, context) => {

@@ -249,7 +249,7 @@ export const updateMyPreferences = (patch: Partial<NotificationPreferences>) =>
     body: JSON.stringify(patch),
   });
 
-export type TabType = "issue" | "project" | "chat";
+export type TabType = "issue" | "project" | "chat" | "page";
 
 export type WorkspaceTab = {
   id: string;
