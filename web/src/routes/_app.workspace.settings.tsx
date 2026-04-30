@@ -243,8 +243,9 @@ function WorkspaceSettingsPage() {
 function McpKeySettings() {
   const [keys, setKeys] = useState<McpApiKey[]>([]);
   const [loading, setLoading] = useState(true);
+  const [name, setName] = useState("Desktop MCP");
+  const [expiresInDays, setExpiresInDays] = useState("365");
   const [busy, setBusy] = useState<string | null>(null);
-  const [composerOpen, setComposerOpen] = useState(false);
   const [newToken, setNewToken] = useState<string | null>(null);
   const { confirm, dialog } = useConfirmDialog();
   const serverUrl = getMcpServerUrl();
@@ -253,11 +254,7 @@ function McpKeySettings() {
     let mounted = true;
     void listMcpApiKeys()
       .then((response) => {
-        if (!mounted) return;
-        setKeys(response.keys);
-        if (response.keys.filter((key) => !key.revokedAt).length === 0) {
-          setComposerOpen(true);
-        }
+        if (mounted) setKeys(response.keys);
       })
       .catch((error) => {
         toast.error(error instanceof Error ? error.message : "Failed to load MCP keys");
@@ -279,16 +276,21 @@ function McpKeySettings() {
     }
   };
 
-  const onCreate = async (input: { name: string; expiresInDays: number }) => {
+  const onCreate = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const parsed = Number.parseInt(expiresInDays, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      toast.error("Expiration must be at least 1 day.");
+      return;
+    }
     setBusy("create");
     try {
       const response = await createMcpApiKey({
-        name: input.name.trim() || undefined,
-        expiresInDays: input.expiresInDays,
+        name: name.trim() || undefined,
+        expiresInDays: parsed,
       });
       setKeys((current) => [response.key, ...current]);
       setNewToken(response.token);
-      setComposerOpen(false);
       toast.success("MCP key created");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create MCP key");
@@ -331,459 +333,87 @@ function McpKeySettings() {
   const revokedKeys = keys.filter((key) => key.revokedAt);
 
   return (
-    <div className="space-y-6">
+    <div>
       {dialog}
 
       {newToken ? (
-        <NewTokenReveal
-          token={newToken}
-          onDismiss={() => setNewToken(null)}
-          onCopy={() => void onCopy(newToken, "MCP key copied")}
-        />
-      ) : null}
-
-      <EndpointCard
-        url={serverUrl}
-        onCopy={() => void onCopy(serverUrl, "Endpoint copied")}
-      />
-
-      <div>
-        {activeKeys.length > 0 || composerOpen ? (
-          <div className="mb-2 flex items-end justify-between gap-3">
-            <div className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-faint">
-              Active keys
-              {activeKeys.length > 0 ? ` · ${activeKeys.length}` : ""}
-            </div>
-            {!composerOpen ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setComposerOpen(true)}
-              >
-                + New key
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
-
-        <div className="space-y-3">
-          {composerOpen ? (
-            <KeyComposer
-              busy={busy === "create"}
-              onCancel={() => setComposerOpen(false)}
-              onCreate={(input) => void onCreate(input)}
-            />
-          ) : null}
-
-          {activeKeys.length === 0 && !composerOpen ? (
-            <EmptyKeysState onCreate={() => setComposerOpen(true)} />
-          ) : null}
-
-          {activeKeys.length > 0 ? (
-            <div className="space-y-2">
-              {activeKeys.map((key) => (
-                <ActiveKeyCard
-                  key={key.id}
-                  item={key}
-                  busy={busy === key.id}
-                  onRevoke={() => onRevoke(key)}
-                />
-              ))}
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      {revokedKeys.length > 0 ? <RevokedSection items={revokedKeys} /> : null}
-    </div>
-  );
-}
-
-function NewTokenReveal({
-  token,
-  onDismiss,
-  onCopy,
-}: {
-  token: string;
-  onDismiss: () => void;
-  onCopy: () => void;
-}) {
-  const [revealed, setRevealed] = useState(true);
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    onCopy();
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="animate-fade-up">
-      <div className="animate-pulse-glow relative overflow-hidden rounded-md border border-accent/30 bg-surface p-5">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(circle at top left, color-mix(in srgb, var(--color-accent) 16%, transparent), transparent 55%)",
-          }}
-        />
-        <div className="relative">
-          <div className="flex items-start justify-between gap-3">
-            <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">
-              New key · shown once
-            </div>
-            <button
-              type="button"
-              onClick={onDismiss}
-              className="text-[11.5px] text-fg-faint transition-colors hover:text-fg"
-            >
-              Done
-            </button>
-          </div>
-
-          <h3 className="m-0 mt-2 text-[15px] font-medium text-fg">Save this key now</h3>
-          <p className="mt-1 max-w-[40rem] text-[12.5px] leading-5 text-fg-muted">
-            Produktive only displays the full token on this screen. Store it in your MCP client or
-            password manager before navigating away.
-          </p>
-
-          <div className="mt-4 flex items-stretch gap-2">
-            <div className="flex flex-1 items-center break-all rounded border border-border-subtle bg-bg px-3 py-2.5 font-mono text-[12.5px] leading-5 text-fg">
-              {revealed ? token : "•".repeat(Math.min(token.length, 48))}
-            </div>
-            <button
-              type="button"
-              onClick={() => setRevealed((value) => !value)}
-              aria-label={revealed ? "Hide key" : "Reveal key"}
-              className="shrink-0 rounded border border-border-subtle bg-bg px-3 font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-muted transition-colors hover:border-border hover:text-fg"
-            >
-              {revealed ? "Hide" : "Reveal"}
-            </button>
-          </div>
-
-          <div className="mt-3 flex items-center justify-end gap-2">
+        <SettingRow label="New key">
+          <p className="m-0 text-fg-muted">Save this token now — it won't be shown again.</p>
+          <div className="mt-2 flex items-stretch gap-2">
+            <code className="min-w-0 flex-1 break-all rounded border border-border bg-bg px-3 py-2 font-mono text-[12px] text-fg">
+              {newToken}
+            </code>
             <Button
               type="button"
+              variant="outline"
               size="sm"
-              onClick={handleCopy}
-              className={cn(copied ? "bg-success text-bg hover:bg-success" : "")}
+              onClick={() => void onCopy(newToken, "MCP key copied")}
             >
-              {copied ? "Copied ✓" : "Copy key"}
+              Copy
             </Button>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+        </SettingRow>
+      ) : null}
 
-function EndpointCard({ url, onCopy }: { url: string; onCopy: () => void }) {
-  return (
-    <div className="rounded-md border border-border-subtle bg-surface/50 p-4">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="font-mono text-[10.5px] uppercase tracking-[0.08em] text-fg-faint">
-          Endpoint
-        </div>
-        <button
-          type="button"
-          onClick={onCopy}
-          className="text-[11px] text-fg-muted transition-colors hover:text-fg"
-        >
-          Copy
-        </button>
-      </div>
-      <div className="truncate rounded border border-border-subtle bg-bg px-3 py-2 font-mono text-[12.5px] text-fg">
-        {url}
-      </div>
-      <p className="mt-2 text-[11.5px] leading-5 text-fg-faint">
-        Send your token as{" "}
-        <code className="font-mono text-fg-muted">Authorization: Bearer &lt;your-key&gt;</code>.
-      </p>
-    </div>
-  );
-}
-
-const EXPIRY_PRESETS: Array<{ label: string; days: number }> = [
-  { label: "30 days", days: 30 },
-  { label: "90 days", days: 90 },
-  { label: "1 year", days: 365 },
-  { label: "2 years", days: 730 },
-];
-
-function KeyComposer({
-  busy,
-  onCancel,
-  onCreate,
-}: {
-  busy: boolean;
-  onCancel: () => void;
-  onCreate: (input: { name: string; expiresInDays: number }) => void;
-}) {
-  const [name, setName] = useState("Desktop MCP");
-  const [expiresInDays, setExpiresInDays] = useState("365");
-
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const parsed = Number.parseInt(expiresInDays, 10);
-    if (!Number.isFinite(parsed) || parsed < 1) {
-      toast.error("Expiration must be at least 1 day.");
-      return;
-    }
-    onCreate({ name, expiresInDays: parsed });
-  };
-
-  return (
-    <form
-      onSubmit={onSubmit}
-      className="animate-fade-in rounded-md border border-border-subtle bg-surface/50 p-4"
-    >
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
-        <div>
-          <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.08em] text-fg-faint">
-            Name
-          </label>
-          <Input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="e.g. Desktop MCP"
-            disabled={busy}
-            autoFocus
-          />
-        </div>
-        <div>
-          <label className="mb-1 block font-mono text-[10px] uppercase tracking-[0.08em] text-fg-faint">
-            Expires (days)
-          </label>
-          <Input
-            value={expiresInDays}
-            onChange={(event) => setExpiresInDays(event.target.value)}
-            inputMode="numeric"
-            disabled={busy}
-            aria-label="Expiration in days"
-          />
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {EXPIRY_PRESETS.map((preset) => {
-          const active = expiresInDays === String(preset.days);
-          return (
-            <button
-              key={preset.days}
-              type="button"
-              onClick={() => setExpiresInDays(String(preset.days))}
-              disabled={busy}
-              className={cn(
-                "rounded-full border px-2 py-0.5 text-[11px] transition-colors",
-                active
-                  ? "border-border bg-surface-2 text-fg"
-                  : "border-border-subtle bg-transparent text-fg-muted hover:border-border hover:text-fg",
-              )}
-            >
-              {preset.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="mt-4 flex items-center justify-between gap-2">
-        <span className="text-[11.5px] text-fg-faint">
-          Keys are scoped to the active workspace.
-        </span>
-        <div className="flex gap-2">
+      <SettingRow label="Endpoint">
+        <div className="flex items-center gap-2">
+          <code className="min-w-0 flex-1 truncate font-mono text-fg-muted">{serverUrl}</code>
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
-            onClick={onCancel}
-            disabled={busy}
+            onClick={() => void onCopy(serverUrl, "Endpoint copied")}
           >
-            Cancel
-          </Button>
-          <Button type="submit" size="sm" disabled={busy}>
-            {busy ? "Creating…" : "Create key"}
+            Copy
           </Button>
         </div>
-      </div>
-    </form>
-  );
-}
+      </SettingRow>
 
-function ActiveKeyCard({
-  item,
-  busy,
-  onRevoke,
-}: {
-  item: McpApiKey;
-  busy: boolean;
-  onRevoke: () => void;
-}) {
-  const status = getKeyStatus(item);
-  const stripColor =
-    status.tone === "success"
-      ? "bg-success"
-      : status.tone === "warning"
-        ? "bg-warning"
-        : "bg-danger";
-
-  return (
-    <div className="group relative overflow-hidden rounded-md border border-border-subtle bg-surface/40 p-4 transition-colors hover:border-border hover:bg-surface">
-      <span
-        aria-hidden
-        className={cn("absolute left-0 top-0 h-full w-[2px]", stripColor)}
-      />
-
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[13px] font-medium text-fg">{item.name}</span>
-            <KeyStatusPill tone={status.tone} label={status.label} />
+      <form onSubmit={(event) => void onCreate(event)}>
+        <SettingRow label="Create key">
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_120px]">
+            <Input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Desktop MCP"
+              disabled={busy === "create"}
+            />
+            <Input
+              value={expiresInDays}
+              onChange={(event) => setExpiresInDays(event.target.value)}
+              inputMode="numeric"
+              disabled={busy === "create"}
+              aria-label="Expiration in days"
+            />
           </div>
-          <span className="mt-2 inline-block rounded border border-border-subtle bg-bg/60 px-2 py-1 font-mono text-[11.5px] text-fg-muted">
-            {item.tokenPrefix}…
-          </span>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={onRevoke}
-          disabled={busy}
-        >
-          {busy ? "Revoking…" : "Revoke"}
-        </Button>
-      </div>
+          <div className="mt-2 flex items-center justify-between gap-2 text-[11.5px] text-fg-faint">
+            <span>Days until expiry.</span>
+            <Button type="submit" size="sm" disabled={busy === "create"}>
+              {busy === "create" ? "Creating…" : "Create"}
+            </Button>
+          </div>
+        </SettingRow>
+      </form>
 
-      <div className="mt-4 grid grid-cols-3 gap-4">
-        <KeyMetaCell
-          label="Created"
-          value={formatRelative(item.createdAt)}
-          title={formatDate(item.createdAt)}
-        />
-        <KeyMetaCell
-          label="Last used"
-          value={item.lastUsedAt ? formatRelative(item.lastUsedAt) : "Never"}
-          title={item.lastUsedAt ? formatDate(item.lastUsedAt) : undefined}
-          dim={!item.lastUsedAt}
-        />
-        <KeyMetaCell
-          label="Expires"
-          value={item.expiresAt ? formatRelative(item.expiresAt) : "Never"}
-          title={item.expiresAt ? formatDate(item.expiresAt) : undefined}
-          dim={!item.expiresAt}
-        />
-      </div>
-    </div>
-  );
-}
-
-function KeyMetaCell({
-  label,
-  value,
-  title,
-  dim = false,
-}: {
-  label: string;
-  value: string;
-  title?: string;
-  dim?: boolean;
-}) {
-  return (
-    <div className="min-w-0">
-      <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-fg-faint">
-        {label}
-      </div>
-      <div
-        className={cn(
-          "mt-0.5 truncate text-[12px]",
-          dim ? "text-fg-faint" : "text-fg-muted",
-        )}
-        title={title}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function KeyStatusPill({
-  tone,
-  label,
-}: {
-  tone: "success" | "warning" | "danger";
-  label: string;
-}) {
-  return (
-    <span
-      className={cn(
-        "rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em]",
-        tone === "success" && "bg-success/10 text-success",
-        tone === "warning" && "bg-warning/10 text-warning",
-        tone === "danger" && "bg-danger/10 text-danger",
+      {activeKeys.length === 0 ? (
+        <SettingRow label="Keys">
+          <span className="text-fg-muted">No active keys.</span>
+        </SettingRow>
+      ) : (
+        activeKeys.map((key) => (
+          <KeyRow
+            key={key.id}
+            item={key}
+            busy={busy === key.id}
+            onRevoke={() => onRevoke(key)}
+          />
+        ))
       )}
-    >
-      {label}
-    </span>
-  );
-}
 
-function EmptyKeysState({ onCreate }: { onCreate: () => void }) {
-  return (
-    <div className="rounded-md border border-dashed border-border-subtle px-6 py-12 text-center">
-      <div className="font-mono text-[26px] tracking-[-0.02em] text-fg-faint">[ key ]</div>
-      <h3 className="m-0 mt-3 text-[14px] font-medium text-fg">No keys yet</h3>
-      <p className="mx-auto mt-1 max-w-[28rem] text-[12px] leading-5 text-fg-muted">
-        Create your first MCP key to connect Claude Desktop, Cursor, or any other MCP client to
-        this workspace.
-      </p>
-      <div className="mt-4 flex justify-center">
-        <Button type="button" size="sm" onClick={onCreate}>
-          Create MCP key
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function RevokedSection({ items }: { items: McpApiKey[] }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-fg-faint transition-colors hover:text-fg-muted"
-      >
-        <span>
-          {open ? "Hide" : "Show"} {items.length} revoked{" "}
-          {items.length === 1 ? "key" : "keys"}
-        </span>
-        <span aria-hidden className="text-[9px]">
-          {open ? "▴" : "▾"}
-        </span>
-      </button>
-
-      {open ? (
-        <div className="mt-2 divide-y divide-border-subtle rounded-md border border-border-subtle opacity-60">
-          {items.map((key) => (
-            <div
-              key={key.id}
-              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
-            >
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="text-[12.5px] text-fg-muted">{key.name}</span>
-                <KeyStatusPill tone="danger" label="revoked" />
-                <span className="font-mono text-[11px] text-fg-faint">
-                  {key.tokenPrefix}…
-                </span>
-              </div>
-              <span className="text-[11px] text-fg-faint">
-                Revoked {key.revokedAt ? formatRelative(key.revokedAt) : "—"}
-              </span>
-            </div>
+      {revokedKeys.length > 0 ? (
+        <div className="opacity-60">
+          {revokedKeys.map((key) => (
+            <KeyRow key={key.id} item={key} revoked />
           ))}
         </div>
       ) : null}
@@ -791,49 +421,38 @@ function RevokedSection({ items }: { items: McpApiKey[] }) {
   );
 }
 
-function formatRelative(value: string): string {
-  const target = new Date(value).getTime();
-  if (Number.isNaN(target)) return "—";
-  const diffMs = target - Date.now();
-  const future = diffMs > 0;
-  const absMs = Math.abs(diffMs);
-  const sec = Math.floor(absMs / 1000);
-  const min = Math.floor(sec / 60);
-  const hr = Math.floor(min / 60);
-  const day = Math.floor(hr / 24);
-  const month = Math.floor(day / 30);
-  const year = Math.floor(day / 365);
-
-  if (sec < 30) return "just now";
-  if (day === 1) return future ? "tomorrow" : "yesterday";
-
-  let phrase: string;
-  if (min < 1) phrase = `${sec}s`;
-  else if (hr < 1) phrase = `${min} min`;
-  else if (day < 1) phrase = `${hr} hr`;
-  else if (day < 30) phrase = `${day} days`;
-  else if (month < 12) phrase = `${month} mo`;
-  else phrase = `${year} yr`;
-
-  return future ? `in ${phrase}` : `${phrase} ago`;
-}
-
-function getKeyStatus(item: McpApiKey): {
-  tone: "success" | "warning" | "danger";
-  label: string;
-} {
-  if (item.expiresAt) {
-    const expires = new Date(item.expiresAt).getTime();
-    const now = Date.now();
-    if (expires <= now) {
-      return { tone: "danger", label: "expired" };
-    }
-    const daysLeft = Math.ceil((expires - now) / (1000 * 60 * 60 * 24));
-    if (daysLeft <= 14) {
-      return { tone: "warning", label: `expires in ${daysLeft}d` };
-    }
-  }
-  return { tone: "success", label: "active" };
+function KeyRow({
+  item,
+  busy = false,
+  revoked = false,
+  onRevoke,
+}: {
+  item: McpApiKey;
+  busy?: boolean;
+  revoked?: boolean;
+  onRevoke?: () => void;
+}) {
+  return (
+    <div className="grid gap-2 border-b border-border-subtle py-3 text-[13px] md:grid-cols-[140px_minmax(0,1fr)]">
+      <div className="text-fg-faint">{revoked ? "Revoked" : "Active"}</div>
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-fg">{item.name}</div>
+          <div className="mt-0.5 font-mono text-[11.5px] text-fg-muted">{item.tokenPrefix}…</div>
+          <div className="mt-0.5 text-[11.5px] text-fg-faint">
+            Created {formatDate(item.createdAt)}
+            {item.expiresAt ? ` · Expires ${formatDate(item.expiresAt)}` : ""}
+            {item.lastUsedAt ? ` · Last used ${formatDate(item.lastUsedAt)}` : ""}
+          </div>
+        </div>
+        {!revoked && onRevoke ? (
+          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onRevoke}>
+            {busy ? "Revoking…" : "Revoke"}
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function formatDate(value: string) {

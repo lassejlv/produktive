@@ -516,8 +516,12 @@ async fn finish_assistant_turn(
                 new_rows.push(placeholder);
 
                 let mut hit_terminal_tool = false;
+                let mut issue_changes = Vec::new();
                 for call in &calls {
                     let result_value = dispatch_tool_call(call, state, auth).await?;
+                    if let Some(change) = issue_change_summary(&call.name, &result_value) {
+                        issue_changes.push(change);
+                    }
                     let result_str =
                         serde_json::to_string(&result_value).unwrap_or_else(|_| "{}".to_owned());
                     let tool_row = insert_message(
@@ -540,6 +544,20 @@ async fn finish_assistant_turn(
                     // Stop the round — the user needs to respond before we
                     // continue. The assistant message with the ask_user tool
                     // call is the visible "turn".
+                    break;
+                }
+
+                if !issue_changes.is_empty() {
+                    let assistant_row = insert_message(
+                        state,
+                        chat_id,
+                        "assistant",
+                        &format_issue_change_response(&issue_changes),
+                        None,
+                        None,
+                    )
+                    .await?;
+                    new_rows.push(assistant_row);
                     break;
                 }
             }
@@ -692,6 +710,89 @@ async fn dispatch_tool_call(
     }
 
     agent_tools::dispatch(&call.name, &call.arguments, state, auth).await
+}
+
+struct IssueChangeSummary {
+    action: IssueChangeAction,
+    id: String,
+    title: String,
+    status: Option<String>,
+    priority: Option<String>,
+}
+
+enum IssueChangeAction {
+    Created,
+    Updated,
+}
+
+fn issue_change_summary(tool_name: &str, result: &Value) -> Option<IssueChangeSummary> {
+    if result.get("error").is_some() {
+        return None;
+    }
+
+    let action = match tool_name {
+        "create_issue" => IssueChangeAction::Created,
+        "update_issue" => IssueChangeAction::Updated,
+        _ => return None,
+    };
+
+    let issue = result.get("issue")?.as_object()?;
+    let id = issue.get("id")?.as_str()?.to_owned();
+    let title = issue.get("title")?.as_str()?.to_owned();
+    let status = issue
+        .get("status")
+        .and_then(|value| value.as_str())
+        .map(str::to_owned);
+    let priority = issue
+        .get("priority")
+        .and_then(|value| value.as_str())
+        .map(str::to_owned);
+
+    Some(IssueChangeSummary {
+        action,
+        id,
+        title,
+        status,
+        priority,
+    })
+}
+
+fn format_issue_change_response(changes: &[IssueChangeSummary]) -> String {
+    if changes.len() == 1 {
+        return format!("Done. {}", format_issue_change(&changes[0]));
+    }
+
+    let lines = changes
+        .iter()
+        .map(|change| format!("- {}", format_issue_change(change)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("Done.\n{lines}")
+}
+
+fn format_issue_change(change: &IssueChangeSummary) -> String {
+    match change.action {
+        IssueChangeAction::Created => {
+            let status = change.status.as_deref().unwrap_or("backlog");
+            let priority = change.priority.as_deref().unwrap_or("medium");
+            format!(
+                "Created issue \"{}\" - {status}, {priority} priority. ID: {}.",
+                change.title,
+                short_id(&change.id)
+            )
+        }
+        IssueChangeAction::Updated => {
+            format!(
+                "Updated issue \"{}\". ID: {}.",
+                change.title,
+                short_id(&change.id)
+            )
+        }
+    }
+}
+
+fn short_id(id: &str) -> &str {
+    id.get(..8).unwrap_or(id)
 }
 
 #[derive(serde::Deserialize)]
