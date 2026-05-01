@@ -19,6 +19,7 @@ hmac.workspace = true
 jsonwebtoken.workspace = true
 polar-rs = { path = "../polar" }
 produktive-ai = { path = "../ai" }
+produktive-billing = { path = "../billing" }
 produktive-entity = { path = "../entity" }
 produktive-migration = { path = "../migration" }
 unkey-rs = { path = "../unkey" }

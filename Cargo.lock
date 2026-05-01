@@ -2322,6 +2322,7 @@ dependencies = [
  "jsonwebtoken 9.3.1",
  "polar-rs",
  "produktive-ai",
+ "produktive-billing",
  "produktive-entity",
  "produktive-migration",
  "rand_core 0.6.4",
@@ -2340,6 +2341,14 @@ dependencies = [
  "tracing-subscriber",
  "unkey-rs",
  "uuid",
+]
+
+[[package]]
+name = "produktive-billing"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

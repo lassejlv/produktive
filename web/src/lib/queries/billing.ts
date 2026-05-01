@@ -1,5 +1,11 @@
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import { type BillingStatus, getBillingStatus, getPricingPlans } from "../api";
+import {
+  type BillingStatus,
+  type BillingUsage,
+  getBillingStatus,
+  getBillingUsage,
+  getPricingPlans,
+} from "../api";
 import { queryKeys } from "./keys";
 
 export const billingStatusQueryOptions = () =>
@@ -16,8 +22,17 @@ export const pricingPlansQueryOptions = () =>
     staleTime: 60 * 60_000,
   });
 
+export const billingUsageQueryOptions = () =>
+  queryOptions({
+    queryKey: queryKeys.billing.usage,
+    queryFn: getBillingUsage,
+    staleTime: 60_000,
+  });
+
 export const useBillingStatusQuery = () => useQuery(billingStatusQueryOptions());
 
 export const usePricingPlansQuery = () => useQuery(pricingPlansQueryOptions());
 
-export type { BillingStatus };
+export const useBillingUsageQuery = () => useQuery(billingUsageQueryOptions());
+
+export type { BillingStatus, BillingUsage };

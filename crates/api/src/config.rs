@@ -27,6 +27,8 @@ pub struct Config {
     pub polar_access_token: String,
     pub polar_base_url: Option<String>,
     pub polar_pro_product_id: String,
+    pub polar_team_product_id: Option<String>,
+    pub polar_ai_messages_meter_id: String,
     pub polar_webhook_secret: String,
     pub unkey_root_key: String,
     pub unkey_api_id: String,
@@ -115,6 +117,9 @@ impl Config {
             polar_base_url: optional_env("POLAR_BASE_URL"),
             polar_pro_product_id: required_env("POLAR_PRO_PRODUCT_ID")
                 .context("POLAR_PRO_PRODUCT_ID is required")?,
+            polar_team_product_id: optional_env("POLAR_TEAM_PRODUCT_ID"),
+            polar_ai_messages_meter_id: required_env("POLAR_AI_MESSAGES_METER_ID")
+                .context("POLAR_AI_MESSAGES_METER_ID is required")?,
             polar_webhook_secret: required_env("POLAR_WEBHOOK_SECRET")
                 .context("POLAR_WEBHOOK_SECRET is required")?,
             unkey_root_key: required_env("UNKEY_ROOT_KEY").context("UNKEY_ROOT_KEY is required")?,

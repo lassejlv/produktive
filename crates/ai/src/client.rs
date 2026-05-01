@@ -1,4 +1,4 @@
-use crate::types::{AiError, CompletionResult, Message, Role, Tool, ToolCall};
+use crate::types::{AiError, CompletionResult, Message, Role, Tool, ToolCall, Usage};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -69,6 +69,7 @@ impl AiClient {
         }
 
         let parsed: ChatCompletionResponse = serde_json::from_str(&raw)?;
+        let usage = parsed.usage;
         let first = parsed
             .choices
             .into_iter()
@@ -88,13 +89,15 @@ impl AiClient {
                 return Ok(CompletionResult::ToolCalls {
                     calls: mapped,
                     reasoning_content: first.message.reasoning_content,
+                    usage,
                 });
             }
         }
 
-        Ok(CompletionResult::Text(
-            first.message.content.unwrap_or_default(),
-        ))
+        Ok(CompletionResult::Text {
+            text: first.message.content.unwrap_or_default(),
+            usage,
+        })
     }
 }
 
@@ -155,6 +158,8 @@ fn tools_to_wire(tools: &[Tool]) -> Vec<Value> {
 #[derive(Deserialize)]
 struct ChatCompletionResponse {
     choices: Vec<ChatChoice>,
+    #[serde(default)]
+    usage: Option<Usage>,
 }
 
 #[derive(Deserialize)]
@@ -231,6 +236,32 @@ mod tests {
         assert_eq!(
             message.reasoning_content.as_deref(),
             Some("Need issue data before answering.")
+        );
+    }
+
+    #[test]
+    fn chat_response_decodes_usage() {
+        let parsed: ChatCompletionResponse = serde_json::from_value(json!({
+            "choices": [{
+                "message": {
+                    "content": "Done"
+                }
+            }],
+            "usage": {
+                "prompt_tokens": 123,
+                "completion_tokens": 45,
+                "total_tokens": 168
+            }
+        }))
+        .expect("valid chat completion response");
+
+        assert_eq!(
+            parsed.usage,
+            Some(Usage {
+                prompt_tokens: Some(123),
+                completion_tokens: Some(45),
+                total_tokens: Some(168),
+            })
         );
     }
 }

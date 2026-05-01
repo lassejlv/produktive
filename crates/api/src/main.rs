@@ -1,6 +1,7 @@
 mod agent_tools;
 mod ai_models;
 mod auth;
+mod billing_usage;
 mod config;
 mod digest;
 mod email;
@@ -87,6 +88,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState::new(db, config.clone(), ai, polar, unkey);
     spawn_github_auto_importer(state.clone());
     digest::spawn_progress_digest_scheduler(state.clone());
+    billing_usage::spawn_billing_usage_worker(state.clone());
     let asset_service = ServeDir::new(format!("{}/assets", config.web_dist_dir));
     let spa_service = ServeDir::new(&config.web_dist_dir).fallback(ServeFile::new(format!(
         "{}/index.html",

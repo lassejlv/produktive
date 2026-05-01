@@ -8,13 +8,13 @@ dev:
     #!/usr/bin/env bash
     set -euo pipefail
     trap 'pids=$(jobs -pr); if [ -n "$pids" ]; then kill $pids 2>/dev/null || true; fi' EXIT INT TERM
-    cargo run -p produktive-api &
+    cargo run -p produktive-api --bin produktive-api &
     (cd web && bun run dev) &
     wait
 
 # Run the Rust API only
 api:
-    cargo run -p produktive-api
+    cargo run -p produktive-api --bin produktive-api
 
 # Run the Vite web app only
 web:

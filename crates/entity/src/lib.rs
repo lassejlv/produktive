@@ -1,4 +1,5 @@
 pub mod auth_token;
+pub mod billing_usage_event;
 pub mod chat;
 pub mod chat_message;
 pub mod favorite;

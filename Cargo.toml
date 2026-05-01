@@ -2,6 +2,7 @@
 members = [
     "crates/ai",
     "crates/api",
+    "crates/billing",
     "crates/entity",
     "crates/mcp",
     "crates/migration",

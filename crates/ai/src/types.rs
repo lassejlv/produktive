@@ -95,11 +95,22 @@ pub struct Tool {
 
 #[derive(Clone, Debug)]
 pub enum CompletionResult {
-    Text(String),
+    Text {
+        text: String,
+        usage: Option<Usage>,
+    },
     ToolCalls {
         calls: Vec<ToolCall>,
         reasoning_content: Option<String>,
+        usage: Option<Usage>,
     },
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Usage {
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    pub total_tokens: Option<u64>,
 }
 
 #[derive(Debug, thiserror::Error)]

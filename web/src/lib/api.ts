@@ -315,6 +315,36 @@ export type BillingStatus = {
   subscriptions: BillingSubscription[];
 };
 
+export type BillingUsage = {
+  periodStart: number;
+  periodEnd: number;
+  planName: string;
+  includedCredits: number;
+  usedCredits: number;
+  remainingCredits: number;
+  overageCredits: number;
+  pendingEvents: number;
+  sentEvents: number;
+  failedEvents: number;
+  daily: BillingUsageDaily[];
+  recent: BillingUsageEvent[];
+};
+
+export type BillingUsageDaily = {
+  date: string;
+  credits: number;
+};
+
+export type BillingUsageEvent = {
+  id: string;
+  createdAt: number;
+  model: string;
+  credits: number;
+  totalTokens: number;
+  usageSource: string;
+  status: string;
+};
+
 export type PricingPlan = {
   name: string;
   priceAmount: number;
@@ -325,6 +355,8 @@ export type PricingPlan = {
 export const getPricingPlans = () => request<{ plans: PricingPlan[] }>("/api/billing/plans");
 
 export const getBillingStatus = () => request<BillingStatus>("/api/billing/status");
+
+export const getBillingUsage = () => request<BillingUsage>("/api/billing/usage");
 
 export const startBillingCheckout = () =>
   request<{ url: string }>("/api/billing/checkout", { method: "POST" });

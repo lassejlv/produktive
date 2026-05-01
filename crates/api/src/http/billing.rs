@@ -12,11 +12,11 @@ use axum::{
 };
 use chrono::{DateTime, FixedOffset, Utc};
 use polar_rs::{
-    models::{CreateCheckoutRequest, CreateCustomerSessionRequest, Subscription},
+    models::{CreateCheckoutRequest, CreateCustomerSessionRequest, Product, Subscription},
     webhooks::{verify, WebhookEvent},
     PolarError,
 };
-use produktive_entity::{member, organization_subscription as os};
+use produktive_entity::{billing_usage_event as bue, member, organization_subscription as os};
 use sea_orm::{
     sea_query::OnConflict, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
 };
@@ -25,11 +25,13 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 const ACTIVE_STATUSES: &[&str] = &["active", "trialing"];
+const USAGE_PERIOD_DAYS: i64 = 30;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/plans", get(plans))
         .route("/status", get(status))
+        .route("/usage", get(usage))
         .route("/checkout", post(checkout))
         .route("/portal", post(portal))
         .route("/cancel", post(cancel))
@@ -67,6 +69,8 @@ struct BillingUrlResponse {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PricingPlanResponse {
+    id: String,
+    slug: String,
     name: String,
     price_amount: i64,
     currency: String,
@@ -78,25 +82,79 @@ struct PricingPlansResponse {
     plans: Vec<PricingPlanResponse>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BillingUsageResponse {
+    period_start: i64,
+    period_end: i64,
+    plan_name: String,
+    included_credits: i64,
+    used_credits: i64,
+    remaining_credits: i64,
+    overage_credits: i64,
+    pending_events: usize,
+    sent_events: usize,
+    failed_events: usize,
+    daily: Vec<BillingUsageDailyResponse>,
+    recent: Vec<BillingUsageEventResponse>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BillingUsageDailyResponse {
+    date: String,
+    credits: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BillingUsageEventResponse {
+    id: String,
+    created_at: i64,
+    model: String,
+    credits: i64,
+    total_tokens: i64,
+    usage_source: String,
+    status: String,
+}
+
 async fn plans(State(state): State<AppState>) -> Result<Json<PricingPlansResponse>, ApiError> {
+    let mut plans = Vec::with_capacity(2);
+    plans.push(pricing_plan(&state, &state.config.polar_pro_product_id).await?);
+
+    if let Some(team_product_id) = state.config.polar_team_product_id.as_deref() {
+        plans.push(pricing_plan(&state, team_product_id).await?);
+    }
+
+    Ok(Json(PricingPlansResponse { plans }))
+}
+
+async fn pricing_plan(state: &AppState, product_id: &str) -> Result<PricingPlanResponse, ApiError> {
     let product = state
         .polar
         .products()
-        .get(&state.config.polar_pro_product_id)
+        .get(product_id)
         .await
         .map_err(map_polar_error)?;
 
+    pricing_plan_from_product(product)
+}
+
+fn pricing_plan_from_product(product: Product) -> Result<PricingPlanResponse, ApiError> {
     let price = product
         .prices
         .iter()
         .find(|p| !p.is_archived && p.amount_type.as_deref() == Some("fixed"))
         .ok_or_else(|| {
             ApiError::Internal(anyhow::anyhow!(
-                "Pro product has no active fixed price configured"
+                "Product {} has no active fixed price configured",
+                product.id
             ))
         })?;
 
-    let plan = PricingPlanResponse {
+    Ok(PricingPlanResponse {
+        id: product.id,
+        slug: product.name.trim().to_lowercase().replace(' ', "-"),
         name: product.name,
         price_amount: price.price_amount.unwrap_or(0),
         currency: price
@@ -107,9 +165,7 @@ async fn plans(State(state): State<AppState>) -> Result<Json<PricingPlansRespons
             .recurring_interval
             .clone()
             .or(product.recurring_interval),
-    };
-
-    Ok(Json(PricingPlansResponse { plans: vec![plan] }))
+    })
 }
 
 async fn status(
@@ -126,6 +182,65 @@ async fn status(
         subs,
         &auth.organization.id,
     )))
+}
+
+async fn usage(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<BillingUsageResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    let now = Utc::now().fixed_offset();
+    let period_start = now - chrono::Duration::days(USAGE_PERIOD_DAYS);
+    let subs = load_subscriptions(&state, &auth.organization.id).await?;
+    let (plan_name, included_credits) = usage_plan(&state, &subs, now);
+
+    let rows = bue::Entity::find()
+        .filter(bue::Column::OrganizationId.eq(&auth.organization.id))
+        .filter(bue::Column::CreatedAt.gte(period_start))
+        .filter(bue::Column::CreatedAt.lte(now))
+        .order_by_desc(bue::Column::CreatedAt)
+        .all(&state.db)
+        .await?;
+
+    let used_credits = rows
+        .iter()
+        .filter(|row| row.status != "local_only")
+        .map(|row| row.credits.max(0))
+        .sum::<i64>();
+    let remaining_credits = included_credits.saturating_sub(used_credits).max(0);
+    let overage_credits = used_credits.saturating_sub(included_credits).max(0);
+    let pending_events = rows.iter().filter(|row| row.status == "pending").count();
+    let sent_events = rows.iter().filter(|row| row.status == "sent").count();
+    let failed_events = rows.iter().filter(|row| row.status == "failed").count();
+    let daily = usage_daily(&rows, period_start, now);
+    let recent = rows
+        .iter()
+        .take(8)
+        .map(|row| BillingUsageEventResponse {
+            id: row.id.clone(),
+            created_at: row.created_at.timestamp(),
+            model: row.model.clone(),
+            credits: row.credits,
+            total_tokens: row.total_tokens,
+            usage_source: row.usage_source.clone(),
+            status: row.status.clone(),
+        })
+        .collect();
+
+    Ok(Json(BillingUsageResponse {
+        period_start: period_start.timestamp(),
+        period_end: now.timestamp(),
+        plan_name,
+        included_credits,
+        used_credits,
+        remaining_credits,
+        overage_credits,
+        pending_events,
+        sent_events,
+        failed_events,
+        daily,
+        recent,
+    }))
 }
 
 async fn checkout(
@@ -322,10 +437,9 @@ fn describe_event(event: &WebhookEvent) -> &str {
 
 pub(crate) async fn is_pro(state: &AppState, auth: &AuthContext) -> Result<bool, ApiError> {
     let now = Utc::now().fixed_offset();
-    let pro_id = &state.config.polar_pro_product_id;
     let subs = load_subscriptions(state, &auth.organization.id).await?;
     Ok(subs.iter().any(|s| {
-        s.product_id == *pro_id
+        is_paid_product(state, &s.product_id)
             && ACTIVE_STATUSES.contains(&s.status.as_str())
             && s.ends_at.map_or(true, |t| t > now)
     }))
@@ -414,6 +528,15 @@ fn parse_dt(value: Option<&str>) -> Option<DateTime<FixedOffset>> {
     value.and_then(|raw| DateTime::parse_from_rfc3339(raw).ok())
 }
 
+fn is_paid_product(state: &AppState, product_id: &str) -> bool {
+    product_id == state.config.polar_pro_product_id
+        || state
+            .config
+            .polar_team_product_id
+            .as_deref()
+            .is_some_and(|team_product_id| product_id == team_product_id)
+}
+
 fn header<'a>(headers: &'a HeaderMap, name: &str) -> &'a str {
     headers
         .get(name)
@@ -466,7 +589,7 @@ fn build_status(
     let now = Utc::now().fixed_offset();
     let pro_id = &state.config.polar_pro_product_id;
     let is_pro = subs.iter().any(|s| {
-        s.product_id == *pro_id
+        is_paid_product(state, &s.product_id)
             && ACTIVE_STATUSES.contains(&s.status.as_str())
             && s.ends_at.map_or(true, |t| t > now)
     });
@@ -493,6 +616,60 @@ fn build_status(
         can_manage,
         subscriptions,
     }
+}
+
+fn usage_plan(state: &AppState, subs: &[os::Model], now: DateTime<FixedOffset>) -> (String, i64) {
+    let active_products = subs
+        .iter()
+        .filter(|sub| {
+            ACTIVE_STATUSES.contains(&sub.status.as_str())
+                && sub.ends_at.map_or(true, |ends_at| ends_at > now)
+        })
+        .map(|sub| sub.product_id.as_str())
+        .collect::<Vec<_>>();
+
+    if state
+        .config
+        .polar_team_product_id
+        .as_deref()
+        .is_some_and(|team_product_id| active_products.contains(&team_product_id))
+    {
+        return ("Team".to_owned(), 5_000);
+    }
+
+    if active_products.contains(&state.config.polar_pro_product_id.as_str()) {
+        return ("Pro".to_owned(), 500);
+    }
+
+    ("Free".to_owned(), 0)
+}
+
+fn usage_daily(
+    rows: &[bue::Model],
+    period_start: DateTime<FixedOffset>,
+    period_end: DateTime<FixedOffset>,
+) -> Vec<BillingUsageDailyResponse> {
+    let mut credits_by_date = HashMap::<String, i64>::new();
+    for row in rows {
+        if row.status == "local_only" {
+            continue;
+        }
+        let date = row.created_at.date_naive().to_string();
+        *credits_by_date.entry(date).or_default() += row.credits.max(0);
+    }
+
+    let days = (period_end.date_naive() - period_start.date_naive()).num_days();
+    (0..=days)
+        .map(|offset| {
+            let date = (period_start + chrono::Duration::days(offset))
+                .date_naive()
+                .to_string();
+            BillingUsageDailyResponse {
+                credits: credits_by_date.get(&date).copied().unwrap_or_default(),
+                date,
+            }
+        })
+        .collect()
 }
 
 async fn require_owner(

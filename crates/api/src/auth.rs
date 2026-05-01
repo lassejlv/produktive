@@ -796,7 +796,7 @@ mod tests {
         )
         .expect("client builds");
 
-        let error = verify_key_with_unkey(&unkey, "api_123", "pk_api_test".to_owned())
+        let error = verify_key_with_unkey(&unkey, "pk_api_test".to_owned())
             .await
             .expect_err("transport failure denies the key");
 

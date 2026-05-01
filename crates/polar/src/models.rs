@@ -169,6 +169,38 @@ pub enum UpdateSubscriptionRequest {
 }
 
 // ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+/// `POST /v1/events/ingest` request body.
+#[derive(Debug, Clone, Serialize)]
+pub struct IngestEventsRequest {
+    pub events: Vec<IngestEvent>,
+}
+
+/// One event accepted by Polar's Events Ingestion API.
+#[derive(Debug, Clone, Serialize)]
+pub struct IngestEvent {
+    pub name: String,
+    pub external_customer_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub metadata: HashMap<String, Value>,
+}
+
+/// `POST /v1/events/ingest` response.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct IngestEventsResponse {
+    pub inserted: u64,
+    pub duplicates: u64,
+}
+
+// ---------------------------------------------------------------------------
 // Product
 // ---------------------------------------------------------------------------
 

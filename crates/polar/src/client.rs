@@ -10,7 +10,7 @@ use tokio::time::sleep;
 
 use crate::config::PolarConfig;
 use crate::error::{ApiError, PolarError, Result};
-use crate::resources::{Checkouts, CustomerSessions, Products, Subscriptions};
+use crate::resources::{Checkouts, CustomerSessions, Events, Products, Subscriptions};
 
 /// HTTP client for the Polar API.
 ///
@@ -59,6 +59,11 @@ impl Polar {
     /// Products: `get`.
     pub fn products(&self) -> Products {
         Products::new(self.clone())
+    }
+
+    /// Events: `ingest`.
+    pub fn events(&self) -> Events {
+        Events::new(self.clone())
     }
 
     /// Subscriptions: `get`, `update`, `cancel_at_period_end`, `revoke`.
