@@ -12,7 +12,10 @@ use axum::{
 };
 use chrono::{DateTime, Datelike, FixedOffset, TimeZone, Utc};
 use polar_rs::{
-    models::{CreateCheckoutRequest, CreateCustomerSessionRequest, Product, Subscription},
+    models::{
+        CreateCheckoutRequest, CreateCustomerSessionRequest, Product, Subscription,
+        UpdateSubscriptionRequest,
+    },
     webhooks::{verify, WebhookEvent},
     PolarError,
 };
@@ -20,7 +23,7 @@ use produktive_entity::{billing_usage_event as bue, member, organization_subscri
 use sea_orm::{
     sea_query::OnConflict, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -36,6 +39,7 @@ pub fn routes() -> Router<AppState> {
         .route("/status", get(status))
         .route("/usage", get(usage))
         .route("/checkout", post(checkout))
+        .route("/change-plan", post(change_plan))
         .route("/portal", post(portal))
         .route("/cancel", post(cancel))
         .route("/resume", post(resume))
@@ -47,6 +51,7 @@ pub fn routes() -> Router<AppState> {
 struct BillingStatusResponse {
     customer_id: String,
     pro_plan_id: String,
+    team_plan_id: Option<String>,
     is_pro: bool,
     can_manage: bool,
     subscriptions: Vec<BillingSubscriptionResponse>,
@@ -67,6 +72,12 @@ struct BillingSubscriptionResponse {
 #[serde(rename_all = "camelCase")]
 struct BillingUrlResponse {
     url: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BillingPlanRequest {
+    plan: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -268,20 +279,25 @@ async fn build_usage_response(
 async fn checkout(
     State(state): State<AppState>,
     headers: HeaderMap,
+    Json(payload): Json<BillingPlanRequest>,
 ) -> Result<Json<BillingUrlResponse>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     require_owner(&state, &auth.user.id, &auth.organization.id).await?;
+    let product_id = checkout_product_id(&state, payload.plan.as_deref())?;
 
     let mut metadata: HashMap<String, Value> = HashMap::new();
     metadata.insert("organization_id".to_owned(), json!(auth.organization.id));
     metadata.insert("created_by_user_id".to_owned(), json!(auth.user.id));
 
-    let success_url = format!("{}/account?billing=success", state.config.app_url);
+    let success_url = format!(
+        "{}/workspace/settings?section=billing&billing=success",
+        state.config.app_url
+    );
     let response = state
         .polar
         .checkouts()
         .create(CreateCheckoutRequest {
-            products: vec![state.config.polar_pro_product_id.clone()],
+            products: vec![product_id],
             external_customer_id: Some(auth.organization.id.clone()),
             customer_email: Some(auth.user.email.clone()),
             customer_name: Some(auth.organization.name.clone()),
@@ -293,6 +309,46 @@ async fn checkout(
         .map_err(map_polar_error)?;
 
     Ok(Json(BillingUrlResponse { url: response.url }))
+}
+
+async fn change_plan(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<BillingPlanRequest>,
+) -> Result<Json<BillingStatusResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    require_owner(&state, &auth.user.id, &auth.organization.id).await?;
+    let product_id = checkout_product_id(&state, payload.plan.as_deref())?;
+
+    let target = active_subscription(&state, &auth.organization.id)
+        .await?
+        .ok_or_else(|| ApiError::BadRequest("No active subscription to change".to_owned()))?;
+
+    if target.product_id != product_id {
+        let updated = state
+            .polar
+            .subscriptions()
+            .update(
+                &target.id,
+                &UpdateSubscriptionRequest::Product {
+                    product_id,
+                    proration_behavior: None,
+                },
+            )
+            .await
+            .map_err(map_polar_error)?;
+
+        upsert_subscription(&state, &updated, Some(auth.organization.id.clone())).await?;
+    }
+
+    let role = active_member_role(&state, &auth.user.id, &auth.organization.id).await?;
+    let subs = load_subscriptions(&state, &auth.organization.id).await?;
+    Ok(Json(build_status(
+        &state,
+        role.as_deref() == Some("owner"),
+        subs,
+        &auth.organization.id,
+    )))
 }
 
 async fn portal(
@@ -592,6 +648,18 @@ fn is_paid_product(state: &AppState, product_id: &str) -> bool {
             .is_some_and(|team_product_id| product_id == team_product_id)
 }
 
+fn checkout_product_id(state: &AppState, plan: Option<&str>) -> Result<String, ApiError> {
+    match plan.unwrap_or("pro").trim().to_lowercase().as_str() {
+        "pro" => Ok(state.config.polar_pro_product_id.clone()),
+        "team" => state.config.polar_team_product_id.clone().ok_or_else(|| {
+            ApiError::BadRequest("Team plan is not configured for checkout".to_owned())
+        }),
+        other => Err(ApiError::BadRequest(format!(
+            "Unknown billing plan: {other}"
+        ))),
+    }
+}
+
 fn header<'a>(headers: &'a HeaderMap, name: &str) -> &'a str {
     headers
         .get(name)
@@ -667,6 +735,7 @@ fn build_status(
     BillingStatusResponse {
         customer_id,
         pro_plan_id: pro_id.clone(),
+        team_plan_id: state.config.polar_team_product_id.clone(),
         is_pro,
         can_manage,
         subscriptions,

@@ -9,6 +9,7 @@ import {
 import {
   type BillingStatus,
   cancelSubscription,
+  changeBillingPlan,
   getBillingStatus,
   openBillingPortal,
   resumeSubscription,
@@ -20,7 +21,7 @@ export function BillingSettings() {
   const [billing, setBilling] = useState<BillingStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<
-    "checkout" | "portal" | "cancel" | "resume" | null
+    "pro-checkout" | "team-checkout" | "team-plan" | "portal" | "cancel" | "resume" | null
   >(null);
   const { confirm, dialog } = useConfirmDialog();
 
@@ -44,7 +45,7 @@ export function BillingSettings() {
   }, []);
 
   const redirectTo = async (
-    action: "checkout" | "portal",
+    action: "pro-checkout" | "team-checkout" | "portal",
     loadUrl: () => Promise<{ url: string }>,
   ) => {
     setBusyAction(action);
@@ -61,18 +62,18 @@ export function BillingSettings() {
 
   const onCancel = () => {
     confirm({
-      title: "Cancel Pro?",
+      title: "Cancel plan?",
       description:
         "You'll keep access until the end of the current billing period. You can resume anytime before then.",
       confirmLabel: "Cancel plan",
-      cancelLabel: "Keep Pro",
+      cancelLabel: "Keep plan",
       destructive: true,
       onConfirm: async () => {
         setBusyAction("cancel");
         try {
           const next = await cancelSubscription();
           setBilling(next);
-          toast.success("Pro is scheduled to cancel.");
+          toast.success("Plan is scheduled to cancel.");
         } catch (error) {
           toast.error(
             error instanceof Error
@@ -91,7 +92,7 @@ export function BillingSettings() {
     try {
       const next = await resumeSubscription();
       setBilling(next);
-      toast.success("Pro will renew as scheduled.");
+      toast.success("Plan will renew as scheduled.");
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -103,9 +104,28 @@ export function BillingSettings() {
     }
   };
 
-  const activeSubscription = billing?.subscriptions.find(
-    (subscription) => subscription.planId === billing.proPlanId,
+  const onTeamUpgrade = async () => {
+    setBusyAction("team-plan");
+    try {
+      const next = await changeBillingPlan("team");
+      setBilling(next);
+      toast.success("Workspace upgraded to Team.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to upgrade to Team",
+      );
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const activeSubscription = billing?.subscriptions.find((subscription) =>
+    isActiveSubscription(subscription),
   );
+  const isTeam = Boolean(
+    billing?.teamPlanId && activeSubscription?.planId === billing.teamPlanId,
+  );
+  const planName = billing?.isPro ? (isTeam ? "Team" : "Pro") : "Free";
 
   if (loading || !billing) {
     return <SettingsSkeleton rows={3} />;
@@ -116,7 +136,7 @@ export function BillingSettings() {
       {dialog}
       <SettingRow label="Plan">
         <div className="flex items-center gap-2">
-          <span className="text-fg">{billing.isPro ? "Pro" : "Free"}</span>
+          <span className="text-fg">{planName}</span>
           <span
             aria-hidden
             className={cn(
@@ -127,7 +147,7 @@ export function BillingSettings() {
         </div>
         <div className="mt-0.5 text-[12px] text-fg-muted">
           {billing.isPro
-            ? billingDescription(activeSubscription)
+            ? billingDescription(planName, activeSubscription)
             : "This workspace is on the free plan."}
         </div>
       </SettingRow>
@@ -142,13 +162,43 @@ export function BillingSettings() {
       {billing.canManage ? (
         <div className="flex flex-wrap justify-end gap-2 pt-4">
           {!billing.isPro ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                disabled={busyAction !== null}
+                onClick={() =>
+                  void redirectTo("pro-checkout", () =>
+                    startBillingCheckout("pro"),
+                  )
+                }
+              >
+                {busyAction === "pro-checkout" ? "Opening..." : "Upgrade to Pro"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busyAction !== null}
+                onClick={() =>
+                  void redirectTo("team-checkout", () =>
+                    startBillingCheckout("team"),
+                  )
+                }
+              >
+                {busyAction === "team-checkout"
+                  ? "Opening..."
+                  : "Upgrade to Team"}
+              </Button>
+            </>
+          ) : !isTeam ? (
             <Button
               type="button"
               size="sm"
               disabled={busyAction !== null}
-              onClick={() => void redirectTo("checkout", startBillingCheckout)}
+              onClick={() => void onTeamUpgrade()}
             >
-              {busyAction === "checkout" ? "Opening..." : "Upgrade to Pro"}
+              {busyAction === "team-plan" ? "Upgrading..." : "Upgrade to Team"}
             </Button>
           ) : activeSubscription?.canceledAt ? (
             <Button
@@ -185,16 +235,30 @@ export function BillingSettings() {
   );
 }
 
-function billingDescription(subscription?: {
+function isActiveSubscription(subscription: {
+  status: string;
   currentPeriodEnd: number | null;
-  canceledAt: number | null;
 }) {
-  if (!subscription) return "Your workspace is on Pro.";
+  const now = Date.now() / 1000;
+  return (
+    (subscription.status === "active" || subscription.status === "trialing") &&
+    (!subscription.currentPeriodEnd || subscription.currentPeriodEnd > now)
+  );
+}
+
+function billingDescription(
+  planName: string,
+  subscription?: {
+    currentPeriodEnd: number | null;
+    canceledAt: number | null;
+  },
+) {
+  if (!subscription) return `Your workspace is on ${planName}.`;
   if (subscription.canceledAt) {
-    return "Pro is scheduled to cancel.";
+    return `${planName} is scheduled to cancel.`;
   }
   if (!subscription.currentPeriodEnd) {
-    return "Your workspace is on Pro.";
+    return `Your workspace is on ${planName}.`;
   }
   return `Renews ${new Date(
     subscription.currentPeriodEnd * 1000,

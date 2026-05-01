@@ -1,9 +1,4 @@
-import {
-  Outlet,
-  createFileRoute,
-  useNavigate,
-  useRouterState,
-} from "@tanstack/react-router";
+import { Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -18,10 +13,7 @@ import {
 import { CommandPalette } from "@/components/command-palette";
 import { KeyboardHelp } from "@/components/keyboard-help";
 import { StatusIcon } from "@/components/issue/status-icon";
-import {
-  ONBOARDING_SKIP_FLAG,
-  useOnboarding,
-} from "@/components/onboarding/onboarding-context";
+import { ONBOARDING_SKIP_FLAG, useOnboarding } from "@/components/onboarding/onboarding-context";
 import { OrgSwitcher } from "@/components/org-switcher";
 import {
   Sidebar,
@@ -32,7 +24,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar";
 import { LoadingTip } from "@/components/ui/loading-tip";
-import { deleteChat, getChat, type Chat } from "@/lib/api";
+import { deleteChat, getChat, startBillingCheckout, type Chat } from "@/lib/api";
 import { signOut, useSession } from "@/lib/auth-client";
 import { parseMessageWithAttachments } from "@/lib/chat-attachments";
 import { ProjectIcon } from "@/components/project/project-icon";
@@ -42,15 +34,13 @@ import { NewProjectDialog } from "@/components/project/new-project-dialog";
 import { updateIssue } from "@/lib/api";
 import { TabBar } from "@/components/workspace/tab-bar";
 import { findStaticPage } from "@/lib/tab-pages";
+import { useBillingStatus } from "@/lib/use-billing-status";
 import { useChats } from "@/lib/use-chats";
 import { useFavorites } from "@/lib/use-favorites";
 import { useInbox } from "@/lib/use-inbox";
 import { useProjects } from "@/lib/use-projects";
 import { tabsQueryOptions, useRegisterTab } from "@/lib/use-tabs";
-import {
-  userPreferencesQueryOptions,
-  useUserPreferences,
-} from "@/lib/use-user-preferences";
+import { userPreferencesQueryOptions, useUserPreferences } from "@/lib/use-user-preferences";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app")({
@@ -64,6 +54,7 @@ export const Route = createFileRoute("/_app")({
 function AppLayout() {
   const navigate = useNavigate();
   const session = useSession();
+  const { billing, isPro: isPaidPlan, isLoading: billingLoading } = useBillingStatus();
   const { tabsEnabled } = useUserPreferences();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
@@ -76,12 +67,7 @@ function AppLayout() {
     enabled: tabsEnabled && Boolean(staticPage),
   });
   const { chats, isLoading: chatsLoading, removeChat } = useChats();
-  const {
-    favorites,
-    isLoading: favoritesLoading,
-    isFavorite,
-    toggleFavorite,
-  } = useFavorites();
+  const { favorites, isLoading: favoritesLoading, isFavorite, toggleFavorite } = useFavorites();
   const { unreadCount: inboxUnread } = useInbox();
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [chatMenuOpenId, setChatMenuOpenId] = useState<string | null>(null);
@@ -103,8 +89,7 @@ function AppLayout() {
     if (window.sessionStorage.getItem(ONBOARDING_SKIP_FLAG)) return;
     const id = window.setTimeout(() => {
       onboarding.start(
-        (user.onboardingStep as Parameters<typeof onboarding.start>[0]) ??
-          undefined,
+        (user.onboardingStep as Parameters<typeof onboarding.start>[0]) ?? undefined,
       );
     }, 500);
     return () => window.clearTimeout(id);
@@ -114,10 +99,7 @@ function AppLayout() {
     if (!accountMenuOpen) return;
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (
-        accountMenuRef.current &&
-        !accountMenuRef.current.contains(event.target as Node)
-      ) {
+      if (accountMenuRef.current && !accountMenuRef.current.contains(event.target as Node)) {
         setAccountMenuOpen(false);
       }
     };
@@ -167,9 +149,9 @@ function AppLayout() {
     );
   }
 
-  const isIssuesActive =
-    pathname === "/issues" || pathname.startsWith("/issues/");
+  const isIssuesActive = pathname === "/issues" || pathname.startsWith("/issues/");
   const recentChats = chats.slice(0, 8);
+  const showUpgradeButton = !billingLoading && !isPaidPlan;
 
   const openChat = async (id: string) => {
     setChatMenuOpenId(null);
@@ -271,10 +253,7 @@ function AppLayout() {
             <button
               type="button"
               onClick={async () => {
-                if (
-                  pathname !== "/issues" &&
-                  !pathname.startsWith("/issues/")
-                ) {
+                if (pathname !== "/issues" && !pathname.startsWith("/issues/")) {
                   await navigate({ to: "/issues" });
                 }
                 setTimeout(() => {
@@ -357,9 +336,7 @@ function AppLayout() {
                             <SparkleIcon size={11} />
                           )}
                         </span>
-                        <span className="flex-1 truncate">
-                          {displayFavoriteTitle(fav.title)}
-                        </span>
+                        <span className="flex-1 truncate">{displayFavoriteTitle(fav.title)}</span>
                         <span
                           className="shrink-0 text-warning opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent rounded-[3px] hover:text-fg"
                           role="button"
@@ -483,9 +460,7 @@ function AppLayout() {
                   <LoadingTip compact />
                 </div>
               ) : chats.length === 0 ? (
-                <div className="px-2.5 py-1 text-[12px] text-fg-faint">
-                  No chats yet
-                </div>
+                <div className="px-2.5 py-1 text-[12px] text-fg-faint">No chats yet</div>
               ) : (
                 recentChats.map((entry) => {
                   const isActive = pathname === `/chat/${entry.id}`;
@@ -502,9 +477,7 @@ function AppLayout() {
                             : "text-fg-muted hover:bg-surface hover:text-fg",
                         )}
                       >
-                        <span className="flex-1 truncate">
-                          {displayChatTitle(entry)}
-                        </span>
+                        <span className="flex-1 truncate">{displayChatTitle(entry)}</span>
                         <span
                           className={cn(
                             "grid size-6 shrink-0 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
@@ -540,9 +513,7 @@ function AppLayout() {
                           onClick={(event) => event.stopPropagation()}
                           onPointerDown={(event) => event.stopPropagation()}
                         >
-                          <ChatMenuItem onClick={() => void openChat(entry.id)}>
-                            Open
-                          </ChatMenuItem>
+                          <ChatMenuItem onClick={() => void openChat(entry.id)}>Open</ChatMenuItem>
                           <ChatMenuItem
                             onClick={async () => {
                               setChatMenuOpenId(null);
@@ -550,9 +521,7 @@ function AppLayout() {
                               try {
                                 await toggleFavorite("chat", entry.id);
                                 toast.success(
-                                  wasFavorite
-                                    ? "Removed from favorites"
-                                    : "Pinned to sidebar",
+                                  wasFavorite ? "Removed from favorites" : "Pinned to sidebar",
                                 );
                               } catch {
                                 toast.error("Failed to update favorite");
@@ -564,16 +533,11 @@ function AppLayout() {
                           <ChatMenuItem onClick={() => void exportChat(entry)}>
                             Export JSON
                           </ChatMenuItem>
-                          <ChatMenuItem
-                            onClick={() => void copyChatLink(entry.id)}
-                          >
+                          <ChatMenuItem onClick={() => void copyChatLink(entry.id)}>
                             Copy link
                           </ChatMenuItem>
                           <div className="my-1 h-px bg-border-subtle" />
-                          <ChatMenuItem
-                            danger
-                            onClick={() => void handleDeleteChat(entry)}
-                          >
+                          <ChatMenuItem danger onClick={() => void handleDeleteChat(entry)}>
                             Delete
                           </ChatMenuItem>
                         </div>
@@ -587,16 +551,30 @@ function AppLayout() {
         </SidebarContent>
 
         <SidebarFooter className="relative">
+          <SidebarUpgradeButton
+            billingLoading={billingLoading}
+            canManage={billing?.canManage ?? false}
+            isPaidPlan={isPaidPlan}
+            onBillingSettings={() =>
+              void navigate({
+                to: "/workspace/settings",
+                search: { section: "billing" },
+              })
+            }
+          />
           <div ref={accountMenuRef}>
             {accountMenuOpen ? (
-              <div className="absolute bottom-18.5 left-4 right-4 overflow-hidden rounded-[9px] border border-border bg-surface animate-fade-up">
+              <div
+                className={cn(
+                  "absolute left-4 right-4 overflow-hidden rounded-[9px] border border-border bg-surface animate-fade-up",
+                  showUpgradeButton ? "bottom-[8.25rem]" : "bottom-18.5",
+                )}
+              >
                 <div className="border-b border-border-subtle px-3 py-2.5">
                   <p className="truncate text-[13px] font-medium text-fg">
                     {currentUser?.name ?? "User"}
                   </p>
-                  <p className="mt-0.5 truncate text-[11px] text-fg-muted">
-                    {currentUser?.email}
-                  </p>
+                  <p className="mt-0.5 truncate text-[11px] text-fg-muted">{currentUser?.email}</p>
                 </div>
                 <button
                   type="button"
@@ -648,10 +626,7 @@ function AppLayout() {
                 >
                   {currentUser?.name ?? "User"}
                 </p>
-                <p
-                  className="truncate text-[11px] text-fg-muted"
-                  title={currentUser?.email}
-                >
+                <p className="truncate text-[11px] text-fg-muted" title={currentUser?.email}>
                   {currentUser?.email}
                 </p>
               </div>
@@ -699,10 +674,72 @@ function ChatMenuItem({
   );
 }
 
-function displayChatTitle(chat: Chat) {
+function SidebarUpgradeButton({
+  billingLoading,
+  canManage,
+  isPaidPlan,
+  onBillingSettings,
+}: {
+  billingLoading: boolean;
+  canManage: boolean;
+  isPaidPlan: boolean;
+  onBillingSettings: () => void;
+}) {
+  const [opening, setOpening] = useState(false);
+
+  if (billingLoading || isPaidPlan) {
+    return null;
+  }
+
+  const handleUpgrade = async () => {
+    if (!canManage) {
+      onBillingSettings();
+      return;
+    }
+
+    setOpening(true);
+    try {
+      const response = await startBillingCheckout();
+      window.location.assign(response.url);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to open billing");
+      setOpening(false);
+    }
+  };
+
   return (
-    parseMessageWithAttachments(chat.title).text.trim() || "Attached files"
+    <button
+      type="button"
+      disabled={opening}
+      onClick={() => void handleUpgrade()}
+      className={cn(
+        "group mb-2 w-full overflow-hidden rounded-[10px] border border-border bg-surface/70 px-3 py-2.5 text-left transition-colors",
+        "hover:border-fg/20 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+        opening && "cursor-wait opacity-75",
+      )}
+    >
+      <div className="flex items-center gap-2.5">
+        <span className="grid size-7 shrink-0 place-items-center rounded-[7px] border border-border-subtle bg-bg text-fg transition-colors group-hover:border-fg/20">
+          <SparkleIcon size={12} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium text-fg">
+            {opening ? "Opening checkout..." : "Upgrade workspace"}
+          </span>
+          <span className="mt-0.5 block truncate text-[11px] text-fg-muted">
+            {canManage ? "Unlock paid models and overage" : "View billing access"}
+          </span>
+        </span>
+        <span className="text-fg-faint transition-transform group-hover:translate-x-0.5 group-hover:text-fg-muted">
+          <UpgradeArrowIcon />
+        </span>
+      </div>
+    </button>
   );
+}
+
+function displayChatTitle(chat: Chat) {
+  return parseMessageWithAttachments(chat.title).text.trim() || "Attached files";
 }
 
 function displayFavoriteTitle(title: string) {
@@ -739,6 +776,21 @@ function SignOutIcon() {
   );
 }
 
+function UpgradeArrowIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <path d="M3 7h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path
+        d="M7.5 4 10.5 7l-3 3"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function MyIssuesIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
@@ -757,12 +809,7 @@ function SearchSidebarIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
       <circle cx="6" cy="6" r="3.5" stroke="currentColor" strokeWidth="1.5" />
-      <path
-        d="M11 11l-2.4-2.4"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
+      <path d="M11 11l-2.4-2.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
@@ -794,8 +841,7 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
     <div className="ml-3 mt-0.5 flex flex-col gap-px border-l border-border-subtle/60 pl-2">
       {recent.map((project) => {
         const isActive =
-          pathname === `/projects/${project.id}` ||
-          pathname.startsWith(`/projects/${project.id}`);
+          pathname === `/projects/${project.id}` || pathname.startsWith(`/projects/${project.id}`);
         return (
           <button
             key={project.id}
@@ -811,25 +857,13 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
               if (!event.dataTransfer.types.includes(ISSUE_DRAG_MIME)) return;
               event.preventDefault();
               event.dataTransfer.dropEffect = "move";
-              event.currentTarget.classList.add(
-                "ring-2",
-                "ring-accent",
-                "bg-accent/15",
-              );
+              event.currentTarget.classList.add("ring-2", "ring-accent", "bg-accent/15");
             }}
             onDragLeave={(event) => {
-              event.currentTarget.classList.remove(
-                "ring-2",
-                "ring-accent",
-                "bg-accent/15",
-              );
+              event.currentTarget.classList.remove("ring-2", "ring-accent", "bg-accent/15");
             }}
             onDrop={(event) => {
-              event.currentTarget.classList.remove(
-                "ring-2",
-                "ring-accent",
-                "bg-accent/15",
-              );
+              event.currentTarget.classList.remove("ring-2", "ring-accent", "bg-accent/15");
               const issueId = event.dataTransfer.getData(ISSUE_DRAG_MIME);
               if (!issueId) return;
               event.preventDefault();
@@ -838,27 +872,16 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
                   await updateIssue(issueId, { projectId: project.id });
                   toast.success(`Added to ${project.name}`);
                 } catch (error) {
-                  toast.error(
-                    error instanceof Error
-                      ? error.message
-                      : "Failed to add to project",
-                  );
+                  toast.error(error instanceof Error ? error.message : "Failed to add to project");
                 }
               })();
             }}
             className={cn(
               "flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[12.5px] transition-colors",
-              isActive
-                ? "bg-surface text-fg"
-                : "text-fg-muted hover:bg-surface hover:text-fg",
+              isActive ? "bg-surface text-fg" : "text-fg-muted hover:bg-surface hover:text-fg",
             )}
           >
-            <ProjectIcon
-              color={project.color}
-              icon={project.icon}
-              name={project.name}
-              size="sm"
-            />
+            <ProjectIcon color={project.color} icon={project.icon} name={project.name} size="sm" />
             <span className="min-w-0 flex-1 truncate">{project.name}</span>
             {project.issueCount > 0 ? (
               <span className="shrink-0 text-[10px] tabular-nums text-fg-faint">
@@ -875,12 +898,7 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
 function PlusIcon() {
   return (
     <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden>
-      <path
-        d="M6 2.5v7M2.5 6h7"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
+      <path d="M6 2.5v7M2.5 6h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
@@ -888,42 +906,10 @@ function PlusIcon() {
 function OverviewIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <rect
-        x="2"
-        y="2"
-        width="4"
-        height="4"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
-      <rect
-        x="8"
-        y="2"
-        width="4"
-        height="4"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
-      <rect
-        x="2"
-        y="8"
-        width="4"
-        height="4"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
-      <rect
-        x="8"
-        y="8"
-        width="4"
-        height="4"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
+      <rect x="2" y="2" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="8" y="2" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="2" y="8" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="8" y="8" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.4" />
     </svg>
   );
 }
@@ -973,13 +959,7 @@ function TrySection() {
           aria-label="Dismiss"
           className="text-fg-faint transition-colors hover:text-fg"
         >
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 12 12"
-            fill="none"
-            aria-hidden
-          >
+          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden>
             <path
               d="M3 3l6 6M9 3l-6 6"
               stroke="currentColor"

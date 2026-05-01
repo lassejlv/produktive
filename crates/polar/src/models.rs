@@ -161,6 +161,12 @@ pub struct Customer {
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum UpdateSubscriptionRequest {
+    /// Update subscription to another product.
+    Product {
+        product_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        proration_behavior: Option<String>,
+    },
     /// Schedule cancellation at period end (`true`) or roll back a pending
     /// cancellation (`false`).
     CancelAtPeriodEnd { cancel_at_period_end: bool },

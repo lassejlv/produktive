@@ -310,6 +310,7 @@ export type BillingSubscription = {
 export type BillingStatus = {
   customerId: string;
   proPlanId: string;
+  teamPlanId: string | null;
   isPro: boolean;
   canManage: boolean;
   subscriptions: BillingSubscription[];
@@ -358,8 +359,19 @@ export const getBillingStatus = () => request<BillingStatus>("/api/billing/statu
 
 export const getBillingUsage = () => request<BillingUsage>("/api/billing/usage");
 
-export const startBillingCheckout = () =>
-  request<{ url: string }>("/api/billing/checkout", { method: "POST" });
+export type BillingPlan = "pro" | "team";
+
+export const startBillingCheckout = (plan: BillingPlan = "pro") =>
+  request<{ url: string }>("/api/billing/checkout", {
+    method: "POST",
+    body: JSON.stringify({ plan }),
+  });
+
+export const changeBillingPlan = (plan: BillingPlan) =>
+  request<BillingStatus>("/api/billing/change-plan", {
+    method: "POST",
+    body: JSON.stringify({ plan }),
+  });
 
 export const openBillingPortal = () =>
   request<{ url: string }>("/api/billing/portal", { method: "POST" });
