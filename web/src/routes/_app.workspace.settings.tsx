@@ -1028,11 +1028,11 @@ function getMcpServerUrl() {
 }
 
 function getPublicApiUrl() {
-  if (typeof window === "undefined") return "https://api.produktive.app/api/v1";
+  if (typeof window === "undefined") return "https://produktive.app/api/v1";
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
     return "http://localhost:3000/api/v1";
   }
-  return `${window.location.origin.replace(/^https?:\/\/(www\.)?/, "https://api.")}/api/v1`;
+  return `${window.location.origin}/api/v1`;
 }
 
 function SectionGroup({ children }: { children: React.ReactNode }) {

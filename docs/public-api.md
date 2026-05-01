@@ -3,13 +3,13 @@
 Base URL:
 
 ```text
-https://api.produktive.app/api/v1
+https://produktive.app/api/v1
 ```
 
 Use a workspace API key from workspace settings:
 
 ```sh
-curl https://api.produktive.app/api/v1/issues \
+curl https://produktive.app/api/v1/issues \
   -H "Authorization: Bearer pk_api_..."
 ```
 
@@ -46,7 +46,7 @@ Common statuses:
 ## Issues
 
 ```sh
-curl https://api.produktive.app/api/v1/issues \
+curl https://produktive.app/api/v1/issues \
   -H "Authorization: Bearer pk_api_..."
 ```
 
