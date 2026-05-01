@@ -9,7 +9,7 @@ Bun/Vite React frontend.
 - Rust API: Axum, SeaORM, Postgres, Resend, Polar, S3-compatible storage
 - Web app: Bun, Vite, React, TanStack Router, TanStack Query, Tailwind CSS v4
 - MCP: a standalone Produktive MCP server plus in-app remote MCP server support
-- Deployment: Railway/Railpack
+- Deployment: Dockerfile-based images for the app and MCP server
 
 ## Repository Layout
 
@@ -131,6 +131,25 @@ render an `Outlet`; for example, `/workspace/settings` is a child of
 
 ## Deployment Notes
 
-The Rust API serves the built frontend from `WEB_DIST_DIR`, defaulting to
-`web/dist`. For production, build the web app first and then start
-`produktive-api` with production environment values.
+The root `Dockerfile` builds the web app with Bun, builds `produktive-api` with
+Rust, copies both artifacts into a slim Debian runtime image, and serves the
+built frontend from `WEB_DIST_DIR=/app/web/dist`.
+
+Build the main app image:
+
+```sh
+docker build -t produktive .
+```
+
+Run it with production environment values:
+
+```sh
+docker run --env-file .env -p 3000:3000 produktive
+```
+
+The standalone MCP server has its own Dockerfile:
+
+```sh
+docker build -f Dockerfile.mcp -t produktive-mcp .
+docker run --env-file .env -p 3001:3001 produktive-mcp
+```
