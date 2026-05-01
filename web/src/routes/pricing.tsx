@@ -18,14 +18,25 @@ type Tier = {
   emphasized?: boolean;
 };
 
-const PRO_FALLBACK = { price: "€10", cadence: "/ month" } as const;
+const PRO_FALLBACK = { price: "€8", cadence: "/ month" } as const;
+const TEAM_FALLBACK = { price: "€50", cadence: "/ month" } as const;
 
 const PRO_FEATURES: Tier["features"] = [
-  { label: "100 AI messages per day", included: true },
+  { label: "500 included AI credits", included: true },
   { label: "No issues limit", included: true },
   { label: "10 active projects", included: true },
   { label: "Unlimited members", included: true },
-  { label: "Bring your own Skills", included: true },
+  { label: "All AI features", included: true },
+  { label: "Pro model access", included: true },
+];
+
+const TEAM_FEATURES: Tier["features"] = [
+  { label: "5,000 included AI credits", included: true },
+  { label: "No issues limit", included: true },
+  { label: "Unlimited projects", included: true },
+  { label: "Unlimited members", included: true },
+  { label: "All AI features", included: true },
+  { label: "Team model access", included: true },
 ];
 
 const FREE_TIER: Tier = {
@@ -56,18 +67,34 @@ function formatPrice(amount: number, currency: string): string {
   }
 }
 
+function findPlan(plans: PricingPlan[], name: string): PricingPlan | null {
+  const normalized = name.toLowerCase();
+  return (
+    plans.find((plan) => plan.name.trim().toLowerCase() === normalized) ??
+    plans.find((plan) => plan.name.trim().toLowerCase().includes(normalized)) ??
+    null
+  );
+}
+
+function priceFor(plan: PricingPlan | null, fallback: { price: string; cadence: string }) {
+  return {
+    price: plan ? formatPrice(plan.priceAmount, plan.currency) : fallback.price,
+    cadence: plan?.recurringInterval ? `/ ${plan.recurringInterval}` : fallback.cadence,
+  };
+}
+
 function PricingPage() {
   const session = useSession();
   const isLoggedIn = Boolean(session.data);
   const ctaTo = isLoggedIn ? "/issues" : "/login";
 
-  const [pro, setPro] = useState<PricingPlan | null>(null);
+  const [plans, setPlans] = useState<PricingPlan[]>([]);
 
   useEffect(() => {
     let mounted = true;
     void getPricingPlans()
       .then((response) => {
-        if (mounted) setPro(response.plans[0] ?? null);
+        if (mounted) setPlans(response.plans);
       })
       .catch(() => {
         // fall through to fallback values
@@ -77,19 +104,31 @@ function PricingPage() {
     };
   }, []);
 
+  const pro = findPlan(plans, "pro");
+  const team = findPlan(plans, "team");
+  const proPrice = priceFor(pro, PRO_FALLBACK);
+  const teamPrice = priceFor(team, TEAM_FALLBACK);
+
   const proTier: Tier = {
     name: pro?.name ?? "Pro",
     tagline: "For real work.",
-    price: pro ? formatPrice(pro.priceAmount, pro.currency) : PRO_FALLBACK.price,
-    cadence: pro?.recurringInterval
-      ? `/ ${pro.recurringInterval}`
-      : PRO_FALLBACK.cadence,
+    price: proPrice.price,
+    cadence: proPrice.cadence,
     features: PRO_FEATURES,
     cta: "Get started",
     emphasized: true,
   };
 
-  const tiers: Tier[] = [FREE_TIER, proTier];
+  const teamTier: Tier = {
+    name: team?.name ?? "Team",
+    tagline: "For teams scaling usage.",
+    price: teamPrice.price,
+    cadence: teamPrice.cadence,
+    features: TEAM_FEATURES,
+    cta: "Get started",
+  };
+
+  const tiers: Tier[] = [FREE_TIER, proTier, teamTier];
 
   return (
     <main className="relative isolate flex min-h-screen flex-col overflow-hidden bg-bg">
@@ -135,7 +174,7 @@ function PricingPage() {
           </p>
         </div>
 
-        <div className="grid w-full max-w-[760px] grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid w-full max-w-[1040px] grid-cols-1 gap-4 md:grid-cols-3">
           {tiers.map((tier, index) => (
             <PricingCard
               key={tier.name}

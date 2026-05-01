@@ -200,11 +200,25 @@ async fn usage(
     headers: HeaderMap,
 ) -> Result<Json<BillingUsageResponse>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    Ok(Json(build_usage_response(&state, &auth).await?))
+}
+
+pub(crate) async fn usage_snapshot(
+    state: &AppState,
+    auth: &AuthContext,
+) -> Result<Value, ApiError> {
+    Ok(json!(build_usage_response(state, auth).await?))
+}
+
+async fn build_usage_response(
+    state: &AppState,
+    auth: &AuthContext,
+) -> Result<BillingUsageResponse, ApiError> {
     let now = Utc::now().fixed_offset();
-    let subs = load_subscriptions(&state, &auth.organization.id).await?;
-    let plan = usage_plan(&state, &subs, now);
+    let subs = load_subscriptions(state, &auth.organization.id).await?;
+    let plan = usage_plan(state, &subs, now);
     let rows = usage_rows_for_period(
-        &state,
+        state,
         &auth.organization.id,
         plan.period_start,
         plan.period_end,
@@ -235,7 +249,7 @@ async fn usage(
         })
         .collect();
 
-    Ok(Json(BillingUsageResponse {
+    Ok(BillingUsageResponse {
         period_start: plan.period_start.timestamp(),
         period_end: plan.period_end.timestamp(),
         plan_name: plan.name,
@@ -248,7 +262,7 @@ async fn usage(
         failed_events,
         daily,
         recent,
-    }))
+    })
 }
 
 async fn checkout(

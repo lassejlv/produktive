@@ -1,7 +1,7 @@
 mod ai;
 mod ai_mcp;
 mod auth;
-mod billing;
+pub(crate) mod billing;
 mod chats;
 mod cors;
 mod dev;

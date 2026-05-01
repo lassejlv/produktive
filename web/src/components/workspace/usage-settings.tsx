@@ -25,7 +25,7 @@ export function UsageSettings() {
       : 0;
   const usagePeriodLabel = usage.planName === "Free" ? "Today" : "Current period";
   const overageDetail =
-    usage.planName === "Free" ? "Upgrade required" : "Billed at €0.08 / credit";
+    usage.planName === "Free" ? "Upgrade required" : "Billed at €0.072 / credit";
 
   return (
     <div className="space-y-8">
