@@ -9,6 +9,7 @@ type LoginSearch = {
   invite?: string;
   email?: string;
   mode?: "signin" | "signup";
+  redirect?: string;
 };
 
 export const Route = createFileRoute("/login")({
@@ -17,6 +18,7 @@ export const Route = createFileRoute("/login")({
     invite: typeof search.invite === "string" ? search.invite : undefined,
     email: typeof search.email === "string" ? search.email : undefined,
     mode: search.mode === "signin" || search.mode === "signup" ? search.mode : undefined,
+    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
   }),
 });
 
@@ -74,6 +76,11 @@ function LoginPage() {
         to: "/invite/$token",
         params: { token: inviteToken },
       });
+      return;
+    }
+
+    if (search.redirect?.startsWith("/") && !search.redirect.startsWith("//")) {
+      window.location.assign(search.redirect);
       return;
     }
 

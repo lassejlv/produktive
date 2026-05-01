@@ -2,8 +2,8 @@ use anyhow::Context;
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, Utc};
 use produktive_entity::{
-    issue, issue_comment, issue_event, issue_label, label, mcp_api_key, member, organization,
-    project, user,
+    issue, issue_comment, issue_event, issue_label, label, member, organization,
+    produktive_oauth_grant, produktive_oauth_token, project, user,
 };
 use rust_mcp_sdk::{
     auth::{AuthInfo, AuthProvider, AuthenticationError, OauthEndpoint},
@@ -24,26 +24,26 @@ use sea_orm::{
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     sync::Arc,
     time::{Duration as StdDuration, SystemTime, UNIX_EPOCH},
-};
-use unkey_rs::{
-    models::{Metadata, VerifyKeyRequest, VerifyKeyResponse},
-    Unkey, UnkeyConfig,
 };
 use uuid::Uuid;
 
 #[derive(Clone)]
 struct AppState {
     db: DatabaseConnection,
-    unkey: Unkey,
+    issuer_url: String,
+    resource_url: String,
 }
 
 #[derive(Clone)]
 struct ProduktiveAuthProvider {
     state: AppState,
+    endpoints: HashMap<String, OauthEndpoint>,
+    protected_resource_metadata_url: String,
 }
 
 #[async_trait]
@@ -51,49 +51,41 @@ impl AuthProvider for ProduktiveAuthProvider {
     async fn verify_token(&self, access_token: String) -> Result<AuthInfo, AuthenticationError> {
         let access_token = normalize_bearer_token(&access_token);
         let now = Utc::now().fixed_offset();
-        let verified = self
-            .state
-            .unkey
-            .keys()
-            .verify_key(VerifyKeyRequest {
-                key: access_token.to_owned(),
-                ..Default::default()
-            })
+        let token = produktive_oauth_token::Entity::find()
+            .filter(produktive_oauth_token::Column::AccessTokenHash.eq(hash_token(access_token)))
+            .one(&self.state.db)
             .await
-            .map_err(|error| {
-                tracing::warn!(%error, "Unkey MCP key verification failed");
-                AuthenticationError::InvalidToken {
-                    description: "Invalid MCP API key",
-                }
-            })?
-            .data;
+            .map_err(auth_server_error)?
+            .ok_or_else(|| AuthenticationError::InvalidToken {
+                description: "Invalid MCP OAuth token",
+            })?;
 
-        if !verified.valid {
+        if token.revoked_at.is_some() || token.expires_at <= now {
+            return Err(AuthenticationError::InvalidOrExpiredToken(
+                "MCP OAuth token has expired".to_owned(),
+            ));
+        }
+        if token.resource != self.state.resource_url {
             return Err(AuthenticationError::InvalidToken {
-                description: "Invalid MCP API key",
+                description: "MCP OAuth token has the wrong resource",
+            });
+        }
+        let grant = produktive_oauth_grant::Entity::find_by_id(&token.grant_id)
+            .one(&self.state.db)
+            .await
+            .map_err(auth_server_error)?
+            .ok_or_else(|| AuthenticationError::InvalidToken {
+                description: "MCP OAuth grant no longer exists",
+            })?;
+        if grant.revoked_at.is_some() || grant.resource != self.state.resource_url {
+            return Err(AuthenticationError::InvalidToken {
+                description: "MCP OAuth grant is invalid",
             });
         }
 
-        let key = find_local_key_from_unkey(&self.state.db, &verified).await?;
+        let expires_at = system_time_from_datetime(token.expires_at)?;
 
-        if key.revoked_at.is_some() {
-            return Err(AuthenticationError::InvalidOrExpiredToken(
-                "MCP API key has been revoked".to_owned(),
-            ));
-        }
-        let expires_at = key
-            .expires_at
-            .ok_or_else(|| AuthenticationError::InvalidToken {
-                description: "MCP API key has no expiration time",
-            })?;
-        if expires_at <= now {
-            return Err(AuthenticationError::InvalidOrExpiredToken(
-                "MCP API key has expired".to_owned(),
-            ));
-        }
-        let expires_at = system_time_from_datetime(expires_at)?;
-
-        let mut active = key.clone().into_active_model();
+        let mut active = token.clone().into_active_model();
         active.last_used_at = Set(Some(now));
         active.updated_at = Set(now);
         active
@@ -102,15 +94,22 @@ impl AuthProvider for ProduktiveAuthProvider {
             .map_err(auth_server_error)?;
 
         let mut extra = Map::new();
-        if let Some(organization_id) = valid_active_workspace(&self.state.db, &key).await? {
+        if let Some(organization_id) = valid_selected_workspace(&self.state.db, &grant).await? {
             extra.insert("organization_id".to_owned(), json!(organization_id));
         }
+        extra.insert("grant_id".to_owned(), json!(grant.id));
 
         Ok(AuthInfo {
-            token_unique_id: key.id,
-            client_id: Some("produktive-mcp".to_owned()),
-            user_id: Some(key.user_id),
-            scopes: Some(vec!["mcp".to_owned()]),
+            token_unique_id: token.id,
+            client_id: Some(token.client_id),
+            user_id: Some(token.user_id),
+            scopes: Some(
+                token
+                    .scope
+                    .split_whitespace()
+                    .map(ToOwned::to_owned)
+                    .collect(),
+            ),
             expires_at: Some(expires_at),
             audience: None,
             extra: Some(extra),
@@ -118,20 +117,31 @@ impl AuthProvider for ProduktiveAuthProvider {
     }
 
     fn auth_endpoints(&self) -> Option<&HashMap<String, OauthEndpoint>> {
-        None
+        Some(&self.endpoints)
     }
 
     async fn handle_request(
         &self,
-        _request: http::Request<&str>,
+        request: http::Request<&str>,
         _state: Arc<McpAppState>,
     ) -> Result<http::Response<GenericBody>, rust_mcp_sdk::mcp_server::error::TransportServerError>
     {
-        Ok(GenericBody::create_404_response())
+        if self.endpoint_type(&request) != Some(&OauthEndpoint::ProtectedResourceMetadata) {
+            return Ok(GenericBody::create_404_response());
+        }
+        let metadata = json!({
+            "resource": self.state.resource_url,
+            "authorization_servers": [self.state.issuer_url],
+            "scopes_supported": ["mcp"],
+            "bearer_methods_supported": ["header"],
+            "resource_name": "Produktive MCP",
+            "resource_documentation": "https://produktive.app",
+        });
+        Ok(GenericBody::from_value(&metadata).into_json_response(http::StatusCode::OK, None))
     }
 
     fn protected_resource_metadata_url(&self) -> Option<&str> {
-        None
+        Some(&self.protected_resource_metadata_url)
     }
 }
 
@@ -250,27 +260,22 @@ impl ServerHandler for ProduktiveHandler {
 
 #[derive(Debug)]
 struct RequestContext {
-    key_id: String,
+    grant_id: String,
     user_id: String,
     organization_id: Option<String>,
 }
 
 impl RequestContext {
-    async fn from_auth(state: &AppState, auth: AuthInfo) -> Result<Self, CallToolError> {
+    async fn from_auth(_state: &AppState, auth: AuthInfo) -> Result<Self, CallToolError> {
         let user_id = auth
             .user_id
-            .ok_or_else(|| tool_error("MCP API key did not resolve to a user"))?;
-        let key = mcp_api_key::Entity::find_by_id(&auth.token_unique_id)
-            .one(&state.db)
-            .await
-            .map_err(db_tool_error)?
-            .ok_or_else(|| tool_error("MCP API key no longer exists"))?;
-        let organization_id = valid_active_workspace(&state.db, &key)
-            .await
-            .map_err(auth_to_tool_error)?;
+            .ok_or_else(|| tool_error("MCP OAuth token did not resolve to a user"))?;
+        let grant_id = metadata_string(&auth.extra, "grant_id")
+            .ok_or_else(|| tool_error("MCP OAuth token did not resolve to a grant"))?;
+        let organization_id = metadata_string(&auth.extra, "organization_id");
 
         Ok(Self {
-            key_id: auth.token_unique_id,
+            grant_id,
             user_id,
             organization_id,
         })
@@ -285,14 +290,14 @@ impl RequestContext {
 
 #[mcp_tool(
     name = "list_workspaces",
-    description = "List Produktive workspaces available to the authenticated API key user."
+    description = "List Produktive workspaces available to the authenticated OAuth user."
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema, Default)]
 struct ListWorkspacesTool {}
 
 #[mcp_tool(
     name = "current_workspace",
-    description = "Show the currently selected Produktive workspace for this MCP API key."
+    description = "Show the currently selected Produktive workspace for this MCP OAuth grant."
 )]
 #[derive(Debug, Deserialize, Serialize, JsonSchema, Default)]
 struct CurrentWorkspaceTool {}
@@ -513,13 +518,13 @@ async fn select_workspace(
         .map_err(db_tool_error)?
         .ok_or_else(|| tool_error("Workspace not found"))?;
 
-    let key = mcp_api_key::Entity::find_by_id(&ctx.key_id)
+    let grant = produktive_oauth_grant::Entity::find_by_id(&ctx.grant_id)
         .one(&state.db)
         .await
         .map_err(db_tool_error)?
-        .ok_or_else(|| tool_error("MCP API key no longer exists"))?;
-    let mut active = key.into_active_model();
-    active.active_organization_id = Set(Some(org.id.clone()));
+        .ok_or_else(|| tool_error("MCP OAuth grant no longer exists"))?;
+    let mut active = grant.into_active_model();
+    active.selected_organization_id = Set(Some(org.id.clone()));
     active.updated_at = Set(Utc::now().fixed_offset());
     active.update(&state.db).await.map_err(db_tool_error)?;
 
@@ -1251,15 +1256,15 @@ async fn comment_json(
     }))
 }
 
-async fn valid_active_workspace(
+async fn valid_selected_workspace(
     db: &DatabaseConnection,
-    key: &mcp_api_key::Model,
+    grant: &produktive_oauth_grant::Model,
 ) -> Result<Option<String>, AuthenticationError> {
-    let Some(organization_id) = key.active_organization_id.as_deref() else {
+    let Some(organization_id) = grant.selected_organization_id.as_deref() else {
         return Ok(None);
     };
     let is_member = member::Entity::find()
-        .filter(member::Column::UserId.eq(&key.user_id))
+        .filter(member::Column::UserId.eq(&grant.user_id))
         .filter(member::Column::OrganizationId.eq(organization_id))
         .one(db)
         .await
@@ -1268,39 +1273,9 @@ async fn valid_active_workspace(
     Ok(is_member.then(|| organization_id.to_owned()))
 }
 
-async fn find_local_key_from_unkey(
-    db: &DatabaseConnection,
-    verified: &VerifyKeyResponse,
-) -> Result<mcp_api_key::Model, AuthenticationError> {
-    if let Some(unkey_key_id) = verified.key_id.as_deref() {
-        if let Some(key) = mcp_api_key::Entity::find()
-            .filter(mcp_api_key::Column::UnkeyKeyId.eq(unkey_key_id))
-            .one(db)
-            .await
-            .map_err(auth_server_error)?
-        {
-            return Ok(key);
-        }
-    }
-
-    if let Some(local_key_id) = metadata_string(&verified.meta, "local_key_id") {
-        return mcp_api_key::Entity::find_by_id(local_key_id)
-            .one(db)
-            .await
-            .map_err(auth_server_error)?
-            .ok_or(AuthenticationError::InvalidToken {
-                description: "Invalid MCP API key",
-            });
-    }
-
-    Err(AuthenticationError::InvalidToken {
-        description: "Invalid MCP API key",
-    })
-}
-
-fn metadata_string(meta: &Metadata, key: &str) -> Option<String> {
-    match meta.get(key) {
-        Some(Value::String(value)) if !value.is_empty() => Some(value.clone()),
+fn metadata_string(meta: &Option<Map<String, Value>>, key: &str) -> Option<String> {
+    match meta.as_ref()?.get(key) {
+        Some(Value::String(value)) if !value.is_empty() => Some(value.to_owned()),
         _ => None,
     }
 }
@@ -1471,7 +1446,7 @@ fn system_time_from_datetime(
     let nanos = value.timestamp_subsec_nanos();
     if timestamp < 0 {
         return Err(AuthenticationError::InvalidToken {
-            description: "MCP API key has invalid expiration time",
+            description: "MCP OAuth token has invalid expiration time",
         });
     }
     Ok(UNIX_EPOCH + StdDuration::new(timestamp as u64, nanos))
@@ -1573,10 +1548,6 @@ fn db_tool_error(error: sea_orm::DbErr) -> CallToolError {
     tool_error("Database error")
 }
 
-fn auth_to_tool_error(error: AuthenticationError) -> CallToolError {
-    tool_error(error.to_string())
-}
-
 fn auth_server_error(error: sea_orm::DbErr) -> AuthenticationError {
     tracing::error!(%error, "database error in MCP authentication");
     AuthenticationError::ServerError {
@@ -1584,21 +1555,43 @@ fn auth_server_error(error: sea_orm::DbErr) -> AuthenticationError {
     }
 }
 
-fn required_env(key: &str) -> SdkResult<String> {
-    std::env::var(key)
-        .map(|value| value.trim().to_owned())
-        .ok()
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| rust_mcp_sdk::error::McpSdkError::Internal {
-            description: format!("{key} is required"),
-        })
-}
-
 fn optional_env(key: &str) -> Option<String> {
     std::env::var(key)
         .ok()
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
+}
+
+fn hash_token(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn protected_resource_metadata_path(resource_url: &str) -> String {
+    let path = resource_url
+        .split_once("://")
+        .and_then(|(_, rest)| rest.find('/').map(|index| &rest[index..]))
+        .unwrap_or("/");
+    if path == "/" {
+        "/.well-known/oauth-protected-resource".to_owned()
+    } else {
+        format!(
+            "/.well-known/oauth-protected-resource{}",
+            path.trim_end_matches('/')
+        )
+    }
+}
+
+fn protected_resource_metadata_url(resource_url: &str) -> String {
+    let origin = resource_url
+        .split_once("://")
+        .and_then(|(scheme, rest)| {
+            let host = rest.split('/').next()?;
+            Some(format!("{scheme}://{host}"))
+        })
+        .unwrap_or_else(|| "https://mcp.produktive.app".to_owned());
+    format!("{origin}{}", protected_resource_metadata_path(resource_url))
 }
 
 #[tokio::main]
@@ -1621,17 +1614,14 @@ async fn main() -> SdkResult<()> {
         .map_err(|error| rust_mcp_sdk::error::McpSdkError::Internal {
             description: error.to_string(),
         })?;
-    let unkey_root_key = required_env("UNKEY_ROOT_KEY")?;
-    let mut unkey_config = UnkeyConfig::new(unkey_root_key);
-    if let Some(base_url) = optional_env("UNKEY_BASE_URL") {
-        unkey_config = unkey_config.base_url(base_url);
-    }
-    let unkey = Unkey::with_config(unkey_config).map_err(|error| {
-        rust_mcp_sdk::error::McpSdkError::Internal {
-            description: format!("failed to build Unkey client: {error}"),
-        }
-    })?;
-    let state = AppState { db, unkey };
+    let issuer_url = optional_env("APP_URL").unwrap_or_else(|| "https://produktive.app".to_owned());
+    let resource_url = optional_env("MCP_RESOURCE_URL")
+        .unwrap_or_else(|| "https://mcp.produktive.app/mcp".to_owned());
+    let state = AppState {
+        db,
+        issuer_url: issuer_url.trim_end_matches('/').to_owned(),
+        resource_url: resource_url.trim_end_matches('/').to_owned(),
+    };
     let port = std::env::var("PORT")
         .ok()
         .and_then(|value| value.parse::<u16>().ok())
@@ -1664,7 +1654,18 @@ async fn main() -> SdkResult<()> {
     let handler = ProduktiveHandler {
         state: state.clone(),
     };
-    let auth = ProduktiveAuthProvider { state };
+    let protected_resource_metadata_url = protected_resource_metadata_url(&state.resource_url);
+    let protected_resource_path = protected_resource_metadata_path(&state.resource_url);
+    let mut endpoints = HashMap::new();
+    endpoints.insert(
+        protected_resource_path,
+        OauthEndpoint::ProtectedResourceMetadata,
+    );
+    let auth = ProduktiveAuthProvider {
+        state,
+        endpoints,
+        protected_resource_metadata_url,
+    };
     let server = hyper_server::create_server(
         server_details,
         handler.to_mcp_server_handler(),

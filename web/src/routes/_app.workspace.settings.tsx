@@ -91,7 +91,7 @@ const settingsSections: SettingsSection[] = [
   {
     id: "mcp",
     label: "API keys",
-    description: "Keys for the public API and Produktive MCP server",
+    description: "Keys for the public REST API",
     group: "main",
   },
   {
@@ -736,7 +736,6 @@ function McpKeySettings() {
   const [busy, setBusy] = useState<string | null>(null);
   const [newToken, setNewToken] = useState<string | null>(null);
   const { confirm, dialog } = useConfirmDialog();
-  const serverUrl = getMcpServerUrl();
 
   const onCopy = async (value: string, label = "Copied") => {
     try {
@@ -843,33 +842,18 @@ function McpKeySettings() {
       ) : null}
 
       <SettingRow label="Endpoint">
-        <div className="grid gap-2">
-          <div className="flex items-center gap-2">
-            <span className="w-12 text-[11.5px] text-fg-faint">REST</span>
-            <code className="min-w-0 flex-1 truncate font-mono text-fg-muted">
-              {getPublicApiUrl()}
-            </code>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void onCopy(getPublicApiUrl(), "REST endpoint copied")}
-            >
-              Copy
-            </Button>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-12 text-[11.5px] text-fg-faint">MCP</span>
-            <code className="min-w-0 flex-1 truncate font-mono text-fg-muted">{serverUrl}</code>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => void onCopy(serverUrl, "MCP endpoint copied")}
-            >
-              Copy
-            </Button>
-          </div>
+        <div className="flex items-center gap-2">
+          <code className="min-w-0 flex-1 truncate font-mono text-fg-muted">
+            {getPublicApiUrl()}
+          </code>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void onCopy(getPublicApiUrl(), "REST endpoint copied")}
+          >
+            Copy
+          </Button>
         </div>
       </SettingRow>
 
@@ -901,7 +885,7 @@ function McpKeySettings() {
 
       {activeKeys.length === 0 ? (
         <SettingRow label="Keys">
-          <span className="text-fg-muted">No active keys.</span>
+          <span className="text-fg-muted">No active REST API keys.</span>
         </SettingRow>
       ) : (
         activeKeys.map((key) => (
@@ -1017,14 +1001,6 @@ function formatDate(value: string) {
     day: "numeric",
     year: "numeric",
   });
-}
-
-function getMcpServerUrl() {
-  if (typeof window === "undefined") return "https://mcp.produktive.app/mcp";
-  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-    return "http://localhost:3001/mcp";
-  }
-  return `${window.location.origin.replace(/^https?:\/\/(www\.)?/, "https://mcp.")}/mcp`;
 }
 
 function getPublicApiUrl() {

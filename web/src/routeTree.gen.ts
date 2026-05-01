@@ -16,6 +16,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as LegalRouteImport } from './routes/legal'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as LegalTypeRouteImport } from './routes/legal.$type'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as AppWorkspaceRouteImport } from './routes/_app.workspace'
@@ -63,6 +64,11 @@ const AppRoute = AppRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
+  id: '/oauth/authorize',
+  path: '/oauth/authorize',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LegalTypeRoute = LegalTypeRouteImport.update({
@@ -152,6 +158,7 @@ export interface FileRoutesByFullPath {
   '/workspace': typeof AppWorkspaceRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$type': typeof LegalTypeRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/members/$memberId': typeof AppMembersMemberIdRoute
@@ -174,6 +181,7 @@ export interface FileRoutesByTo {
   '/workspace': typeof AppWorkspaceRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$type': typeof LegalTypeRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/members/$memberId': typeof AppMembersMemberIdRoute
@@ -198,6 +206,7 @@ export interface FileRoutesById {
   '/_app/workspace': typeof AppWorkspaceRouteWithChildren
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$type': typeof LegalTypeRoute
+  '/oauth/authorize': typeof OauthAuthorizeRoute
   '/_app/chat/$chatId': typeof AppChatChatIdRoute
   '/_app/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/_app/members/$memberId': typeof AppMembersMemberIdRoute
@@ -222,6 +231,7 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/invite/$token'
     | '/legal/$type'
+    | '/oauth/authorize'
     | '/chat/$chatId'
     | '/issues/$issueId'
     | '/members/$memberId'
@@ -244,6 +254,7 @@ export interface FileRouteTypes {
     | '/workspace'
     | '/invite/$token'
     | '/legal/$type'
+    | '/oauth/authorize'
     | '/chat/$chatId'
     | '/issues/$issueId'
     | '/members/$memberId'
@@ -267,6 +278,7 @@ export interface FileRouteTypes {
     | '/_app/workspace'
     | '/invite/$token'
     | '/legal/$type'
+    | '/oauth/authorize'
     | '/_app/chat/$chatId'
     | '/_app/issues/$issueId'
     | '/_app/members/$memberId'
@@ -283,6 +295,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
   InviteTokenRoute: typeof InviteTokenRoute
+  OauthAuthorizeRoute: typeof OauthAuthorizeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -334,6 +347,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/authorize': {
+      id: '/oauth/authorize'
+      path: '/oauth/authorize'
+      fullPath: '/oauth/authorize'
+      preLoaderRoute: typeof OauthAuthorizeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/legal/$type': {
@@ -527,6 +547,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   VerifyEmailRoute: VerifyEmailRoute,
   InviteTokenRoute: InviteTokenRoute,
+  OauthAuthorizeRoute: OauthAuthorizeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

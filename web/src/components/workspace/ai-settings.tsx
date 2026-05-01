@@ -28,9 +28,8 @@ const MCP_TEMPLATES: McpTemplate[] = [
     id: "produktive",
     name: "Produktive",
     url: "https://mcp.produktive.app/mcp",
-    auth: "token",
-    meta: "API key",
-    tokenPlaceholder: "MCP API key",
+    auth: "oauth",
+    meta: "OAuth",
   },
   {
     id: "notra",
@@ -584,7 +583,7 @@ function cleanMcpError(message: string | null) {
     message.includes("/.well-known/oauth-protected-resource") ||
     message.includes("oauth-protected-resource")
   ) {
-    return "Add a Produktive MCP API key as the bearer token.";
+    return "Connect with OAuth to authorize this MCP server.";
   }
   const jsonStart = message.indexOf("{");
   if (jsonStart === -1) return message;

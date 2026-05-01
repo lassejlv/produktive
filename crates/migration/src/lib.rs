@@ -58,6 +58,8 @@ mod m20260501_000027_add_user_tabs;
 mod m20260501_000028_add_github_import_locks;
 #[path = "../migrations/m20260501_000029_add_unkey_api_key_columns.rs"]
 mod m20260501_000029_add_unkey_api_key_columns;
+#[path = "../migrations/m20260501_000030_create_produktive_oauth.rs"]
+mod m20260501_000030_create_produktive_oauth;
 
 pub struct Migrator;
 
@@ -94,6 +96,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260501_000027_add_user_tabs::Migration),
             Box::new(m20260501_000028_add_github_import_locks::Migration),
             Box::new(m20260501_000029_add_unkey_api_key_columns::Migration),
+            Box::new(m20260501_000030_create_produktive_oauth::Migration),
         ]
     }
 }

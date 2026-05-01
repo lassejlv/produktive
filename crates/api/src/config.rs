@@ -18,6 +18,7 @@ pub struct Config {
     pub session_days: i64,
     pub web_dist_dir: String,
     pub app_url: String,
+    pub mcp_resource_url: String,
     pub resend_api_key: String,
     pub resend_from_email: String,
     pub ai_api_key: String,
@@ -63,6 +64,14 @@ impl Config {
         let app_url = env_or_default("APP_URL", "http://localhost:3000")
             .trim_end_matches('/')
             .to_owned();
+        let default_mcp_resource_url = if is_local_app_url(&app_url) {
+            "http://localhost:3001/mcp"
+        } else {
+            "https://mcp.produktive.app/mcp"
+        };
+        let mcp_resource_url = env_or_default("MCP_RESOURCE_URL", default_mcp_resource_url)
+            .trim_end_matches('/')
+            .to_owned();
         let mcp_token_encryption_key = optional_env("MCP_TOKEN_ENCRYPTION_KEY");
 
         if mcp_token_encryption_key.is_none() && is_production_like_url_or_env(&app_url) {
@@ -95,6 +104,7 @@ impl Config {
                 .context("AUTH_SESSION_DAYS must be a number")?,
             web_dist_dir: env_or_default("WEB_DIST_DIR", "web/dist"),
             app_url,
+            mcp_resource_url,
             resend_api_key: required_env("RESEND_API_KEY").context("RESEND_API_KEY is required")?,
             resend_from_email: env_or_default("RESEND_FROM_EMAIL", "Produktive <be@produktive.app>"),
             ai_api_key: required_env("AI_API_KEY").context("AI_API_KEY is required")?,

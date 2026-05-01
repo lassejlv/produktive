@@ -13,7 +13,7 @@ curl https://produktive.app/api/v1/issues \
   -H "Authorization: Bearer pk_api_..."
 ```
 
-The same key can be used as the bearer token for the Produktive MCP server. Legacy `pk_mcp` keys remain valid until they expire or are revoked.
+These keys are for the public REST API only. Produktive MCP uses OAuth at `https://mcp.produktive.app/mcp`.
 Only workspace owners can create, list, or revoke workspace API keys.
 
 Runtime key validity is checked through Unkey first. If Unkey cannot verify a key, Produktive returns `401` instead of falling back to the local key hash mirror.
@@ -26,7 +26,7 @@ Active, unexpired legacy key hashes can be imported into Unkey once:
 UNKEY_MIGRATION_ID="mig_..." cargo run -p produktive-api --bin migrate_unkey_keys
 ```
 
-The command skips rows that already have an Unkey key id, imports local SHA-256 hex hashes with the `pk_api` or `pk_mcp` prefix, writes returned Unkey key ids back to `mcp_api_keys`, and exits non-zero if any key fails to import. Revoked or expired keys are left as local history.
+The command skips rows that already have an Unkey key id, imports local SHA-256 hex hashes with the `pk_api` or legacy `pk_mcp` prefix, writes returned Unkey key ids back to `mcp_api_keys`, and exits non-zero if any key fails to import. Revoked or expired keys are left as local history.
 
 ## Errors
 

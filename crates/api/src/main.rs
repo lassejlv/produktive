@@ -27,9 +27,9 @@ use config::{Config, DatabaseConfig};
 use http::{
     ai_mcp_routes, ai_routes, auth_routes, billing_routes, chat_routes, cors_layer, dev_routes,
     favorite_routes, github_routes, inbox_routes, invitation_routes, issue_routes, label_routes,
-    mcp_key_routes, member_routes, onboarding_routes, org_invitation_routes, preferences_routes,
-    project_routes, public_api_routes, realtime_routes, spawn_github_auto_importer, tabs_routes,
-    unsubscribe_routes, waitlist_routes,
+    mcp_key_routes, member_routes, oauth_metadata_routes, oauth_routes, onboarding_routes,
+    org_invitation_routes, preferences_routes, project_routes, public_api_routes, realtime_routes,
+    spawn_github_auto_importer, tabs_routes, unsubscribe_routes, waitlist_routes,
 };
 use polar_rs::{Polar, PolarConfig};
 use produktive_ai::AiClient;
@@ -93,7 +93,9 @@ async fn main() -> anyhow::Result<()> {
         config.web_dist_dir
     )));
     let app = Router::new()
+        .merge(oauth_metadata_routes())
         .nest("/api/auth", auth_routes())
+        .nest("/api/oauth", oauth_routes())
         .nest("/api/v1", public_api_routes())
         .nest("/api/ai", ai_routes())
         .nest("/api/ai/mcp", ai_mcp_routes())
