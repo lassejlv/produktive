@@ -23,6 +23,9 @@ export function UsageSettings() {
     usage.includedCredits > 0
       ? Math.min(100, Math.round((usage.usedCredits / usage.includedCredits) * 100))
       : 0;
+  const usagePeriodLabel = usage.planName === "Free" ? "Today" : "Current period";
+  const overageDetail =
+    usage.planName === "Free" ? "Upgrade required" : "Billed at €0.08 / credit";
 
   return (
     <div className="space-y-8">
@@ -32,7 +35,7 @@ export function UsageSettings() {
           <UsageMetric
             label="Used"
             value={formatCredits(usage.usedCredits)}
-            detail="Last 30 days"
+            detail={usagePeriodLabel}
           />
           <UsageMetric
             label="Included"
@@ -42,7 +45,7 @@ export function UsageSettings() {
           <UsageMetric
             label="Overage"
             value={formatCredits(usage.overageCredits)}
-            detail="Billed at €0.08 / credit"
+            detail={overageDetail}
           />
         </div>
 

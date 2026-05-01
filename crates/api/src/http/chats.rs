@@ -347,6 +347,7 @@ async fn post_message(
     }
 
     let model_id = resolve_model(&state, &auth, payload.model).await?;
+    super::billing::require_ai_usage_capacity(&state, &auth).await?;
     let user_row = insert_message(&state, &chat_id, "user", user_content, None, None).await?;
     let user_message_id = user_row.id.clone();
 
@@ -386,6 +387,7 @@ async fn stream_message(
     }
 
     let model_id = resolve_model(&state, &auth, payload.model).await?;
+    super::billing::require_ai_usage_capacity(&state, &auth).await?;
     let user_row = insert_message(&state, &chat_id, "user", &user_content, None, None).await?;
     let user_event = StreamEvent::User {
         message: WireMessage::from(&user_row),

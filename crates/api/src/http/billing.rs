@@ -10,7 +10,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, Datelike, FixedOffset, TimeZone, Utc};
 use polar_rs::{
     models::{CreateCheckoutRequest, CreateCustomerSessionRequest, Product, Subscription},
     webhooks::{verify, WebhookEvent},
@@ -26,6 +26,9 @@ use std::collections::HashMap;
 
 const ACTIVE_STATUSES: &[&str] = &["active", "trialing"];
 const FALLBACK_USAGE_PERIOD_DAYS: i64 = 30;
+const FREE_DAILY_CREDITS: i64 = 10;
+const PRO_INCLUDED_CREDITS: i64 = 500;
+const TEAM_INCLUDED_CREDITS: i64 = 5_000;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -118,6 +121,14 @@ struct BillingUsageEventResponse {
     status: String,
 }
 
+struct UsagePlan {
+    name: String,
+    included_credits: i64,
+    period_start: DateTime<FixedOffset>,
+    period_end: DateTime<FixedOffset>,
+    allows_overage: bool,
+}
+
 async fn plans(State(state): State<AppState>) -> Result<Json<PricingPlansResponse>, ApiError> {
     let mut plans = Vec::with_capacity(2);
     plans.push(pricing_plan(&state, &state.config.polar_pro_product_id).await?);
@@ -191,30 +202,25 @@ async fn usage(
     let auth = require_auth(&headers, &state).await?;
     let now = Utc::now().fixed_offset();
     let subs = load_subscriptions(&state, &auth.organization.id).await?;
-    let (plan_name, included_credits, period_start, period_end) = usage_plan(&state, &subs, now);
+    let plan = usage_plan(&state, &subs, now);
+    let rows = usage_rows_for_period(
+        &state,
+        &auth.organization.id,
+        plan.period_start,
+        plan.period_end,
+    )
+    .await?;
 
-    let rows = bue::Entity::find()
-        .filter(bue::Column::OrganizationId.eq(&auth.organization.id))
-        .filter(bue::Column::CreatedAt.gte(period_start))
-        .filter(bue::Column::CreatedAt.lte(period_end))
-        .order_by_desc(bue::Column::CreatedAt)
-        .all(&state.db)
-        .await?;
-
-    let used_credits = rows
-        .iter()
-        .filter(|row| usage_counts_toward_billable_total(row))
-        .map(|row| row.credits.max(0))
-        .sum::<i64>();
-    let remaining_credits = included_credits.saturating_sub(used_credits).max(0);
-    let overage_credits = used_credits.saturating_sub(included_credits).max(0);
+    let used_credits = used_credits_from_rows(&rows, &plan);
+    let remaining_credits = plan.included_credits.saturating_sub(used_credits).max(0);
+    let overage_credits = used_credits.saturating_sub(plan.included_credits).max(0);
     let pending_events = rows
         .iter()
         .filter(|row| row.status == "pending" || row.status == "processing")
         .count();
     let sent_events = rows.iter().filter(|row| row.status == "sent").count();
     let failed_events = rows.iter().filter(|row| row.status == "failed").count();
-    let daily = usage_daily(&rows, period_start, now);
+    let daily = usage_daily(&rows, &plan, now);
     let recent = rows
         .iter()
         .take(8)
@@ -230,10 +236,10 @@ async fn usage(
         .collect();
 
     Ok(Json(BillingUsageResponse {
-        period_start: period_start.timestamp(),
-        period_end: period_end.timestamp(),
-        plan_name,
-        included_credits,
+        period_start: plan.period_start.timestamp(),
+        period_end: plan.period_end.timestamp(),
+        plan_name: plan.name,
+        included_credits: plan.included_credits,
         used_credits,
         remaining_credits,
         overage_credits,
@@ -456,6 +462,37 @@ pub(crate) async fn require_pro(state: &AppState, auth: &AuthContext) -> Result<
     ))
 }
 
+pub(crate) async fn require_ai_usage_capacity(
+    state: &AppState,
+    auth: &AuthContext,
+) -> Result<(), ApiError> {
+    let now = Utc::now().fixed_offset();
+    let subs = load_subscriptions(state, &auth.organization.id).await?;
+    let plan = usage_plan(state, &subs, now);
+
+    if plan.allows_overage {
+        return Ok(());
+    }
+
+    let rows = usage_rows_for_period(
+        state,
+        &auth.organization.id,
+        plan.period_start,
+        plan.period_end,
+    )
+    .await?;
+    let used_credits = used_credits_from_rows(&rows, &plan);
+
+    if used_credits < plan.included_credits {
+        return Ok(());
+    }
+
+    Err(ApiError::Forbidden(format!(
+        "{} AI credits used for today. Upgrade to continue.",
+        plan.included_credits
+    )))
+}
+
 async fn upsert_subscription(
     state: &AppState,
     sub: &Subscription,
@@ -622,11 +659,7 @@ fn build_status(
     }
 }
 
-fn usage_plan(
-    state: &AppState,
-    subs: &[os::Model],
-    now: DateTime<FixedOffset>,
-) -> (String, i64, DateTime<FixedOffset>, DateTime<FixedOffset>) {
+fn usage_plan(state: &AppState, subs: &[os::Model], now: DateTime<FixedOffset>) -> UsagePlan {
     let mut active_subs = subs
         .iter()
         .filter(|sub| {
@@ -650,17 +683,35 @@ fn usage_plan(
     let fallback_start = now - chrono::Duration::days(FALLBACK_USAGE_PERIOD_DAYS);
 
     if let Some(sub) = active_subs.last() {
-        if let Some((name, included_credits)) = usage_plan_for_product(state, &sub.product_id) {
-            return usage_plan_period(name, included_credits, sub, fallback_start, now);
+        if let Some((name, included_credits, allows_overage)) =
+            usage_plan_for_product(state, &sub.product_id)
+        {
+            return usage_plan_period(
+                name,
+                included_credits,
+                allows_overage,
+                sub,
+                fallback_start,
+                now,
+            );
         }
     }
 
-    ("Free".to_owned(), 0, fallback_start, now)
+    UsagePlan {
+        name: "Free".to_owned(),
+        included_credits: FREE_DAILY_CREDITS,
+        period_start: start_of_day(now),
+        period_end: now,
+        allows_overage: false,
+    }
 }
 
-fn usage_plan_for_product<'a>(state: &'a AppState, product_id: &str) -> Option<(&'a str, i64)> {
+fn usage_plan_for_product<'a>(
+    state: &'a AppState,
+    product_id: &str,
+) -> Option<(&'a str, i64, bool)> {
     if product_id == state.config.polar_pro_product_id {
-        return Some(("Pro", 500));
+        return Some(("Pro", PRO_INCLUDED_CREDITS, true));
     }
 
     state
@@ -668,42 +719,51 @@ fn usage_plan_for_product<'a>(state: &'a AppState, product_id: &str) -> Option<(
         .polar_team_product_id
         .as_deref()
         .filter(|team_product_id| product_id == *team_product_id)
-        .map(|_| ("Team", 5_000))
+        .map(|_| ("Team", TEAM_INCLUDED_CREDITS, true))
 }
 
 fn usage_plan_period(
     name: &str,
     included_credits: i64,
+    allows_overage: bool,
     sub: &os::Model,
     fallback_start: DateTime<FixedOffset>,
     now: DateTime<FixedOffset>,
-) -> (String, i64, DateTime<FixedOffset>, DateTime<FixedOffset>) {
-    (
-        name.to_owned(),
+) -> UsagePlan {
+    UsagePlan {
+        name: name.to_owned(),
         included_credits,
-        sub.current_period_start.unwrap_or(fallback_start),
-        sub.current_period_end.or(sub.ends_at).unwrap_or(now),
-    )
+        period_start: sub.current_period_start.unwrap_or(fallback_start),
+        period_end: sub.current_period_end.or(sub.ends_at).unwrap_or(now),
+        allows_overage,
+    }
+}
+
+fn start_of_day(now: DateTime<FixedOffset>) -> DateTime<FixedOffset> {
+    now.timezone()
+        .with_ymd_and_hms(now.year(), now.month(), now.day(), 0, 0, 0)
+        .single()
+        .unwrap_or(now - chrono::Duration::hours(24))
 }
 
 fn usage_daily(
     rows: &[bue::Model],
-    period_start: DateTime<FixedOffset>,
+    plan: &UsagePlan,
     period_end: DateTime<FixedOffset>,
 ) -> Vec<BillingUsageDailyResponse> {
     let mut credits_by_date = HashMap::<String, i64>::new();
     for row in rows {
-        if !usage_counts_toward_billable_total(row) {
+        if !usage_counts_toward_plan_total(row, plan) {
             continue;
         }
         let date = row.created_at.date_naive().to_string();
         *credits_by_date.entry(date).or_default() += row.credits.max(0);
     }
 
-    let days = (period_end.date_naive() - period_start.date_naive()).num_days();
+    let days = (period_end.date_naive() - plan.period_start.date_naive()).num_days();
     (0..=days)
         .map(|offset| {
-            let date = (period_start + chrono::Duration::days(offset))
+            let date = (plan.period_start + chrono::Duration::days(offset))
                 .date_naive()
                 .to_string();
             BillingUsageDailyResponse {
@@ -714,8 +774,34 @@ fn usage_daily(
         .collect()
 }
 
-fn usage_counts_toward_billable_total(row: &bue::Model) -> bool {
-    row.status != "local_only" && row.status != "failed"
+async fn usage_rows_for_period(
+    state: &AppState,
+    organization_id: &str,
+    period_start: DateTime<FixedOffset>,
+    period_end: DateTime<FixedOffset>,
+) -> Result<Vec<bue::Model>, ApiError> {
+    Ok(bue::Entity::find()
+        .filter(bue::Column::OrganizationId.eq(organization_id))
+        .filter(bue::Column::CreatedAt.gte(period_start))
+        .filter(bue::Column::CreatedAt.lte(period_end))
+        .order_by_desc(bue::Column::CreatedAt)
+        .all(&state.db)
+        .await?)
+}
+
+fn used_credits_from_rows(rows: &[bue::Model], plan: &UsagePlan) -> i64 {
+    rows.iter()
+        .filter(|row| usage_counts_toward_plan_total(row, plan))
+        .map(|row| row.credits.max(0))
+        .sum()
+}
+
+fn usage_counts_toward_plan_total(row: &bue::Model, plan: &UsagePlan) -> bool {
+    if row.status == "failed" {
+        return false;
+    }
+
+    row.status != "local_only" || !plan.allows_overage
 }
 
 async fn require_owner(
@@ -794,6 +880,49 @@ mod tests {
         }
     }
 
+    fn usage_plan_fixture(allows_overage: bool) -> UsagePlan {
+        let now = Utc::now().fixed_offset();
+        UsagePlan {
+            name: if allows_overage { "Pro" } else { "Free" }.to_owned(),
+            included_credits: if allows_overage {
+                PRO_INCLUDED_CREDITS
+            } else {
+                FREE_DAILY_CREDITS
+            },
+            period_start: now - chrono::Duration::days(1),
+            period_end: now,
+            allows_overage,
+        }
+    }
+
+    fn usage_event(status: &str, credits: i64) -> bue::Model {
+        let now = Utc::now().fixed_offset();
+        bue::Model {
+            id: format!("event_{status}_{credits}"),
+            organization_id: "org_1".to_owned(),
+            chat_id: "chat_1".to_owned(),
+            user_message_id: "message_1".to_owned(),
+            external_id: format!("external_{status}_{credits}"),
+            model: "test-model".to_owned(),
+            credits,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+            usage_source: "test".to_owned(),
+            tool_call_count: 0,
+            tool_result_bytes: 0,
+            round_count: 1,
+            metadata: json!({}),
+            status: status.to_owned(),
+            attempts: 0,
+            last_error: None,
+            next_retry_at: None,
+            sent_at: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
     #[test]
     fn subscription_org_resolution_prefers_subscription_metadata() {
         let mut sub = subscription();
@@ -828,5 +957,29 @@ mod tests {
             resolve_organization_id(&sub).as_deref(),
             Some("org_from_customer")
         );
+    }
+
+    #[test]
+    fn free_usage_counts_local_only_events_for_quota() {
+        let plan = usage_plan_fixture(false);
+        let rows = vec![
+            usage_event("pending", 4),
+            usage_event("local_only", 3),
+            usage_event("failed", 20),
+        ];
+
+        assert_eq!(used_credits_from_rows(&rows, &plan), 7);
+    }
+
+    #[test]
+    fn paid_usage_excludes_local_only_events_from_billable_total() {
+        let plan = usage_plan_fixture(true);
+        let rows = vec![
+            usage_event("sent", 4),
+            usage_event("local_only", 3),
+            usage_event("failed", 20),
+        ];
+
+        assert_eq!(used_credits_from_rows(&rows, &plan), 4);
     }
 }
