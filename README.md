@@ -20,7 +20,7 @@ crates/migration  SeaORM migrations
 crates/mcp        Standalone MCP server for Produktive workspaces
 crates/ai         AI client helpers
 crates/polar      Polar API client
-crates/autumn-rs  Local billing SDK experiments
+crates/unkey      Unkey API client
 web               Vite React app
 ```
 
@@ -30,6 +30,8 @@ web               Vite React app
   workspace switching
 - Workspace issues, labels, projects, members, comments, notifications, inbox,
   favorites, and tab state
+- Public REST API v1 for workspace issues, labels, and projects using unified
+  workspace API keys
 - Team chat with streaming AI responses, file attachments, and workspace-aware
   tool calls
 - Workspace settings for members, billing, AI/MCP configuration, GitHub import,
@@ -40,6 +42,9 @@ web               Vite React app
 - S3-compatible attachment storage
 - Standalone MCP server with workspace, member, label, project, issue, and
   comment tools
+
+See [docs/public-api.md](docs/public-api.md) for public API authentication,
+endpoints, and examples.
 
 ## Requirements
 
@@ -64,6 +69,7 @@ The API reads `.env` values such as:
 - `RESEND_API_KEY`
 - `AI_API_KEY`, `AI_BASE_URL`, and `AI_MODEL`
 - `POLAR_ACCESS_TOKEN`, `POLAR_PRO_PRODUCT_ID`, and `POLAR_WEBHOOK_SECRET`
+- `UNKEY_ROOT_KEY` and `UNKEY_API_ID` for workspace API/MCP key creation and verification
 - `MCP_TOKEN_ENCRYPTION_KEY`
 - `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET`
 - S3-compatible storage settings
@@ -107,6 +113,7 @@ From the repository root:
 cargo check
 cargo build -p produktive-api
 cargo run -p produktive-api
+cargo run -p produktive-api --bin migrate_unkey_keys
 cargo run -p produktive-migration -- up
 cargo run -p produktive-mcp
 ```

@@ -7,14 +7,16 @@ use axum::http::{header, HeaderMap, HeaderValue};
 use chrono::{Duration, Utc};
 use cookie::{Cookie, SameSite};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
-use produktive_entity::{auth_token, member, organization, session, user};
+use produktive_entity::{auth_token, mcp_api_key, member, organization, session, user};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
-    QueryFilter, QueryOrder, Set, TransactionTrait,
+    IntoActiveModel, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use time::Duration as CookieDuration;
+use unkey_rs::models::{Metadata, VerifyKeyRequest, VerifyKeyResponse};
 use uuid::Uuid;
 
 pub const EMAIL_VERIFICATION_PURPOSE: &str = "email_verification";
@@ -24,6 +26,12 @@ pub const PASSWORD_RESET_PURPOSE: &str = "password_reset";
 pub struct AuthContext {
     pub user: user::Model,
     pub session: session::Model,
+    pub organization: organization::Model,
+}
+
+#[derive(Clone, Debug)]
+pub struct ApiKeyContext {
+    pub user: user::Model,
     pub organization: organization::Model,
 }
 
@@ -139,6 +147,104 @@ pub async fn require_auth(headers: &HeaderMap, state: &AppState) -> Result<AuthC
         session,
         organization,
     })
+}
+
+pub async fn require_api_key(
+    headers: &HeaderMap,
+    state: &AppState,
+) -> Result<ApiKeyContext, ApiError> {
+    let token = read_bearer_token(headers).ok_or(ApiError::Unauthorized)?;
+    let now = Utc::now().fixed_offset();
+    let verified = verify_key_with_unkey(&state.unkey, &state.config.unkey_api_id, token).await?;
+
+    if !verified.valid {
+        return Err(ApiError::Unauthorized);
+    }
+
+    let key = find_local_key_from_unkey(&state.db, &verified).await?;
+
+    if key.revoked_at.is_some() {
+        return Err(ApiError::Unauthorized);
+    }
+    if key.expires_at.is_some_and(|expires_at| expires_at <= now) {
+        return Err(ApiError::Unauthorized);
+    }
+
+    let organization_id = key
+        .active_organization_id
+        .clone()
+        .ok_or_else(|| ApiError::Forbidden("API key is not pinned to a workspace".to_owned()))?;
+    let user = user::Entity::find_by_id(&key.user_id)
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    if !user_is_member(&state.db, &user.id, &organization_id).await? {
+        return Err(ApiError::Forbidden(
+            "API key user is not a member of this workspace".to_owned(),
+        ));
+    }
+    let organization = organization::Entity::find_by_id(&organization_id)
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+
+    let mut active = key.clone().into_active_model();
+    active.last_used_at = Set(Some(now));
+    active.updated_at = Set(now);
+    active.update(&state.db).await?;
+
+    Ok(ApiKeyContext { user, organization })
+}
+
+async fn verify_key_with_unkey(
+    unkey: &unkey_rs::Unkey,
+    api_id: &str,
+    token: String,
+) -> Result<VerifyKeyResponse, ApiError> {
+    unkey
+        .keys()
+        .verify_key(VerifyKeyRequest {
+            key: token,
+            api_id: Some(api_id.to_owned()),
+            ..Default::default()
+        })
+        .await
+        .map_err(|error| {
+            tracing::warn!(%error, "Unkey API key verification failed");
+            ApiError::Unauthorized
+        })
+        .map(|response| response.data)
+}
+
+async fn find_local_key_from_unkey(
+    db: &DatabaseConnection,
+    verified: &VerifyKeyResponse,
+) -> Result<mcp_api_key::Model, ApiError> {
+    if let Some(unkey_key_id) = verified.key_id.as_deref() {
+        if let Some(key) = mcp_api_key::Entity::find()
+            .filter(mcp_api_key::Column::UnkeyKeyId.eq(unkey_key_id))
+            .one(db)
+            .await?
+        {
+            return Ok(key);
+        }
+    }
+
+    if let Some(local_key_id) = metadata_string(&verified.meta, "local_key_id") {
+        return mcp_api_key::Entity::find_by_id(local_key_id)
+            .one(db)
+            .await?
+            .ok_or(ApiError::Unauthorized);
+    }
+
+    Err(ApiError::Unauthorized)
+}
+
+fn metadata_string(meta: &Metadata, key: &str) -> Option<String> {
+    match meta.get(key) {
+        Some(Value::String(value)) if !value.is_empty() => Some(value.clone()),
+        _ => None,
+    }
 }
 
 pub async fn create_user_session(
@@ -316,6 +422,25 @@ pub async fn user_is_member(
         .one(db)
         .await?
         .is_some())
+}
+
+pub async fn require_workspace_owner(
+    db: &DatabaseConnection,
+    user_id: &str,
+    organization_id: &str,
+    message: &str,
+) -> Result<(), ApiError> {
+    let membership = member::Entity::find()
+        .filter(member::Column::UserId.eq(user_id))
+        .filter(member::Column::OrganizationId.eq(organization_id))
+        .one(db)
+        .await?;
+
+    if membership.as_ref().map(|m| m.role.as_str()) == Some("owner") {
+        return Ok(());
+    }
+
+    Err(ApiError::Forbidden(message.to_owned()))
 }
 
 pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, ApiError> {
@@ -538,6 +663,16 @@ fn read_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
     })
 }
 
+fn read_bearer_token(headers: &HeaderMap) -> Option<String> {
+    let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?.trim();
+    value
+        .strip_prefix("Bearer ")
+        .or_else(|| value.strip_prefix("bearer "))
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(ToOwned::to_owned)
+}
+
 async fn create_default_organization(
     txn: &DatabaseTransaction,
     user: &user::Model,
@@ -603,6 +738,8 @@ fn build_organization_slug(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::TcpListener;
+    use unkey_rs::{Unkey, UnkeyConfig};
 
     fn claims() -> Claims {
         Claims {
@@ -644,5 +781,27 @@ mod tests {
         let mut wrong_org = session(now);
         wrong_org.active_organization_id = "org_2".to_owned();
         assert!(!session_matches_claims(&wrong_org, &claims, now));
+    }
+
+    #[tokio::test]
+    async fn unkey_transport_failure_rejects_api_key_without_local_fallback() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+        let base_url = format!(
+            "http://{}",
+            listener.local_addr().expect("test server address")
+        );
+        drop(listener);
+        let unkey = Unkey::with_config(
+            UnkeyConfig::new("root_test")
+                .base_url(base_url)
+                .max_retries(0),
+        )
+        .expect("client builds");
+
+        let error = verify_key_with_unkey(&unkey, "api_123", "pk_api_test".to_owned())
+            .await
+            .expect_err("transport failure denies the key");
+
+        assert!(matches!(error, ApiError::Unauthorized));
     }
 }

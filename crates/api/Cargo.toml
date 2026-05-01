@@ -21,6 +21,7 @@ polar-rs = { path = "../polar" }
 produktive-ai = { path = "../ai" }
 produktive-entity = { path = "../entity" }
 produktive-migration = { path = "../migration" }
+unkey-rs = { path = "../unkey" }
 rand_core.workspace = true
 reqwest.workspace = true
 resend-rs.workspace = true

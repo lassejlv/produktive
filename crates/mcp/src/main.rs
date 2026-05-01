@@ -24,17 +24,22 @@ use sea_orm::{
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     sync::Arc,
     time::{Duration as StdDuration, SystemTime, UNIX_EPOCH},
+};
+use unkey_rs::{
+    models::{Metadata, VerifyKeyRequest, VerifyKeyResponse},
+    Unkey, UnkeyConfig,
 };
 use uuid::Uuid;
 
 #[derive(Clone)]
 struct AppState {
     db: DatabaseConnection,
+    unkey: Unkey,
+    unkey_api_id: String,
 }
 
 #[derive(Clone)]
@@ -46,16 +51,32 @@ struct ProduktiveAuthProvider {
 impl AuthProvider for ProduktiveAuthProvider {
     async fn verify_token(&self, access_token: String) -> Result<AuthInfo, AuthenticationError> {
         let access_token = normalize_bearer_token(&access_token);
-        let hash = hash_token(access_token);
         let now = Utc::now().fixed_offset();
-        let key = mcp_api_key::Entity::find()
-            .filter(mcp_api_key::Column::TokenHash.eq(hash))
-            .one(&self.state.db)
+        let verified = self
+            .state
+            .unkey
+            .keys()
+            .verify_key(VerifyKeyRequest {
+                key: access_token.to_owned(),
+                api_id: Some(self.state.unkey_api_id.clone()),
+                ..Default::default()
+            })
             .await
-            .map_err(auth_server_error)?
-            .ok_or(AuthenticationError::InvalidToken {
+            .map_err(|error| {
+                tracing::warn!(%error, "Unkey MCP key verification failed");
+                AuthenticationError::InvalidToken {
+                    description: "Invalid MCP API key",
+                }
+            })?
+            .data;
+
+        if !verified.valid {
+            return Err(AuthenticationError::InvalidToken {
                 description: "Invalid MCP API key",
-            })?;
+            });
+        }
+
+        let key = find_local_key_from_unkey(&self.state.db, &verified).await?;
 
         if key.revoked_at.is_some() {
             return Err(AuthenticationError::InvalidOrExpiredToken(
@@ -1249,6 +1270,43 @@ async fn valid_active_workspace(
     Ok(is_member.then(|| organization_id.to_owned()))
 }
 
+async fn find_local_key_from_unkey(
+    db: &DatabaseConnection,
+    verified: &VerifyKeyResponse,
+) -> Result<mcp_api_key::Model, AuthenticationError> {
+    if let Some(unkey_key_id) = verified.key_id.as_deref() {
+        if let Some(key) = mcp_api_key::Entity::find()
+            .filter(mcp_api_key::Column::UnkeyKeyId.eq(unkey_key_id))
+            .one(db)
+            .await
+            .map_err(auth_server_error)?
+        {
+            return Ok(key);
+        }
+    }
+
+    if let Some(local_key_id) = metadata_string(&verified.meta, "local_key_id") {
+        return mcp_api_key::Entity::find_by_id(local_key_id)
+            .one(db)
+            .await
+            .map_err(auth_server_error)?
+            .ok_or(AuthenticationError::InvalidToken {
+                description: "Invalid MCP API key",
+            });
+    }
+
+    Err(AuthenticationError::InvalidToken {
+        description: "Invalid MCP API key",
+    })
+}
+
+fn metadata_string(meta: &Metadata, key: &str) -> Option<String> {
+    match meta.get(key) {
+        Some(Value::String(value)) if !value.is_empty() => Some(value.clone()),
+        _ => None,
+    }
+}
+
 async fn ensure_member(
     state: &AppState,
     user_id: &str,
@@ -1398,12 +1456,6 @@ fn json_tool_result(value: Value) -> CallToolResult {
     CallToolResult::text_content(vec![TextContent::from(text)])
 }
 
-fn hash_token(token: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(token.as_bytes());
-    hex::encode(hasher.finalize())
-}
-
 fn normalize_bearer_token(value: &str) -> &str {
     let value = value.trim();
     value
@@ -1534,6 +1586,23 @@ fn auth_server_error(error: sea_orm::DbErr) -> AuthenticationError {
     }
 }
 
+fn required_env(key: &str) -> SdkResult<String> {
+    std::env::var(key)
+        .map(|value| value.trim().to_owned())
+        .ok()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| rust_mcp_sdk::error::McpSdkError::Internal {
+            description: format!("{key} is required"),
+        })
+}
+
+fn optional_env(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
 #[tokio::main]
 async fn main() -> SdkResult<()> {
     tracing_subscriber::fmt()
@@ -1554,7 +1623,22 @@ async fn main() -> SdkResult<()> {
         .map_err(|error| rust_mcp_sdk::error::McpSdkError::Internal {
             description: error.to_string(),
         })?;
-    let state = AppState { db };
+    let unkey_root_key = required_env("UNKEY_ROOT_KEY")?;
+    let unkey_api_id = required_env("UNKEY_API_ID")?;
+    let mut unkey_config = UnkeyConfig::new(unkey_root_key);
+    if let Some(base_url) = optional_env("UNKEY_BASE_URL") {
+        unkey_config = unkey_config.base_url(base_url);
+    }
+    let unkey = Unkey::with_config(unkey_config).map_err(|error| {
+        rust_mcp_sdk::error::McpSdkError::Internal {
+            description: format!("failed to build Unkey client: {error}"),
+        }
+    })?;
+    let state = AppState {
+        db,
+        unkey,
+        unkey_api_id,
+    };
     let port = std::env::var("PORT")
         .ok()
         .and_then(|value| value.parse::<u16>().ok())

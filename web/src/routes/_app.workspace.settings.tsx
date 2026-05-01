@@ -89,8 +89,8 @@ const settingsSections: SettingsSection[] = [
   },
   {
     id: "mcp",
-    label: "MCP keys",
-    description: "API keys for the Produktive MCP server",
+    label: "API keys",
+    description: "Keys for the public API and Produktive MCP server",
     group: "main",
   },
   {
@@ -729,7 +729,7 @@ function McpKeySettings() {
   const keys = keysQuery.data ?? [];
   const createKey = useCreateMcpApiKey();
   const revokeKey = useRevokeMcpApiKey();
-  const [name, setName] = useState("Desktop MCP");
+  const [name, setName] = useState("Workspace API");
   const [expiresInDays, setExpiresInDays] = useState("365");
   const [busy, setBusy] = useState<string | null>(null);
   const [newToken, setNewToken] = useState<string | null>(null);
@@ -759,9 +759,9 @@ function McpKeySettings() {
         expiresInDays: parsed,
       });
       setNewToken(response.token);
-      toast.success("MCP key created");
+      toast.success("API key created");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create MCP key");
+      toast.error(error instanceof Error ? error.message : "Failed to create API key");
     } finally {
       setBusy(null);
     }
@@ -777,9 +777,9 @@ function McpKeySettings() {
         setBusy(key.id);
         try {
           await revokeKey.mutateAsync(key.id);
-          toast.success("MCP key revoked");
+          toast.success("API key revoked");
         } catch (error) {
-          toast.error(error instanceof Error ? error.message : "Failed to revoke MCP key");
+          toast.error(error instanceof Error ? error.message : "Failed to revoke API key");
         } finally {
           setBusy(null);
         }
@@ -809,7 +809,7 @@ function McpKeySettings() {
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void onCopy(newToken, "MCP key copied")}
+              onClick={() => void onCopy(newToken, "API key copied")}
             >
               Copy
             </Button>
@@ -818,16 +818,33 @@ function McpKeySettings() {
       ) : null}
 
       <SettingRow label="Endpoint">
-        <div className="flex items-center gap-2">
-          <code className="min-w-0 flex-1 truncate font-mono text-fg-muted">{serverUrl}</code>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void onCopy(serverUrl, "Endpoint copied")}
-          >
-            Copy
-          </Button>
+        <div className="grid gap-2">
+          <div className="flex items-center gap-2">
+            <span className="w-12 text-[11.5px] text-fg-faint">REST</span>
+            <code className="min-w-0 flex-1 truncate font-mono text-fg-muted">
+              {getPublicApiUrl()}
+            </code>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void onCopy(getPublicApiUrl(), "REST endpoint copied")}
+            >
+              Copy
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-12 text-[11.5px] text-fg-faint">MCP</span>
+            <code className="min-w-0 flex-1 truncate font-mono text-fg-muted">{serverUrl}</code>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void onCopy(serverUrl, "MCP endpoint copied")}
+            >
+              Copy
+            </Button>
+          </div>
         </div>
       </SettingRow>
 
@@ -837,7 +854,7 @@ function McpKeySettings() {
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Desktop MCP"
+              placeholder="Workspace API"
               disabled={busy === "create"}
             />
             <Input
@@ -926,6 +943,14 @@ function getMcpServerUrl() {
     return "http://localhost:3001/mcp";
   }
   return `${window.location.origin.replace(/^https?:\/\/(www\.)?/, "https://mcp.")}/mcp`;
+}
+
+function getPublicApiUrl() {
+  if (typeof window === "undefined") return "https://api.produktive.app/api/v1";
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    return "http://localhost:3000/api/v1";
+  }
+  return `${window.location.origin.replace(/^https?:\/\/(www\.)?/, "https://api.")}/api/v1`;
 }
 
 function SectionGroup({ children }: { children: React.ReactNode }) {

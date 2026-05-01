@@ -19,8 +19,8 @@ use http::{
     ai_mcp_routes, ai_routes, auth_routes, billing_routes, chat_routes, cors_layer, dev_routes,
     favorite_routes, github_routes, inbox_routes, invitation_routes, issue_routes, label_routes,
     mcp_key_routes, member_routes, onboarding_routes, org_invitation_routes, preferences_routes,
-    project_routes, realtime_routes, spawn_github_auto_importer, tabs_routes, unsubscribe_routes,
-    waitlist_routes,
+    project_routes, public_api_routes, realtime_routes, spawn_github_auto_importer, tabs_routes,
+    unsubscribe_routes, waitlist_routes,
 };
 use polar_rs::{Polar, PolarConfig};
 use produktive_ai::AiClient;
@@ -33,6 +33,7 @@ use tower_http::{
     trace::TraceLayer,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use unkey_rs::{Unkey, UnkeyConfig};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -68,7 +69,13 @@ async fn main() -> anyhow::Result<()> {
     }
     let polar = Polar::with_config(polar_config)
         .map_err(|e| anyhow::anyhow!("failed to build Polar client: {e}"))?;
-    let state = AppState::new(db, config.clone(), ai, polar);
+    let mut unkey_config = UnkeyConfig::new(config.unkey_root_key.clone());
+    if let Some(base_url) = &config.unkey_base_url {
+        unkey_config = unkey_config.base_url(base_url);
+    }
+    let unkey = Unkey::with_config(unkey_config)
+        .map_err(|e| anyhow::anyhow!("failed to build Unkey client: {e}"))?;
+    let state = AppState::new(db, config.clone(), ai, polar, unkey);
     spawn_github_auto_importer(state.clone());
     digest::spawn_progress_digest_scheduler(state.clone());
     let spa_service = ServeDir::new(&config.web_dist_dir).fallback(ServeFile::new(format!(
@@ -77,6 +84,7 @@ async fn main() -> anyhow::Result<()> {
     )));
     let app = Router::new()
         .nest("/api/auth", auth_routes())
+        .nest("/api/v1", public_api_routes())
         .nest("/api/ai", ai_routes())
         .nest("/api/ai/mcp", ai_mcp_routes())
         .nest("/api/billing", billing_routes())
@@ -89,6 +97,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/invitations", invitation_routes())
         .nest("/api/organizations/me", org_invitation_routes())
         .nest("/api/labels", label_routes())
+        .nest("/api/api-keys", mcp_key_routes())
         .nest("/api/mcp", mcp_key_routes())
         .nest("/api/me/onboarding", onboarding_routes())
         .nest("/api/me/preferences", preferences_routes())

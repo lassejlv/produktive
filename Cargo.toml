@@ -2,11 +2,11 @@
 members = [
     "crates/ai",
     "crates/api",
-    "crates/autumn-rs",
     "crates/entity",
     "crates/mcp",
     "crates/migration",
     "crates/polar",
+    "crates/unkey",
 ]
 resolver = "2"
 

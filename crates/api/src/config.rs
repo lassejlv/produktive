@@ -27,6 +27,9 @@ pub struct Config {
     pub polar_base_url: Option<String>,
     pub polar_pro_product_id: String,
     pub polar_webhook_secret: String,
+    pub unkey_root_key: String,
+    pub unkey_api_id: String,
+    pub unkey_base_url: Option<String>,
     pub mcp_token_encryption_key: Option<String>,
     pub enable_dev_triggers: bool,
     pub storage: Option<StorageConfig>,
@@ -104,6 +107,9 @@ impl Config {
                 .context("POLAR_PRO_PRODUCT_ID is required")?,
             polar_webhook_secret: required_env("POLAR_WEBHOOK_SECRET")
                 .context("POLAR_WEBHOOK_SECRET is required")?,
+            unkey_root_key: required_env("UNKEY_ROOT_KEY").context("UNKEY_ROOT_KEY is required")?,
+            unkey_api_id: required_env("UNKEY_API_ID").context("UNKEY_API_ID is required")?,
+            unkey_base_url: optional_env("UNKEY_BASE_URL"),
             mcp_token_encryption_key,
             enable_dev_triggers: env_or_default("ENABLE_DEV_TRIGGERS", "false")
                 .parse()

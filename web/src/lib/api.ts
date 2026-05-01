@@ -417,16 +417,16 @@ export type McpApiKey = {
   updatedAt: string;
 };
 
-export const listMcpApiKeys = () => request<{ keys: McpApiKey[] }>("/api/mcp/keys");
+export const listMcpApiKeys = () => request<{ keys: McpApiKey[] }>("/api/api-keys/keys");
 
 export const createMcpApiKey = (input: { name?: string; expiresInDays?: number }) =>
-  request<{ key: McpApiKey; token: string }>("/api/mcp/keys", {
+  request<{ key: McpApiKey; token: string }>("/api/api-keys/keys", {
     method: "POST",
     body: JSON.stringify(input),
   });
 
 export const revokeMcpApiKey = (id: string) =>
-  request<void>(`/api/mcp/keys/${id}`, { method: "DELETE" });
+  request<void>(`/api/api-keys/keys/${id}`, { method: "DELETE" });
 
 export type GithubConnection = {
   connected: boolean;

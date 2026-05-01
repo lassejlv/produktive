@@ -1,4 +1,8 @@
-use crate::{auth::require_auth, error::ApiError, state::AppState};
+use crate::{
+    auth::{require_auth, require_workspace_owner},
+    error::ApiError,
+    state::AppState,
+};
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
@@ -7,15 +11,17 @@ use axum::{
 };
 use chrono::{Duration, Utc};
 use produktive_entity::mcp_api_key;
-use rand_core::{OsRng, RngCore};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, Set,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use unkey_rs::models::{CreateKeyRequest as UnkeyCreateKeyRequest, Metadata, UpdateKeyRequest};
 use uuid::Uuid;
 
-const TOKEN_PREFIX: &str = "pk_mcp";
+const TOKEN_PREFIX: &str = "pk_api";
 const DEFAULT_EXPIRES_IN_DAYS: i64 = 365;
 
 pub fn routes() -> Router<AppState> {
@@ -64,8 +70,15 @@ async fn list_keys(
     headers: HeaderMap,
 ) -> Result<Json<KeysEnvelope>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_workspace_owner(
+        &state.db,
+        &auth.user.id,
+        &auth.organization.id,
+        "Only workspace owners can manage API keys",
+    )
+    .await?;
     let keys = mcp_api_key::Entity::find()
-        .filter(mcp_api_key::Column::UserId.eq(&auth.user.id))
+        .filter(mcp_api_key::Column::ActiveOrganizationId.eq(&auth.organization.id))
         .order_by_desc(mcp_api_key::Column::CreatedAt)
         .all(&state.db)
         .await?;
@@ -84,19 +97,30 @@ async fn create_key(
     let organization_id = match payload.organization_id {
         Some(id) if !id.trim().is_empty() => {
             let id = id.trim().to_owned();
-            if !crate::auth::user_is_member(&state.db, &auth.user.id, &id).await? {
-                return Err(ApiError::Forbidden("Not a member of workspace".to_owned()));
-            }
+            require_workspace_owner(
+                &state.db,
+                &auth.user.id,
+                &id,
+                "Only workspace owners can create API keys",
+            )
+            .await?;
             Some(id)
         }
         _ => Some(auth.organization.id.clone()),
     };
+    require_workspace_owner(
+        &state.db,
+        &auth.user.id,
+        organization_id.as_deref().unwrap_or(&auth.organization.id),
+        "Only workspace owners can create API keys",
+    )
+    .await?;
     let name = payload
         .name
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or("MCP key")
+        .unwrap_or("API key")
         .chars()
         .take(80)
         .collect::<String>();
@@ -106,25 +130,69 @@ async fn create_key(
         .clamp(1, 3650);
     let expires_at = (Utc::now() + Duration::days(expires_in_days)).fixed_offset();
     let id = Uuid::new_v4().to_string();
-    let token = generate_token(&id);
-    let token_prefix = display_prefix(&token);
     let now = Utc::now().fixed_offset();
+    let unkey_key = state
+        .unkey
+        .keys()
+        .create_key(UnkeyCreateKeyRequest {
+            api_id: state.config.unkey_api_id.clone(),
+            prefix: Some(TOKEN_PREFIX.to_owned()),
+            name: Some(name.clone()),
+            external_id: Some(auth.user.id.clone()),
+            meta: key_metadata(&id, &auth.user.id, organization_id.as_deref(), "api"),
+            expires: Some(expires_at.timestamp_millis()),
+            enabled: Some(true),
+            ..Default::default()
+        })
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "failed to create Unkey API key");
+            ApiError::Internal(anyhow::anyhow!("failed to create API key"))
+        })?
+        .data;
+    let token = unkey_key.key;
+    let token_prefix = display_prefix(&token);
 
-    let row = mcp_api_key::ActiveModel {
+    let row = match (mcp_api_key::ActiveModel {
         id: Set(id),
         user_id: Set(auth.user.id),
         token_hash: Set(hash_token(&token)),
         token_prefix: Set(token_prefix),
+        unkey_key_id: Set(Some(unkey_key.key_id.clone())),
         name: Set(name),
         active_organization_id: Set(organization_id),
         last_used_at: Set(None),
         revoked_at: Set(None),
         expires_at: Set(Some(expires_at)),
+        unkey_migrated_at: Set(None),
+        unkey_synced_at: Set(Some(now)),
         created_at: Set(now),
         updated_at: Set(now),
-    }
+    })
     .insert(&state.db)
-    .await?;
+    .await
+    {
+        Ok(row) => row,
+        Err(error) => {
+            if let Err(disable_error) = state
+                .unkey
+                .keys()
+                .update_key(UpdateKeyRequest {
+                    key_id: unkey_key.key_id.clone(),
+                    enabled: Some(false),
+                    ..Default::default()
+                })
+                .await
+            {
+                tracing::error!(
+                    %disable_error,
+                    unkey_key_id = %unkey_key.key_id,
+                    "failed to disable orphaned Unkey API key after local insert failure"
+                );
+            }
+            return Err(error.into());
+        }
+    };
 
     Ok((
         StatusCode::CREATED,
@@ -141,17 +209,41 @@ async fn revoke_key(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_workspace_owner(
+        &state.db,
+        &auth.user.id,
+        &auth.organization.id,
+        "Only workspace owners can revoke API keys",
+    )
+    .await?;
     let key = mcp_api_key::Entity::find()
         .filter(mcp_api_key::Column::Id.eq(id))
-        .filter(mcp_api_key::Column::UserId.eq(&auth.user.id))
+        .filter(mcp_api_key::Column::ActiveOrganizationId.eq(&auth.organization.id))
         .one(&state.db)
         .await?
-        .ok_or_else(|| ApiError::NotFound("MCP key not found".to_owned()))?;
+        .ok_or_else(|| ApiError::NotFound("API key not found".to_owned()))?;
+
+    if let Some(unkey_key_id) = key.unkey_key_id.as_deref() {
+        state
+            .unkey
+            .keys()
+            .update_key(UpdateKeyRequest {
+                key_id: unkey_key_id.to_owned(),
+                enabled: Some(false),
+                ..Default::default()
+            })
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, unkey_key_id, "failed to disable Unkey API key");
+                ApiError::Internal(anyhow::anyhow!("failed to revoke API key"))
+            })?;
+    }
 
     let now = Utc::now().fixed_offset();
     let mut active = key.into_active_model();
     active.revoked_at = Set(Some(now));
     active.updated_at = Set(now);
+    active.unkey_synced_at = Set(Some(now));
     active.update(&state.db).await?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -171,12 +263,6 @@ fn key_response(key: mcp_api_key::Model) -> KeyResponse {
     }
 }
 
-fn generate_token(id: &str) -> String {
-    let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
-    format!("{TOKEN_PREFIX}_{id}_{}", hex::encode(bytes))
-}
-
 fn hash_token(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
@@ -185,4 +271,20 @@ fn hash_token(token: &str) -> String {
 
 fn display_prefix(token: &str) -> String {
     token.chars().take(22).collect()
+}
+
+fn key_metadata(
+    local_key_id: &str,
+    user_id: &str,
+    organization_id: Option<&str>,
+    token_kind: &str,
+) -> Metadata {
+    let mut meta: HashMap<String, Value> = HashMap::new();
+    meta.insert("local_key_id".to_owned(), json!(local_key_id));
+    meta.insert("user_id".to_owned(), json!(user_id));
+    meta.insert("token_kind".to_owned(), json!(token_kind));
+    if let Some(organization_id) = organization_id {
+        meta.insert("organization_id".to_owned(), json!(organization_id));
+    }
+    meta
 }
