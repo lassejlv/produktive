@@ -4,6 +4,10 @@ export const apiUrl = trimTrailingSlash(
   import.meta.env.VITE_API_URL ?? globalThis.location?.origin ?? "",
 );
 
+(
+  globalThis as typeof globalThis & { __produktiveApiClientBuild?: string }
+).__produktiveApiClientBuild = "2026-05-01.asset-cache-refresh";
+
 export const apiPath = (path: string) => {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
 
