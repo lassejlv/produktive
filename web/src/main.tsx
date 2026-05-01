@@ -7,6 +7,17 @@ import { routeTree } from "./routeTree.gen";
 import { applyTheme, readStoredTheme } from "./lib/theme";
 import "./styles.css";
 
+window.addEventListener("vite:preloadError", (event) => {
+  event.preventDefault();
+  const storageKey = "produktive-preload-reload";
+  const lastReload = Number(window.sessionStorage.getItem(storageKey) ?? "0");
+  const now = Date.now();
+  if (now - lastReload > 10_000) {
+    window.sessionStorage.setItem(storageKey, String(now));
+    window.location.reload();
+  }
+});
+
 applyTheme(readStoredTheme());
 
 const queryClient = new QueryClient({

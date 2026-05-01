@@ -17,7 +17,7 @@ use axum::{
     extract::Request,
     http::{
         header::{CACHE_CONTROL, CONTENT_TYPE},
-        HeaderValue,
+        HeaderValue, StatusCode,
     },
     middleware::{self, Next},
     response::Response,
@@ -142,9 +142,15 @@ async fn cache_control_headers(request: Request, next: Next) -> Response {
     let path = request.uri().path().to_owned();
     let mut response = next.run(request).await;
     let cache_control = if path.starts_with("/assets/") {
-        Some(HeaderValue::from_static(
-            "public, max-age=31536000, immutable",
-        ))
+        if response.status() == StatusCode::OK {
+            Some(HeaderValue::from_static(
+                "public, max-age=31536000, immutable",
+            ))
+        } else {
+            Some(HeaderValue::from_static(
+                "no-cache, no-store, must-revalidate",
+            ))
+        }
     } else if response
         .headers()
         .get(CONTENT_TYPE)
