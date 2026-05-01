@@ -62,6 +62,8 @@ mod m20260501_000029_add_unkey_api_key_columns;
 mod m20260501_000030_create_produktive_oauth;
 #[path = "../migrations/m20260501_000031_create_billing_usage_events.rs"]
 mod m20260501_000031_create_billing_usage_events;
+#[path = "../migrations/m20260501_000032_add_subscription_period_start.rs"]
+mod m20260501_000032_add_subscription_period_start;
 
 pub struct Migrator;
 
@@ -100,6 +102,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260501_000029_add_unkey_api_key_columns::Migration),
             Box::new(m20260501_000030_create_produktive_oauth::Migration),
             Box::new(m20260501_000031_create_billing_usage_events::Migration),
+            Box::new(m20260501_000032_add_subscription_period_start::Migration),
         ]
     }
 }

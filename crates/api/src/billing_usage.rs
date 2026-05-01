@@ -5,8 +5,8 @@ use produktive_billing::ChatTurnUsage;
 use produktive_entity::{billing_usage_event as usage_event, organization_subscription as os};
 use sea_orm::{
     sea_query::{LockBehavior, LockType, OnConflict},
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
-    QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, Condition, EntityTrait, IntoActiveModel, QueryFilter,
+    QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -17,7 +17,14 @@ const EVENT_NAME: &str = "ai_message";
 const TICK_SECONDS: u64 = 15;
 const BATCH_SIZE: u64 = 25;
 const MAX_ATTEMPTS: i32 = 10;
+const PROCESSING_TIMEOUT_SECONDS: i64 = 300;
+const SUBSCRIPTION_GRACE_SECONDS: i64 = 86_400;
 const ACTIVE_STATUSES: &[&str] = &["active", "trialing"];
+const STATUS_PENDING: &str = "pending";
+const STATUS_PROCESSING: &str = "processing";
+const STATUS_SENT: &str = "sent";
+const STATUS_FAILED: &str = "failed";
+const STATUS_LOCAL_ONLY: &str = "local_only";
 
 pub fn spawn_billing_usage_worker(state: AppState) {
     tracing::info!(
@@ -57,7 +64,7 @@ pub async fn enqueue_chat_turn_usage(
         tool_result_bytes: Set(to_i64(usage.tool_result_bytes)),
         round_count: Set(to_i64(usage.round_count)),
         metadata: Set(usage.metadata),
-        status: Set("pending".to_owned()),
+        status: Set(STATUS_PENDING.to_owned()),
         attempts: Set(0),
         last_error: Set(None),
         next_retry_at: Set(None),
@@ -80,18 +87,7 @@ pub async fn enqueue_chat_turn_usage(
 
 async fn flush_due_events(state: &AppState) -> Result<(), anyhow::Error> {
     let now = Utc::now().fixed_offset();
-    let rows = usage_event::Entity::find()
-        .filter(usage_event::Column::Status.eq("pending"))
-        .filter(
-            usage_event::Column::NextRetryAt
-                .is_null()
-                .or(usage_event::Column::NextRetryAt.lte(now)),
-        )
-        .order_by_asc(usage_event::Column::CreatedAt)
-        .limit(BATCH_SIZE)
-        .lock_with_behavior(LockType::Update, LockBehavior::SkipLocked)
-        .all(&state.db)
-        .await?;
+    let rows = claim_due_events(state, now).await?;
 
     for row in rows {
         if let Err(error) = flush_one_event(state, row).await {
@@ -102,10 +98,63 @@ async fn flush_due_events(state: &AppState) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+async fn claim_due_events(
+    state: &AppState,
+    now: DateTime<FixedOffset>,
+) -> Result<Vec<usage_event::Model>, anyhow::Error> {
+    let txn = state.db.begin().await?;
+    let stale_processing_at = now - Duration::seconds(PROCESSING_TIMEOUT_SECONDS);
+    let rows = usage_event::Entity::find()
+        .filter(
+            Condition::any()
+                .add(
+                    Condition::all()
+                        .add(usage_event::Column::Status.eq(STATUS_PENDING))
+                        .add(
+                            usage_event::Column::NextRetryAt
+                                .is_null()
+                                .or(usage_event::Column::NextRetryAt.lte(now)),
+                        ),
+                )
+                .add(
+                    Condition::all()
+                        .add(usage_event::Column::Status.eq(STATUS_PROCESSING))
+                        .add(usage_event::Column::UpdatedAt.lte(stale_processing_at)),
+                ),
+        )
+        .order_by_asc(usage_event::Column::CreatedAt)
+        .limit(BATCH_SIZE)
+        .lock_with_behavior(LockType::Update, LockBehavior::SkipLocked)
+        .all(&txn)
+        .await?;
+
+    for row in &rows {
+        let mut active = row.clone().into_active_model();
+        active.status = Set(STATUS_PROCESSING.to_owned());
+        active.updated_at = Set(now);
+        active.update(&txn).await?;
+    }
+
+    txn.commit().await?;
+    Ok(rows)
+}
+
 async fn flush_one_event(state: &AppState, row: usage_event::Model) -> Result<(), anyhow::Error> {
-    if !has_billable_subscription(state, &row.organization_id).await? {
-        mark_local_only(state, row).await?;
-        return Ok(());
+    match billable_state(state, &row).await? {
+        BillableState::Billable => {}
+        BillableState::WaitingForSubscription => {
+            mark_pending(
+                state,
+                row,
+                "waiting for matching Polar subscription period".to_owned(),
+            )
+            .await?;
+            return Ok(());
+        }
+        BillableState::LocalOnly => {
+            mark_local_only(state, row).await?;
+            return Ok(());
+        }
     }
 
     let event = IngestEvent {
@@ -129,7 +178,7 @@ async fn flush_one_event(state: &AppState, row: usage_event::Model) -> Result<()
         Ok(result) => {
             let now = Utc::now().fixed_offset();
             let mut active = row.into_active_model();
-            active.status = Set("sent".to_owned());
+            active.status = Set(STATUS_SENT.to_owned());
             active.sent_at = Set(Some(now));
             active.updated_at = Set(now);
             active.last_error = Set(None);
@@ -148,32 +197,71 @@ async fn flush_one_event(state: &AppState, row: usage_event::Model) -> Result<()
     Ok(())
 }
 
-async fn has_billable_subscription(
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BillableState {
+    Billable,
+    WaitingForSubscription,
+    LocalOnly,
+}
+
+async fn billable_state(
     state: &AppState,
-    organization_id: &str,
-) -> Result<bool, anyhow::Error> {
+    row: &usage_event::Model,
+) -> Result<BillableState, anyhow::Error> {
     let now = Utc::now().fixed_offset();
+    let event_time = row.created_at;
     let mut product_ids = vec![state.config.polar_pro_product_id.clone()];
     if let Some(team_product_id) = &state.config.polar_team_product_id {
         product_ids.push(team_product_id.clone());
     }
 
     let subscription = os::Entity::find()
-        .filter(os::Column::OrganizationId.eq(organization_id))
+        .filter(os::Column::OrganizationId.eq(&row.organization_id))
         .filter(os::Column::ProductId.is_in(product_ids))
         .filter(os::Column::Status.is_in(ACTIVE_STATUSES.iter().copied()))
         .all(&state.db)
         .await?;
 
-    Ok(subscription
+    if subscription
         .into_iter()
-        .any(|sub| sub.ends_at.map_or(true, |ends_at| ends_at > now)))
+        .any(|sub| subscription_covers_event(&sub, event_time))
+    {
+        return Ok(BillableState::Billable);
+    }
+
+    if now - event_time < Duration::seconds(SUBSCRIPTION_GRACE_SECONDS) {
+        return Ok(BillableState::WaitingForSubscription);
+    }
+
+    Ok(BillableState::LocalOnly)
+}
+
+fn subscription_covers_event(sub: &os::Model, event_time: DateTime<FixedOffset>) -> bool {
+    let start = sub.current_period_start.unwrap_or(sub.created_at);
+    let end = sub.ends_at.or(sub.current_period_end);
+
+    event_time >= start && end.map_or(true, |end| event_time <= end)
 }
 
 async fn mark_local_only(state: &AppState, row: usage_event::Model) -> Result<(), anyhow::Error> {
     let now = Utc::now().fixed_offset();
     let mut active = row.into_active_model();
-    active.status = Set("local_only".to_owned());
+    active.status = Set(STATUS_LOCAL_ONLY.to_owned());
+    active.updated_at = Set(now);
+    active.update(&state.db).await?;
+    Ok(())
+}
+
+async fn mark_pending(
+    state: &AppState,
+    row: usage_event::Model,
+    reason: String,
+) -> Result<(), anyhow::Error> {
+    let now = Utc::now().fixed_offset();
+    let mut active = row.into_active_model();
+    active.status = Set(STATUS_PENDING.to_owned());
+    active.last_error = Set(Some(reason));
+    active.next_retry_at = Set(Some(now + Duration::seconds(900)));
     active.updated_at = Set(now);
     active.update(&state.db).await?;
     Ok(())
@@ -191,7 +279,12 @@ async fn mark_retry(
     active.attempts = Set(attempts);
     active.last_error = Set(Some(error));
     active.updated_at = Set(now);
-    active.status = Set(if failed { "failed" } else { "pending" }.to_owned());
+    active.status = Set(if failed {
+        STATUS_FAILED
+    } else {
+        STATUS_PENDING
+    }
+    .to_owned());
     active.next_retry_at = Set(if failed {
         None
     } else {
@@ -215,4 +308,46 @@ fn metadata_map(value: Value) -> HashMap<String, Value> {
 
 fn to_i64(value: u64) -> i64 {
     value.min(i64::MAX as u64) as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn subscription(start: DateTime<FixedOffset>, end: DateTime<FixedOffset>) -> os::Model {
+        os::Model {
+            id: "sub_1".to_owned(),
+            organization_id: "org_1".to_owned(),
+            product_id: "product_1".to_owned(),
+            status: "active".to_owned(),
+            current_period_start: Some(start),
+            current_period_end: Some(end),
+            cancel_at_period_end: false,
+            canceled_at: None,
+            ends_at: None,
+            customer_id: Some("customer_1".to_owned()),
+            created_at: start,
+            updated_at: start,
+        }
+    }
+
+    #[test]
+    fn subscription_period_must_cover_event_time() {
+        let start = DateTime::parse_from_rfc3339("2026-05-01T00:00:00Z").unwrap();
+        let end = DateTime::parse_from_rfc3339("2026-06-01T00:00:00Z").unwrap();
+        let sub = subscription(start, end);
+
+        assert!(subscription_covers_event(
+            &sub,
+            DateTime::parse_from_rfc3339("2026-05-15T12:00:00Z").unwrap(),
+        ));
+        assert!(!subscription_covers_event(
+            &sub,
+            DateTime::parse_from_rfc3339("2026-04-30T23:59:59Z").unwrap(),
+        ));
+        assert!(!subscription_covers_event(
+            &sub,
+            DateTime::parse_from_rfc3339("2026-06-01T00:00:01Z").unwrap(),
+        ));
+    }
 }

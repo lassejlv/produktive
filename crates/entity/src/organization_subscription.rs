@@ -9,6 +9,7 @@ pub struct Model {
     pub organization_id: String,
     pub product_id: String,
     pub status: String,
+    pub current_period_start: Option<DateTimeWithTimeZone>,
     pub current_period_end: Option<DateTimeWithTimeZone>,
     pub cancel_at_period_end: bool,
     pub canceled_at: Option<DateTimeWithTimeZone>,

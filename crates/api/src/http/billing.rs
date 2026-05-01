@@ -25,7 +25,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 const ACTIVE_STATUSES: &[&str] = &["active", "trialing"];
-const USAGE_PERIOD_DAYS: i64 = 30;
+const FALLBACK_USAGE_PERIOD_DAYS: i64 = 30;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -190,26 +190,28 @@ async fn usage(
 ) -> Result<Json<BillingUsageResponse>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     let now = Utc::now().fixed_offset();
-    let period_start = now - chrono::Duration::days(USAGE_PERIOD_DAYS);
     let subs = load_subscriptions(&state, &auth.organization.id).await?;
-    let (plan_name, included_credits) = usage_plan(&state, &subs, now);
+    let (plan_name, included_credits, period_start, period_end) = usage_plan(&state, &subs, now);
 
     let rows = bue::Entity::find()
         .filter(bue::Column::OrganizationId.eq(&auth.organization.id))
         .filter(bue::Column::CreatedAt.gte(period_start))
-        .filter(bue::Column::CreatedAt.lte(now))
+        .filter(bue::Column::CreatedAt.lte(period_end))
         .order_by_desc(bue::Column::CreatedAt)
         .all(&state.db)
         .await?;
 
     let used_credits = rows
         .iter()
-        .filter(|row| row.status != "local_only")
+        .filter(|row| usage_counts_toward_billable_total(row))
         .map(|row| row.credits.max(0))
         .sum::<i64>();
     let remaining_credits = included_credits.saturating_sub(used_credits).max(0);
     let overage_credits = used_credits.saturating_sub(included_credits).max(0);
-    let pending_events = rows.iter().filter(|row| row.status == "pending").count();
+    let pending_events = rows
+        .iter()
+        .filter(|row| row.status == "pending" || row.status == "processing")
+        .count();
     let sent_events = rows.iter().filter(|row| row.status == "sent").count();
     let failed_events = rows.iter().filter(|row| row.status == "failed").count();
     let daily = usage_daily(&rows, period_start, now);
@@ -229,7 +231,7 @@ async fn usage(
 
     Ok(Json(BillingUsageResponse {
         period_start: period_start.timestamp(),
-        period_end: now.timestamp(),
+        period_end: period_end.timestamp(),
         plan_name,
         included_credits,
         used_credits,
@@ -475,6 +477,7 @@ async fn upsert_subscription(
         organization_id: Set(organization_id),
         product_id: Set(product_id),
         status: Set(sub.status.clone()),
+        current_period_start: Set(parse_dt(sub.current_period_start.as_deref())),
         current_period_end: Set(parse_dt(sub.current_period_end.as_deref())),
         cancel_at_period_end: Set(sub.cancel_at_period_end),
         canceled_at: Set(parse_dt(sub.canceled_at.as_deref())),
@@ -491,6 +494,7 @@ async fn upsert_subscription(
                     os::Column::OrganizationId,
                     os::Column::ProductId,
                     os::Column::Status,
+                    os::Column::CurrentPeriodStart,
                     os::Column::CurrentPeriodEnd,
                     os::Column::CancelAtPeriodEnd,
                     os::Column::CanceledAt,
@@ -618,30 +622,68 @@ fn build_status(
     }
 }
 
-fn usage_plan(state: &AppState, subs: &[os::Model], now: DateTime<FixedOffset>) -> (String, i64) {
-    let active_products = subs
+fn usage_plan(
+    state: &AppState,
+    subs: &[os::Model],
+    now: DateTime<FixedOffset>,
+) -> (String, i64, DateTime<FixedOffset>, DateTime<FixedOffset>) {
+    let mut active_subs = subs
         .iter()
         .filter(|sub| {
             ACTIVE_STATUSES.contains(&sub.status.as_str())
                 && sub.ends_at.map_or(true, |ends_at| ends_at > now)
+                && sub
+                    .current_period_start
+                    .map_or(true, |period_start| period_start <= now)
+                && sub
+                    .current_period_end
+                    .map_or(true, |period_end| period_end > now)
+                && usage_plan_for_product(state, &sub.product_id).is_some()
         })
-        .map(|sub| sub.product_id.as_str())
         .collect::<Vec<_>>();
+    active_subs.sort_by_key(|sub| {
+        sub.current_period_end
+            .or(sub.current_period_start)
+            .unwrap_or(sub.updated_at)
+    });
 
-    if state
+    let fallback_start = now - chrono::Duration::days(FALLBACK_USAGE_PERIOD_DAYS);
+
+    if let Some(sub) = active_subs.last() {
+        if let Some((name, included_credits)) = usage_plan_for_product(state, &sub.product_id) {
+            return usage_plan_period(name, included_credits, sub, fallback_start, now);
+        }
+    }
+
+    ("Free".to_owned(), 0, fallback_start, now)
+}
+
+fn usage_plan_for_product<'a>(state: &'a AppState, product_id: &str) -> Option<(&'a str, i64)> {
+    if product_id == state.config.polar_pro_product_id {
+        return Some(("Pro", 500));
+    }
+
+    state
         .config
         .polar_team_product_id
         .as_deref()
-        .is_some_and(|team_product_id| active_products.contains(&team_product_id))
-    {
-        return ("Team".to_owned(), 5_000);
-    }
+        .filter(|team_product_id| product_id == *team_product_id)
+        .map(|_| ("Team", 5_000))
+}
 
-    if active_products.contains(&state.config.polar_pro_product_id.as_str()) {
-        return ("Pro".to_owned(), 500);
-    }
-
-    ("Free".to_owned(), 0)
+fn usage_plan_period(
+    name: &str,
+    included_credits: i64,
+    sub: &os::Model,
+    fallback_start: DateTime<FixedOffset>,
+    now: DateTime<FixedOffset>,
+) -> (String, i64, DateTime<FixedOffset>, DateTime<FixedOffset>) {
+    (
+        name.to_owned(),
+        included_credits,
+        sub.current_period_start.unwrap_or(fallback_start),
+        sub.current_period_end.or(sub.ends_at).unwrap_or(now),
+    )
 }
 
 fn usage_daily(
@@ -651,7 +693,7 @@ fn usage_daily(
 ) -> Vec<BillingUsageDailyResponse> {
     let mut credits_by_date = HashMap::<String, i64>::new();
     for row in rows {
-        if row.status == "local_only" {
+        if !usage_counts_toward_billable_total(row) {
             continue;
         }
         let date = row.created_at.date_naive().to_string();
@@ -670,6 +712,10 @@ fn usage_daily(
             }
         })
         .collect()
+}
+
+fn usage_counts_toward_billable_total(row: &bue::Model) -> bool {
+    row.status != "local_only" && row.status != "failed"
 }
 
 async fn require_owner(
