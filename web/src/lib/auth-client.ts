@@ -106,6 +106,20 @@ type OrganizationsListResponse = {
   activeOrganizationId: string;
 };
 
+export type AccountSession = {
+  id: string;
+  current: boolean;
+  activeOrganizationId: string;
+  activeOrganizationName: string | null;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type SessionsListResponse = {
+  sessions: AccountSession[];
+};
+
 const requestJson = async <T>(
   path: string,
   init?: RequestInit,
@@ -200,6 +214,19 @@ export const deleteAccount = (confirm: string) =>
   requestJson<{ ok: true }>("/api/auth/account", {
     method: "DELETE",
     body: JSON.stringify({ confirm }),
+  });
+
+export const listAccountSessions = () =>
+  requestJson<SessionsListResponse>("/api/auth/sessions");
+
+export const revokeAccountSession = (id: string) =>
+  requestJson<{ ok: true }>(`/api/auth/sessions/${id}`, {
+    method: "DELETE",
+  });
+
+export const revokeOtherAccountSessions = () =>
+  requestJson<{ ok: true }>("/api/auth/sessions", {
+    method: "DELETE",
   });
 
 export const authClient = {

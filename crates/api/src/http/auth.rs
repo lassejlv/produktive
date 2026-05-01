@@ -12,15 +12,17 @@ use crate::{
     state::AppState,
 };
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{delete, get, patch, post},
     Json, Router,
 };
 use chrono::Utc;
-use produktive_entity::{member, organization, user};
-use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set};
+use produktive_entity::{member, organization, session as session_entity, user};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, Set,
+};
 use serde::{Deserialize, Serialize};
 
 pub fn routes() -> Router<AppState> {
@@ -29,6 +31,11 @@ pub fn routes() -> Router<AppState> {
         .route("/sign-in", post(sign_in))
         .route("/sign-out", post(sign_out))
         .route("/session", get(session))
+        .route(
+            "/sessions",
+            get(list_sessions).delete(revoke_other_sessions),
+        )
+        .route("/sessions/{id}", delete(revoke_session_by_id))
         .route("/verify-email", post(verify_email))
         .route("/request-password-reset", post(request_password_reset))
         .route("/reset-password", post(reset_password))
@@ -86,6 +93,24 @@ struct ResetPasswordRequest {
 #[serde(rename_all = "camelCase")]
 struct EmptyResponse {
     ok: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionsResponse {
+    sessions: Vec<SessionListItem>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionListItem {
+    id: String,
+    current: bool,
+    active_organization_id: String,
+    active_organization_name: Option<String>,
+    expires_at: chrono::DateTime<chrono::FixedOffset>,
+    created_at: chrono::DateTime<chrono::FixedOffset>,
+    updated_at: chrono::DateTime<chrono::FixedOffset>,
 }
 
 async fn sign_up(
@@ -226,6 +251,94 @@ async fn session(
         Err(ApiError::Unauthorized) => Ok((StatusCode::OK, Json(None))),
         Err(error) => Err(error),
     }
+}
+
+async fn list_sessions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<SessionsResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    let now = Utc::now().fixed_offset();
+    let sessions = session_entity::Entity::find()
+        .filter(session_entity::Column::UserId.eq(&auth.user.id))
+        .filter(session_entity::Column::RevokedAt.is_null())
+        .filter(session_entity::Column::ExpiresAt.gt(now))
+        .order_by_desc(session_entity::Column::UpdatedAt)
+        .all(&state.db)
+        .await?;
+
+    let mut items = Vec::with_capacity(sessions.len());
+    for session in sessions {
+        let active_organization_name =
+            organization::Entity::find_by_id(&session.active_organization_id)
+                .one(&state.db)
+                .await?
+                .map(|organization| organization.name);
+        items.push(SessionListItem {
+            current: session.id == auth.session.id,
+            id: session.id,
+            active_organization_id: session.active_organization_id,
+            active_organization_name,
+            expires_at: session.expires_at,
+            created_at: session.created_at,
+            updated_at: session.updated_at,
+        });
+    }
+
+    Ok(Json(SessionsResponse { sessions: items }))
+}
+
+async fn revoke_session_by_id(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<EmptyResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    if id == auth.session.id {
+        return Err(ApiError::BadRequest(
+            "Sign out to revoke the current session".to_owned(),
+        ));
+    }
+
+    let session = session_entity::Entity::find_by_id(&id)
+        .filter(session_entity::Column::UserId.eq(&auth.user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Session not found".to_owned()))?;
+
+    let now = Utc::now().fixed_offset();
+    if session.revoked_at.is_none() {
+        let mut active = session.into_active_model();
+        active.revoked_at = Set(Some(now));
+        active.updated_at = Set(now);
+        active.update(&state.db).await?;
+    }
+
+    Ok(Json(EmptyResponse { ok: true }))
+}
+
+async fn revoke_other_sessions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<EmptyResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    let now = Utc::now().fixed_offset();
+    let sessions = session_entity::Entity::find()
+        .filter(session_entity::Column::UserId.eq(&auth.user.id))
+        .filter(session_entity::Column::Id.ne(&auth.session.id))
+        .filter(session_entity::Column::RevokedAt.is_null())
+        .filter(session_entity::Column::ExpiresAt.gt(now))
+        .all(&state.db)
+        .await?;
+
+    for session in sessions {
+        let mut active = session.into_active_model();
+        active.revoked_at = Set(Some(now));
+        active.updated_at = Set(now);
+        active.update(&state.db).await?;
+    }
+
+    Ok(Json(EmptyResponse { ok: true }))
 }
 
 #[derive(Serialize)]

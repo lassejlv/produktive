@@ -15,7 +15,15 @@ import {
   markOnboarding,
   updateMyPreferences,
 } from "@/lib/api";
-import { deleteAccount, refreshSession, useSession } from "@/lib/auth-client";
+import {
+  type AccountSession,
+  deleteAccount,
+  listAccountSessions,
+  refreshSession,
+  revokeAccountSession,
+  revokeOtherAccountSessions,
+  useSession,
+} from "@/lib/auth-client";
 import {
   type ThemeName,
   THEMES,
@@ -92,6 +100,8 @@ function AccountPage() {
         )}
       </Section>
 
+      <SessionsSection />
+
       <AppearanceSection />
 
       <NotificationPrefsSection />
@@ -137,6 +147,146 @@ function AccountPage() {
         </div>
       </Section>
     </div>
+  );
+}
+
+function SessionsSection() {
+  const [sessions, setSessions] = useState<AccountSession[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const response = await listAccountSessions();
+      setSessions(response.sessions);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to load sessions",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    void listAccountSessions()
+      .then((response) => {
+        if (mounted) setSessions(response.sessions);
+      })
+      .catch((error) => {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to load sessions",
+        );
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const revoke = async (sessionId: string) => {
+    setBusy(sessionId);
+    try {
+      await revokeAccountSession(sessionId);
+      setSessions((items) => items.filter((item) => item.id !== sessionId));
+      toast.success("Session revoked");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to revoke session",
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const revokeOthers = async () => {
+    setBusy("others");
+    try {
+      await revokeOtherAccountSessions();
+      await load();
+      toast.success("Other sessions revoked");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to revoke sessions",
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const otherSessions = sessions.filter((session) => !session.current);
+
+  return (
+    <Section
+      title="Sessions"
+      description="Review active sign-ins and revoke sessions you no longer use."
+    >
+      {loading ? (
+        <LoadingTip compact />
+      ) : sessions.length === 0 ? (
+        <p className="m-0 text-[12.5px] text-fg-muted">No active sessions.</p>
+      ) : (
+        <div className="grid gap-2">
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={otherSessions.length === 0 || busy !== null}
+              onClick={() => void revokeOthers()}
+            >
+              {busy === "others" ? "Revoking…" : "Sign out others"}
+            </Button>
+          </div>
+
+          <div className="divide-y divide-border-subtle rounded-md border border-border-subtle bg-bg/40">
+            {sessions.map((session) => (
+              <div
+                key={session.id}
+                className="grid gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[13px] font-medium text-fg">
+                      {session.activeOrganizationName ?? "Unknown workspace"}
+                    </span>
+                    {session.current ? (
+                      <span className="rounded-[4px] border border-accent/30 bg-accent/10 px-1.5 py-px text-[10px] uppercase tracking-[0.06em] text-accent">
+                        Current
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 grid gap-1 text-[12px] text-fg-muted sm:grid-cols-2">
+                    <span>Created {formatDateTime(session.createdAt)}</span>
+                    <span>Expires {formatDateTime(session.expiresAt)}</span>
+                  </div>
+                  <div className="mt-1 font-mono text-[11px] text-fg-faint">
+                    {shortSessionId(session.id)}
+                  </div>
+                </div>
+
+                {session.current ? null : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy !== null}
+                    onClick={() => void revoke(session.id)}
+                  >
+                    {busy === session.id ? "Revoking…" : "Revoke"}
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Section>
   );
 }
 
@@ -421,6 +571,17 @@ function Toggle({
       />
     </button>
   );
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function shortSessionId(value: string) {
+  return `Session ${value.slice(0, 8)}`;
 }
 
 function Section({
