@@ -13,7 +13,16 @@ mod state;
 mod storage;
 
 use anyhow::Context;
-use axum::Router;
+use axum::{
+    extract::Request,
+    http::{
+        header::{CACHE_CONTROL, CONTENT_TYPE},
+        HeaderValue,
+    },
+    middleware::{self, Next},
+    response::Response,
+    Router,
+};
 use config::{Config, DatabaseConfig};
 use http::{
     ai_mcp_routes, ai_routes, auth_routes, billing_routes, chat_routes, cors_layer, dev_routes,
@@ -78,6 +87,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState::new(db, config.clone(), ai, polar, unkey);
     spawn_github_auto_importer(state.clone());
     digest::spawn_progress_digest_scheduler(state.clone());
+    let asset_service = ServeDir::new(format!("{}/assets", config.web_dist_dir));
     let spa_service = ServeDir::new(&config.web_dist_dir).fallback(ServeFile::new(format!(
         "{}/index.html",
         config.web_dist_dir
@@ -107,7 +117,9 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/realtime", realtime_routes())
         .nest("/api/unsubscribe", unsubscribe_routes())
         .nest("/api/dev", dev_routes())
+        .nest_service("/assets", asset_service)
         .fallback_service(spa_service)
+        .layer(middleware::from_fn(cache_control_headers))
         .layer(TraceLayer::new_for_http())
         .layer(cors_layer(&config))
         .with_state(state);
@@ -124,6 +136,33 @@ async fn main() -> anyhow::Result<()> {
         .context("server failed")?;
 
     Ok(())
+}
+
+async fn cache_control_headers(request: Request, next: Next) -> Response {
+    let path = request.uri().path().to_owned();
+    let mut response = next.run(request).await;
+    let cache_control = if path.starts_with("/assets/") {
+        Some(HeaderValue::from_static(
+            "public, max-age=31536000, immutable",
+        ))
+    } else if response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("text/html"))
+    {
+        Some(HeaderValue::from_static(
+            "no-cache, no-store, must-revalidate",
+        ))
+    } else {
+        None
+    };
+
+    if let Some(cache_control) = cache_control {
+        response.headers_mut().insert(CACHE_CONTROL, cache_control);
+    }
+
+    response
 }
 
 async fn shutdown_signal() {
