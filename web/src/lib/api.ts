@@ -432,6 +432,9 @@ export const createMcpApiKey = (input: { name?: string; expiresInDays?: number }
 export const revokeMcpApiKey = (id: string) =>
   request<void>(`/api/api-keys/keys/${id}`, { method: "DELETE" });
 
+export const deleteMcpApiKey = (id: string) =>
+  request<void>(`/api/api-keys/keys/${id}/delete`, { method: "DELETE" });
+
 export type GithubConnection = {
   connected: boolean;
   login: string | null;

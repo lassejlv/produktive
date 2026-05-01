@@ -18,7 +18,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use unkey_rs::models::{CreateKeyRequest as UnkeyCreateKeyRequest, Metadata, UpdateKeyRequest};
+use unkey_rs::{
+    models::{CreateKeyRequest as UnkeyCreateKeyRequest, KeyIdRequest, Metadata, UpdateKeyRequest},
+    UnkeyError,
+};
 use uuid::Uuid;
 
 const TOKEN_PREFIX: &str = "pk_api";
@@ -28,6 +31,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/keys", get(list_keys).post(create_key))
         .route("/keys/{id}", delete(revoke_key))
+        .route("/keys/{id}/delete", delete(delete_key).post(delete_key))
 }
 
 #[derive(Serialize)]
@@ -245,6 +249,58 @@ async fn revoke_key(
     active.updated_at = Set(now);
     active.unkey_synced_at = Set(Some(now));
     active.update(&state.db).await?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_key(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    require_workspace_owner(
+        &state.db,
+        &auth.user.id,
+        &auth.organization.id,
+        "Only workspace owners can delete API keys",
+    )
+    .await?;
+    let key = mcp_api_key::Entity::find()
+        .filter(mcp_api_key::Column::Id.eq(id))
+        .filter(mcp_api_key::Column::ActiveOrganizationId.eq(&auth.organization.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("API key not found".to_owned()))?;
+
+    if let Some(unkey_key_id) = key.unkey_key_id.as_deref() {
+        match state
+            .unkey
+            .keys()
+            .delete_key(KeyIdRequest {
+                key_id: unkey_key_id.to_owned(),
+            })
+            .await
+        {
+            Ok(_) => {}
+            Err(UnkeyError::Api(error)) if error.status == StatusCode::NOT_FOUND => {
+                tracing::warn!(
+                    unkey_key_id,
+                    "Unkey API key was already missing while deleting local API key"
+                );
+            }
+            Err(error) => {
+                tracing::error!(%error, unkey_key_id, "failed to delete Unkey API key");
+                return Err(ApiError::Internal(anyhow::anyhow!(
+                    "failed to delete API key"
+                )));
+            }
+        }
+    }
+
+    mcp_api_key::Entity::delete_by_id(key.id)
+        .exec(&state.db)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

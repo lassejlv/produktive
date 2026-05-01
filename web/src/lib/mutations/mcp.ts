@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   type McpApiKey,
   createMcpApiKey,
+  deleteMcpApiKey,
   revokeMcpApiKey,
 } from "@/lib/api";
 import { queryKeys } from "@/lib/queries/keys";
@@ -29,6 +30,18 @@ export function useRevokeMcpApiKey() {
             ? { ...item, revokedAt: new Date().toISOString() }
             : item,
         ),
+      );
+    },
+  });
+}
+
+export function useDeleteMcpApiKey() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: deleteMcpApiKey,
+    onSuccess: (_data, id) => {
+      qc.setQueryData<McpApiKey[]>(queryKeys.mcp.keys, (old) =>
+        old?.filter((item) => item.id !== id),
       );
     },
   });

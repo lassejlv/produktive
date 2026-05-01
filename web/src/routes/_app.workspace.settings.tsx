@@ -36,6 +36,7 @@ import {
 } from "@/lib/mutations/github";
 import {
   useCreateMcpApiKey,
+  useDeleteMcpApiKey,
   useRevokeMcpApiKey,
 } from "@/lib/mutations/mcp";
 import { refreshSession, updateActiveOrganization, useSession } from "@/lib/auth-client";
@@ -729,6 +730,7 @@ function McpKeySettings() {
   const keys = keysQuery.data ?? [];
   const createKey = useCreateMcpApiKey();
   const revokeKey = useRevokeMcpApiKey();
+  const deleteKey = useDeleteMcpApiKey();
   const [name, setName] = useState("Workspace API");
   const [expiresInDays, setExpiresInDays] = useState("365");
   const [busy, setBusy] = useState<string | null>(null);
@@ -780,6 +782,29 @@ function McpKeySettings() {
           toast.success("API key revoked");
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "Failed to revoke API key");
+        } finally {
+          setBusy(null);
+        }
+      },
+    });
+  };
+
+  const onDelete = (key: McpApiKey) => {
+    const isActive = !key.revokedAt;
+    confirm({
+      title: `Delete ${key.name}?`,
+      description: isActive
+        ? "This permanently removes the key from this workspace and revokes remote access first. Clients using it will stop working immediately."
+        : "This permanently removes the revoked key from this workspace. It will no longer appear in the API key history.",
+      confirmLabel: "Delete key",
+      destructive: true,
+      onConfirm: async () => {
+        setBusy(key.id);
+        try {
+          await deleteKey.mutateAsync(key.id);
+          toast.success("API key deleted");
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Failed to delete API key");
         } finally {
           setBusy(null);
         }
@@ -880,14 +905,26 @@ function McpKeySettings() {
         </SettingRow>
       ) : (
         activeKeys.map((key) => (
-          <KeyRow key={key.id} item={key} busy={busy === key.id} onRevoke={() => onRevoke(key)} />
+          <KeyRow
+            key={key.id}
+            item={key}
+            busy={busy === key.id}
+            onRevoke={() => onRevoke(key)}
+            onDelete={() => onDelete(key)}
+          />
         ))
       )}
 
       {revokedKeys.length > 0 ? (
-        <div className="opacity-60">
+        <div className="mt-1">
           {revokedKeys.map((key) => (
-            <KeyRow key={key.id} item={key} revoked />
+            <KeyRow
+              key={key.id}
+              item={key}
+              busy={busy === key.id}
+              revoked
+              onDelete={() => onDelete(key)}
+            />
           ))}
         </div>
       ) : null}
@@ -900,30 +937,75 @@ function KeyRow({
   busy = false,
   revoked = false,
   onRevoke,
+  onDelete,
 }: {
   item: McpApiKey;
   busy?: boolean;
   revoked?: boolean;
   onRevoke?: () => void;
+  onDelete?: () => void;
 }) {
   return (
-    <div className="grid gap-2 border-b border-border-subtle py-3 text-[13px] md:grid-cols-[140px_minmax(0,1fr)]">
-      <div className="text-fg-faint">{revoked ? "Revoked" : "Active"}</div>
+    <div
+      className={cn(
+        "grid gap-3 border-b border-border-subtle py-4 text-[13px] transition-colors md:grid-cols-[140px_minmax(0,1fr)]",
+        revoked ? "text-fg-muted" : "hover:border-border",
+      )}
+    >
+      <div>
+        <span
+          className={cn(
+            "inline-flex h-6 items-center rounded-full border px-2 font-mono text-[10.5px] uppercase tracking-[0.08em]",
+            revoked
+              ? "border-border-subtle text-fg-faint"
+              : "border-accent/30 bg-accent/10 text-accent",
+          )}
+        >
+          {revoked ? "Revoked" : "Active"}
+        </span>
+      </div>
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-fg">{item.name}</div>
-          <div className="mt-0.5 font-mono text-[11.5px] text-fg-muted">{item.tokenPrefix}…</div>
-          <div className="mt-0.5 text-[11.5px] text-fg-faint">
-            Created {formatDate(item.createdAt)}
-            {item.expiresAt ? ` · Expires ${formatDate(item.expiresAt)}` : ""}
-            {item.lastUsedAt ? ` · Last used ${formatDate(item.lastUsedAt)}` : ""}
+          <div className={cn("text-[14px] font-medium", revoked ? "text-fg-muted" : "text-fg")}>
+            {item.name}
+          </div>
+          <div className="mt-1 font-mono text-[11.5px] text-fg-muted">{item.tokenPrefix}…</div>
+          <div className="mt-1 flex flex-wrap text-[11.5px] text-fg-faint">
+            <span>Created {formatDate(item.createdAt)}</span>
+            {item.expiresAt ? (
+              <span className="before:mx-2 before:content-['·']">
+                Expires {formatDate(item.expiresAt)}
+              </span>
+            ) : null}
+            {item.lastUsedAt ? (
+              <span className="before:mx-2 before:content-['·']">
+                Last used {formatDate(item.lastUsedAt)}
+              </span>
+            ) : null}
           </div>
         </div>
-        {!revoked && onRevoke ? (
-          <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onRevoke}>
-            {busy ? "Revoking…" : "Revoke"}
-          </Button>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-2">
+          {!revoked && onRevoke ? (
+            <Button type="button" variant="outline" size="sm" disabled={busy} onClick={onRevoke}>
+              {busy ? "Working…" : "Revoke"}
+            </Button>
+          ) : null}
+          {onDelete ? (
+            <Button
+              type="button"
+              variant={revoked ? "ghost" : "outline"}
+              size="sm"
+              disabled={busy}
+              onClick={onDelete}
+              className={cn(
+                "text-danger hover:text-danger",
+                revoked ? "hover:bg-danger/10" : "border-danger/30 hover:border-danger/60",
+              )}
+            >
+              {busy ? "Deleting…" : "Delete"}
+            </Button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
