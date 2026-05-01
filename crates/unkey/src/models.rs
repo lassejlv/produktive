@@ -225,8 +225,6 @@ pub struct KeyIdRequest {
 pub struct VerifyKeyRequest {
     pub key: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub api_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub permissions: Option<PermissionCheck>,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub tags: Vec<String>,

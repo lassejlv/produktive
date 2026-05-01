@@ -39,7 +39,6 @@ use uuid::Uuid;
 struct AppState {
     db: DatabaseConnection,
     unkey: Unkey,
-    unkey_api_id: String,
 }
 
 #[derive(Clone)]
@@ -58,7 +57,6 @@ impl AuthProvider for ProduktiveAuthProvider {
             .keys()
             .verify_key(VerifyKeyRequest {
                 key: access_token.to_owned(),
-                api_id: Some(self.state.unkey_api_id.clone()),
                 ..Default::default()
             })
             .await
@@ -1624,7 +1622,6 @@ async fn main() -> SdkResult<()> {
             description: error.to_string(),
         })?;
     let unkey_root_key = required_env("UNKEY_ROOT_KEY")?;
-    let unkey_api_id = required_env("UNKEY_API_ID")?;
     let mut unkey_config = UnkeyConfig::new(unkey_root_key);
     if let Some(base_url) = optional_env("UNKEY_BASE_URL") {
         unkey_config = unkey_config.base_url(base_url);
@@ -1634,11 +1631,7 @@ async fn main() -> SdkResult<()> {
             description: format!("failed to build Unkey client: {error}"),
         }
     })?;
-    let state = AppState {
-        db,
-        unkey,
-        unkey_api_id,
-    };
+    let state = AppState { db, unkey };
     let port = std::env::var("PORT")
         .ok()
         .and_then(|value| value.parse::<u16>().ok())

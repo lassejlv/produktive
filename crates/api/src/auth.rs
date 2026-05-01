@@ -155,7 +155,7 @@ pub async fn require_api_key(
 ) -> Result<ApiKeyContext, ApiError> {
     let token = read_bearer_token(headers).ok_or(ApiError::Unauthorized)?;
     let now = Utc::now().fixed_offset();
-    let verified = verify_key_with_unkey(&state.unkey, &state.config.unkey_api_id, token).await?;
+    let verified = verify_key_with_unkey(&state.unkey, token).await?;
 
     if !verified.valid {
         return Err(ApiError::Unauthorized);
@@ -198,14 +198,12 @@ pub async fn require_api_key(
 
 async fn verify_key_with_unkey(
     unkey: &unkey_rs::Unkey,
-    api_id: &str,
     token: String,
 ) -> Result<VerifyKeyResponse, ApiError> {
     unkey
         .keys()
         .verify_key(VerifyKeyRequest {
             key: token,
-            api_id: Some(api_id.to_owned()),
             ..Default::default()
         })
         .await

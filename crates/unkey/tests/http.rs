@@ -139,7 +139,7 @@ async fn verify_key_parses_authz_details() {
 }
 
 #[tokio::test]
-async fn verify_key_can_include_api_id_and_invalid_responses() {
+async fn verify_key_handles_invalid_responses() {
     let (base_url, handle) = server_once(200, r#"{"meta":{},"data":{"valid":false}}"#);
     let unkey = Unkey::with_config(UnkeyConfig::new("root_test").base_url(base_url))
         .expect("client builds");
@@ -148,16 +148,13 @@ async fn verify_key_can_include_api_id_and_invalid_responses() {
         .keys()
         .verify_key(VerifyKeyRequest {
             key: "prod_abc".to_owned(),
-            api_id: Some("api_123".to_owned()),
             ..Default::default()
         })
         .await
         .expect("request succeeds");
 
     let request = handle.join().expect("server joins");
-    let body = body_json(&request);
     assert!(request.starts_with("POST /v2/keys.verifyKey HTTP/1.1"));
-    assert_eq!(body["apiId"], "api_123");
     assert!(!result.data.valid);
 }
 
@@ -245,7 +242,6 @@ async fn transport_failure_is_returned_to_callers() {
         .keys()
         .verify_key(VerifyKeyRequest {
             key: "prod_abc".to_owned(),
-            api_id: Some("api_123".to_owned()),
             ..Default::default()
         })
         .await
