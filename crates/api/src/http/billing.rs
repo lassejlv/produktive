@@ -284,6 +284,7 @@ async fn checkout(
     let auth = require_auth(&headers, &state).await?;
     require_owner(&state, &auth.user.id, &auth.organization.id).await?;
     let product_id = checkout_product_id(&state, payload.plan.as_deref())?;
+    let embed_origin = checkout_embed_origin(&headers, &state.config.app_url);
 
     let mut metadata: HashMap<String, Value> = HashMap::new();
     metadata.insert("organization_id".to_owned(), json!(auth.organization.id));
@@ -302,6 +303,7 @@ async fn checkout(
             customer_email: Some(auth.user.email.clone()),
             customer_name: Some(auth.organization.name.clone()),
             success_url: Some(success_url),
+            embed_origin: Some(embed_origin),
             metadata,
             ..Default::default()
         })
@@ -658,6 +660,25 @@ fn checkout_product_id(state: &AppState, plan: Option<&str>) -> Result<String, A
             "Unknown billing plan: {other}"
         ))),
     }
+}
+
+fn checkout_embed_origin(headers: &HeaderMap, fallback_url: &str) -> String {
+    let origin = header(headers, "origin").trim();
+    if !origin.is_empty() {
+        return origin.to_owned();
+    }
+
+    fallback_url
+        .split_once("://")
+        .and_then(|(scheme, rest)| {
+            let host = rest.split('/').next().unwrap_or_default();
+            if host.is_empty() {
+                None
+            } else {
+                Some(format!("{scheme}://{host}"))
+            }
+        })
+        .unwrap_or_else(|| fallback_url.trim_end_matches('/').to_owned())
 }
 
 fn header<'a>(headers: &'a HeaderMap, name: &str) -> &'a str {

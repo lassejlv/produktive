@@ -271,11 +271,9 @@ export const openTab = (input: { tabType: TabType; targetId: string; title: stri
     body: JSON.stringify(input),
   });
 
-export const closeTab = (id: string) =>
-  request<void>(`/api/me/tabs/${id}`, { method: "DELETE" });
+export const closeTab = (id: string) => request<void>(`/api/me/tabs/${id}`, { method: "DELETE" });
 
-export const closeAllTabs = () =>
-  request<void>("/api/me/tabs", { method: "DELETE" });
+export const closeAllTabs = () => request<void>("/api/me/tabs", { method: "DELETE" });
 
 export type OnboardingPatch = {
   completed?: boolean;
@@ -401,10 +399,7 @@ export type OAuthAuthorizePreview = {
 export const previewOAuthAuthorization = (search: string) =>
   request<OAuthAuthorizePreview>(`/api/oauth/authorize${search}`);
 
-export const decideOAuthAuthorization = (
-  search: string,
-  approve: boolean,
-) => {
+export const decideOAuthAuthorization = (search: string, approve: boolean) => {
   const params = new URLSearchParams(search);
   return request<{ redirectUrl: string }>("/api/oauth/authorize", {
     method: "POST",

@@ -2,10 +2,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  SettingRow,
-  SettingsSkeleton,
-} from "@/components/workspace/setting-row";
+import { SettingRow, SettingsSkeleton } from "@/components/workspace/setting-row";
 import {
   type BillingStatus,
   cancelSubscription,
@@ -15,6 +12,7 @@ import {
   resumeSubscription,
   startBillingCheckout,
 } from "@/lib/api";
+import { openPolarCheckout } from "@/lib/polar-checkout";
 import { cn } from "@/lib/utils";
 
 export function BillingSettings() {
@@ -32,9 +30,7 @@ export function BillingSettings() {
         if (mounted) setBilling(response);
       })
       .catch((error) => {
-        toast.error(
-          error instanceof Error ? error.message : "Failed to load billing",
-        );
+        toast.error(error instanceof Error ? error.message : "Failed to load billing");
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -51,11 +47,22 @@ export function BillingSettings() {
     setBusyAction(action);
     try {
       const response = await loadUrl();
-      window.location.assign(response.url);
+      if (action === "portal") {
+        window.location.assign(response.url);
+        return;
+      }
+
+      await openPolarCheckout(response.url, {
+        onClose: () => setBusyAction(null),
+        onSuccess: () => {
+          setBusyAction(null);
+          void getBillingStatus()
+            .then(setBilling)
+            .catch(() => undefined);
+        },
+      });
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to open billing",
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to open billing");
       setBusyAction(null);
     }
   };
@@ -75,11 +82,7 @@ export function BillingSettings() {
           setBilling(next);
           toast.success("Plan is scheduled to cancel.");
         } catch (error) {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : "Failed to cancel subscription",
-          );
+          toast.error(error instanceof Error ? error.message : "Failed to cancel subscription");
         } finally {
           setBusyAction(null);
         }
@@ -94,11 +97,7 @@ export function BillingSettings() {
       setBilling(next);
       toast.success("Plan will renew as scheduled.");
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to resume subscription",
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to resume subscription");
     } finally {
       setBusyAction(null);
     }
@@ -111,9 +110,7 @@ export function BillingSettings() {
       setBilling(next);
       toast.success("Workspace upgraded to Team.");
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to upgrade to Team",
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to upgrade to Team");
     } finally {
       setBusyAction(null);
     }
@@ -122,9 +119,7 @@ export function BillingSettings() {
   const activeSubscription = billing?.subscriptions.find((subscription) =>
     isActiveSubscription(subscription),
   );
-  const isTeam = Boolean(
-    billing?.teamPlanId && activeSubscription?.planId === billing.teamPlanId,
-  );
+  const isTeam = Boolean(billing?.teamPlanId && activeSubscription?.planId === billing.teamPlanId);
   const planName = billing?.isPro ? (isTeam ? "Team" : "Pro") : "Free";
 
   if (loading || !billing) {
@@ -167,11 +162,7 @@ export function BillingSettings() {
                 type="button"
                 size="sm"
                 disabled={busyAction !== null}
-                onClick={() =>
-                  void redirectTo("pro-checkout", () =>
-                    startBillingCheckout("pro"),
-                  )
-                }
+                onClick={() => void redirectTo("pro-checkout", () => startBillingCheckout("pro"))}
               >
                 {busyAction === "pro-checkout" ? "Opening..." : "Upgrade to Pro"}
               </Button>
@@ -180,15 +171,9 @@ export function BillingSettings() {
                 variant="outline"
                 size="sm"
                 disabled={busyAction !== null}
-                onClick={() =>
-                  void redirectTo("team-checkout", () =>
-                    startBillingCheckout("team"),
-                  )
-                }
+                onClick={() => void redirectTo("team-checkout", () => startBillingCheckout("team"))}
               >
-                {busyAction === "team-checkout"
-                  ? "Opening..."
-                  : "Upgrade to Team"}
+                {busyAction === "team-checkout" ? "Opening..." : "Upgrade to Team"}
               </Button>
             </>
           ) : !isTeam ? (
@@ -235,10 +220,7 @@ export function BillingSettings() {
   );
 }
 
-function isActiveSubscription(subscription: {
-  status: string;
-  currentPeriodEnd: number | null;
-}) {
+function isActiveSubscription(subscription: { status: string; currentPeriodEnd: number | null }) {
   const now = Date.now() / 1000;
   return (
     (subscription.status === "active" || subscription.status === "trialing") &&
@@ -260,9 +242,7 @@ function billingDescription(
   if (!subscription.currentPeriodEnd) {
     return `Your workspace is on ${planName}.`;
   }
-  return `Renews ${new Date(
-    subscription.currentPeriodEnd * 1000,
-  ).toLocaleDateString("en", {
+  return `Renews ${new Date(subscription.currentPeriodEnd * 1000).toLocaleDateString("en", {
     month: "short",
     day: "numeric",
     year: "numeric",

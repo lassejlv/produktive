@@ -43,6 +43,10 @@ pub struct CreateCheckoutRequest {
     /// `?checkout_id=...` query parameter automatically.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub success_url: Option<String>,
+    /// Origin of the page embedding checkout. Required for embedded checkout
+    /// iframe communication.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embed_origin: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allow_discount_codes: Option<bool>,
     /// Free-form metadata, copied through to subsequent webhooks.

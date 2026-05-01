@@ -32,6 +32,7 @@ import { ISSUE_DRAG_MIME } from "@/components/issue/issue-list";
 import { NewLabelDialog } from "@/components/label/new-label-dialog";
 import { NewProjectDialog } from "@/components/project/new-project-dialog";
 import { updateIssue } from "@/lib/api";
+import { openPolarCheckout } from "@/lib/polar-checkout";
 import { TabBar } from "@/components/workspace/tab-bar";
 import { findStaticPage } from "@/lib/tab-pages";
 import { useBillingStatus } from "@/lib/use-billing-status";
@@ -700,7 +701,10 @@ function SidebarUpgradeButton({
     setOpening(true);
     try {
       const response = await startBillingCheckout();
-      window.location.assign(response.url);
+      await openPolarCheckout(response.url, {
+        onClose: () => setOpening(false),
+        onSuccess: () => setOpening(false),
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to open billing");
       setOpening(false);
