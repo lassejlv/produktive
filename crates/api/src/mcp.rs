@@ -1,19 +1,19 @@
 use crate::{error::ApiError, state::AppState};
 use aes_gcm::{
-    Aes256Gcm, Nonce,
     aead::{Aead, AeadCore, KeyInit, OsRng},
+    Aes256Gcm, Nonce,
 };
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use produktive_ai::Tool;
 use produktive_entity::{mcp_oauth_token, mcp_server};
 use reqwest::{
+    header::{HeaderName, ACCEPT, AUTHORIZATION, CONTENT_TYPE, WWW_AUTHENTICATE},
     StatusCode, Url,
-    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderName, WWW_AUTHENTICATE},
 };
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{net::IpAddr, sync::Mutex, time::Duration as StdDuration};
 
@@ -898,6 +898,24 @@ fn split_quoted(input: &str, delimiter: char) -> Vec<String> {
         parts.push(current.trim().to_owned());
     }
     parts
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remote_mcp_url_validation_blocks_local_urls_by_default() {
+        assert!(validate_remote_url("http://127.0.0.1:3001/mcp", false).is_err());
+        assert!(validate_remote_url("http://localhost:3001/mcp", false).is_err());
+        assert!(validate_remote_url("http://10.0.0.1/mcp", false).is_err());
+    }
+
+    #[test]
+    fn remote_mcp_url_validation_allows_local_urls_when_explicit() {
+        assert!(validate_remote_url("http://127.0.0.1:3001/mcp", true).is_ok());
+        assert!(validate_remote_url("https://example.com/mcp", false).is_ok());
+    }
 }
 
 fn default_resource_metadata_url(resource_url: &str) -> Option<String> {

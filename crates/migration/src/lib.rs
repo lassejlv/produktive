@@ -54,6 +54,8 @@ mod m20260501_000025_create_github_repositories;
 mod m20260501_000026_add_progress_email_columns;
 #[path = "../migrations/m20260501_000027_add_user_tabs.rs"]
 mod m20260501_000027_add_user_tabs;
+#[path = "../migrations/m20260501_000028_add_github_import_locks.rs"]
+mod m20260501_000028_add_github_import_locks;
 
 pub struct Migrator;
 
@@ -88,6 +90,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260501_000025_create_github_repositories::Migration),
             Box::new(m20260501_000026_add_progress_email_columns::Migration),
             Box::new(m20260501_000027_add_user_tabs::Migration),
+            Box::new(m20260501_000028_add_github_import_locks::Migration),
         ]
     }
 }

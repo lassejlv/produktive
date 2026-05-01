@@ -19,8 +19,8 @@ use http::{
     ai_mcp_routes, ai_routes, auth_routes, billing_routes, chat_routes, cors_layer, dev_routes,
     favorite_routes, github_routes, inbox_routes, invitation_routes, issue_routes, label_routes,
     mcp_key_routes, member_routes, onboarding_routes, org_invitation_routes, preferences_routes,
-    project_routes, realtime_routes, spawn_github_auto_importer, tabs_routes,
-    unsubscribe_routes, waitlist_routes,
+    project_routes, realtime_routes, spawn_github_auto_importer, tabs_routes, unsubscribe_routes,
+    waitlist_routes,
 };
 use polar_rs::{Polar, PolarConfig};
 use produktive_ai::AiClient;
@@ -55,6 +55,7 @@ async fn main() -> anyhow::Result<()> {
     drop(migration_db);
 
     let config = Config::from_env()?;
+    config.warn_if_insecure_cookie_settings();
     let db = Database::connect(&config.database_url)
         .await
         .context("failed to connect to database")?;

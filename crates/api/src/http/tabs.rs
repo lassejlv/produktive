@@ -8,8 +8,8 @@ use axum::{
 use chrono::Utc;
 use produktive_entity::user_tab;
 use sea_orm::{
-    sea_query::OnConflict, ColumnTrait, Condition, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    sea_query::OnConflict, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

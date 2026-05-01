@@ -7,9 +7,7 @@ use axum::{
 };
 use chrono::Utc;
 use produktive_entity::notification_preference;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, Set};
 use serde::Deserialize;
 
 pub fn routes() -> Router<AppState> {
@@ -27,7 +25,9 @@ async fn unsubscribe_progress(
     Query(params): Query<UnsubscribeParams>,
 ) -> Result<Html<String>, ApiError> {
     if !verify_unsubscribe_token(&state.config.jwt_secret, &params.u, &params.t) {
-        return Ok(Html(error_page("This unsubscribe link is invalid or expired.")));
+        return Ok(Html(error_page(
+            "This unsubscribe link is invalid or expired.",
+        )));
     }
 
     let existing = notification_preference::Entity::find()

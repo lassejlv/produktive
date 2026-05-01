@@ -206,9 +206,12 @@ pub async fn dispatch_notification(
         Ok(prefs) => prefs,
         Err(error) => {
             tracing::warn!(
-                "failed to load notification prefs for {}: {}",
-                user_id,
-                error
+                user_id = %user_id,
+                organization_id = %organization_id,
+                target_type = %target_type,
+                target_id = %target_id,
+                error = %error,
+                "failed to load notification preferences"
             );
             return Ok(());
         }
@@ -230,7 +233,14 @@ pub async fn dispatch_notification(
         Ok(Some(user)) => user,
         Ok(None) => return Ok(()),
         Err(error) => {
-            tracing::warn!("failed to load recipient {}: {}", user_id, error);
+            tracing::warn!(
+                user_id = %user_id,
+                organization_id = %organization_id,
+                target_type = %target_type,
+                target_id = %target_id,
+                error = %error,
+                "failed to load notification recipient"
+            );
             return Ok(());
         }
     };
@@ -253,9 +263,14 @@ pub async fn dispatch_notification(
     .await
     {
         tracing::warn!(
-            "failed to send notification email to {}: {}",
-            recipient.email,
-            error
+            user_id = %user_id,
+            recipient_email = %recipient.email,
+            organization_id = %organization_id,
+            target_type = %target_type,
+            target_id = %target_id,
+            kind = %kind,
+            error = %error,
+            "failed to send notification email"
         );
     }
 

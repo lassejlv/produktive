@@ -15,9 +15,7 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .null(),
                     )
-                    .add_column_if_not_exists(
-                        ColumnDef::new(Users::OnboardingStep).text().null(),
-                    )
+                    .add_column_if_not_exists(ColumnDef::new(Users::OnboardingStep).text().null())
                     .to_owned(),
             )
             .await

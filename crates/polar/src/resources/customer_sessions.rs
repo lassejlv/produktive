@@ -15,10 +15,7 @@ impl CustomerSessions {
 
     /// Creates a customer portal session and returns the pre-authenticated
     /// portal URL. Send the customer to `customer_portal_url`.
-    pub async fn create(
-        &self,
-        request: CreateCustomerSessionRequest,
-    ) -> Result<CustomerSession> {
+    pub async fn create(&self, request: CreateCustomerSessionRequest) -> Result<CustomerSession> {
         self.client.post("/v1/customer-sessions/", &request).await
     }
 }

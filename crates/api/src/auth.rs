@@ -111,11 +111,7 @@ pub async fn require_auth(headers: &HeaderMap, state: &AppState) -> Result<AuthC
         .await?
         .ok_or(ApiError::Unauthorized)?;
 
-    if session.user_id != claims.sub
-        || session.active_organization_id != claims.org
-        || session.revoked_at.is_some()
-        || session.expires_at <= now
-    {
+    if !session_matches_claims(&session, &claims, now) {
         return Err(ApiError::Unauthorized);
     }
 
@@ -522,6 +518,17 @@ fn sign_session_token(state: &AppState, session: &session::Model) -> Result<Stri
     .map_err(Into::into)
 }
 
+fn session_matches_claims(
+    session: &session::Model,
+    claims: &Claims,
+    now: chrono::DateTime<chrono::FixedOffset>,
+) -> bool {
+    session.user_id == claims.sub
+        && session.active_organization_id == claims.org
+        && session.revoked_at.is_none()
+        && session.expires_at > now
+}
+
 fn read_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
     let header = headers.get(header::COOKIE)?.to_str().ok()?;
 
@@ -590,5 +597,52 @@ fn build_organization_slug(name: &str) -> String {
         format!("org-{suffix}")
     } else {
         format!("{base}-{suffix}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn claims() -> Claims {
+        Claims {
+            sub: "user_1".to_owned(),
+            sid: "session_1".to_owned(),
+            org: "org_1".to_owned(),
+            iat: 1,
+            exp: 2,
+        }
+    }
+
+    fn session(now: chrono::DateTime<chrono::FixedOffset>) -> session::Model {
+        session::Model {
+            id: "session_1".to_owned(),
+            user_id: "user_1".to_owned(),
+            active_organization_id: "org_1".to_owned(),
+            expires_at: now + Duration::minutes(5),
+            revoked_at: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn session_claim_validation_rejects_revoked_expired_and_mismatched_sessions() {
+        let now = Utc::now().fixed_offset();
+        let claims = claims();
+
+        assert!(session_matches_claims(&session(now), &claims, now));
+
+        let mut revoked = session(now);
+        revoked.revoked_at = Some(now);
+        assert!(!session_matches_claims(&revoked, &claims, now));
+
+        let mut expired = session(now);
+        expired.expires_at = now;
+        assert!(!session_matches_claims(&expired, &claims, now));
+
+        let mut wrong_org = session(now);
+        wrong_org.active_organization_id = "org_2".to_owned();
+        assert!(!session_matches_claims(&wrong_org, &claims, now));
     }
 }

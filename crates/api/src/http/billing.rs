@@ -547,3 +547,63 @@ fn map_polar_error(error: PolarError) -> ApiError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use polar_rs::models::Customer;
+    use std::collections::HashMap;
+
+    fn subscription() -> Subscription {
+        Subscription {
+            id: "sub_1".to_owned(),
+            status: "active".to_owned(),
+            customer_id: Some("customer_1".to_owned()),
+            product_id: Some("product_1".to_owned()),
+            current_period_start: None,
+            current_period_end: None,
+            cancel_at_period_end: false,
+            canceled_at: None,
+            started_at: None,
+            ends_at: None,
+            customer: None,
+            metadata: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn subscription_org_resolution_prefers_subscription_metadata() {
+        let mut sub = subscription();
+        sub.metadata
+            .insert("organization_id".to_owned(), json!("org_from_subscription"));
+        sub.customer = Some(Customer {
+            id: "customer_1".to_owned(),
+            external_id: Some("org_from_customer".to_owned()),
+            email: None,
+            name: None,
+            metadata: HashMap::new(),
+        });
+
+        assert_eq!(
+            resolve_organization_id(&sub).as_deref(),
+            Some("org_from_subscription")
+        );
+    }
+
+    #[test]
+    fn subscription_org_resolution_uses_customer_external_id() {
+        let mut sub = subscription();
+        sub.customer = Some(Customer {
+            id: "customer_1".to_owned(),
+            external_id: Some("org_from_customer".to_owned()),
+            email: None,
+            name: None,
+            metadata: HashMap::new(),
+        });
+
+        assert_eq!(
+            resolve_organization_id(&sub).as_deref(),
+            Some("org_from_customer")
+        );
+    }
+}

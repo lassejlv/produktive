@@ -102,7 +102,11 @@ pub async fn send_progress_digest_email(
     let closed_html = render_section_html(
         digest.closed_count,
         digest.closed_titles,
-        &format!("You closed {} {} since last time", digest.closed_count, plural(digest.closed_count, "issue", "issues")),
+        &format!(
+            "You closed {} {} since last time",
+            digest.closed_count,
+            plural(digest.closed_count, "issue", "issues")
+        ),
         "You haven't closed anything since last time.",
     );
     let plate_html = render_section_html(
@@ -167,12 +171,7 @@ pub async fn send_progress_digest_email(
     Ok(())
 }
 
-fn render_section_html(
-    count: usize,
-    titles: &[String],
-    heading: &str,
-    empty_text: &str,
-) -> String {
+fn render_section_html(count: usize, titles: &[String], heading: &str, empty_text: &str) -> String {
     if count == 0 {
         return format!("<p style=\"color:#555\">{}</p>", html_escape(empty_text));
     }
@@ -197,12 +196,7 @@ fn render_section_html(
     )
 }
 
-fn render_section_text(
-    count: usize,
-    titles: &[String],
-    heading: &str,
-    empty_text: &str,
-) -> String {
+fn render_section_text(count: usize, titles: &[String], heading: &str, empty_text: &str) -> String {
     if count == 0 {
         return empty_text.to_owned();
     }

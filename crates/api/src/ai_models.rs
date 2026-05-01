@@ -31,4 +31,3 @@ pub const AI_MODELS: &[AiModelInfo] = &[
         requires_pro: false,
     },
 ];
-

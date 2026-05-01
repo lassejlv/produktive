@@ -20,6 +20,7 @@ use produktive_entity::{
 };
 use reqwest::header::{HeaderMap as ReqwestHeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
 use sea_orm::{
+    sea_query::{Expr, SimpleExpr},
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter,
     QueryOrder, Set, TryIntoModel,
 };
@@ -36,6 +37,7 @@ const GITHUB_SCOPE: &str = "repo";
 const MIN_IMPORT_INTERVAL_MINUTES: i32 = 15;
 const DEFAULT_IMPORT_INTERVAL_MINUTES: i32 = 360;
 const AUTO_IMPORT_TICK_SECONDS: u64 = 60;
+const IMPORT_LOCK_TTL_MINUTES: i64 = 30;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -401,6 +403,8 @@ async fn create_repository(
         last_imported_count: Set(0),
         last_updated_count: Set(0),
         last_skipped_count: Set(0),
+        import_lock_token: Set(None),
+        import_locked_until: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     }
@@ -481,9 +485,23 @@ async fn run_repository_import(
     let auth = require_auth(&headers, &state).await?;
     require_owner(&state, &auth).await?;
     let row = find_repository(&state, &auth.organization.id, &id).await?;
-    let result = import_source(&state, &auth, &row.owner, &row.repo).await?;
-    update_repository_import_state(&state, row, Ok(&result)).await?;
-    Ok(Json(result))
+    let claimed = claim_repository_import(&state, &row, ImportClaimMode::Manual)
+        .await?
+        .ok_or_else(|| {
+            ApiError::Conflict("This GitHub repository is already importing".to_owned())
+        })?;
+    let result = import_source(&state, &auth, &claimed.repo.owner, &claimed.repo.repo).await;
+    match result {
+        Ok(result) => {
+            complete_repository_import(&state, claimed, Ok(&result)).await?;
+            Ok(Json(result))
+        }
+        Err(error) => {
+            let message = error.to_string();
+            complete_repository_import(&state, claimed, Err(message)).await?;
+            Err(error)
+        }
+    }
 }
 
 async fn search_repositories(
@@ -638,22 +656,34 @@ async fn run_due_auto_imports(state: &AppState) -> Result<(), ApiError> {
     let due = github_repository::Entity::find()
         .filter(github_repository::Column::AutoImportEnabled.eq(true))
         .filter(github_repository::Column::NextImportAt.lte(now()))
+        .filter(import_lock_available_filter(now()))
         .order_by_asc(github_repository::Column::NextImportAt)
         .all(&state.db)
         .await?;
     for repo in due {
+        let Some(claimed) = claim_repository_import(state, &repo, ImportClaimMode::AutoDue).await?
+        else {
+            tracing::info!(
+                repository_id = %repo.id,
+                organization_id = %repo.organization_id,
+                owner = %repo.owner,
+                repo = %repo.repo,
+                "github auto import skipped because another worker claimed it"
+            );
+            continue;
+        };
         let auth = match auto_import_auth(state, &repo.organization_id).await {
             Ok(auth) => auth,
             Err(error) => {
-                update_repository_import_state(state, repo, Err(error.to_string())).await?;
+                complete_repository_import(state, claimed, Err(error.to_string())).await?;
                 continue;
             }
         };
-        let result = import_source(state, &auth, &repo.owner, &repo.repo).await;
+        let result = import_source(state, &auth, &claimed.repo.owner, &claimed.repo.repo).await;
         match result {
-            Ok(result) => update_repository_import_state(state, repo, Ok(&result)).await?,
+            Ok(result) => complete_repository_import(state, claimed, Ok(&result)).await?,
             Err(error) => {
-                update_repository_import_state(state, repo, Err(error.to_string())).await?
+                complete_repository_import(state, claimed, Err(error.to_string())).await?
             }
         }
     }
@@ -700,35 +730,174 @@ async fn auto_import_auth(
     })
 }
 
-async fn update_repository_import_state(
-    state: &AppState,
+#[derive(Clone, Copy)]
+enum ImportClaimMode {
+    Manual,
+    AutoDue,
+}
+
+struct ClaimedRepositoryImport {
     repo: github_repository::Model,
+    lock_token: String,
+}
+
+async fn claim_repository_import(
+    state: &AppState,
+    repo: &github_repository::Model,
+    mode: ImportClaimMode,
+) -> Result<Option<ClaimedRepositoryImport>, ApiError> {
+    let now = now();
+    let lock_token = Uuid::new_v4().to_string();
+    let lock_until = now + Duration::minutes(IMPORT_LOCK_TTL_MINUTES);
+    let mut update = github_repository::Entity::update_many()
+        .col_expr(
+            github_repository::Column::ImportLockToken,
+            Expr::value(lock_token.clone()),
+        )
+        .col_expr(
+            github_repository::Column::ImportLockedUntil,
+            Expr::value(lock_until),
+        )
+        .col_expr(github_repository::Column::UpdatedAt, Expr::value(now))
+        .filter(github_repository::Column::Id.eq(&repo.id))
+        .filter(import_lock_available_filter(now));
+
+    if matches!(mode, ImportClaimMode::AutoDue) {
+        update = update
+            .filter(github_repository::Column::AutoImportEnabled.eq(true))
+            .filter(github_repository::Column::NextImportAt.lte(now));
+    }
+
+    let result = update.exec(&state.db).await?;
+    if result.rows_affected == 0 {
+        return Ok(None);
+    }
+
+    let repo = github_repository::Entity::find_by_id(&repo.id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("GitHub repository not found".to_owned()))?;
+
+    tracing::info!(
+        repository_id = %repo.id,
+        organization_id = %repo.organization_id,
+        owner = %repo.owner,
+        repo = %repo.repo,
+        lock_token = %lock_token,
+        locked_until = %lock_until,
+        "claimed github import"
+    );
+
+    Ok(Some(ClaimedRepositoryImport { repo, lock_token }))
+}
+
+async fn complete_repository_import(
+    state: &AppState,
+    claimed: ClaimedRepositoryImport,
     result: Result<&ImportResponse, String>,
 ) -> Result<(), ApiError> {
     let now = now();
-    let mut active = repo.clone().into_active_model();
-    active.last_imported_at = Set(Some(now));
-    active.updated_at = Set(now);
-    active.next_import_at = Set(if repo.auto_import_enabled {
+    let repo = claimed.repo;
+    let next_import_at = if repo.auto_import_enabled {
         Some(now + Duration::minutes(repo.import_interval_minutes.into()))
     } else {
         None
-    });
+    };
+    let mut update = github_repository::Entity::update_many()
+        .col_expr(github_repository::Column::LastImportedAt, Expr::value(now))
+        .col_expr(github_repository::Column::UpdatedAt, Expr::value(now))
+        .col_expr(
+            github_repository::Column::NextImportAt,
+            Expr::value(next_import_at),
+        )
+        .col_expr(
+            github_repository::Column::ImportLockToken,
+            Expr::value(Option::<String>::None),
+        )
+        .col_expr(
+            github_repository::Column::ImportLockedUntil,
+            Expr::value(Option::<DateTime<FixedOffset>>::None),
+        )
+        .filter(github_repository::Column::Id.eq(&repo.id))
+        .filter(github_repository::Column::ImportLockToken.eq(&claimed.lock_token));
+
+    let status = if result.is_ok() { "success" } else { "error" };
     match result {
         Ok(result) => {
-            active.last_import_status = Set(Some("success".to_owned()));
-            active.last_import_error = Set(None);
-            active.last_imported_count = Set(result.imported as i32);
-            active.last_updated_count = Set(result.updated as i32);
-            active.last_skipped_count = Set(result.skipped_pull_requests as i32);
+            update = update
+                .col_expr(
+                    github_repository::Column::LastImportStatus,
+                    Expr::value("success"),
+                )
+                .col_expr(
+                    github_repository::Column::LastImportError,
+                    Expr::value(Option::<String>::None),
+                )
+                .col_expr(
+                    github_repository::Column::LastImportedCount,
+                    Expr::value(result.imported as i32),
+                )
+                .col_expr(
+                    github_repository::Column::LastUpdatedCount,
+                    Expr::value(result.updated as i32),
+                )
+                .col_expr(
+                    github_repository::Column::LastSkippedCount,
+                    Expr::value(result.skipped_pull_requests as i32),
+                );
         }
         Err(error) => {
-            active.last_import_status = Set(Some("error".to_owned()));
-            active.last_import_error = Set(Some(error.chars().take(500).collect()));
+            update = update
+                .col_expr(
+                    github_repository::Column::LastImportStatus,
+                    Expr::value("error"),
+                )
+                .col_expr(
+                    github_repository::Column::LastImportError,
+                    Expr::value(Some(error.chars().take(500).collect::<String>())),
+                );
         }
     }
-    active.update(&state.db).await?;
+
+    let update_result = update.exec(&state.db).await?;
+    if update_result.rows_affected == 0 {
+        tracing::warn!(
+            repository_id = %repo.id,
+            organization_id = %repo.organization_id,
+            owner = %repo.owner,
+            repo = %repo.repo,
+            lock_token = %claimed.lock_token,
+            status,
+            "github import completion did not match active lock"
+        );
+    } else {
+        tracing::info!(
+            repository_id = %repo.id,
+            organization_id = %repo.organization_id,
+            owner = %repo.owner,
+            repo = %repo.repo,
+            lock_token = %claimed.lock_token,
+            status,
+            "released github import lock"
+        );
+    }
     Ok(())
+}
+
+fn import_lock_available_filter(now: DateTime<FixedOffset>) -> SimpleExpr {
+    github_repository::Column::ImportLockToken
+        .is_null()
+        .or(github_repository::Column::ImportLockedUntil.is_null())
+        .or(github_repository::Column::ImportLockedUntil.lte(now))
+}
+
+#[cfg(test)]
+fn import_lock_is_claimable(
+    token: Option<&str>,
+    locked_until: Option<DateTime<FixedOffset>>,
+    now: DateTime<FixedOffset>,
+) -> bool {
+    token.is_none() || locked_until.map_or(true, |value| value <= now)
 }
 
 enum ImportOutcome {
@@ -1374,6 +1543,32 @@ fn github_reqwest_error(error: reqwest::Error) -> ApiError {
         };
     }
     ApiError::Internal(anyhow::anyhow!(error))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn import_lock_predicate_rejects_active_locks_and_allows_expired_locks() {
+        let now = now();
+        assert!(import_lock_is_claimable(None, None, now));
+        assert!(import_lock_is_claimable(
+            Some("token"),
+            Some(now - Duration::minutes(1)),
+            now
+        ));
+        assert!(!import_lock_is_claimable(
+            Some("token"),
+            Some(now + Duration::minutes(1)),
+            now
+        ));
+    }
+
+    #[test]
+    fn import_lock_ttl_is_long_enough_for_crash_recovery() {
+        assert_eq!(IMPORT_LOCK_TTL_MINUTES, 30);
+    }
 }
 
 fn github_client_id() -> Result<String, ApiError> {

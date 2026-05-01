@@ -975,3 +975,26 @@ Response style:
         user_id = auth.user.id,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn issue_tool_changes_get_deterministic_assistant_response() {
+        let change = IssueChangeSummary {
+            action: IssueChangeAction::Created,
+            id: "1234567890".to_owned(),
+            title: "Wire importer lock".to_owned(),
+            status: Some("backlog".to_owned()),
+            priority: Some("medium".to_owned()),
+        };
+
+        let response = format_issue_change_response(&[change]);
+
+        assert!(response.contains("Created issue"));
+        assert!(response.contains("ID: 12345678"));
+        assert!(response.contains("Wire importer lock"));
+        assert!(response.contains("backlog"));
+    }
+}

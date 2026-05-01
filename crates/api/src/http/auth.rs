@@ -40,7 +40,10 @@ pub fn routes() -> Router<AppState> {
             "/organizations/active",
             patch(update_active_organization).delete(delete_active_organization),
         )
-        .route("/organizations/active/leave", post(leave_active_organization))
+        .route(
+            "/organizations/active/leave",
+            post(leave_active_organization),
+        )
         .route("/switch-organization", post(switch_organization))
         .route("/account", delete(delete_account))
 }

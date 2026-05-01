@@ -1,4 +1,9 @@
-import { Link, createFileRoute } from "@tanstack/react-router";
+import {
+  Link,
+  Outlet,
+  createFileRoute,
+  useRouterState,
+} from "@tanstack/react-router";
 import { useMemo } from "react";
 import { StatusIcon } from "@/components/issue/status-icon";
 import { ProjectIcon } from "@/components/project/project-icon";
@@ -18,7 +23,7 @@ export const Route = createFileRoute("/_app/workspace")({
     void context.queryClient.prefetchQuery(issuesQueryOptions());
     void context.queryClient.prefetchQuery(projectsQueryOptions());
   },
-  component: WorkspaceOverview,
+  component: WorkspaceRoute,
 });
 
 const STATUS_RANK: Record<string, number> = {
@@ -34,6 +39,18 @@ const PRIORITY_RANK: Record<string, number> = {
   low: 3,
   none: 4,
 };
+
+function WorkspaceRoute() {
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
+
+  if (pathname !== "/workspace") {
+    return <Outlet />;
+  }
+
+  return <WorkspaceOverview />;
+}
 
 function WorkspaceOverview() {
   const session = useSession();

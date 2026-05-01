@@ -457,7 +457,10 @@ async fn list_chats(args: Value, state: &AppState, auth: &AuthContext) -> Result
         .order_by_desc(chat::Column::UpdatedAt)
         .limit(limit);
 
-    if let Some(query) = args.query.and_then(|v| non_empty_optional(v).ok().flatten()) {
+    if let Some(query) = args
+        .query
+        .and_then(|v| non_empty_optional(v).ok().flatten())
+    {
         let pattern = format!("%{}%", query.to_lowercase());
         select = select.filter(chat::Column::Title.like(&pattern));
     }

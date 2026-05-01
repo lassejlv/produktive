@@ -4,12 +4,9 @@ use crate::{
     http::preferences::for_user as prefs_for_user,
     state::AppState,
 };
-use serde::Serialize;
 use chrono::{DateTime, Datelike, Duration, FixedOffset, TimeZone, Utc};
 use hmac::{Hmac, Mac};
-use produktive_entity::{
-    member, notification_preference, organization, session, user,
-};
+use produktive_entity::{member, notification_preference, organization, session, user};
 use rand_core::{OsRng, RngCore};
 use sea_orm::{
     sea_query::{LockBehavior, LockType},
@@ -17,6 +14,7 @@ use sea_orm::{
     EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
     TransactionTrait,
 };
+use serde::Serialize;
 use sha2::Sha256;
 use std::time::Duration as StdDuration;
 
@@ -86,8 +84,7 @@ async fn process_user(
     let mut active = prefs.clone().into_active_model();
 
     if prefs.next_progress_email_at.is_none() {
-        let scheduled =
-            jitter_future(now, FIRST_SEND_DAYS_MIN, FIRST_SEND_DAYS_MAX);
+        let scheduled = jitter_future(now, FIRST_SEND_DAYS_MIN, FIRST_SEND_DAYS_MAX);
         active.next_progress_email_at = Set(Some(scheduled));
         active.updated_at = Set(now);
         active.update(&txn).await?;
@@ -95,9 +92,7 @@ async fn process_user(
         return Ok(());
     }
 
-    let user = user::Entity::find_by_id(&prefs.user_id)
-        .one(&txn)
-        .await?;
+    let user = user::Entity::find_by_id(&prefs.user_id).one(&txn).await?;
     let user = match user {
         Some(value) => value,
         None => {
@@ -109,8 +104,11 @@ async fn process_user(
     let org_id = match resolve_org(&txn, &user.id).await? {
         Some(id) => id,
         None => {
-            active.next_progress_email_at =
-                Set(Some(jitter_future(now, NEXT_SEND_DAYS_MIN, NEXT_SEND_DAYS_MAX)));
+            active.next_progress_email_at = Set(Some(jitter_future(
+                now,
+                NEXT_SEND_DAYS_MIN,
+                NEXT_SEND_DAYS_MAX,
+            )));
             active.updated_at = Set(now);
             active.update(&txn).await?;
             txn.commit().await?;
@@ -125,18 +123,21 @@ async fn process_user(
     let aggregated = aggregate_progress(&txn, &user.id, &org_id, since).await?;
 
     if aggregated.is_empty() {
-        active.next_progress_email_at =
-            Set(Some(jitter_future(now, NEXT_SEND_DAYS_MIN, NEXT_SEND_DAYS_MAX)));
+        active.next_progress_email_at = Set(Some(jitter_future(
+            now,
+            NEXT_SEND_DAYS_MIN,
+            NEXT_SEND_DAYS_MAX,
+        )));
         active.updated_at = Set(now);
         active.update(&txn).await?;
         txn.commit().await?;
         return Ok(());
     }
 
-    let org = organization::Entity::find_by_id(&org_id)
-        .one(&txn)
-        .await?;
-    let org_name = org.map(|o| o.name).unwrap_or_else(|| "your workspace".into());
+    let org = organization::Entity::find_by_id(&org_id).one(&txn).await?;
+    let org_name = org
+        .map(|o| o.name)
+        .unwrap_or_else(|| "your workspace".into());
 
     let settings_url = format!("{}/account", state.config.app_url);
     let unsubscribe_url = build_unsubscribe_url(state, &user.id);
@@ -167,8 +168,11 @@ async fn process_user(
     }
 
     active.last_progress_email_at = Set(Some(now));
-    active.next_progress_email_at =
-        Set(Some(jitter_future(now, NEXT_SEND_DAYS_MIN, NEXT_SEND_DAYS_MAX)));
+    active.next_progress_email_at = Set(Some(jitter_future(
+        now,
+        NEXT_SEND_DAYS_MIN,
+        NEXT_SEND_DAYS_MAX,
+    )));
     active.updated_at = Set(now);
     active.update(&txn).await?;
     txn.commit().await?;
@@ -372,8 +376,8 @@ fn build_unsubscribe_url(state: &AppState, user_id: &str) -> String {
 }
 
 pub fn sign_unsubscribe_token(secret: &str, user_id: &str) -> String {
-    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
-        .expect("HMAC accepts any key length");
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
     mac.update(b"progress:");
     mac.update(user_id.as_bytes());
     let bytes = mac.finalize().into_bytes();
@@ -396,6 +400,34 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsubscribe_tokens_are_user_scoped() {
+        let secret = "a-secret-that-is-long-enough";
+        let token = sign_unsubscribe_token(secret, "user_1");
+
+        assert!(verify_unsubscribe_token(secret, "user_1", &token));
+        assert!(!verify_unsubscribe_token(secret, "user_2", &token));
+    }
+
+    #[test]
+    fn empty_digest_is_detected_before_sending() {
+        let digest = Aggregated {
+            closed_count: 0,
+            closed_titles: Vec::new(),
+            plate_count: 0,
+            plate_titles: Vec::new(),
+            comments_posted: 0,
+            issues_touched: 0,
+        };
+
+        assert!(digest.is_empty());
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TriggerOutcome {
@@ -413,10 +445,7 @@ pub struct TriggerOutcome {
 /// opt-out checks. Used by the dev trigger endpoint. Always advances the
 /// `last_progress_email_at` and `next_progress_email_at` columns to keep the
 /// scheduler's view consistent with reality.
-pub async fn trigger_for_user(
-    state: &AppState,
-    user_id: &str,
-) -> Result<TriggerOutcome, ApiError> {
+pub async fn trigger_for_user(state: &AppState, user_id: &str) -> Result<TriggerOutcome, ApiError> {
     let prefs = prefs_for_user(state, user_id).await?;
 
     let user = user::Entity::find_by_id(user_id).one(&state.db).await?;
@@ -458,7 +487,9 @@ pub async fn trigger_for_user(
         .unwrap_or(now - Duration::days(DEFAULT_LOOKBACK_DAYS));
     let aggregated = aggregate_progress(&state.db, user_id, &org_id, since).await?;
 
-    let org = organization::Entity::find_by_id(&org_id).one(&state.db).await?;
+    let org = organization::Entity::find_by_id(&org_id)
+        .one(&state.db)
+        .await?;
     let org_name = org
         .map(|o| o.name)
         .unwrap_or_else(|| "your workspace".into());

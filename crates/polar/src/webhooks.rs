@@ -124,7 +124,8 @@ pub fn verify_at(
         return Err(WebhookError::TimestampOutOfTolerance);
     }
 
-    let mut signed = Vec::with_capacity(webhook_id.len() + webhook_timestamp.len() + body.len() + 2);
+    let mut signed =
+        Vec::with_capacity(webhook_id.len() + webhook_timestamp.len() + body.len() + 2);
     signed.extend_from_slice(webhook_id.as_bytes());
     signed.push(b'.');
     signed.extend_from_slice(webhook_timestamp.as_bytes());
@@ -147,8 +148,7 @@ pub fn verify_at(
             Err(_) => continue,
         };
         for key in &keys {
-            let mut mac =
-                HmacSha256::new_from_slice(key).map_err(|_| WebhookError::InvalidKey)?;
+            let mut mac = HmacSha256::new_from_slice(key).map_err(|_| WebhookError::InvalidKey)?;
             mac.update(&signed);
             if mac.verify_slice(&decoded).is_ok() {
                 matched = true;
@@ -237,7 +237,9 @@ impl<'de> Deserialize<'de> for WebhookEvent {
             "subscription.created" => Self::SubscriptionCreated(parse_subscription(envelope.data)?),
             "subscription.updated" => Self::SubscriptionUpdated(parse_subscription(envelope.data)?),
             "subscription.active" => Self::SubscriptionActive(parse_subscription(envelope.data)?),
-            "subscription.canceled" => Self::SubscriptionCanceled(parse_subscription(envelope.data)?),
+            "subscription.canceled" => {
+                Self::SubscriptionCanceled(parse_subscription(envelope.data)?)
+            }
             "subscription.uncanceled" => {
                 Self::SubscriptionUncanceled(parse_subscription(envelope.data)?)
             }

@@ -51,9 +51,26 @@ impl Config {
             return Err(anyhow!("JWT_SECRET must be at least 32 characters"));
         }
 
+        let port = env_or_default("PORT", "3000")
+            .parse()
+            .context("PORT must be a valid u16")?;
+        let cookie_secure = env_or_default("AUTH_COOKIE_SECURE", "false")
+            .parse()
+            .context("AUTH_COOKIE_SECURE must be true or false")?;
+        let app_url = env_or_default("APP_URL", "http://localhost:3000")
+            .trim_end_matches('/')
+            .to_owned();
+        let mcp_token_encryption_key = optional_env("MCP_TOKEN_ENCRYPTION_KEY");
+
+        if mcp_token_encryption_key.is_none() && is_production_like_url_or_env(&app_url) {
+            return Err(anyhow!(
+                "MCP_TOKEN_ENCRYPTION_KEY is required for production-like deployments"
+            ));
+        }
+
         Ok(Self {
             database_url: database.database_url,
-            port: env_or_default("PORT", "3000").parse().context("PORT must be a valid u16")?,
+            port,
             jwt_secret,
             cors_origins: env_or_default(
                 "CORS_ORIGINS",
@@ -69,16 +86,12 @@ impl Config {
                 .ok()
                 .map(|value| value.trim().to_owned())
                 .filter(|value| !value.is_empty()),
-            cookie_secure: env_or_default("AUTH_COOKIE_SECURE", "false")
-                .parse()
-                .context("AUTH_COOKIE_SECURE must be true or false")?,
+            cookie_secure,
             session_days: env_or_default("AUTH_SESSION_DAYS", "30")
                 .parse()
                 .context("AUTH_SESSION_DAYS must be a number")?,
             web_dist_dir: env_or_default("WEB_DIST_DIR", "web/dist"),
-            app_url: env_or_default("APP_URL", "http://localhost:3000")
-                .trim_end_matches('/')
-                .to_owned(),
+            app_url,
             resend_api_key: required_env("RESEND_API_KEY").context("RESEND_API_KEY is required")?,
             resend_from_email: env_or_default("RESEND_FROM_EMAIL", "Produktive <be@produktive.app>"),
             ai_api_key: required_env("AI_API_KEY").context("AI_API_KEY is required")?,
@@ -91,7 +104,7 @@ impl Config {
                 .context("POLAR_PRO_PRODUCT_ID is required")?,
             polar_webhook_secret: required_env("POLAR_WEBHOOK_SECRET")
                 .context("POLAR_WEBHOOK_SECRET is required")?,
-            mcp_token_encryption_key: optional_env("MCP_TOKEN_ENCRYPTION_KEY"),
+            mcp_token_encryption_key,
             enable_dev_triggers: env_or_default("ENABLE_DEV_TRIGGERS", "false")
                 .parse()
                 .context("ENABLE_DEV_TRIGGERS must be true or false")?,
@@ -103,6 +116,16 @@ impl Config {
         self.mcp_token_encryption_key
             .clone()
             .unwrap_or_else(|| self.jwt_secret.clone())
+    }
+
+    pub fn warn_if_insecure_cookie_settings(&self) {
+        if self.app_url.starts_with("https://") && !self.cookie_secure {
+            tracing::warn!(
+                app_url = %self.app_url,
+                cookie_secure = self.cookie_secure,
+                "AUTH_COOKIE_SECURE=false while APP_URL uses HTTPS"
+            );
+        }
     }
 }
 
@@ -165,4 +188,39 @@ fn optional_env(key: &str) -> Option<String> {
 
 fn env_or_default(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_owned())
+}
+
+fn is_production_like_url_or_env(app_url: &str) -> bool {
+    let env_is_prod = [
+        "APP_ENV",
+        "NODE_ENV",
+        "RAILWAY_ENVIRONMENT",
+        "RAILWAY_ENVIRONMENT_NAME",
+    ]
+    .iter()
+    .filter_map(|key| std::env::var(key).ok())
+    .any(|value| matches!(value.as_str(), "prod" | "production"));
+    env_is_prod || is_production_like_url(app_url)
+}
+
+fn is_production_like_url(app_url: &str) -> bool {
+    app_url.starts_with("https://") && !is_local_app_url(app_url)
+}
+
+fn is_local_app_url(app_url: &str) -> bool {
+    app_url.contains("://localhost")
+        || app_url.contains("://127.0.0.1")
+        || app_url.contains("://[::1]")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn production_like_detection_requires_real_https_or_prod_env() {
+        assert!(!is_production_like_url("http://localhost:3000"));
+        assert!(!is_production_like_url("https://localhost:3000"));
+        assert!(is_production_like_url("https://produktive.app"));
+    }
 }

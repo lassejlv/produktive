@@ -1,20 +1,20 @@
 use crate::{
-    auth::{AuthContext, require_auth},
+    auth::{require_auth, AuthContext},
     error::ApiError,
     mcp::{
-        OAuthDiscovery, ProbeOutcome, allow_local_mcp, cached_tools, default_name, encrypt_secret,
-        namespaced_tool_name, now, oauth_state_ttl, probe_server, slugify, validate_remote_url,
+        allow_local_mcp, cached_tools, default_name, encrypt_secret, namespaced_tool_name, now,
+        oauth_state_ttl, probe_server, slugify, validate_remote_url, OAuthDiscovery, ProbeOutcome,
     },
     state::AppState,
 };
 use axum::{
-    Json, Router,
     extract::{Path, Query, State},
     http::HeaderMap,
     response::{IntoResponse, Redirect},
     routing::{get, post},
+    Json, Router,
 };
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use produktive_entity::{mcp_oauth_client, mcp_oauth_state, mcp_oauth_token, mcp_server, member};
 use reqwest::Url;
@@ -23,7 +23,7 @@ use sea_orm::{
     QueryOrder, Set,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 

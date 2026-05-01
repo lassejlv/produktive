@@ -1,10 +1,5 @@
 use crate::{ai_models::AI_MODELS, auth::require_auth, error::ApiError, state::AppState};
-use axum::{
-    extract::State,
-    http::HeaderMap,
-    routing::get,
-    Json, Router,
-};
+use axum::{extract::State, http::HeaderMap, routing::get, Json, Router};
 use serde::Serialize;
 
 pub fn routes() -> Router<AppState> {
@@ -44,8 +39,5 @@ async fn list_models(
         })
         .collect();
 
-    Ok(Json(ModelsResponse {
-        models,
-        default_id,
-    }))
+    Ok(Json(ModelsResponse { models, default_id }))
 }

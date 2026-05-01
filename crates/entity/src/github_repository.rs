@@ -18,6 +18,8 @@ pub struct Model {
     pub last_imported_count: i32,
     pub last_updated_count: i32,
     pub last_skipped_count: i32,
+    pub import_lock_token: Option<String>,
+    pub import_locked_until: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }
