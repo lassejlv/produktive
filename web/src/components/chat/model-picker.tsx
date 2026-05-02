@@ -83,7 +83,7 @@ export function ModelPicker({
         disabled={disabled || models.length === 0}
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          "inline-flex h-7 max-w-[180px] items-center gap-1.5 rounded-md px-2 text-[12px] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+          "inline-flex h-6 max-w-[160px] items-center gap-1 rounded-[5px] px-1.5 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
           open
             ? "bg-surface-2 text-fg"
             : "text-fg-muted hover:bg-surface hover:text-fg",

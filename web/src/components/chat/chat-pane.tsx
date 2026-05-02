@@ -16,7 +16,6 @@ import {
   readAskUserQuestion,
 } from "@/components/chat/chat-message";
 import { ChatSkeleton } from "@/components/chat/chat-skeleton";
-import { ModelPicker } from "@/components/chat/model-picker";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   type ChatMessageRecord,
@@ -369,24 +368,15 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   return (
     <div className="flex h-screen min-w-0 flex-1 overflow-hidden bg-bg md:h-full">
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="sticky top-0 z-10 border-b border-border-subtle bg-bg/85 backdrop-blur">
-          <div className="mx-auto flex h-11 w-full max-w-[760px] items-center gap-3 px-6">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-faint">
-                Chat
-              </span>
-              {isLoadingChat ? (
-                <Skeleton className="h-3.5 w-40" />
-              ) : (
-                <span className="truncate text-[14px] text-fg">{chatTitle}</span>
-              )}
-            </div>
-            <ModelPicker
-              value={selectedModel}
-              models={availableModels}
-              onChange={handleModelChange}
-              disabled={busy}
-            />
+        <header className="relative z-10 flex min-h-[58px] items-center gap-3 border-b border-border-subtle bg-bg/86 px-6 py-3 backdrop-blur">
+          <div className="flex min-w-0 flex-1 items-center gap-3 text-[13px] text-fg-muted">
+            <span className="text-fg-muted">Chat</span>
+            <span className="text-fg-muted">/</span>
+            {isLoadingChat ? (
+              <Skeleton className="h-3.5 w-40" />
+            ) : (
+              <span className="truncate font-medium text-fg">{chatTitle}</span>
+            )}
           </div>
         </header>
 
