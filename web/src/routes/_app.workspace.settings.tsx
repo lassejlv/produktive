@@ -14,13 +14,18 @@ import {
   type Invitation,
   type GithubImportPreview,
   type GithubRepository,
+  type IssueStatus,
+  type IssueStatusCategory,
   type McpApiKey,
   type Member,
   type PermissionInfo,
   type Role,
+  createIssueStatus,
+  deleteIssueStatus,
   listInvitations,
   listMembers,
   listRoles,
+  updateIssueStatus,
 } from "@/lib/api";
 import { useGithubConnectionQuery, useGithubRepositoriesQuery } from "@/lib/queries/github";
 import { useMcpKeysQuery } from "@/lib/queries/mcp";
@@ -41,6 +46,7 @@ import {
   useSession,
 } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
+import { useIssueStatuses } from "@/lib/use-issue-statuses";
 
 export const Route = createFileRoute("/_app/workspace/settings")({
   component: WorkspaceSettingsPage,
@@ -49,6 +55,7 @@ export const Route = createFileRoute("/_app/workspace/settings")({
 type SettingsSectionId =
   | "general"
   | "members"
+  | "statuses"
   | "github"
   | "discord"
   | "mcp"
@@ -74,6 +81,12 @@ const settingsSections: SettingsSection[] = [
     id: "members",
     label: "Members",
     description: "Invite and manage teammates",
+    group: "main",
+  },
+  {
+    id: "statuses",
+    label: "Statuses",
+    description: "Customize issue workflow columns",
     group: "main",
   },
   {
@@ -273,6 +286,9 @@ function WorkspaceSettingsPage() {
               currentPermissions={currentPermissions}
             />
           ) : null}
+          {activeSection === "statuses" ? (
+            <StatusSettings canEdit={hasPermission("issue_statuses.manage")} />
+          ) : null}
           {activeSection === "github" ? (
             <GithubSettings canEdit={hasPermission("integrations.github.manage")} />
           ) : null}
@@ -295,6 +311,236 @@ function WorkspaceSettingsPage() {
 
 const DISCORD_INSTALL_URL =
   "https://discord.com/oauth2/authorize?client_id=1500101363303059456&permissions=277025459200&integration_type=0&scope=bot";
+
+const statusCategories: { value: IssueStatusCategory; label: string }[] = [
+  { value: "backlog", label: "Backlog" },
+  { value: "active", label: "Active" },
+  { value: "done", label: "Done" },
+  { value: "canceled", label: "Canceled" },
+];
+
+const statusColors = ["gray", "blue", "purple", "green", "red", "yellow", "pink"];
+
+function StatusSettings({ canEdit }: { canEdit: boolean }) {
+  const { statuses, setStatuses, refresh } = useIssueStatuses();
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState<IssueStatusCategory>("active");
+  const [color, setColor] = useState("gray");
+  const [saving, setSaving] = useState(false);
+  const [replacementByStatus, setReplacementByStatus] = useState<Record<string, string>>({});
+
+  const sorted = useMemo(
+    () => [...statuses].sort((a, b) => a.sortOrder - b.sortOrder),
+    [statuses],
+  );
+
+  const createStatus = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canEdit || saving || !name.trim()) return;
+    setSaving(true);
+    try {
+      const response = await createIssueStatus({ name, category, color });
+      setStatuses([...statuses, response.status].sort((a, b) => a.sortOrder - b.sortOrder));
+      setName("");
+      setCategory("active");
+      setColor("gray");
+      toast.success("Status created");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create status");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateLocal = (status: IssueStatus, patch: Partial<IssueStatus>) => {
+    setStatuses(statuses.map((item) => (item.id === status.id ? { ...item, ...patch } : item)));
+  };
+
+  const saveStatus = async (status: IssueStatus, patch: Partial<IssueStatus>) => {
+    if (!canEdit || status.isSystem) return;
+    const next = { ...status, ...patch };
+    updateLocal(status, patch);
+    try {
+      const response = await updateIssueStatus(status.id, {
+        name: next.name,
+        color: next.color,
+        category: next.category,
+      });
+      updateLocal(status, response.status);
+      toast.success("Status updated");
+    } catch (error) {
+      updateLocal(status, status);
+      toast.error(error instanceof Error ? error.message : "Failed to update status");
+    }
+  };
+
+  const archiveStatus = async (status: IssueStatus) => {
+    if (!canEdit || status.isSystem) return;
+    const replacement = replacementByStatus[status.id] ?? replacementFor(status)?.key;
+    try {
+      await deleteIssueStatus(status.id, replacement);
+      setStatuses(statuses.filter((item) => item.id !== status.id));
+      toast.success("Status archived");
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to archive status");
+    }
+  };
+
+  function replacementFor(status: IssueStatus) {
+    return (
+      sorted.find((item) => item.id !== status.id && item.category === status.category) ??
+      sorted.find((item) => item.id !== status.id)
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-8">
+      <section>
+        <h3 className="m-0 text-[13px] font-medium text-fg">Issue workflow</h3>
+        <div className="mt-3 overflow-hidden rounded-md border border-border-subtle">
+          {sorted.map((status, index) => (
+            <div
+              key={status.id}
+              className={cn(
+                "grid gap-2 px-3 py-2.5 text-[13px] md:grid-cols-[minmax(0,1fr)_120px_110px_140px_auto]",
+                index !== sorted.length - 1 && "border-b border-border-subtle",
+              )}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <StatusColor color={status.color} />
+                {status.isSystem || !canEdit ? (
+                  <span className="truncate text-fg">{status.name}</span>
+                ) : (
+                  <Input
+                    value={status.name}
+                    onChange={(event) => updateLocal(status, { name: event.target.value })}
+                    onBlur={() => void saveStatus(status, { name: status.name })}
+                    className="h-8"
+                  />
+                )}
+              </div>
+              <select
+                value={status.category}
+                disabled={status.isSystem || !canEdit}
+                onChange={(event) =>
+                  void saveStatus(status, {
+                    category: event.target.value as IssueStatusCategory,
+                  })
+                }
+                className="h-8 rounded-md border border-border-subtle bg-bg px-2 text-[12px] text-fg disabled:opacity-60"
+              >
+                {statusCategories.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={status.color}
+                disabled={status.isSystem || !canEdit}
+                onChange={(event) => void saveStatus(status, { color: event.target.value })}
+                className="h-8 rounded-md border border-border-subtle bg-bg px-2 text-[12px] text-fg disabled:opacity-60"
+              >
+                {statusColors.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+              {!status.isSystem && canEdit ? (
+                <select
+                  aria-label="Replacement status"
+                  value={replacementByStatus[status.id] ?? replacementFor(status)?.key ?? ""}
+                  onChange={(event) =>
+                    setReplacementByStatus((current) => ({
+                      ...current,
+                      [status.id]: event.target.value,
+                    }))
+                  }
+                  className="h-8 rounded-md border border-border-subtle bg-bg px-2 text-[12px] text-fg"
+                >
+                  {sorted
+                    .filter((item) => item.id !== status.id)
+                    .map((item) => (
+                      <option key={item.key} value={item.key}>
+                        Move to {item.name}
+                      </option>
+                    ))}
+                </select>
+              ) : (
+                <span className="hidden md:block" />
+              )}
+              {!status.isSystem && canEdit ? (
+                <button
+                  type="button"
+                  onClick={() => void archiveStatus(status)}
+                  className="rounded-md px-2 py-1 text-[11px] text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger"
+                >
+                  Archive
+                </button>
+              ) : (
+                <span className="text-[11px] text-fg-faint">{status.isSystem ? "System" : ""}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {canEdit ? (
+        <section>
+          <h3 className="m-0 text-[13px] font-medium text-fg">Create status</h3>
+          <form onSubmit={createStatus} className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_120px_110px_auto]">
+            <Input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Ready for review"
+              disabled={saving}
+            />
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.target.value as IssueStatusCategory)}
+              className="h-9 rounded-md border border-border-subtle bg-bg px-2 text-[12px] text-fg"
+            >
+              {statusCategories.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={color}
+              onChange={(event) => setColor(event.target.value)}
+              className="h-9 rounded-md border border-border-subtle bg-bg px-2 text-[12px] text-fg"
+            >
+              {statusColors.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+            <Button type="submit" size="sm" disabled={saving || !name.trim()}>
+              {saving ? "Creating..." : "Create"}
+            </Button>
+          </form>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function StatusColor({ color }: { color: string }) {
+  const colors: Record<string, string> = {
+    gray: "bg-fg-faint",
+    blue: "bg-accent",
+    purple: "bg-purple-400",
+    green: "bg-success",
+    red: "bg-danger",
+    yellow: "bg-warning",
+    pink: "bg-pink-400",
+  };
+  return <span className={cn("size-2 rounded-full", colors[color] ?? colors.gray)} aria-hidden />;
+}
 
 function DiscordSettings() {
   return (

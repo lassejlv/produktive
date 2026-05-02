@@ -2,11 +2,11 @@ use crate::{
     auth::require_auth,
     error::ApiError,
     http::inbox::dispatch_notification,
+    http::issue_statuses::validate_issue_status,
     issue_helpers::{
         non_empty_optional, normalize_assignee, optional_string, required_string, validate_assignee,
     },
     issue_history::{record_issue_event, string_change, IssueChange},
-    http::issue_statuses::validate_issue_status,
     permissions::{require_permission, ISSUES_CREATE, ISSUES_DELETE, ISSUES_UPDATE},
     state::AppState,
     storage,

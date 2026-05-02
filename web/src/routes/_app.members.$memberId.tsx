@@ -9,7 +9,8 @@ import {
   type MemberIssue,
   type MemberProfile,
 } from "@/lib/api";
-import { formatDate, statusLabel } from "@/lib/issue-constants";
+import { formatDate, statusName } from "@/lib/issue-constants";
+import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/members/$memberId")({
@@ -22,6 +23,7 @@ function MemberProfilePage() {
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { statuses } = useIssueStatuses();
 
   useEffect(() => {
     let cancelled = false;
@@ -163,6 +165,7 @@ function MemberProfilePage() {
             <IssuePanel
               title="Assigned"
               issues={member.assignedIssues}
+              statuses={statuses}
               onOpen={(issueId) =>
                 void navigate({
                   to: "/issues/$issueId",
@@ -173,6 +176,7 @@ function MemberProfilePage() {
             <IssuePanel
               title="Created"
               issues={member.createdIssues}
+              statuses={statuses}
               onOpen={(issueId) =>
                 void navigate({
                   to: "/issues/$issueId",
@@ -223,10 +227,12 @@ function MemberAvatar({
 function IssuePanel({
   title,
   issues,
+  statuses,
   onOpen,
 }: {
   title: string;
   issues: MemberIssue[];
+  statuses: ReturnType<typeof useIssueStatuses>["statuses"];
   onOpen: (issueId: string) => void;
 }) {
   return (
@@ -245,12 +251,12 @@ function IssuePanel({
             className="flex w-full items-center gap-2 border-b border-border-subtle px-4 py-2.5 text-left last:border-b-0 transition-colors hover:bg-surface"
           >
             <PriorityIcon priority={issue.priority} />
-            <StatusIcon status={issue.status} />
+            <StatusIcon status={issue.status} statuses={statuses} />
             <span className="min-w-0 flex-1 truncate text-sm text-fg">
               {issue.title}
             </span>
             <span className="hidden text-[11px] text-fg-muted sm:block">
-              {statusLabel[issue.status] ?? issue.status}
+              {statusName(statuses, issue.status)}
             </span>
           </button>
         ))

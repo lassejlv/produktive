@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import type { Issue } from "@/lib/api";
+import type { Issue, IssueStatus } from "@/lib/api";
 import {
   priorityOptions,
   statusLabel,
-  statusOrder,
+  sortedStatuses,
 } from "@/lib/issue-constants";
 
 export type GroupBy = "status" | "priority" | "assignee" | "project" | "none";
@@ -133,6 +133,7 @@ export type IssueGroup = {
 export function groupIssues(
   issues: Issue[],
   groupBy: GroupBy,
+  statuses?: IssueStatus[],
 ): IssueGroup[] {
   if (groupBy === "none") {
     return [{ key: "all", label: "All issues", status: null, items: issues }];
@@ -143,14 +144,29 @@ export function groupIssues(
     for (const issue of issues) {
       (buckets[issue.status] ??= []).push(issue);
     }
-    return statusOrder
-      .filter((s) => buckets[s]?.length)
+    const ordered = statuses?.length
+      ? sortedStatuses(statuses).map((status) => ({
+          key: status.key,
+          label: status.name,
+        }))
+      : Object.keys(statusLabel).map((key) => ({ key, label: statusLabel[key] }));
+    const known = ordered
+      .filter((s) => buckets[s.key]?.length)
       .map((status) => ({
-        key: status,
-        label: statusLabel[status] ?? status,
-        status,
-        items: buckets[status],
+        key: status.key,
+        label: status.label,
+        status: status.key,
+        items: buckets[status.key],
       }));
+    const unknown = Object.keys(buckets)
+      .filter((key) => !ordered.some((status) => status.key === key))
+      .map((key) => ({
+        key,
+        label: statusLabel[key] ?? key,
+        status: key,
+        items: buckets[key],
+      }));
+    return [...known, ...unknown];
   }
 
   if (groupBy === "priority") {

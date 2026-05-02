@@ -1,19 +1,18 @@
-import {
-  priorityOptions,
-  statusLabel,
-  statusOptions,
-} from "@/lib/issue-constants";
+import type { IssueStatus } from "@/lib/api";
+import { priorityOptions, sortedStatuses } from "@/lib/issue-constants";
 import { priorityLabels } from "@/lib/issue-display";
 import { cn } from "@/lib/utils";
 
 export function BulkActionBar({
   count,
+  statuses,
   onSetStatus,
   onSetPriority,
   onDelete,
   onClear,
 }: {
   count: number;
+  statuses: IssueStatus[];
   onSetStatus: (status: string) => void;
   onSetPriority: (priority: string) => void;
   onDelete: () => void;
@@ -34,9 +33,9 @@ export function BulkActionBar({
         <BulkSelect
           label="Status"
           ariaLabel="Set status"
-          options={statusOptions.map((value) => ({
-            value,
-            label: statusLabel[value] ?? value,
+          options={sortedStatuses(statuses).map((status) => ({
+            value: status.key,
+            label: status.name,
           }))}
           onChange={onSetStatus}
         />

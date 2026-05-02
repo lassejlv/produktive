@@ -6,17 +6,18 @@ import { LabelChip } from "@/components/label/label-chip";
 import { LabelPicker } from "@/components/label/label-picker";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { ProjectPicker } from "@/components/project/project-picker";
-import { type LabelSummary, type ProjectSummary } from "@/lib/api";
+import { type IssueStatus, type LabelSummary, type ProjectSummary } from "@/lib/api";
 import {
   priorityOptions,
-  statusLabel,
-  statusOptions,
+  sortedStatuses,
+  statusName,
 } from "@/lib/issue-constants";
 
 type Assignee = { id: string; name: string; image: string | null };
 
 export function IssueProperties({
   status,
+  statuses,
   priority,
   assignee,
   project,
@@ -28,6 +29,7 @@ export function IssueProperties({
   onChangeLabels,
 }: {
   status: string;
+  statuses: IssueStatus[];
   priority: string;
   assignee: Assignee | null;
   project: ProjectSummary | null;
@@ -43,10 +45,10 @@ export function IssueProperties({
       <PropertyRow label="Status">
         <NativeSelectTrigger
           ariaLabel="Status"
-          icon={<StatusIcon status={status} />}
-          label={statusLabel[status] ?? status}
+          icon={<StatusIcon status={status} statuses={statuses} />}
+          label={statusName(statuses, status)}
           value={status}
-          options={statusOptions}
+          options={sortedStatuses(statuses).map((status) => status.key)}
           onChange={onChangeStatus}
         />
       </PropertyRow>

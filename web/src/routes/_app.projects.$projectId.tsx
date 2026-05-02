@@ -10,7 +10,7 @@ import { MemberPicker } from "@/components/issue/member-picker";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { ProjectStatusIcon } from "@/components/project/project-status-icon";
 import type { UpdateProjectInput } from "@/lib/api";
-import { statusLabel } from "@/lib/issue-constants";
+import { sortedStatuses, statusName } from "@/lib/issue-constants";
 import { defaultDisplayOptions } from "@/lib/issue-display";
 import {
   projectColorHex,
@@ -19,6 +19,7 @@ import {
 } from "@/lib/project-constants";
 import { useProjectDetailQuery } from "@/lib/queries/projects";
 import { useIssues } from "@/lib/use-issues";
+import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { useRegisterTab } from "@/lib/use-tabs";
 import { useUserPreferences } from "@/lib/use-user-preferences";
 import { useCreateIssue, useUpdateIssue } from "@/lib/mutations/issues";
@@ -39,6 +40,7 @@ function ProjectDetailPage() {
   const project = projectQuery.data ?? null;
   const [menuOpen, setMenuOpen] = useState(false);
   const { issues } = useIssues();
+  const { statuses } = useIssueStatuses();
   const updateProjectMutation = useUpdateProject();
   const deleteProjectMutation = useDeleteProject();
   const createIssueMutation = useCreateIssue();
@@ -49,6 +51,17 @@ function ProjectDetailPage() {
     () => issues.filter((issue) => issue.projectId === projectId),
     [issues, projectId],
   );
+  const statusBreakdown = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const issue of projectIssues) {
+      counts.set(issue.status, (counts.get(issue.status) ?? 0) + 1);
+    }
+    return sortedStatuses(statuses).map((status) => ({
+      key: status.key,
+      name: status.name,
+      count: counts.get(status.key) ?? 0,
+    }));
+  }, [projectIssues, statuses]);
 
   const { tabsEnabled } = useUserPreferences();
   useRegisterTab({
@@ -122,7 +135,7 @@ function ProjectDetailPage() {
         id: movingId,
         patch: { status: nextStatus },
       });
-      toast.success(`Moved to ${statusLabel[nextStatus] ?? nextStatus}`);
+      toast.success(`Moved to ${statusName(statuses, nextStatus)}`);
       void projectQuery.refetch();
     } catch (error) {
       toast.error(
@@ -295,13 +308,9 @@ function ProjectDetailPage() {
             />
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-fg-muted">
-            <BreakdownPill label="Backlog" count={project.statusBreakdown.backlog} />
-            <BreakdownPill label="Todo" count={project.statusBreakdown.todo} />
-            <BreakdownPill
-              label="In progress"
-              count={project.statusBreakdown.inProgress}
-            />
-            <BreakdownPill label="Done" count={project.statusBreakdown.done} />
+            {statusBreakdown.map((item) => (
+              <BreakdownPill key={item.key} label={item.name} count={item.count} />
+            ))}
           </div>
         </section>
 
@@ -316,6 +325,7 @@ function ProjectDetailPage() {
           ) : null}
           <IssueList
             issues={projectIssues}
+            statuses={statuses}
             selectedId={null}
             onSelect={(id) =>
               void navigate({

@@ -8,6 +8,7 @@ import { useMemo } from "react";
 import { StatusIcon } from "@/components/issue/status-icon";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { useSession } from "@/lib/auth-client";
+import { sortedStatuses, statusCategory } from "@/lib/issue-constants";
 import {
   issuesQueryOptions,
   useIssuesQuery,
@@ -16,6 +17,7 @@ import {
   projectsQueryOptions,
   useProjectsQuery,
 } from "@/lib/queries/projects";
+import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/workspace")({
@@ -25,12 +27,6 @@ export const Route = createFileRoute("/_app/workspace")({
   },
   component: WorkspaceRoute,
 });
-
-const STATUS_RANK: Record<string, number> = {
-  "in-progress": 0,
-  todo: 1,
-  backlog: 2,
-};
 
 const PRIORITY_RANK: Record<string, number> = {
   urgent: 0,
@@ -56,6 +52,7 @@ function WorkspaceOverview() {
   const session = useSession();
   const issuesQuery = useIssuesQuery();
   const projectsQuery = useProjectsQuery();
+  const { statuses } = useIssueStatuses();
 
   const issues = issuesQuery.data ?? [];
   const projects = projectsQuery.data ?? [];
@@ -70,27 +67,31 @@ function WorkspaceOverview() {
       if (issue.status === "in-progress") {
         active++;
         inProgress++;
-      } else if (issue.status === "todo" || issue.status === "backlog") {
+      } else if (statusCategory(statuses, issue.status) === "active") {
         active++;
-      } else if (issue.status === "done") {
+      } else if (statusCategory(statuses, issue.status) === "backlog") {
+        active++;
+      } else if (statusCategory(statuses, issue.status) === "done") {
         done++;
       }
     }
     return { active, inProgress, done };
-  }, [issues]);
+  }, [issues, statuses]);
 
   const focusIssues = useMemo(() => {
     if (!userId) return [];
+    const statusRank = new Map(
+      sortedStatuses(statuses).map((status, index) => [status.key, index]),
+    );
     return issues
       .filter(
         (issue) =>
           issue.assignedTo?.id === userId &&
-          issue.status !== "done" &&
-          issue.status !== "cancelled",
+          !["done", "canceled"].includes(statusCategory(statuses, issue.status)),
       )
       .sort((a, b) => {
-        const sa = STATUS_RANK[a.status] ?? 9;
-        const sb = STATUS_RANK[b.status] ?? 9;
+        const sa = statusRank.get(a.status) ?? 999;
+        const sb = statusRank.get(b.status) ?? 999;
         if (sa !== sb) return sa - sb;
         const pa = PRIORITY_RANK[a.priority] ?? 9;
         const pb = PRIORITY_RANK[b.priority] ?? 9;
@@ -100,7 +101,7 @@ function WorkspaceOverview() {
         );
       })
       .slice(0, 5);
-  }, [issues, userId]);
+  }, [issues, statuses, userId]);
 
   const activeProjects = useMemo(
     () =>
@@ -173,7 +174,7 @@ function WorkspaceOverview() {
                         params={{ issueId: issue.id }}
                         className="group flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-surface/40"
                       >
-                        <StatusIcon status={issue.status} />
+                        <StatusIcon status={issue.status} statuses={statuses} />
                         <span className="min-w-0 flex-1 truncate text-[13.5px] text-fg">
                           {issue.title}
                         </span>

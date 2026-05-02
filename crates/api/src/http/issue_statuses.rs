@@ -106,19 +106,6 @@ pub async fn validate_issue_status(
     Ok(key.to_owned())
 }
 
-pub async fn status_category(
-    state: &AppState,
-    organization_id: &str,
-    key: &str,
-) -> Result<String, ApiError> {
-    Ok(list_issue_statuses(state, organization_id, false)
-        .await?
-        .into_iter()
-        .find(|status| status.key == key)
-        .map(|status| status.category)
-        .unwrap_or_else(|| CATEGORY_ACTIVE.to_owned()))
-}
-
 async fn list_statuses(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -389,8 +376,16 @@ fn validate_category(input: &str) -> Result<String, ApiError> {
 }
 
 fn clean_color(input: Option<String>) -> String {
-    match input.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
-        Some(value) if value.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-') => {
+    match input
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(value)
+            if value
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '-') =>
+        {
             value.chars().take(24).collect()
         }
         _ => "gray".to_owned(),

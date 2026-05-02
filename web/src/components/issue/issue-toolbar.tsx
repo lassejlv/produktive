@@ -8,9 +8,10 @@ import { labelColorHex } from "@/lib/label-constants";
 import { useLabels } from "@/lib/use-labels";
 import {
   priorityOptions,
-  statusLabel,
-  statusOptions,
+  sortedStatuses,
+  statusName,
 } from "@/lib/issue-constants";
+import type { IssueStatus } from "@/lib/api";
 import {
   type Density,
   type DisplayOptions,
@@ -84,12 +85,14 @@ export function IssueToolbar({
   onDisplayChange,
   onPropertiesChange,
   filters,
+  statuses,
   onFiltersChange,
 }: {
   displayOptions: DisplayOptions;
   onDisplayChange: (patch: Partial<DisplayOptions>) => void;
   onPropertiesChange: (patch: Partial<ShownProperties>) => void;
   filters: IssueFilters;
+  statuses: IssueStatus[];
   onFiltersChange: (next: IssueFilters) => void;
 }) {
   const count = filterCount(filters);
@@ -114,7 +117,7 @@ export function IssueToolbar({
           </button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-64 p-0">
-          <FilterPopoverBody filters={filters} onChange={onFiltersChange} />
+          <FilterPopoverBody filters={filters} statuses={statuses} onChange={onFiltersChange} />
         </PopoverContent>
       </Popover>
       <ViewModeToggle
@@ -145,9 +148,11 @@ export function IssueToolbar({
 
 function FilterPopoverBody({
   filters,
+  statuses,
   onChange,
 }: {
   filters: IssueFilters;
+  statuses: IssueStatus[];
   onChange: (next: IssueFilters) => void;
 }) {
   const toggleStatus = (value: string) => {
@@ -188,12 +193,13 @@ function FilterPopoverBody({
     <div className="text-[12.5px]">
       <Section label="Status">
         <div className="flex flex-wrap gap-1">
-          {statusOptions.map((value) => {
+          {sortedStatuses(statuses).map((status) => {
+            const value = status.key;
             const active = filters.statuses.includes(value);
             return (
               <FilterChip
                 key={value}
-                label={statusLabel[value] ?? value}
+                label={status.name}
                 active={active}
                 onClick={() => toggleStatus(value)}
               />
@@ -328,9 +334,11 @@ function FilterChip({
 
 export function IssueFilterChips({
   filters,
+  statuses = [],
   onChange,
 }: {
   filters: IssueFilters;
+  statuses?: IssueStatus[];
   onChange: (next: IssueFilters) => void;
 }) {
   if (filterCount(filters) === 0) return null;
@@ -339,7 +347,7 @@ export function IssueFilterChips({
       {filters.statuses.map((value) => (
         <Chip
           key={`status:${value}`}
-          label={statusLabel[value] ?? value}
+          label={statusName(statuses, value)}
           group="status"
           onRemove={() =>
             onChange({

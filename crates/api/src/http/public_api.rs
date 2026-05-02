@@ -1,12 +1,12 @@
 use crate::{
     auth::require_api_key,
     error::ApiError,
-    issue_helpers::{non_empty_optional, normalize_assignee, required_string, validate_assignee},
-    issue_history::{record_issue_event, string_change, IssueChange},
     http::issue_statuses::{
         self, validate_issue_status, CATEGORY_ACTIVE, CATEGORY_BACKLOG, CATEGORY_CANCELED,
         CATEGORY_DONE,
     },
+    issue_helpers::{non_empty_optional, normalize_assignee, required_string, validate_assignee},
+    issue_history::{record_issue_event, string_change, IssueChange},
     state::AppState,
 };
 use axum::{
@@ -446,7 +446,7 @@ async fn update_issue(
     if let Some(status) = payload.status {
         let next = validate_issue_status(
             &state,
-            &auth.organization.id,
+            &organization_id,
             &required_string(status, "Status")?,
         )
         .await?;

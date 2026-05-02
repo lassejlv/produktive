@@ -13,7 +13,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { type Issue } from "@/lib/api";
+import { type Issue, type IssueStatus } from "@/lib/api";
 import { formatDate } from "@/lib/issue-constants";
 import {
   type DisplayOptions,
@@ -28,6 +28,7 @@ const DRAG_MIME = ISSUE_DRAG_MIME;
 
 export type IssueListProps = {
   issues: Issue[];
+  statuses: IssueStatus[];
   selectedId: string | null;
   focusedId?: string | null;
   selectedIds?: Set<string>;
@@ -54,6 +55,7 @@ function readCollapsedGroups(): Record<string, boolean> {
 
 export function IssueList({
   issues,
+  statuses,
   selectedId,
   focusedId,
   selectedIds,
@@ -121,7 +123,7 @@ export function IssueList({
     }
   };
 
-  const groups = groupIssues(issues, displayOptions.groupBy).map((group) => ({
+  const groups = groupIssues(issues, displayOptions.groupBy, statuses).map((group) => ({
     ...group,
     items: sortIssues(group.items, displayOptions.sortBy),
   }));
@@ -217,7 +219,7 @@ export function IssueList({
               >
                 <ChevronIcon collapsed={collapsed} />
               </button>
-              {group.status ? <StatusIcon status={group.status} /> : null}
+              {group.status ? <StatusIcon status={group.status} statuses={statuses} /> : null}
               <span
                 className={cn(
                   "text-xs font-medium",
@@ -251,6 +253,7 @@ export function IssueList({
                   <li className="border-b border-border-subtle bg-surface/40">
                     <InlineCreateRow
                       status={group.status}
+                      statuses={statuses}
                       value={inlineDraft}
                       onChange={setInlineDraft}
                       submitting={inlineSubmitting}
@@ -327,7 +330,7 @@ export function IssueList({
                           </span>
                         ) : null}
                         {properties.status ? (
-                          <StatusIcon status={issue.status} />
+                          <StatusIcon status={issue.status} statuses={statuses} />
                         ) : null}
                         <span className="min-w-0 flex-1 truncate text-[13px] text-fg">
                           {issue.title}
@@ -639,6 +642,7 @@ async function copyIssueLink(id: string) {
 
 function InlineCreateRow({
   status,
+  statuses,
   value,
   onChange,
   submitting,
@@ -647,6 +651,7 @@ function InlineCreateRow({
   rowPadY,
 }: {
   status: string;
+  statuses: IssueStatus[];
   value: string;
   onChange: (next: string) => void;
   submitting: boolean;
@@ -675,7 +680,7 @@ function InlineCreateRow({
       <span className="font-mono text-[11px] text-fg-faint w-16 shrink-0">
         new
       </span>
-      <StatusIcon status={status} />
+      <StatusIcon status={status} statuses={statuses} />
       <input
         ref={inputRef}
         value={value}

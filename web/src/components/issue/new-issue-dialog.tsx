@@ -34,7 +34,12 @@ import {
   prepareChatAttachments,
 } from "@/lib/chat-attachments";
 import { parseNaturalIssueInput } from "@/lib/issue-natural-input";
-import { priorityOptions, statusOptions } from "@/lib/issue-constants";
+import {
+  firstStatusForCategory,
+  priorityOptions,
+  sortedStatuses,
+} from "@/lib/issue-constants";
+import { useIssueStatuses } from "@/lib/use-issue-statuses";
 
 export function NewIssueDialog({
   triggerLabel = "New issue",
@@ -65,6 +70,8 @@ export function NewIssueDialog({
   const [members, setMembers] = useState<Member[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
+  const { statuses } = useIssueStatuses();
+  const defaultStatus = firstStatusForCategory(statuses, "backlog", "backlog");
   const [manualFields, setManualFields] = useState({
     status: false,
     priority: false,
@@ -161,12 +168,12 @@ export function NewIssueDialog({
   );
 
   useEffect(() => {
-    if (!manualFields.status) setStatus(parsedIssue.status ?? "backlog");
+    if (!manualFields.status) setStatus(parsedIssue.status ?? defaultStatus);
     if (!manualFields.priority) setPriority(parsedIssue.priority ?? "medium");
     if (!manualFields.assignee) setAssignedToId(parsedIssue.assignedToId);
     if (!manualFields.project) setProjectId(parsedIssue.projectId);
     if (!manualFields.labels) setLabelIds(parsedIssue.labelIds);
-  }, [manualFields, parsedIssue]);
+  }, [defaultStatus, manualFields, parsedIssue]);
 
   const selectedMember = members.find((member) => member.id === assignedToId);
   const selectedProject = projects.find((project) => project.id === projectId);
@@ -175,7 +182,7 @@ export function NewIssueDialog({
   const reset = () => {
     setTitle("");
     setDescription("");
-    setStatus("backlog");
+    setStatus(defaultStatus);
     setPriority("medium");
     setAssignedToId(null);
     setProjectId(null);
@@ -337,8 +344,8 @@ export function NewIssueDialog({
                   setManualFields((current) => ({ ...current, status: true }));
                   setStatus(value);
                 }}
-                options={statusOptions}
-                icon={<StatusIcon status={status} />}
+                options={sortedStatuses(statuses).map((status) => status.key)}
+                icon={<StatusIcon status={status} statuses={statuses} />}
               />
               <PillSelect
                 ariaLabel="Priority"

@@ -37,6 +37,7 @@ import { findStaticPage } from "@/lib/tab-pages";
 import { useChats } from "@/lib/use-chats";
 import { useFavorites } from "@/lib/use-favorites";
 import { useInbox } from "@/lib/use-inbox";
+import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { useProjects } from "@/lib/use-projects";
 import { tabsQueryOptions, useRegisterTab } from "@/lib/use-tabs";
 import { userPreferencesQueryOptions, useUserPreferences } from "@/lib/use-user-preferences";
@@ -54,6 +55,7 @@ function AppLayout() {
   const navigate = useNavigate();
   const session = useSession();
   const { tabsEnabled } = useUserPreferences();
+  const { statuses } = useIssueStatuses();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -321,7 +323,7 @@ function AppLayout() {
                       >
                         <span className="shrink-0 text-fg-faint group-hover:text-fg-muted">
                           {fav.type === "issue" ? (
-                            <StatusIcon status={fav.status} />
+                            <StatusIcon status={fav.status} statuses={statuses} />
                           ) : fav.type === "project" ? (
                             <ProjectIcon
                               color={fav.color}

@@ -2,7 +2,7 @@ use anyhow::Context;
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, Utc};
 use produktive_entity::{
-    issue, issue_comment, issue_event, issue_label, label, member, organization,
+    issue, issue_comment, issue_event, issue_label, issue_status, label, member, organization,
     produktive_oauth_grant, produktive_oauth_token, project, user,
 };
 use rust_mcp_sdk::{
@@ -782,6 +782,7 @@ async fn list_issues(
         .limit(args.limit.unwrap_or(50).clamp(1, 100));
 
     if let Some(status) = non_empty(args.status) {
+        let status = validate_issue_status(state, organization_id, status).await?;
         select = select.filter(issue::Column::Status.eq(status));
     }
     if let Some(priority) = non_empty(args.priority) {
@@ -848,13 +849,18 @@ async fn create_issue(
     let label_ids = normalize_ids(args.label_ids.unwrap_or_default());
     validate_labels(state, organization_id, &label_ids).await?;
 
+    let status = match non_empty(args.status) {
+        Some(status) => validate_issue_status(state, organization_id, status).await?,
+        None => "backlog".to_owned(),
+    };
+
     let now = Utc::now().fixed_offset();
     let row = issue::ActiveModel {
         id: Set(Uuid::new_v4().to_string()),
         organization_id: Set(organization_id.to_owned()),
         title: Set(title),
         description: Set(non_empty(args.description)),
-        status: Set(non_empty(args.status).unwrap_or_else(|| "backlog".to_owned())),
+        status: Set(status),
         priority: Set(non_empty(args.priority).unwrap_or_else(|| "medium".to_owned())),
         created_by_id: Set(Some(ctx.user_id.clone())),
         assigned_to_id: Set(assigned_to_id),
@@ -914,7 +920,8 @@ async fn update_issue(
         active.description = Set(next);
     }
     if let Some(status) = args.status {
-        let next = required(status, "status")?;
+        let status = required(status, "status")?;
+        let next = validate_issue_status(state, organization_id, status).await?;
         push_change(&mut changes, "status", Some(&before.status), Some(&next));
         active.status = Set(next);
     }
@@ -1178,35 +1185,34 @@ async fn project_json(state: &AppState, row: project::Model) -> Result<Value, Ca
             .map(|user| json!({ "id": user.id, "name": user.name, "email": user.email, "image": user.image })),
         None => None,
     };
-    let issue_count = issue::Entity::find()
-        .filter(issue::Column::OrganizationId.eq(&row.organization_id))
-        .filter(issue::Column::ProjectId.eq(&row.id))
-        .count(&state.db)
-        .await
-        .map_err(db_tool_error)?;
-    let done_count = issue::Entity::find()
-        .filter(issue::Column::OrganizationId.eq(&row.organization_id))
-        .filter(issue::Column::ProjectId.eq(&row.id))
-        .filter(issue::Column::Status.eq("done"))
-        .count(&state.db)
-        .await
-        .map_err(db_tool_error)?;
     let mut backlog = 0_u64;
     let mut todo = 0_u64;
     let mut in_progress = 0_u64;
     let mut done = 0_u64;
+    let categories = issue_status_categories(state, &row.organization_id).await?;
     let issues = issue::Entity::find()
         .filter(issue::Column::OrganizationId.eq(&row.organization_id))
         .filter(issue::Column::ProjectId.eq(&row.id))
         .all(&state.db)
         .await
         .map_err(db_tool_error)?;
-    for issue in issues {
-        match issue.status.as_str() {
+    let issue_count = issues.len() as u64;
+    for issue in &issues {
+        match categories
+            .get(&issue.status)
+            .map(String::as_str)
+            .unwrap_or("active")
+        {
             "backlog" => backlog += 1,
-            "todo" => todo += 1,
-            "in-progress" => in_progress += 1,
+            "active" => {
+                if issue.status == "in-progress" {
+                    in_progress += 1;
+                } else {
+                    todo += 1;
+                }
+            }
             "done" => done += 1,
+            "canceled" => {}
             _ => {}
         }
     }
@@ -1225,7 +1231,7 @@ async fn project_json(state: &AppState, row: project::Model) -> Result<Value, Ca
         "created_at": row.created_at.to_rfc3339(),
         "updated_at": row.updated_at.to_rfc3339(),
         "issue_count": issue_count,
-        "done_count": done_count,
+        "done_count": done,
         "status_breakdown": {
             "backlog": backlog,
             "todo": todo,
@@ -1320,6 +1326,63 @@ async fn validate_labels(
         return Err(tool_error("Cannot attach an archived label"));
     }
     Ok(())
+}
+
+fn default_issue_status_category(key: &str) -> Option<&'static str> {
+    match key {
+        "backlog" => Some("backlog"),
+        "todo" | "in-progress" => Some("active"),
+        "done" => Some("done"),
+        "canceled" => Some("canceled"),
+        _ => None,
+    }
+}
+
+async fn issue_status_categories(
+    state: &AppState,
+    organization_id: &str,
+) -> Result<HashMap<String, String>, CallToolError> {
+    let mut categories = HashMap::from([
+        ("backlog".to_owned(), "backlog".to_owned()),
+        ("todo".to_owned(), "active".to_owned()),
+        ("in-progress".to_owned(), "active".to_owned()),
+        ("done".to_owned(), "done".to_owned()),
+        ("canceled".to_owned(), "canceled".to_owned()),
+    ]);
+    let rows = issue_status::Entity::find()
+        .filter(issue_status::Column::OrganizationId.eq(organization_id))
+        .filter(issue_status::Column::ArchivedAt.is_null())
+        .all(&state.db)
+        .await
+        .map_err(db_tool_error)?;
+    for row in rows {
+        categories.insert(row.key, row.category);
+    }
+    Ok(categories)
+}
+
+async fn validate_issue_status(
+    state: &AppState,
+    organization_id: &str,
+    status: String,
+) -> Result<String, CallToolError> {
+    let status = required(status, "status")?;
+    if default_issue_status_category(&status).is_some() {
+        return Ok(status);
+    }
+    let exists = issue_status::Entity::find()
+        .filter(issue_status::Column::OrganizationId.eq(organization_id))
+        .filter(issue_status::Column::Key.eq(&status))
+        .filter(issue_status::Column::ArchivedAt.is_null())
+        .one(&state.db)
+        .await
+        .map_err(db_tool_error)?
+        .is_some();
+    if exists {
+        Ok(status)
+    } else {
+        Err(tool_error("Status does not exist"))
+    }
 }
 
 async fn replace_issue_labels(

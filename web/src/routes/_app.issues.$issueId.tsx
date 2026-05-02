@@ -54,6 +54,7 @@ import {
 import { useLabelsQuery } from "@/lib/queries/labels";
 import { useProjectsQuery } from "@/lib/queries/projects";
 import { useRegisterTab } from "@/lib/use-tabs";
+import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { useUserPreferences } from "@/lib/use-user-preferences";
 import { cn } from "@/lib/utils";
 
@@ -100,6 +101,7 @@ export function IssueDetail({
   const commentsQuery = useIssueCommentsQuery(issueId);
   const projectsQuery = useProjectsQuery();
   const labelsQuery = useLabelsQuery();
+  const { statuses } = useIssueStatuses();
   const membersQuery = useQuery({
     queryKey: queryKeys.members,
     queryFn: () => listMembers().then((r) => r.members),
@@ -562,6 +564,7 @@ export function IssueDetail({
             <aside className="order-1 md:order-none md:sticky md:top-10 md:self-start">
               <IssueProperties
                 status={issue.status}
+                statuses={statuses}
                 priority={issue.priority}
                 assignee={
                   issue.assignedTo

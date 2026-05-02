@@ -30,20 +30,20 @@ import {
   useDeleteIssue,
   useUpdateIssue,
 } from "@/lib/mutations/issues";
-import { statusLabel, type View, viewLabels } from "@/lib/issue-constants";
+import {
+  firstStatusForCategory,
+  issueMatchesView,
+  statusName,
+  type View,
+  viewLabels,
+} from "@/lib/issue-constants";
 import { useDisplayOptions } from "@/lib/issue-display";
 import { issuesQueryOptions } from "@/lib/queries/issues";
 import { useFavorites } from "@/lib/use-favorites";
+import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { useIssues } from "@/lib/use-issues";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
-
-const viewDropStatus: Record<View, string | null> = {
-  all: null,
-  active: "todo",
-  backlog: "backlog",
-  done: "done",
-};
 
 export const Route = createFileRoute("/_app/issues")({
   loader: ({ context }) =>
@@ -79,6 +79,13 @@ function IssuesPage() {
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   const [viewFavorited, setViewFavorited] = useState(false);
   const onboarding = useOnboarding();
+  const { statuses } = useIssueStatuses();
+  const viewDropStatus: Record<View, string | null> = {
+    all: null,
+    active: firstStatusForCategory(statuses, "active", "todo"),
+    backlog: firstStatusForCategory(statuses, "backlog", "backlog"),
+    done: firstStatusForCategory(statuses, "done", "done"),
+  };
 
   useEffect(() => {
     onboarding.setFirstIssueId(issues[0]?.id ?? null);
@@ -122,14 +129,8 @@ function IssuesPage() {
 
   const filteredIssues = useMemo(() => {
     let pool = issues;
-    if (view === "active") {
-      pool = pool.filter(
-        (issue) => issue.status === "in-progress" || issue.status === "todo",
-      );
-    } else if (view === "backlog") {
-      pool = pool.filter((issue) => issue.status === "backlog");
-    } else if (view === "done") {
-      pool = pool.filter((issue) => issue.status === "done");
+    if (view !== "all") {
+      pool = pool.filter((issue) => issueMatchesView(issue, view, statuses));
     }
     if (filters.statuses.length > 0) {
       pool = pool.filter((issue) => filters.statuses.includes(issue.status));
@@ -160,7 +161,7 @@ function IssuesPage() {
       );
     }
     return pool;
-  }, [issues, view, filters]);
+  }, [issues, view, filters, statuses]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -181,13 +182,11 @@ function IssuesPage() {
   const counts = useMemo(
     () => ({
       all: issues.length,
-      active: issues.filter(
-        (issue) => issue.status === "in-progress" || issue.status === "todo",
-      ).length,
-      backlog: issues.filter((issue) => issue.status === "backlog").length,
-      done: issues.filter((issue) => issue.status === "done").length,
+      active: issues.filter((issue) => issueMatchesView(issue, "active", statuses)).length,
+      backlog: issues.filter((issue) => issueMatchesView(issue, "backlog", statuses)).length,
+      done: issues.filter((issue) => issueMatchesView(issue, "done", statuses)).length,
     }),
-    [issues],
+    [issues, statuses],
   );
 
   const onSelect = (id: string, event?: MouseEvent) => {
@@ -270,7 +269,7 @@ function IssuesPage() {
     );
     const failures = results.filter((r) => r.status === "rejected").length;
     if (failures === 0) {
-      toast.success(`Moved ${ids.length} to ${statusLabel[status] ?? status}`);
+      toast.success(`Moved ${ids.length} to ${statusName(statuses, status)}`);
     } else {
       toast.error(`Failed for ${failures} issue(s)`);
     }
@@ -409,7 +408,7 @@ function IssuesPage() {
         id: movingId,
         patch: { status: nextStatus },
       });
-      toast.success(`Moved to ${statusLabel[nextStatus] ?? nextStatus}`);
+      toast.success(`Moved to ${statusName(statuses, nextStatus)}`);
     } catch (moveError) {
       toast.error(
         moveError instanceof Error ? moveError.message : "Failed to move issue",
@@ -527,6 +526,7 @@ function IssuesPage() {
           onDisplayChange={updateDisplay}
           onPropertiesChange={updateProperties}
           filters={filters}
+          statuses={statuses}
           onFiltersChange={setFilters}
         />
         {effectiveViewMode === "list" && filteredIssues.length > 0 ? (
@@ -554,7 +554,7 @@ function IssuesPage() {
           </button>
         ) : null}
       </nav>
-      <IssueFilterChips filters={filters} onChange={setFilters} />
+      <IssueFilterChips filters={filters} statuses={statuses} onChange={setFilters} />
 
       <section data-tour="issue-list">
         {error ? (
@@ -579,6 +579,7 @@ function IssuesPage() {
           effectiveViewMode === "board" ? (
             <IssueBoard
               issues={filteredIssues}
+              statuses={statuses}
               onSelect={onSelect}
               onMoveToStatus={handleMoveToStatus}
               onCreateInGroup={handleCreateInGroup}
@@ -586,6 +587,7 @@ function IssuesPage() {
           ) : (
             <IssueList
               issues={filteredIssues}
+              statuses={statuses}
               selectedId={null}
               focusedId={focusedId}
               selectedIds={selectedIds}
@@ -603,6 +605,7 @@ function IssuesPage() {
       {selectedIds.size > 0 ? (
         <BulkActionBar
           count={selectedIds.size}
+          statuses={statuses}
           onSetStatus={(status) => void handleBulkSetStatus(status)}
           onSetPriority={(priority) => void handleBulkSetPriority(priority)}
           onDelete={handleBulkDelete}
