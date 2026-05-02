@@ -464,19 +464,21 @@ export function ChatComposer({
             <AttachIcon size={11} />
             Attach
           </ToolButton>
-          <ToolButton
-            title="View changes"
-            onClick={onOpenChanges}
-            active={changesOpen}
-          >
-            <ChangesIcon size={11} />
-            Changes
-            {changesCount > 0 ? (
-              <span className="ml-0.5 rounded-[4px] bg-surface-3 px-1 font-mono text-[10px] text-fg">
-                {changesCount}
-              </span>
-            ) : null}
-          </ToolButton>
+          {onOpenChanges ? (
+            <ToolButton
+              title="View changes"
+              onClick={onOpenChanges}
+              active={changesOpen}
+            >
+              <ChangesIcon size={11} />
+              Changes
+              {changesCount > 0 ? (
+                <span className="ml-0.5 rounded-[4px] bg-surface-3 px-1 font-mono text-[10px] text-fg">
+                  {changesCount}
+                </span>
+              ) : null}
+            </ToolButton>
+          ) : null}
           <span className="flex-1" />
           {busy ? (
             <button

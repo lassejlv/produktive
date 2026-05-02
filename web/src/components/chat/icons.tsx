@@ -1,5 +1,6 @@
 import {
   Add01Icon,
+  ArrowExpandIcon,
   AtIcon as HugeAtIcon,
   AttachmentIcon,
   CheckmarkCircle01Icon,
@@ -112,6 +113,10 @@ export function ChangesIcon({ size = 13, ...rest }: IconProps) {
 
 export function GithubIcon({ size = 14, ...rest }: IconProps) {
   return <Icon icon={Github01Icon} size={size} {...rest} />;
+}
+
+export function ExpandIcon({ size = 13, ...rest }: IconProps) {
+  return <Icon icon={ArrowExpandIcon} size={size} {...rest} />;
 }
 
 export function CheckIcon({ size = 13, ...rest }: IconProps) {

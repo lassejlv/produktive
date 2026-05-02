@@ -10,6 +10,7 @@ import {
   SparkleIcon,
   StarIcon,
 } from "@/components/chat/icons";
+import { ChatWidget } from "@/components/chat/chat-widget";
 import { CommandPalette } from "@/components/command-palette";
 import { KeyboardHelp } from "@/components/keyboard-help";
 import { StatusIcon } from "@/components/issue/status-icon";
@@ -695,6 +696,7 @@ function AppLayout() {
         <Outlet />
         <TabBar enabled={tabsEnabled} />
       </SidebarInset>
+      <ChatWidget />
     </SidebarProvider>
   );
 }

@@ -1,5 +1,4 @@
 import {
-  Link,
   createFileRoute,
   useNavigate,
   useRouterState,
@@ -600,40 +599,8 @@ function IssuesPage() {
           onDelete={handleBulkDelete}
           onClear={clearSelection}
         />
-      ) : (
-        <AskDock />
-      )}
+      ) : null}
     </>
-  );
-}
-
-function AskDock() {
-  return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-30 hidden lg:block">
-      <Link
-        to="/chat"
-        className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-border-subtle bg-bg/80 px-3 py-1.5 text-[12px] text-fg-muted shadow-[0_8px_30px_rgba(0,0,0,0.35)] backdrop-blur-md transition-colors hover:border-border hover:text-fg"
-      >
-        <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden>
-          <path
-            d="M2.5 7.5l3 3 6-7"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            opacity="0"
-          />
-          <path
-            d="M11.5 7c0 2.5-2 4.5-4.5 4.5-.7 0-1.4-.15-2-.4l-2.5.9.9-2.5C2.65 8.4 2.5 7.7 2.5 7 2.5 4.5 4.5 2.5 7 2.5s4.5 2 4.5 4.5z"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <span>Ask Produktive</span>
-      </Link>
-    </div>
   );
 }
 
