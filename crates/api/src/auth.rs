@@ -73,6 +73,7 @@ pub struct OrganizationResponse {
     pub id: String,
     pub name: String,
     pub slug: String,
+    pub image: Option<String>,
 }
 
 impl From<user::Model> for UserResponse {
@@ -95,6 +96,7 @@ impl From<organization::Model> for OrganizationResponse {
             id: organization.id,
             name: organization.name,
             slug: organization.slug,
+            image: organization.image,
         }
     }
 }
@@ -379,6 +381,7 @@ pub async fn create_organization_for_user(
         id: Set(Uuid::new_v4().to_string()),
         name: Set(name.to_owned()),
         slug: Set(build_organization_slug(name)),
+        image: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     }
@@ -694,6 +697,7 @@ async fn create_default_organization(
             user.name.clone()
         }),
         slug: Set(slug),
+        image: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     }

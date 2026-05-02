@@ -602,9 +602,7 @@ function AppLayout() {
               )}
               onClick={() => setAccountMenuOpen((open) => !open)}
             >
-              <div className="grid size-8 shrink-0 place-items-center rounded-[8px] border border-border bg-surface text-[12px] font-medium text-fg">
-                {currentUser?.name?.slice(0, 2).toUpperCase() ?? "P"}
-              </div>
+              <AccountIcon name={currentUser?.name ?? "User"} image={currentUser?.image} />
               <div className="min-w-0 flex-1">
                 <p
                   className="truncate text-[13px] font-medium text-fg"
@@ -657,6 +655,23 @@ function ChatMenuItem({
     >
       {children}
     </button>
+  );
+}
+
+function AccountIcon({ name, image }: { name: string; image?: string | null }) {
+  if (image) {
+    return (
+      <img
+        src={image}
+        alt=""
+        className="size-8 shrink-0 rounded-[8px] border border-border object-cover"
+      />
+    );
+  }
+  return (
+    <div className="grid size-8 shrink-0 place-items-center rounded-[8px] border border-border bg-surface text-[12px] font-medium text-fg">
+      {name.slice(0, 2).toUpperCase() || "P"}
+    </div>
   );
 }
 

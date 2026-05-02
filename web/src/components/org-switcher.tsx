@@ -1,11 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import {
-  CaretIcon,
-  CheckIcon,
-  PlusIcon,
-  SettingsIcon,
-} from "@/components/chat/icons";
+import { CaretIcon, CheckIcon, PlusIcon, SettingsIcon } from "@/components/chat/icons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,7 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 
 type OrgSwitcherProps = {
-  activeOrganization: { id: string; name: string };
+  activeOrganization: { id: string; name: string; image: string | null };
 };
 
 export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
@@ -44,10 +39,7 @@ export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
     if (!menuOpen) return;
 
     const onPointerDown = (event: PointerEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setMenuOpen(false);
       }
     };
@@ -77,16 +69,10 @@ export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
       setMenuOpen(false);
       setBusy(false);
     } catch (error) {
-      setSwitchError(
-        error instanceof Error
-          ? error.message
-          : "Failed to switch organization",
-      );
+      setSwitchError(error instanceof Error ? error.message : "Failed to switch organization");
       setBusy(false);
     }
   };
-
-  const initial = activeOrganization.name.trim().charAt(0).toUpperCase() || "O";
 
   return (
     <>
@@ -98,23 +84,14 @@ export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
           onClick={() => setMenuOpen((value) => !value)}
           className={cn(
             "flex w-full items-center gap-2.5 rounded-[8px] border border-transparent px-1.5 py-1.5 text-left transition-colors",
-            menuOpen
-              ? "border-border bg-surface"
-              : "hover:border-border hover:bg-surface/65",
+            menuOpen ? "border-border bg-surface" : "hover:border-border hover:bg-surface/65",
           )}
         >
-          <div className="grid size-6 shrink-0 place-items-center rounded-[7px] bg-fg text-[12px] font-semibold text-bg">
-            {initial}
-          </div>
+          <OrgIcon name={activeOrganization.name} image={activeOrganization.image} size="md" />
           <span className="min-w-0 flex-1 truncate text-[14px] font-semibold tracking-[-0.015em] text-fg">
             {activeOrganization.name}
           </span>
-          <span
-            className={cn(
-              "text-fg-muted transition-transform",
-              menuOpen && "rotate-180",
-            )}
-          >
+          <span className={cn("text-fg-muted transition-transform", menuOpen && "rotate-180")}>
             <CaretIcon />
           </span>
         </button>
@@ -140,18 +117,12 @@ export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
                       onClick={() => void handleSwitch(org)}
                       className={cn(
                         "flex h-9 items-center gap-2.5 px-3 text-left text-[13px] transition-colors",
-                        isActive
-                          ? "text-fg"
-                          : "text-fg-muted hover:bg-surface-2 hover:text-fg",
+                        isActive ? "text-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg",
                         busy && "cursor-wait opacity-60",
                       )}
                     >
-                      <div className="grid size-5 shrink-0 place-items-center rounded-[5px] bg-fg text-[10px] font-semibold text-bg">
-                        {org.name.trim().charAt(0).toUpperCase() || "O"}
-                      </div>
-                      <span className="min-w-0 flex-1 truncate">
-                        {org.name}
-                      </span>
+                      <OrgIcon name={org.name} image={org.image} size="sm" />
+                      <span className="min-w-0 flex-1 truncate">{org.name}</span>
                       {isActive ? (
                         <span className="text-fg">
                           <CheckIcon size={13} />
@@ -201,21 +172,39 @@ export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
         ) : null}
       </div>
 
-      <CreateOrganizationDialog
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-      />
+      <CreateOrganizationDialog open={createOpen} onClose={() => setCreateOpen(false)} />
     </>
   );
 }
 
-function CreateOrganizationDialog({
-  open,
-  onClose,
+function OrgIcon({
+  name,
+  image,
+  size,
 }: {
-  open: boolean;
-  onClose: () => void;
+  name: string;
+  image?: string | null;
+  size: "sm" | "md";
 }) {
+  const className =
+    size === "md" ? "size-6 rounded-[7px] text-[12px]" : "size-5 rounded-[5px] text-[10px]";
+  if (image) {
+    return (
+      <img
+        src={image}
+        alt=""
+        className={cn("shrink-0 border border-border object-cover", className)}
+      />
+    );
+  }
+  return (
+    <div className={cn("grid shrink-0 place-items-center bg-fg font-semibold text-bg", className)}>
+      {name.trim().charAt(0).toUpperCase() || "O"}
+    </div>
+  );
+}
+
+function CreateOrganizationDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -245,9 +234,7 @@ function CreateOrganizationDialog({
       onClose();
     } catch (createError) {
       setError(
-        createError instanceof Error
-          ? createError.message
-          : "Failed to create organization",
+        createError instanceof Error ? createError.message : "Failed to create organization",
       );
       setIsSaving(false);
     }

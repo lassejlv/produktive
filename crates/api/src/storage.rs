@@ -98,6 +98,22 @@ pub fn safe_issue_object_key(organization_id: &str, issue_id: &str, filename: &s
     )
 }
 
+pub fn safe_workspace_icon_key(organization_id: &str, filename: &str) -> String {
+    format!(
+        "organizations/{organization_id}/icons/{}-{}",
+        uuid::Uuid::new_v4(),
+        sanitize_filename(filename)
+    )
+}
+
+pub fn safe_user_icon_key(user_id: &str, filename: &str) -> String {
+    format!(
+        "users/{user_id}/icons/{}-{}",
+        uuid::Uuid::new_v4(),
+        sanitize_filename(filename)
+    )
+}
+
 fn object_url(config: &StorageConfig, key: &str) -> Result<String, anyhow::Error> {
     let endpoint = config.endpoint.trim_end_matches('/');
     let bucket = sanitize_path_segment(&config.bucket);

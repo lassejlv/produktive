@@ -8,6 +8,7 @@ pub struct Model {
     pub id: String,
     pub name: String,
     pub slug: String,
+    pub image: Option<String>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

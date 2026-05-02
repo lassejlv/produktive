@@ -11,9 +11,10 @@ use crate::{
     error::ApiError,
     permissions::{require_permission, ROLE_OWNER, WORKSPACE_DELETE, WORKSPACE_RENAME},
     state::AppState,
+    storage,
 };
 use axum::{
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Multipart, Path, State},
     http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{delete, get, patch, post},
@@ -25,6 +26,8 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, Set,
 };
 use serde::{Deserialize, Serialize};
+
+const MAX_ICON_BYTES: usize = 2 * 1024 * 1024;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -49,11 +52,20 @@ pub fn routes() -> Router<AppState> {
             patch(update_active_organization).delete(delete_active_organization),
         )
         .route(
+            "/organizations/active/icon",
+            post(upload_active_organization_icon)
+                .layer(DefaultBodyLimit::max(MAX_ICON_BYTES + 1024 * 1024)),
+        )
+        .route(
             "/organizations/active/leave",
             post(leave_active_organization),
         )
         .route("/switch-organization", post(switch_organization))
         .route("/account", delete(delete_account))
+        .route(
+            "/account/icon",
+            post(upload_account_icon).layer(DefaultBodyLimit::max(MAX_ICON_BYTES + 1024 * 1024)),
+        )
 }
 
 #[derive(Deserialize)]
@@ -355,6 +367,7 @@ struct OrganizationListItem {
     id: String,
     name: String,
     slug: String,
+    image: Option<String>,
     role: String,
 }
 
@@ -397,6 +410,7 @@ async fn list_organizations(
                 id: org.id,
                 name: org.name,
                 slug: org.slug,
+                image: org.image,
                 role: membership.role,
             });
         }
@@ -473,6 +487,115 @@ async fn update_active_organization(
     Ok(Json(OrganizationEnvelope {
         organization: updated.into(),
     }))
+}
+
+async fn upload_active_organization_icon(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    multipart: Multipart,
+) -> Result<impl IntoResponse, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, WORKSPACE_RENAME).await?;
+    let image = upload_icon(
+        &state,
+        multipart,
+        IconScope::Workspace(&auth.organization.id),
+    )
+    .await?;
+
+    let mut active: organization::ActiveModel = auth.organization.into();
+    active.image = Set(Some(image));
+    active.updated_at = Set(Utc::now().fixed_offset());
+    let updated = active.update(&state.db).await?;
+
+    Ok(Json(OrganizationEnvelope {
+        organization: updated.into(),
+    }))
+}
+
+async fn upload_account_icon(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    multipart: Multipart,
+) -> Result<impl IntoResponse, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    let image = upload_icon(&state, multipart, IconScope::User(&auth.user.id)).await?;
+
+    let mut active = auth.user.into_active_model();
+    active.image = Set(Some(image));
+    active.updated_at = Set(Utc::now().fixed_offset());
+    let updated = active.update(&state.db).await?;
+
+    Ok(Json(crate::auth::AuthResponse {
+        user: updated.into(),
+        organization: auth.organization.into(),
+    }))
+}
+
+enum IconScope<'a> {
+    Workspace(&'a str),
+    User(&'a str),
+}
+
+async fn upload_icon(
+    state: &AppState,
+    mut multipart: Multipart,
+    scope: IconScope<'_>,
+) -> Result<String, ApiError> {
+    let storage_config = state
+        .config
+        .storage
+        .as_ref()
+        .ok_or_else(|| ApiError::BadRequest("File storage is not configured".to_owned()))?;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| ApiError::BadRequest("Invalid multipart upload".to_owned()))?
+    {
+        if field.name() != Some("file") {
+            continue;
+        }
+
+        let filename = field.file_name().unwrap_or("icon").to_owned();
+        let content_type = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_owned();
+        if !matches!(
+            content_type.as_str(),
+            "image/png" | "image/jpeg" | "image/webp" | "image/gif"
+        ) {
+            return Err(ApiError::BadRequest(
+                "Icons must be PNG, JPEG, WebP, or GIF images".to_owned(),
+            ));
+        }
+
+        let bytes = field
+            .bytes()
+            .await
+            .map_err(|_| ApiError::BadRequest("Invalid uploaded file".to_owned()))?;
+        if bytes.is_empty() {
+            return Err(ApiError::BadRequest("Uploaded file is empty".to_owned()));
+        }
+        if bytes.len() > MAX_ICON_BYTES {
+            return Err(ApiError::BadRequest(
+                "Icons must be 2 MB or smaller".to_owned(),
+            ));
+        }
+
+        let key = match scope {
+            IconScope::Workspace(organization_id) => {
+                storage::safe_workspace_icon_key(organization_id, &filename)
+            }
+            IconScope::User(user_id) => storage::safe_user_icon_key(user_id, &filename),
+        };
+        let stored =
+            storage::put_object(storage_config, &key, &content_type, bytes.to_vec()).await?;
+        return Ok(stored.url);
+    }
+
+    Err(ApiError::BadRequest("No file was uploaded".to_owned()))
 }
 
 #[derive(Deserialize)]

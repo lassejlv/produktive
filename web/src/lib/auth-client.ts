@@ -15,12 +15,14 @@ type AuthOrganization = {
   id: string;
   name: string;
   slug: string;
+  image: string | null;
 };
 
 export type OrganizationMembership = {
   id: string;
   name: string;
   slug: string;
+  image: string | null;
   role: string;
 };
 
@@ -51,10 +53,7 @@ type SessionState = {
   status: "initial" | "loading" | "ready" | "error";
 };
 
-const requestAuth = async (
-  path: string,
-  body?: Record<string, unknown>,
-): Promise<AuthResult> => {
+const requestAuth = async (path: string, body?: Record<string, unknown>): Promise<AuthResult> => {
   const response = await fetch(apiPath(path), {
     method: body ? "POST" : "GET",
     credentials: "include",
@@ -76,10 +75,7 @@ const requestAuth = async (
   };
 };
 
-const requestEmpty = async (
-  path: string,
-  body: Record<string, unknown>,
-): Promise<EmptyResult> => {
+const requestEmpty = async (path: string, body: Record<string, unknown>): Promise<EmptyResult> => {
   const response = await fetch(apiPath(path), {
     method: "POST",
     credentials: "include",
@@ -120,10 +116,7 @@ type SessionsListResponse = {
   sessions: AccountSession[];
 };
 
-const requestJson = async <T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> => {
+const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(apiPath(path), {
     credentials: "include",
     headers: {
@@ -136,6 +129,24 @@ const requestJson = async <T>(
   if (!response.ok) {
     const error = await response.json().catch(() => null);
     throw new Error(error?.error ?? "Request failed");
+  }
+
+  return response.json() as Promise<T>;
+};
+
+const requestUpload = async <T>(path: string, file: File): Promise<T> => {
+  const body = new FormData();
+  body.append("file", file);
+
+  const response = await fetch(apiPath(path), {
+    method: "POST",
+    credentials: "include",
+    body,
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.error ?? "Upload failed");
   }
 
   return response.json() as Promise<T>;
@@ -185,22 +196,19 @@ export const createOrganization = (name: string) =>
   });
 
 export const updateActiveOrganization = (input: { name: string }) =>
-  requestJson<{ organization: AuthOrganization }>(
-    "/api/auth/organizations/active",
-    {
-      method: "PATCH",
-      body: JSON.stringify(input),
-    },
-  );
+  requestJson<{ organization: AuthOrganization }>("/api/auth/organizations/active", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+
+export const uploadActiveOrganizationIcon = (file: File) =>
+  requestUpload<{ organization: AuthOrganization }>("/api/auth/organizations/active/icon", file);
 
 export const deleteActiveOrganization = (input: { confirm: string }) =>
-  requestJson<{ ok: true; switchedTo: AuthOrganization | null }>(
-    "/api/auth/organizations/active",
-    {
-      method: "DELETE",
-      body: JSON.stringify(input),
-    },
-  );
+  requestJson<{ ok: true; switchedTo: AuthOrganization | null }>("/api/auth/organizations/active", {
+    method: "DELETE",
+    body: JSON.stringify(input),
+  });
 
 export const leaveActiveOrganization = () =>
   requestJson<{ ok: true; switchedTo: AuthOrganization | null }>(
@@ -216,8 +224,13 @@ export const deleteAccount = (confirm: string) =>
     body: JSON.stringify({ confirm }),
   });
 
-export const listAccountSessions = () =>
-  requestJson<SessionsListResponse>("/api/auth/sessions");
+export const uploadAccountIcon = (file: File) =>
+  requestUpload<AuthSession>("/api/auth/account/icon", file).then((data) => {
+    applySessionResult({ data, error: null });
+    return data;
+  });
+
+export const listAccountSessions = () => requestJson<SessionsListResponse>("/api/auth/sessions");
 
 export const revokeAccountSession = (id: string) =>
   requestJson<{ ok: true }>(`/api/auth/sessions/${id}`, {
@@ -232,9 +245,7 @@ export const revokeOtherAccountSessions = () =>
 export const authClient = {
   signIn: {
     email: ({ email, password }: EmailCredentials) =>
-      requestAuth("/api/auth/sign-in", { email, password }).then(
-        applySessionResult,
-      ),
+      requestAuth("/api/auth/sign-in", { email, password }).then(applySessionResult),
   },
   signUp: {
     email: ({ email, password, name }: EmailCredentials) =>
@@ -306,19 +317,14 @@ export const useSession = () => {
   return {
     data: sessionState.data,
     error: sessionState.error,
-    isPending:
-      sessionState.status === "initial" || sessionState.status === "loading",
+    isPending: sessionState.status === "initial" || sessionState.status === "loading",
     refresh: refreshSession,
   };
 };
 
 export const useOrganizations = (enabled: boolean) => {
-  const [organizations, setOrganizations] = useState<OrganizationMembership[]>(
-    [],
-  );
-  const [activeOrganizationId, setActiveOrganizationId] = useState<string | null>(
-    null,
-  );
+  const [organizations, setOrganizations] = useState<OrganizationMembership[]>([]);
+  const [activeOrganizationId, setActiveOrganizationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -330,11 +336,7 @@ export const useOrganizations = (enabled: boolean) => {
       setOrganizations(result.organizations);
       setActiveOrganizationId(result.activeOrganizationId);
     } catch (loadError) {
-      setError(
-        loadError instanceof Error
-          ? loadError.message
-          : "Failed to load organizations",
-      );
+      setError(loadError instanceof Error ? loadError.message : "Failed to load organizations");
     } finally {
       setIsLoading(false);
     }

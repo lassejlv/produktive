@@ -34,7 +34,12 @@ import {
   useUpdateGithubRepository,
 } from "@/lib/mutations/github";
 import { useCreateMcpApiKey, useDeleteMcpApiKey, useRevokeMcpApiKey } from "@/lib/mutations/mcp";
-import { refreshSession, updateActiveOrganization, useSession } from "@/lib/auth-client";
+import {
+  refreshSession,
+  updateActiveOrganization,
+  uploadActiveOrganizationIcon,
+  useSession,
+} from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/workspace/settings")({
@@ -1087,11 +1092,12 @@ function GeneralSettings({
   organization,
   canEdit,
 }: {
-  organization?: { name: string; slug: string } | null;
+  organization?: { name: string; slug: string; image: string | null } | null;
   canEdit: boolean;
 }) {
   const [draftName, setDraftName] = useState(organization?.name ?? "");
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingIcon, setUploadingIcon] = useState(false);
 
   useEffect(() => {
     setDraftName(organization?.name ?? "");
@@ -1121,8 +1127,47 @@ function GeneralSettings({
 
   const onReset = () => setDraftName(organization.name);
 
+  const onIconFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || uploadingIcon || !canEdit) return;
+    setUploadingIcon(true);
+    try {
+      await uploadActiveOrganizationIcon(file);
+      await refreshSession();
+      toast.success("Workspace icon updated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to upload icon");
+    } finally {
+      setUploadingIcon(false);
+    }
+  };
+
   return (
     <form onSubmit={onSave}>
+      <SettingRow label="Icon">
+        <div className="flex items-center gap-3">
+          <WorkspaceIcon name={organization.name} image={organization.image} />
+          <div>
+            <label
+              className={cn(
+                "inline-flex h-8 items-center rounded-md border border-border-subtle bg-bg px-3 text-[12px] text-fg transition-colors",
+                canEdit ? "cursor-pointer hover:border-border" : "cursor-not-allowed opacity-60",
+              )}
+            >
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="sr-only"
+                disabled={!canEdit || uploadingIcon}
+                onChange={(event) => void onIconFile(event)}
+              />
+              {uploadingIcon ? "Uploading..." : "Upload icon"}
+            </label>
+            <p className="mt-1 text-[11.5px] text-fg-faint">PNG, JPEG, WebP, or GIF. Max 2 MB.</p>
+          </div>
+        </div>
+      </SettingRow>
       <SettingRow label="Name">
         <Input
           value={draftName}
@@ -1162,5 +1207,18 @@ function GeneralSettings({
         </div>
       ) : null}
     </form>
+  );
+}
+
+function WorkspaceIcon({ name, image }: { name: string; image?: string | null }) {
+  if (image) {
+    return (
+      <img src={image} alt="" className="size-10 rounded-[9px] border border-border object-cover" />
+    );
+  }
+  return (
+    <div className="grid size-10 place-items-center rounded-[9px] border border-border bg-fg text-[14px] font-semibold text-bg">
+      {name.trim().charAt(0).toUpperCase() || "W"}
+    </div>
   );
 }
