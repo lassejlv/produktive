@@ -4,8 +4,8 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{Duration, Utc};
 use produktive_ai::{AiClient, CompletionResult, Message as AiMessage, Tool, ToolCall};
 use produktive_entity::{
-    discord_link_state, discord_server_link, discord_user_link, issue, issue_event, member,
-    organization, user,
+    discord_link_state, discord_mention_issue, discord_server_link, discord_user_link, issue,
+    issue_event, member, organization, user,
 };
 use rand_core::{OsRng, RngCore};
 use sea_orm::{
@@ -156,19 +156,22 @@ impl EventHandler for Handler {
             return;
         };
         let guild_id = msg.guild_id.expect("checked guild message");
-        let result = create_issue_from_discord(
+        let result = create_issue_from_mention(
             &self.state,
             guild_id.to_string(),
+            msg.channel_id.to_string(),
+            msg.id.to_string(),
             msg.author.id.to_string(),
             request,
         )
         .await;
         let reply = match result {
-            Ok(created) => format!(
+            Ok(MentionCreateResult::Created(created)) => format!(
                 "Created issue `{}` ({})",
                 created.title,
                 short_id(&created.id)
             ),
+            Ok(MentionCreateResult::AlreadyHandled) => return,
             Err(error) => error.to_string(),
         };
         if let Err(error) = msg.channel_id.say(&ctx.http, reply).await {
@@ -880,6 +883,49 @@ async fn create_issue_from_discord(
 ) -> anyhow::Result<issue::Model> {
     let (server, actor, _) = linked_context(state, &guild_id, &discord_user_id).await?;
     create_issue_for_actor(state, &server, &actor, request).await
+}
+
+enum MentionCreateResult {
+    Created(issue::Model),
+    AlreadyHandled,
+}
+
+async fn create_issue_from_mention(
+    state: &BotState,
+    guild_id: String,
+    channel_id: String,
+    message_id: String,
+    discord_user_id: String,
+    request: IssueRequest,
+) -> anyhow::Result<MentionCreateResult> {
+    let (server, actor, _) = linked_context(state, &guild_id, &discord_user_id).await?;
+    let now = Utc::now().fixed_offset();
+    let claim = discord_mention_issue::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        guild_id: Set(guild_id),
+        channel_id: Set(channel_id),
+        message_id: Set(message_id),
+        issue_id: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(&state.db)
+    .await;
+
+    let claim = match claim {
+        Ok(claim) => claim,
+        Err(error) => {
+            tracing::warn!(%error, "duplicate or failed Discord mention claim");
+            return Ok(MentionCreateResult::AlreadyHandled);
+        }
+    };
+
+    let issue = create_issue_for_actor(state, &server, &actor, request).await?;
+    let mut active = claim.into_active_model();
+    active.issue_id = Set(Some(issue.id.clone()));
+    active.updated_at = Set(Utc::now().fixed_offset());
+    active.update(&state.db).await?;
+    Ok(MentionCreateResult::Created(issue))
 }
 
 async fn create_issue_for_actor(

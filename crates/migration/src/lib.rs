@@ -66,6 +66,8 @@ mod m20260501_000031_create_billing_usage_events;
 mod m20260501_000032_add_subscription_period_start;
 #[path = "../migrations/m20260502_000033_create_discord_integration.rs"]
 mod m20260502_000033_create_discord_integration;
+#[path = "../migrations/m20260502_000034_create_discord_mention_issues.rs"]
+mod m20260502_000034_create_discord_mention_issues;
 
 pub struct Migrator;
 
@@ -106,6 +108,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260501_000031_create_billing_usage_events::Migration),
             Box::new(m20260501_000032_add_subscription_period_start::Migration),
             Box::new(m20260502_000033_create_discord_integration::Migration),
+            Box::new(m20260502_000034_create_discord_mention_issues::Migration),
         ]
     }
 }

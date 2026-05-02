@@ -49,6 +49,7 @@ type SettingsSectionId =
   | "general"
   | "members"
   | "github"
+  | "discord"
   | "mcp"
   | "ai"
   | "templates"
@@ -78,6 +79,12 @@ const settingsSections: SettingsSection[] = [
     id: "github",
     label: "GitHub",
     description: "Import repository issues",
+    group: "main",
+  },
+  {
+    id: "discord",
+    label: "Discord",
+    description: "Install the Produktive bot",
     group: "main",
   },
   {
@@ -249,6 +256,7 @@ function WorkspaceSettingsPage() {
             />
           ) : null}
           {activeSection === "github" ? <GithubSettings canEdit={canEditWorkspace} /> : null}
+          {activeSection === "discord" ? <DiscordSettings /> : null}
           {activeSection === "mcp" ? <McpKeySettings /> : null}
           {activeSection === "ai" ? <AiSettings /> : null}
           {activeSection === "templates" ? <McpTemplatesSettings /> : null}
@@ -261,6 +269,34 @@ function WorkspaceSettingsPage() {
           ) : null}
         </main>
       </div>
+    </div>
+  );
+}
+
+const DISCORD_INSTALL_URL =
+  "https://discord.com/oauth2/authorize?client_id=1500101363303059456&permissions=277025459200&integration_type=0&scope=bot";
+
+function DiscordSettings() {
+  return (
+    <div>
+      <SettingRow label="Install bot">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button asChild>
+            <a href={DISCORD_INSTALL_URL} target="_blank" rel="noreferrer">
+              Add to Discord
+            </a>
+          </Button>
+          <span className="text-[12px] text-fg-muted">
+            Opens Discord to install the Produktive bot in a server.
+          </span>
+        </div>
+      </SettingRow>
+      <SettingRow label="After install">
+        <span className="text-fg-muted">
+          Run <span className="font-mono text-fg">/produktive login</span> in Discord to link a
+          workspace.
+        </span>
+      </SettingRow>
     </div>
   );
 }
