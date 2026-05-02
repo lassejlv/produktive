@@ -61,9 +61,9 @@ impl AuthProvider for ProduktiveAuthProvider {
             })?;
 
         if token.revoked_at.is_some() || token.expires_at <= now {
-            return Err(AuthenticationError::InvalidOrExpiredToken(
-                "MCP OAuth token has expired".to_owned(),
-            ));
+            return Err(AuthenticationError::InvalidToken {
+                description: "MCP OAuth token has expired or was revoked",
+            });
         }
         if token.resource != self.state.resource_url {
             return Err(AuthenticationError::InvalidToken {
@@ -1706,7 +1706,7 @@ async fn main() -> SdkResult<()> {
             tools: Some(ServerCapabilitiesTools { list_changed: None }),
             ..Default::default()
         },
-        protocol_version: ProtocolVersion::V2025_11_25.into(),
+        protocol_version: ProtocolVersion::V2025_06_18.into(),
         instructions: Some(
             "Use list_workspaces and select_workspace before workspace-scoped tools if no workspace is selected."
                 .into(),
