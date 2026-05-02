@@ -3,8 +3,8 @@ use crate::{
     error::ApiError,
     issue_history::IssueChange,
     permissions::{
-        self, member_role, require_permission, role_exists, MEMBERS_ASSIGN_ROLE, MEMBERS_REMOVE,
-        ROLE_OWNER,
+        self, is_privileged_member_role, member_role, require_permission, role_exists,
+        MEMBERS_ASSIGN_ROLE, MEMBERS_REMOVE, ROLE_OWNER,
     },
     state::AppState,
 };
@@ -261,14 +261,11 @@ async fn update_member_role(
     let actor_role = member_role(&state.db, &auth.user.id, &auth.organization.id)
         .await?
         .ok_or_else(|| ApiError::Forbidden("Not a member of this workspace".to_owned()))?;
-    if new_role == ROLE_OWNER && actor_role != ROLE_OWNER {
+    if actor_role != ROLE_OWNER
+        && (is_privileged_member_role(&target.role) || is_privileged_member_role(new_role))
+    {
         return Err(ApiError::Forbidden(
-            "Only owners can assign owner role".to_owned(),
-        ));
-    }
-    if target.role == ROLE_OWNER && actor_role != ROLE_OWNER {
-        return Err(ApiError::Forbidden(
-            "Admins cannot change owner roles".to_owned(),
+            "Only owners can change admin or owner roles".to_owned(),
         ));
     }
     if target.role == ROLE_OWNER && new_role != ROLE_OWNER {
@@ -305,13 +302,15 @@ async fn remove_member(
     let actor_role = member_role(&state.db, &auth.user.id, &auth.organization.id)
         .await?
         .ok_or_else(|| ApiError::Forbidden("Not a member of this workspace".to_owned()))?;
-    if target.role == ROLE_OWNER {
+    if is_privileged_member_role(&target.role) {
         if actor_role != ROLE_OWNER {
             return Err(ApiError::Forbidden(
-                "Admins cannot remove owners".to_owned(),
+                "Only owners can remove admins or owners".to_owned(),
             ));
         }
-        ensure_not_last_owner(&state, &auth.organization.id, Some(&target.user_id)).await?;
+        if target.role == ROLE_OWNER {
+            ensure_not_last_owner(&state, &auth.organization.id, Some(&target.user_id)).await?;
+        }
     }
 
     member::Entity::delete_by_id(&target.id)

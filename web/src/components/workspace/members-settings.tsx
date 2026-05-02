@@ -5,11 +5,7 @@ import { Avatar } from "@/components/issue/avatar";
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   type Invitation,
@@ -169,11 +165,7 @@ export function MembersSettings({
             currentRole={currentRole}
             onChange={setInviteRole}
           />
-          <Button
-            type="submit"
-            size="sm"
-            disabled={!inviteEmail.trim() || inviteSubmitting}
-          >
+          <Button type="submit" size="sm" disabled={!inviteEmail.trim() || inviteSubmitting}>
             {inviteSubmitting ? "Sending…" : "Send invite"}
           </Button>
         </form>
@@ -192,11 +184,7 @@ export function MembersSettings({
 
       {invitations.length > 0 ? (
         <>
-          <SectionEyebrow
-            label="Pending"
-            count={invitations.length}
-            className="mt-8"
-          />
+          <SectionEyebrow label="Pending" count={invitations.length} className="mt-8" />
           <ul className="flex flex-col">
             {invitations.map((invitation) => (
               <li
@@ -207,12 +195,10 @@ export function MembersSettings({
                   <AtIcon size={11} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="m-0 truncate text-[13px] text-fg">
-                    {invitation.email}
-                  </p>
+                  <p className="m-0 truncate text-[13px] text-fg">{invitation.email}</p>
                   <p className="m-0 mt-0.5 truncate text-[11px] text-fg-faint">
-                    {roleByKey.get(invitation.role)?.name ?? invitation.role} ·
-                    invited {formatRelative(invitation.createdAt)} · expires{" "}
+                    {roleByKey.get(invitation.role)?.name ?? invitation.role} · invited{" "}
+                    {formatRelative(invitation.createdAt)} · expires{" "}
                     {formatRelative(invitation.expiresAt)}
                   </p>
                 </div>
@@ -256,19 +242,12 @@ function SectionEyebrow({
   className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        "mb-2 flex items-baseline gap-2",
-        className,
-      )}
-    >
+    <div className={cn("mb-2 flex items-baseline gap-2", className)}>
       <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-faint">
         {label}
       </span>
       {typeof count === "number" ? (
-        <span className="font-mono text-[10.5px] tabular-nums text-fg-faint">
-          {count}
-        </span>
+        <span className="font-mono text-[10.5px] tabular-nums text-fg-faint">{count}</span>
       ) : null}
     </div>
   );
@@ -321,10 +300,10 @@ function MembersList({
     <ul className="flex flex-col">
       {members.map((member) => {
         const isSelf = currentUserEmail === member.email;
-        const isOwner = member.role === "owner";
-        const canTouchOwner = currentRole === "owner";
-        const canEditThisRole = canAssignRole && (!isOwner || canTouchOwner);
-        const canRemoveThis = canRemove && !isSelf && (!isOwner || canTouchOwner);
+        const isPrivileged = isPrivilegedRole(member.role);
+        const canTouchPrivileged = currentRole === "owner";
+        const canEditThisRole = canAssignRole && (!isPrivileged || canTouchPrivileged);
+        const canRemoveThis = canRemove && !isSelf && (!isPrivileged || canTouchPrivileged);
         return (
           <li
             key={member.id}
@@ -334,13 +313,9 @@ function MembersList({
             <div className="min-w-0 flex-1">
               <p className="m-0 truncate text-[13px] text-fg">
                 {member.name}
-                {isSelf ? (
-                  <span className="ml-1.5 text-fg-faint">(you)</span>
-                ) : null}
+                {isSelf ? <span className="ml-1.5 text-fg-faint">(you)</span> : null}
               </p>
-              <p className="m-0 mt-0.5 truncate text-[11px] text-fg-muted">
-                {member.email}
-              </p>
+              <p className="m-0 mt-0.5 truncate text-[11px] text-fg-muted">{member.email}</p>
             </div>
             {canEditThisRole ? (
               <RoleSelect
@@ -354,9 +329,7 @@ function MembersList({
                 {roleByKey.get(member.role)?.name ?? member.role}
               </span>
             )}
-            {canRemoveThis ? (
-              <MemberRowMenu onRemove={() => onRemove(member)} />
-            ) : null}
+            {canRemoveThis ? <MemberRowMenu onRemove={() => onRemove(member)} /> : null}
           </li>
         );
       })}
@@ -501,9 +474,7 @@ function RoleManager({
         <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-faint">
           Roles
         </span>
-        <span className="font-mono text-[10.5px] tabular-nums text-fg-faint">
-          {roles.length}
-        </span>
+        <span className="font-mono text-[10.5px] tabular-nums text-fg-faint">{roles.length}</span>
       </div>
       <ul className="flex flex-col">
         {roles.map((role) => (
@@ -520,10 +491,7 @@ function RoleManager({
               </p>
             </div>
             {!role.isSystem && canManageRoles ? (
-              <RoleRowMenu
-                onEdit={() => editRole(role)}
-                onArchive={() => void archiveRole(role)}
-              />
+              <RoleRowMenu onEdit={() => editRole(role)} onArchive={() => void archiveRole(role)} />
             ) : null}
           </li>
         ))}
@@ -533,10 +501,7 @@ function RoleManager({
       ) : null}
 
       {canManageRoles ? (
-        <form
-          onSubmit={saveRole}
-          className="mt-4 border-t border-border-subtle pt-4"
-        >
+        <form onSubmit={saveRole} className="mt-4 border-t border-border-subtle pt-4">
           <div className="grid gap-2 sm:grid-cols-2">
             <Input
               value={name}
@@ -562,12 +527,8 @@ function RoleManager({
                   onChange={() => togglePermission(permission.key)}
                   className="h-3.5 w-3.5 accent-fg"
                 />
-                <span className="min-w-0 flex-1 truncate text-fg">
-                  {permission.label}
-                </span>
-                <span className="font-mono text-[10px] text-fg-faint">
-                  {permission.group}
-                </span>
+                <span className="min-w-0 flex-1 truncate text-fg">{permission.label}</span>
+                <span className="font-mono text-[10px] text-fg-faint">{permission.group}</span>
               </label>
             ))}
           </div>
@@ -591,13 +552,7 @@ function RoleManager({
   );
 }
 
-function RoleRowMenu({
-  onEdit,
-  onArchive,
-}: {
-  onEdit: () => void;
-  onArchive: () => void;
-}) {
+function RoleRowMenu({ onEdit, onArchive }: { onEdit: () => void; onArchive: () => void }) {
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -667,13 +622,17 @@ function RoleSelect({
         <option
           key={role.key}
           value={role.key}
-          disabled={role.key === "owner" && currentRole !== "owner"}
+          disabled={isPrivilegedRole(role.key) && currentRole !== "owner"}
         >
           {role.name}
         </option>
       ))}
     </select>
   );
+}
+
+function isPrivilegedRole(role: string) {
+  return role === "owner" || role === "admin";
 }
 
 function formatRelative(value: string) {

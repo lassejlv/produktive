@@ -4,7 +4,10 @@ use crate::{
     },
     email,
     error::ApiError,
-    permissions::{has_permission, require_permission, role_exists, MEMBERS_INVITE, ROLE_MEMBER},
+    permissions::{
+        has_permission, is_privileged_member_role, member_role, require_permission, role_exists,
+        MEMBERS_INVITE, ROLE_MEMBER, ROLE_OWNER,
+    },
     state::AppState,
 };
 use axum::{
@@ -281,6 +284,16 @@ async fn create_invitation(
         .unwrap_or(ROLE_MEMBER);
     if !role_exists(&state.db, &auth.organization.id, role).await? {
         return Err(ApiError::BadRequest("Role does not exist".to_owned()));
+    }
+    if is_privileged_member_role(role) {
+        let actor_role = member_role(&state.db, &auth.user.id, &auth.organization.id)
+            .await?
+            .ok_or_else(|| ApiError::Forbidden("Not a member of this workspace".to_owned()))?;
+        if actor_role != ROLE_OWNER {
+            return Err(ApiError::Forbidden(
+                "Only owners can invite admins or owners".to_owned(),
+            ));
+        }
     }
 
     // If a user with this email is already a member, reject

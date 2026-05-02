@@ -236,6 +236,10 @@ pub fn is_built_in_role(role_key: &str) -> bool {
     built_in_role(role_key).is_some()
 }
 
+pub fn is_privileged_member_role(role_key: &str) -> bool {
+    matches!(role_key, ROLE_OWNER | ROLE_ADMIN)
+}
+
 pub fn sanitize_permissions(input: &[String]) -> Vec<String> {
     let valid: HashSet<_> = all_permission_keys().into_iter().collect();
     let mut out = Vec::new();
@@ -279,4 +283,17 @@ fn permissions_from_json(value: &Value) -> HashSet<String> {
 
 fn permission(key: &'static str, label: &'static str, group: &'static str) -> PermissionInfo {
     PermissionInfo { key, label, group }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_owner_and_admin_are_privileged_member_roles() {
+        assert!(is_privileged_member_role(ROLE_OWNER));
+        assert!(is_privileged_member_role(ROLE_ADMIN));
+        assert!(!is_privileged_member_role(ROLE_MEMBER));
+        assert!(!is_privileged_member_role("custom-admin-like"));
+    }
 }
