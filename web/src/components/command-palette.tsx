@@ -217,12 +217,8 @@ export function CommandPalette() {
         key: "new-issue",
         label: "New issue",
         hint: "C",
-        run: async () => {
-          await navigate({ to: "/issues" });
-          setTimeout(() => {
-            window.dispatchEvent(new CustomEvent("produktive:new-issue"));
-          }, 50);
-        },
+        run: () =>
+          navigate({ to: "/issues", search: { new: true } }),
       },
       {
         type: "action" as const,

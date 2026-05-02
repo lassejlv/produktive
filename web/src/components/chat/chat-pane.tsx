@@ -16,7 +16,6 @@ import {
   readAskUserQuestion,
 } from "@/components/chat/chat-message";
 import { ChatSkeleton } from "@/components/chat/chat-skeleton";
-import { SidebarIcon } from "@/components/chat/icons";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   type ChatMessageRecord,
@@ -372,13 +371,6 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="relative z-10 flex min-h-[58px] items-center gap-3 border-b border-border-subtle bg-bg/86 px-6 py-3 backdrop-blur">
           <div className="flex min-w-0 flex-1 items-center gap-3 text-[13px] text-fg-muted">
-            <button
-              type="button"
-              aria-label="Toggle sidebar"
-              className="hidden size-8 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
-            >
-              <SidebarIcon />
-            </button>
             <span className="text-fg-muted">Chat</span>
             <span className="text-fg-muted">/</span>
             {isLoadingChat ? (

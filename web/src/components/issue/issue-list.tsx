@@ -280,12 +280,19 @@ export function IssueList({
                           "opacity-60 scale-[0.99] shadow-lg shadow-black/30",
                       )}
                     >
-                      <button
-                        type="button"
+                      <div
+                        role="button"
+                        tabIndex={0}
                         onClick={(event) => onSelect(issue.id, event)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            onSelect(issue.id, event as unknown as React.MouseEvent);
+                          }
+                        }}
                         data-issue-row={issue.id}
                         className={cn(
-                          "group/row relative flex w-full items-center gap-3 border-b border-border-subtle px-5 text-left transition-colors hover:bg-surface/60",
+                          "group/row relative flex w-full cursor-pointer items-center gap-3 border-b border-border-subtle px-5 text-left transition-colors hover:bg-surface/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent",
                           rowPadY,
                           onMoveToStatus &&
                             "cursor-grab active:cursor-grabbing",
@@ -295,22 +302,15 @@ export function IssueList({
                             "before:absolute before:inset-y-0 before:left-0 before:w-[2px] before:bg-accent",
                         )}
                       >
-                        <span
-                          role="checkbox"
-                          tabIndex={0}
+                        <button
+                          type="button"
                           aria-checked={isMultiSelected}
+                          role="checkbox"
                           aria-label={`Select ${issue.title}`}
                           onClick={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
                             onToggleSelected?.(issue.id);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              onToggleSelected?.(issue.id);
-                            }
                           }}
                           className={cn(
                             "grid size-4 shrink-0 place-items-center rounded-[3px] border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
@@ -320,7 +320,7 @@ export function IssueList({
                           )}
                         >
                           <CheckIcon />
-                        </span>
+                        </button>
                         {properties.priority ? (
                           <PriorityIcon priority={issue.priority} />
                         ) : null}
@@ -335,29 +335,20 @@ export function IssueList({
                         <span className="min-w-0 flex-1 truncate text-[13px] text-fg">
                           {issue.title}
                         </span>
-                        <span
-                          role="button"
-                          tabIndex={0}
+                        <button
+                          type="button"
                           aria-label="Copy issue link"
                           onClick={(event) => {
                             event.stopPropagation();
                             void copyIssueLink(issue.id);
                           }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              void copyIssueLink(issue.id);
-                            }
-                          }}
                           className="grid size-5 shrink-0 place-items-center rounded-[4px] text-fg-faint opacity-0 transition-colors hover:bg-surface-2 hover:text-fg group-hover/row:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                         >
                           <LinkIcon />
-                        </span>
+                        </button>
                         {onToggleFavorite ? (
-                          <span
-                            role="button"
-                            tabIndex={0}
+                          <button
+                            type="button"
                             aria-label={
                               isFavorite?.(issue.id)
                                 ? "Unpin issue"
@@ -366,13 +357,6 @@ export function IssueList({
                             onClick={(event) => {
                               event.stopPropagation();
                               onToggleFavorite(issue.id);
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                onToggleFavorite(issue.id);
-                              }
                             }}
                             className={cn(
                               "grid size-5 shrink-0 place-items-center rounded-[4px] transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
@@ -385,7 +369,7 @@ export function IssueList({
                               size={11}
                               filled={Boolean(isFavorite?.(issue.id))}
                             />
-                          </span>
+                          </button>
                         ) : null}
                         {properties.project && issue.project ? (
                           <span
@@ -451,7 +435,7 @@ export function IssueList({
                             {formatDate(issue.updatedAt)}
                           </span>
                         ) : null}
-                      </button>
+                      </div>
                     </li>
                   );
                 })}

@@ -15,6 +15,7 @@ import { Avatar } from "@/components/issue/avatar";
 import { EditableDescription } from "@/components/issue/editable-description";
 import { EditableTitle } from "@/components/issue/editable-title";
 import { IssueProperties } from "@/components/issue/issue-properties";
+import { StatusIcon } from "@/components/issue/status-icon";
 import {
   apiPath,
   type Issue,
@@ -596,6 +597,7 @@ export function IssueDetail({
 function SubIssuesSection({ parentId }: { parentId: string }) {
   const navigate = useNavigate();
   const issuesQuery = useIssuesQuery();
+  const { statuses } = useIssueStatuses();
   const children = useMemo(
     () =>
       (issuesQuery.data ?? []).filter((issue) => issue.parentId === parentId),
@@ -627,7 +629,9 @@ function SubIssuesSection({ parentId }: { parentId: string }) {
 
   if (loading && children.length === 0 && !creating) return null;
 
-  const done = children.filter((c) => c.status === "done").length;
+  const done = children.filter(
+    (c) => statuses.find((s) => s.key === c.status)?.category === "done",
+  ).length;
 
   return (
     <section className="mt-12">
@@ -670,14 +674,14 @@ function SubIssuesSection({ parentId }: { parentId: string }) {
                 }
                 className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-surface/40"
               >
-                <SubIssueStatusDot status={child.status} />
+                <StatusIcon status={child.status} statuses={statuses} />
                 <span className="font-mono text-[11px] text-fg-faint">
                   P-{child.id.slice(0, 4).toUpperCase()}
                 </span>
                 <span
                   className={cn(
                     "min-w-0 flex-1 truncate text-[13px]",
-                    child.status === "done"
+                    statuses.find((s) => s.key === child.status)?.category === "done"
                       ? "text-fg-muted line-through"
                       : "text-fg",
                   )}
@@ -732,18 +736,6 @@ function SubIssuesSection({ parentId }: { parentId: string }) {
       ) : null}
     </section>
   );
-}
-
-function SubIssueStatusDot({ status }: { status: string }) {
-  const color =
-    status === "done"
-      ? "bg-success"
-      : status === "in-progress"
-        ? "bg-accent"
-        : status === "todo"
-          ? "bg-fg-muted"
-          : "border border-dashed border-fg-faint";
-  return <span className={cn("size-3 shrink-0 rounded-full", color)} />;
 }
 
 function SubscribeStrip({ issueId }: { issueId: string }) {

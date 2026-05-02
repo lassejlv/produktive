@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { toast } from "sonner";
-import { IssuesIcon, StarIcon } from "@/components/chat/icons";
+import { IssuesIcon } from "@/components/chat/icons";
 import { EmptyState } from "@/components/empty-state";
 import { BulkActionBar } from "@/components/issue/bulk-action-bar";
 import { IssueBoard } from "@/components/issue/issue-board";
@@ -39,13 +39,23 @@ import {
 } from "@/lib/issue-constants";
 import { useDisplayOptions } from "@/lib/issue-display";
 import { issuesQueryOptions } from "@/lib/queries/issues";
+import { useSession } from "@/lib/auth-client";
 import { useFavorites } from "@/lib/use-favorites";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { useIssues } from "@/lib/use-issues";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { cn } from "@/lib/utils";
 
+type IssuesSearch = {
+  mine?: boolean;
+  new?: boolean;
+};
+
 export const Route = createFileRoute("/_app/issues")({
+  validateSearch: (search: Record<string, unknown>): IssuesSearch => ({
+    mine: search.mine === true || search.mine === "1" || search.mine === "true" ? true : undefined,
+    new: search.new === true || search.new === "1" || search.new === "true" ? true : undefined,
+  }),
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(issuesQueryOptions()),
   component: IssuesPage,
@@ -55,6 +65,9 @@ const viewKeys = Object.keys(viewLabels) as View[];
 
 function IssuesPage() {
   const navigate = useNavigate();
+  const search = Route.useSearch();
+  const session = useSession();
+  const currentUserId = session.data?.user?.id ?? null;
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -77,7 +90,6 @@ function IssuesPage() {
       ? "list"
       : displayOptions.viewMode;
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
-  const [viewFavorited, setViewFavorited] = useState(false);
   const onboarding = useOnboarding();
   const { statuses } = useIssueStatuses();
   const viewDropStatus: Record<View, string | null> = {
@@ -90,24 +102,6 @@ function IssuesPage() {
   useEffect(() => {
     onboarding.setFirstIssueId(issues[0]?.id ?? null);
   }, [issues, onboarding]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setViewFavorited(
-      window.localStorage.getItem(`issues-view-fav:${view}`) === "1",
-    );
-  }, [view]);
-
-  const toggleViewFavorited = () => {
-    setViewFavorited((current) => {
-      const next = !current;
-      if (typeof window !== "undefined") {
-        if (next) window.localStorage.setItem(`issues-view-fav:${view}`, "1");
-        else window.localStorage.removeItem(`issues-view-fav:${view}`);
-      }
-      return next;
-    });
-  };
 
   const handleToggleFavorite = (id: string) => {
     void (async () => {
@@ -164,20 +158,28 @@ function IssuesPage() {
   }, [issues, view, filters, statuses]);
 
   useEffect(() => {
-    const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ userId: string | null }>)
-        .detail;
-      if (!detail?.userId) return;
-      setFilters((current) => ({
-        ...current,
-        assigneeIds: current.assigneeIds.includes(detail.userId!)
-          ? current.assigneeIds
-          : [...current.assigneeIds, detail.userId!],
-      }));
-    };
-    window.addEventListener("produktive:filter-mine", handler);
-    return () => window.removeEventListener("produktive:filter-mine", handler);
-  }, []);
+    if (!search.mine || !currentUserId) return;
+    setFilters((current) =>
+      current.assigneeIds.includes(currentUserId)
+        ? current
+        : { ...current, assigneeIds: [...current.assigneeIds, currentUserId] },
+    );
+    void navigate({
+      to: "/issues",
+      search: (prev) => ({ ...prev, mine: undefined }),
+      replace: true,
+    });
+  }, [search.mine, currentUserId, navigate]);
+
+  useEffect(() => {
+    if (!search.new) return;
+    window.dispatchEvent(new CustomEvent("produktive:new-issue"));
+    void navigate({
+      to: "/issues",
+      search: (prev) => ({ ...prev, new: undefined }),
+      replace: true,
+    });
+  }, [search.new, navigate]);
 
   const counts = useMemo(
     () => ({
@@ -431,19 +433,6 @@ function IssuesPage() {
           <span className="text-xs text-fg-muted tabular-nums">
             {filteredIssues.length}
           </span>
-          <button
-            type="button"
-            onClick={toggleViewFavorited}
-            aria-label={viewFavorited ? "Unstar view" : "Star view"}
-            className={cn(
-              "ml-0.5 grid size-5 place-items-center rounded-[4px] transition-colors hover:bg-surface",
-              viewFavorited
-                ? "text-warning"
-                : "text-fg-faint hover:text-fg",
-            )}
-          >
-            <StarIcon size={12} filled={viewFavorited} />
-          </button>
         </div>
         <div className="flex items-center gap-2">
           <span className="hidden text-[11px] text-fg-faint sm:inline">

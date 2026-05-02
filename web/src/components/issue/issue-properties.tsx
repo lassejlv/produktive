@@ -12,6 +12,7 @@ import {
   sortedStatuses,
   statusName,
 } from "@/lib/issue-constants";
+import { priorityLabels } from "@/lib/issue-display";
 
 type Assignee = { id: string; name: string; image: string | null };
 
@@ -48,7 +49,10 @@ export function IssueProperties({
           icon={<StatusIcon status={status} statuses={statuses} />}
           label={statusName(statuses, status)}
           value={status}
-          options={sortedStatuses(statuses).map((status) => status.key)}
+          options={sortedStatuses(statuses).map((entry) => ({
+            value: entry.key,
+            label: entry.name,
+          }))}
           onChange={onChangeStatus}
         />
       </PropertyRow>
@@ -58,9 +62,12 @@ export function IssueProperties({
           <NativeSelectTrigger
             ariaLabel="Priority"
             icon={<PriorityIcon priority={priority} />}
-            label={priority}
+            label={priorityLabels[priority] ?? priority}
             value={priority}
-            options={priorityOptions}
+            options={priorityOptions.map((value) => ({
+              value,
+              label: priorityLabels[value] ?? value,
+            }))}
             onChange={onChangePriority}
           />
         </PropertyRow>
@@ -198,11 +205,11 @@ function NativeSelectTrigger({
   icon: React.ReactNode;
   label: string;
   value: string;
-  options: readonly string[];
+  options: ReadonlyArray<{ value: string; label: string }>;
   onChange: (next: string) => void;
 }) {
   return (
-    <label className="relative flex h-7 w-full cursor-pointer items-center gap-2 rounded-md px-1.5 capitalize transition-colors hover:bg-surface">
+    <label className="relative flex h-7 w-full cursor-pointer items-center gap-2 rounded-md px-1.5 transition-colors hover:bg-surface">
       {icon}
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <select
@@ -212,8 +219,8 @@ function NativeSelectTrigger({
         className="absolute inset-0 cursor-pointer opacity-0"
       >
         {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
+          <option key={option.value} value={option.value}>
+            {option.label}
           </option>
         ))}
       </select>

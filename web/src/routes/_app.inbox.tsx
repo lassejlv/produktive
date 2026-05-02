@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { useInbox } from "@/lib/use-inbox";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +26,25 @@ function InboxPage() {
         to: "/issues/$issueId",
         params: { issueId: targetId },
       });
+      return;
     }
+    if (targetType === "project") {
+      await navigate({
+        to: "/projects/$projectId",
+        params: { projectId: targetId },
+      });
+      return;
+    }
+    if (targetType === "chat") {
+      await navigate({
+        to: "/chat/$chatId",
+        params: { chatId: targetId },
+      });
+      return;
+    }
+    toast.message("Marked as read", {
+      description: "There's no destination for this notification yet.",
+    });
   };
 
   return (

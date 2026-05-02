@@ -251,18 +251,12 @@ function AppLayout() {
             </button>
             <button
               type="button"
-              onClick={async () => {
-                if (pathname !== "/issues" && !pathname.startsWith("/issues/")) {
-                  await navigate({ to: "/issues" });
-                }
-                setTimeout(() => {
-                  window.dispatchEvent(
-                    new CustomEvent("produktive:filter-mine", {
-                      detail: { userId: currentUser?.id ?? null },
-                    }),
-                  );
-                }, 50);
-              }}
+              onClick={() =>
+                void navigate({
+                  to: "/issues",
+                  search: { mine: true },
+                })
+              }
               className="flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] text-fg-muted transition-colors hover:bg-surface hover:text-fg [&_svg]:text-fg-faint"
             >
               <MyIssuesIcon />
@@ -308,14 +302,29 @@ function AppLayout() {
                         params: { issueId: fav.id },
                       });
                     };
+                    const onUnpin = async () => {
+                      try {
+                        await toggleFavorite(fav.type, fav.id);
+                        toast.success("Removed from favorites");
+                      } catch {
+                        toast.error("Failed to update favorite");
+                      }
+                    };
                     return (
-                      <button
+                      <div
                         key={fav.favoriteId}
-                        type="button"
+                        role="button"
+                        tabIndex={0}
                         onClick={() => void goTo()}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void goTo();
+                          }
+                        }}
                         title={displayFavoriteTitle(fav.title)}
                         className={cn(
-                          "group flex h-8 w-full items-center gap-2 rounded-[7px] px-2.5 text-left text-[13px] transition-colors",
+                          "group flex h-8 w-full cursor-pointer items-center gap-2 rounded-[7px] px-2.5 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
                           isActive
                             ? "bg-surface text-fg"
                             : "text-fg-muted hover:bg-surface hover:text-fg",
@@ -336,36 +345,18 @@ function AppLayout() {
                           )}
                         </span>
                         <span className="flex-1 truncate">{displayFavoriteTitle(fav.title)}</span>
-                        <span
-                          className="shrink-0 text-warning opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent rounded-[3px] hover:text-fg"
-                          role="button"
-                          tabIndex={0}
+                        <button
+                          type="button"
                           aria-label={`Unpin ${displayFavoriteTitle(fav.title)}`}
-                          onClick={async (event) => {
+                          onClick={(event) => {
                             event.stopPropagation();
-                            try {
-                              await toggleFavorite(fav.type, fav.id);
-                              toast.success("Removed from favorites");
-                            } catch {
-                              toast.error("Failed to update favorite");
-                            }
+                            void onUnpin();
                           }}
-                          onKeyDown={async (event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              try {
-                                await toggleFavorite(fav.type, fav.id);
-                                toast.success("Removed from favorites");
-                              } catch {
-                                toast.error("Failed to update favorite");
-                              }
-                            }
-                          }}
+                          className="shrink-0 rounded-[3px] text-warning opacity-0 transition-opacity hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent group-hover:opacity-100"
                         >
                           <StarIcon size={11} filled />
-                        </span>
-                      </button>
+                        </button>
+                      </div>
                     );
                   })
                 )}
@@ -436,8 +427,6 @@ function AppLayout() {
             </div>
           </div>
 
-          <TrySection />
-
           <div>
             <div className="flex items-center justify-between pb-1.5 pl-2 pr-1">
               <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
@@ -465,27 +454,27 @@ function AppLayout() {
                   const isActive = pathname === `/chat/${entry.id}`;
                   return (
                     <div key={entry.id} className="relative">
-                      <button
-                        type="button"
+                      <div
+                        role="button"
+                        tabIndex={0}
                         onClick={() => void openChat(entry.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void openChat(entry.id);
+                          }
+                        }}
                         title={displayChatTitle(entry)}
                         className={cn(
-                          "group flex h-8 w-full items-center gap-2 rounded-[7px] px-2.5 text-left text-[13px] transition-colors",
+                          "group flex h-8 w-full cursor-pointer items-center gap-2 rounded-[7px] px-2.5 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
                           isActive
                             ? "bg-surface text-fg"
                             : "text-fg-muted hover:bg-surface hover:text-fg",
                         )}
                       >
                         <span className="flex-1 truncate">{displayChatTitle(entry)}</span>
-                        <span
-                          className={cn(
-                            "grid size-6 shrink-0 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
-                            chatMenuOpenId === entry.id
-                              ? "bg-surface-2 opacity-100"
-                              : "opacity-0 group-hover:opacity-100",
-                          )}
-                          role="button"
-                          tabIndex={0}
+                        <button
+                          type="button"
                           aria-label={`Actions for ${displayChatTitle(entry)}`}
                           onClick={(event) => {
                             event.stopPropagation();
@@ -493,19 +482,16 @@ function AppLayout() {
                               current === entry.id ? null : entry.id,
                             );
                           }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setChatMenuOpenId((current) =>
-                                current === entry.id ? null : entry.id,
-                              );
-                            }
-                          }}
+                          className={cn(
+                            "grid size-6 shrink-0 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                            chatMenuOpenId === entry.id
+                              ? "bg-surface-2 opacity-100"
+                              : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+                          )}
                         >
                           <DotsIcon />
-                        </span>
-                      </button>
+                        </button>
+                      </div>
                       {chatMenuOpenId === entry.id ? (
                         <div
                           className="absolute right-1 top-8 z-30 w-36 overflow-hidden rounded-[8px] border border-border bg-surface py-1 shadow-xl"
@@ -670,9 +656,16 @@ function AccountIcon({ name, image }: { name: string; image?: string | null }) {
       />
     );
   }
+  const tokens = name.trim().split(/\s+/).filter(Boolean);
+  const initials =
+    tokens.length === 0
+      ? "P"
+      : tokens.length === 1
+        ? tokens[0].slice(0, 2).toUpperCase()
+        : (tokens[0][0] + tokens[tokens.length - 1][0]).toUpperCase();
   return (
     <div className="grid size-8 shrink-0 place-items-center rounded-[8px] border border-border bg-surface text-[12px] font-medium text-fg">
-      {name.slice(0, 2).toUpperCase() || "P"}
+      {initials}
     </div>
   );
 }
@@ -724,29 +717,6 @@ function MyIssuesIcon() {
         stroke="currentColor"
         strokeWidth="1.4"
         strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function SearchSidebarIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <circle cx="6" cy="6" r="3.5" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M11 11l-2.4-2.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ComposeIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path
-        d="M2.5 11.5h9M3 9.5l5.6-5.6 1.5 1.5L4.5 11l-2 .5.5-2z"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </svg>
   );
@@ -852,47 +822,3 @@ function SidebarLabelsIcon() {
   );
 }
 
-const TRY_DISMISSED_KEY = "sidebar-try-dismissed";
-
-function TrySection() {
-  const [dismissed, setDismissed] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setDismissed(window.localStorage.getItem(TRY_DISMISSED_KEY) === "1");
-  }, []);
-
-  if (dismissed) return null;
-
-  const dismiss = () => {
-    setDismissed(true);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(TRY_DISMISSED_KEY, "1");
-    }
-  };
-
-  return (
-    <div>
-      <div className="flex items-center justify-between px-2 pb-1.5">
-        <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
-          Try
-        </span>
-        <button
-          type="button"
-          onClick={dismiss}
-          aria-label="Dismiss"
-          className="text-fg-faint transition-colors hover:text-fg"
-        >
-          <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden>
-            <path
-              d="M3 3l6 6M9 3l-6 6"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
-      </div>
-    </div>
-  );
-}
