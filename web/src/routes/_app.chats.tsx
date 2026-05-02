@@ -1,8 +1,13 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { SparkleIcon } from "@/components/chat/icons";
+import { DotsIcon, SparkleIcon, StarIcon } from "@/components/chat/icons";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { type Chat, deleteChat, getChat } from "@/lib/api";
 import { parseMessageWithAttachments } from "@/lib/chat-attachments";
 import { chatsQueryOptions } from "@/lib/queries/chats";
@@ -30,6 +35,26 @@ const sortOptions: { value: SortKey; label: string }[] = [
   { value: "alphabetical", label: "A–Z" },
 ];
 
+type Bucket = "pinned" | "today" | "yesterday" | "this-week" | "this-month" | "older";
+
+const bucketOrder: Bucket[] = [
+  "pinned",
+  "today",
+  "yesterday",
+  "this-week",
+  "this-month",
+  "older",
+];
+
+const bucketLabels: Record<Bucket, string> = {
+  pinned: "Pinned",
+  today: "Today",
+  yesterday: "Yesterday",
+  "this-week": "Earlier this week",
+  "this-month": "Earlier this month",
+  older: "Older",
+};
+
 function ChatsPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
@@ -41,31 +66,50 @@ function ChatsPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const pool = q
+    return q
       ? chats.filter((chat) =>
           (chat.title || "").toLowerCase().includes(q),
         )
       : chats;
-    const copy = [...pool];
+  }, [chats, query]);
+
+  const groups = useMemo(() => {
     if (sort === "alphabetical") {
-      copy.sort((a, b) =>
+      const copy = [...filtered].sort((a, b) =>
         (a.title || "").localeCompare(b.title || "", undefined, {
           sensitivity: "base",
         }),
       );
-    } else if (sort === "oldest") {
-      copy.sort(
+      return [{ bucket: "all" as const, chats: copy }];
+    }
+
+    if (sort === "oldest") {
+      const copy = [...filtered].sort(
         (a, b) =>
           new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime(),
       );
-    } else {
-      copy.sort(
+      return [{ bucket: "all" as const, chats: copy }];
+    }
+
+    const buckets = new Map<Bucket, Chat[]>();
+    for (const chat of filtered) {
+      const bucket = isFavorite("chat", chat.id)
+        ? "pinned"
+        : dateBucket(chat.updatedAt);
+      const list = buckets.get(bucket) ?? [];
+      list.push(chat);
+      buckets.set(bucket, list);
+    }
+    for (const list of buckets.values()) {
+      list.sort(
         (a, b) =>
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       );
     }
-    return copy;
-  }, [chats, sort, query]);
+    return bucketOrder
+      .filter((bucket) => buckets.has(bucket))
+      .map((bucket) => ({ bucket, chats: buckets.get(bucket) ?? [] }));
+  }, [filtered, sort, isFavorite]);
 
   const handleDelete = (chat: Chat) => {
     confirm({
@@ -128,163 +172,322 @@ function ChatsPage() {
   return (
     <main className="min-h-full bg-bg">
       {dialog}
-      <header className="sticky top-0 z-10 flex h-12 items-center justify-between gap-3 border-b border-border-subtle bg-bg/85 px-5 backdrop-blur">
-        <div className="flex items-center gap-2">
-          <span className="text-fg-muted">
-            <SparkleIcon size={12} />
-          </span>
-          <h1 className="text-sm font-medium text-fg">Chats</h1>
-          <span className="text-xs text-fg-muted tabular-nums">{filtered.length}</span>
+
+      <header className="border-b border-border-subtle px-8 pb-6 pt-10">
+        <div className="mx-auto flex w-full max-w-[920px] items-end justify-between gap-6">
+          <div>
+            <p className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-fg-faint">
+              Conversations
+            </p>
+            <h1 className="mt-1.5 text-[26px] font-medium leading-none tracking-[-0.02em] text-fg">
+              Chats
+            </h1>
+            <p className="mt-1.5 text-[12.5px] text-fg-muted">
+              <span className="tabular-nums text-fg">{chats.length}</span>{" "}
+              {chats.length === 1 ? "conversation" : "conversations"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void navigate({ to: "/chat" })}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-[12.5px] font-medium text-bg transition-colors hover:bg-white"
+          >
+            <PlusIcon />
+            New chat
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => void navigate({ to: "/chat" })}
-          className="inline-flex h-7 items-center gap-1.5 rounded-md bg-fg px-2.5 text-[12.5px] font-medium text-bg transition-colors hover:bg-white"
-        >
-          New chat
-        </button>
       </header>
 
-      <nav className="flex flex-wrap items-center gap-2 border-b border-border-subtle bg-bg px-5 py-2">
-        <input
-          type="search"
-          placeholder="Search chats…"
-          value={query}
-          onChange={(event) => {
-            const next = event.target.value;
-            setQuery(next);
-            void navigate({
-              to: "/chats",
-              search: next.trim() ? { q: next.trim() } : {},
-              replace: true,
-            });
-          }}
-          className="h-7 min-w-0 flex-1 rounded-md border border-border-subtle bg-transparent px-2 text-[12.5px] text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-border"
-        />
-        <div className="flex items-center gap-1">
-          {sortOptions.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => setSort(option.value)}
-              className={cn(
-                "inline-flex h-7 items-center rounded-md px-2.5 text-xs transition-colors",
-                sort === option.value
-                  ? "bg-surface text-fg"
-                  : "text-fg-muted hover:bg-surface hover:text-fg",
-              )}
-            >
-              {option.label}
-            </button>
-          ))}
+      <div className="sticky top-0 z-10 border-b border-border-subtle bg-bg/85 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-[920px] items-center gap-3 px-8 py-2.5">
+          <div className="relative flex min-w-0 flex-1 items-center">
+            <span className="pointer-events-none absolute left-2 text-fg-faint">
+              <SearchIcon />
+            </span>
+            <input
+              type="search"
+              placeholder="Search conversations…"
+              value={query}
+              onChange={(event) => {
+                const next = event.target.value;
+                setQuery(next);
+                void navigate({
+                  to: "/chats",
+                  search: next.trim() ? { q: next.trim() } : {},
+                  replace: true,
+                });
+              }}
+              className="h-8 w-full bg-transparent pl-7 pr-2 text-[13px] text-fg outline-none placeholder:text-fg-faint"
+            />
+          </div>
+          <div className="flex items-center gap-0.5 rounded-md border border-border-subtle p-0.5">
+            {sortOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setSort(option.value)}
+                className={cn(
+                  "inline-flex h-6 items-center rounded-[4px] px-2 text-[11.5px] transition-colors",
+                  sort === option.value
+                    ? "bg-surface text-fg"
+                    : "text-fg-muted hover:text-fg",
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </nav>
+      </div>
 
-      <section className="mx-auto w-full max-w-[760px] px-5 py-6">
+      <section className="mx-auto w-full max-w-[920px] px-8 pb-24 pt-2">
         {isLoading ? (
-          <p className="text-[13px] text-fg-faint">Loading…</p>
+          <p className="px-2 py-8 text-[13px] text-fg-faint">Loading…</p>
         ) : chats.length === 0 ? (
           <ChatsEmptyState onNewChat={() => void navigate({ to: "/chat" })} />
         ) : filtered.length === 0 ? (
-          <p className="text-[13px] text-fg-faint">No chats match "{query}".</p>
+          <div className="px-2 py-12 text-center">
+            <p className="text-[13px] text-fg">No matches for "{query}".</p>
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                void navigate({ to: "/chats", search: {}, replace: true });
+              }}
+              className="mt-2 text-[12px] text-fg-muted transition-colors hover:text-fg"
+            >
+              Clear search
+            </button>
+          </div>
         ) : (
-          <ul className="overflow-hidden rounded-[10px] border border-border-subtle">
-            {filtered.map((chat, index) => {
-              const pinned = isFavorite("chat", chat.id);
-              return (
-                <li
-                  key={chat.id}
-                  className={cn(
-                    "group flex items-center gap-3 px-4 py-2.5 text-[13px] transition-colors",
-                    index !== filtered.length - 1 && "border-b border-border-subtle",
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void navigate({
-                        to: "/chat/$chatId",
-                        params: { chatId: chat.id },
-                      })
-                    }
-                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                  >
-                    <span className="text-fg-faint">
-                      <SparkleIcon size={11} />
+          <div className="flex flex-col">
+            {groups.map((group, gIdx) => (
+              <div key={group.bucket} className={cn(gIdx > 0 && "mt-8")}>
+                {group.bucket !== "all" ? (
+                  <div className="mb-2 flex items-baseline gap-2 px-2">
+                    <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-faint">
+                      {bucketLabels[group.bucket]}
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-fg">
-                      {displayChatTitle(chat)}
+                    <span className="text-[10.5px] tabular-nums text-fg-faint">
+                      {group.chats.length}
                     </span>
-                    <span className="shrink-0 font-mono text-[11px] text-fg-faint">
-                      {formatRelative(chat.updatedAt)}
-                    </span>
-                  </button>
-                  <div className="flex items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
-                    <RowAction
-                      label={pinned ? "Unpin" : "Pin"}
-                      onClick={() => void handlePin(chat)}
-                    />
-                    <RowAction label="Export" onClick={() => void handleExport(chat)} />
-                    <RowAction label="Copy" onClick={() => void handleCopy(chat)} />
-                    <RowAction
-                      label="Delete"
-                      tone="danger"
-                      onClick={() => handleDelete(chat)}
-                    />
                   </div>
-                </li>
-              );
-            })}
-          </ul>
+                ) : null}
+                <ul>
+                  {group.chats.map((chat, idx) => {
+                    const pinned = isFavorite("chat", chat.id);
+                    return (
+                      <li
+                        key={chat.id}
+                        className={cn(
+                          "group flex items-center gap-4 rounded-md border-b border-border-subtle/60 px-2 py-3 transition-colors hover:bg-surface/50 last:border-b-0",
+                          idx === 0 && "border-t border-border-subtle/60",
+                        )}
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void navigate({
+                              to: "/chat/$chatId",
+                              params: { chatId: chat.id },
+                            })
+                          }
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        >
+                          <span
+                            className={cn(
+                              "shrink-0",
+                              pinned ? "text-warning" : "text-fg-faint",
+                            )}
+                          >
+                            {pinned ? (
+                              <StarIcon size={11} filled />
+                            ) : (
+                              <SparkleIcon size={11} />
+                            )}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-[14px] text-fg">
+                            {displayChatTitle(chat)}
+                          </span>
+                          <span
+                            className="shrink-0 font-mono text-[11px] tabular-nums text-fg-faint"
+                            title={new Date(chat.updatedAt).toLocaleString()}
+                          >
+                            {formatRelative(chat.updatedAt)}
+                          </span>
+                        </button>
+                        <RowMenu
+                          pinned={pinned}
+                          onPin={() => void handlePin(chat)}
+                          onExport={() => void handleExport(chat)}
+                          onCopy={() => void handleCopy(chat)}
+                          onDelete={() => handleDelete(chat)}
+                        />
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
         )}
+
+        {chats.length > 0 ? (
+          <footer className="mt-12 flex items-center justify-center gap-3 border-t border-border-subtle/50 pt-4 text-[11px] text-fg-faint">
+            <Hint label="Search">
+              <Kbd>⌘</Kbd>
+              <Kbd>K</Kbd>
+            </Hint>
+            <span className="text-fg-faint/40">·</span>
+            <Hint label="New chat">
+              <Kbd>C</Kbd>
+            </Hint>
+          </footer>
+        ) : null}
       </section>
     </main>
   );
 }
 
-function RowAction({
-  label,
-  onClick,
-  tone,
+function RowMenu({
+  pinned,
+  onPin,
+  onExport,
+  onCopy,
+  onDelete,
 }: {
-  label: string;
+  pinned: boolean;
+  onPin: () => void;
+  onExport: () => void;
+  onCopy: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Actions"
+          className={cn(
+            "grid size-7 shrink-0 place-items-center rounded-md text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+            open
+              ? "bg-surface-2 text-fg opacity-100"
+              : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+          )}
+        >
+          <DotsIcon size={13} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={4}
+        className="w-40 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-xl"
+      >
+        <MenuItem onClick={() => closeAnd(setOpen, onPin)}>
+          {pinned ? "Unpin" : "Pin to sidebar"}
+        </MenuItem>
+        <MenuItem onClick={() => closeAnd(setOpen, onExport)}>
+          Export JSON
+        </MenuItem>
+        <MenuItem onClick={() => closeAnd(setOpen, onCopy)}>Copy link</MenuItem>
+        <div className="my-1 h-px bg-border-subtle" />
+        <MenuItem danger onClick={() => closeAnd(setOpen, onDelete)}>
+          Delete
+        </MenuItem>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function MenuItem({
+  children,
+  onClick,
+  danger,
+}: {
+  children: React.ReactNode;
   onClick: () => void;
-  tone?: "danger";
+  danger?: boolean;
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
       className={cn(
-        "rounded-md px-2 py-0.5 text-[11.5px] text-fg-muted transition-colors",
-        tone === "danger"
-          ? "hover:bg-danger/10 hover:text-danger"
-          : "hover:bg-surface hover:text-fg",
+        "flex h-8 w-full items-center px-2.5 text-left text-[12.5px] transition-colors hover:bg-surface-2",
+        danger ? "text-danger" : "text-fg",
       )}
+      onClick={onClick}
     >
-      {label}
+      {children}
     </button>
   );
 }
 
+function closeAnd(
+  setOpen: (next: boolean) => void,
+  fn: () => void | Promise<void>,
+) {
+  setOpen(false);
+  void fn();
+}
+
 function ChatsEmptyState({ onNewChat }: { onNewChat: () => void }) {
   return (
-    <div className="flex flex-col items-center py-16 text-center">
-      <div className="mb-4 grid size-12 place-items-center rounded-xl bg-surface/60 text-fg-muted">
-        <SparkleIcon size={20} />
+    <div className="flex flex-col items-center px-6 py-24 text-center">
+      <div className="mb-5 grid size-12 place-items-center rounded-[10px] border border-border-subtle bg-surface/40 text-fg-muted">
+        <SparkleIcon size={18} />
       </div>
-      <h2 className="text-[15px] font-medium text-fg">No chats yet</h2>
-      <p className="mt-1 max-w-[360px] text-[13px] text-fg-muted">
-        Start a chat with Produktive — ask questions, draft issues, or get a quick summary.
+      <h2 className="text-[16px] font-medium tracking-[-0.01em] text-fg">
+        No chats yet
+      </h2>
+      <p className="mt-1.5 max-w-[360px] text-[13px] leading-relaxed text-fg-muted">
+        Ask Produktive to triage issues, draft a spec, or summarize what's in
+        progress.
       </p>
       <button
         type="button"
         onClick={onNewChat}
-        className="mt-5 rounded-md bg-fg px-3 py-1.5 text-[12.5px] font-medium text-bg transition-colors hover:bg-white"
+        className="mt-5 inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-[12.5px] font-medium text-bg transition-colors hover:bg-white"
       >
-        New chat
+        <PlusIcon />
+        Start a chat
       </button>
     </div>
+  );
+}
+
+function Hint({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="flex items-center gap-0.5">{children}</span>
+      <span className="text-fg-muted">{label}</span>
+    </span>
+  );
+}
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="grid h-4 min-w-4 place-items-center rounded-[3px] border border-border-subtle bg-surface px-1 font-mono text-[10px] text-fg-muted">
+      {children}
+    </kbd>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden>
+      <path d="M6 2.5v7M2.5 6h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <circle cx="6" cy="6" r="3.5" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M11 11l-2.4-2.4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
   );
 }
 
@@ -302,6 +505,27 @@ function safeFilename(value: string) {
   );
 }
 
+function startOfDay(date: Date): Date {
+  const out = new Date(date);
+  out.setHours(0, 0, 0, 0);
+  return out;
+}
+
+function dateBucket(updatedAt: string): Bucket {
+  const now = new Date();
+  const then = new Date(updatedAt);
+  const todayStart = startOfDay(now);
+  const thenStart = startOfDay(then);
+  const dayDiff = Math.round(
+    (todayStart.getTime() - thenStart.getTime()) / (1000 * 60 * 60 * 24),
+  );
+  if (dayDiff <= 0) return "today";
+  if (dayDiff === 1) return "yesterday";
+  if (dayDiff < 7) return "this-week";
+  if (dayDiff < 30) return "this-month";
+  return "older";
+}
+
 function formatRelative(value: string) {
   const then = new Date(value).getTime();
   const diffMs = Date.now() - then;
@@ -312,5 +536,8 @@ function formatRelative(value: string) {
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d`;
-  return new Date(value).toLocaleDateString();
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }
