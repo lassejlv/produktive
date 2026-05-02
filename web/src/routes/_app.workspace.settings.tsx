@@ -65,9 +65,7 @@ type SettingsSectionId =
   | "general"
   | "members"
   | "statuses"
-  | "github"
-  | "discord"
-  | "mcp"
+  | "integrations"
   | "ai"
   | "templates"
   | "danger";
@@ -78,6 +76,8 @@ type SettingsSection = {
   description: string;
   group: "main" | "danger";
 };
+
+const PRODUKTIVE_MCP_ENDPOINT = "https://mcp.produktive.app/mcp";
 
 const settingsSections: SettingsSection[] = [
   {
@@ -99,21 +99,9 @@ const settingsSections: SettingsSection[] = [
     group: "main",
   },
   {
-    id: "github",
-    label: "GitHub",
-    description: "Import repository issues",
-    group: "main",
-  },
-  {
-    id: "discord",
-    label: "Discord",
-    description: "Install the Produktive bot",
-    group: "main",
-  },
-  {
-    id: "mcp",
-    label: "API keys",
-    description: "Keys for the public REST API",
+    id: "integrations",
+    label: "Integrations",
+    description: "GitHub, Discord, MCP, and API keys",
     group: "main",
   },
   {
@@ -136,8 +124,21 @@ const settingsSections: SettingsSection[] = [
   },
 ];
 
+const LEGACY_SECTION_TO_INTEGRATIONS = new Set(["github", "discord", "mcp"]);
+
+const settingsNavGroups: { label: string; ids: SettingsSectionId[] }[] = [
+  { label: "Workspace", ids: ["general", "members", "statuses"] },
+  { label: "Integrations", ids: ["integrations"] },
+  { label: "Automation", ids: ["ai", "templates"] },
+];
+
 const isSettingsSectionId = (value: string): value is SettingsSectionId =>
   settingsSections.some((item) => item.id === value);
+
+function settingsSectionMeta(id: SettingsSectionId): SettingsSection {
+  return settingsSections.find((s) => s.id === id)!;
+}
+
 
 function WorkspaceSettingsPage() {
   const session = useSession();
@@ -152,11 +153,20 @@ function WorkspaceSettingsPage() {
   const [membersLoading, setMembersLoading] = useState(true);
 
   useEffect(() => {
-    const section = new URLSearchParams(window.location.search).get("section");
-    if (section && isSettingsSectionId(section)) {
-      setActiveSection(section);
+    const raw = new URLSearchParams(window.location.search).get("section");
+    if (raw && LEGACY_SECTION_TO_INTEGRATIONS.has(raw)) {
+      setActiveSection("integrations");
+      void navigate({
+        to: "/workspace/settings",
+        search: { section: "integrations" },
+        replace: true,
+      });
+      return;
     }
-  }, []);
+    if (raw && isSettingsSectionId(raw)) {
+      setActiveSection(raw);
+    }
+  }, [navigate]);
 
   useEffect(() => {
     let mounted = true;
@@ -207,8 +217,6 @@ function WorkspaceSettingsPage() {
   const hasPermission = (permission: string) => currentPermissions.has(permission);
   const canEditWorkspace = hasPermission("workspace.rename");
   const activeMeta = settingsSections.find((s) => s.id === activeSection);
-
-  const mainSections = settingsSections.filter((s) => s.group === "main");
   const dangerSections = settingsSections.filter((s) => s.group === "danger");
 
   return (
@@ -232,25 +240,26 @@ function WorkspaceSettingsPage() {
           aria-orientation="vertical"
           className="flex flex-col gap-0.5 md:sticky md:top-10 md:self-start"
         >
-          <SectionGroup>
-            {mainSections.map((section) => {
-              return (
-                <SectionButton
-                  key={section.id}
-                  section={section}
-                  active={activeSection === section.id}
-                  onSelect={onSelectSection}
-                  trailing={
-                    section.id === "members" && !membersLoading && members.length > 0 ? (
-                      <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-surface-2 px-1.5 text-[10.5px] font-medium tabular-nums text-fg-muted">
-                        {members.length}
-                      </span>
-                    ) : null
-                  }
-                />
-              );
-            })}
-          </SectionGroup>
+          {settingsNavGroups.map((group, groupIndex) => (
+            <div key={group.label} className={cn(groupIndex > 0 && "mt-4")}>
+              <p className="mb-1 px-2.5 text-[10px] font-medium uppercase tracking-[0.12em] text-fg-faint">
+                {group.label}
+              </p>
+              <SectionGroup>
+                {group.ids.map((id) => {
+                  const section = settingsSectionMeta(id);
+                  return (
+                    <SectionButton
+                      key={id}
+                      section={section}
+                      active={activeSection === id}
+                      onSelect={onSelectSection}
+                    />
+                  );
+                })}
+              </SectionGroup>
+            </div>
+          ))}
           {dangerSections.length > 0 ? (
             <>
               <div className="my-1 h-px bg-border-subtle" />
@@ -271,10 +280,16 @@ function WorkspaceSettingsPage() {
 
         <main className="min-w-0">
           {activeMeta ? (
-            <header className="mb-5 border-b border-border-subtle pb-4">
-              <h2 className="m-0 text-[15px] font-medium text-fg">{activeMeta.label}</h2>
-              <p className="mt-1 text-[12.5px] text-fg-faint">{activeMeta.description}</p>
-            </header>
+            activeSection === "integrations" ? (
+              <h2 id="integrations-main-heading" className="sr-only">
+                {activeMeta.label}
+              </h2>
+            ) : (
+              <header className="mb-5 border-b border-border-subtle pb-4">
+                <h2 className="m-0 text-[15px] font-medium text-fg">{activeMeta.label}</h2>
+                <p className="mt-1 text-[12.5px] text-fg-faint">{activeMeta.description}</p>
+              </header>
+            )
           ) : null}
 
           {activeSection === "general" ? (
@@ -298,11 +313,9 @@ function WorkspaceSettingsPage() {
           {activeSection === "statuses" ? (
             <StatusSettings canEdit={hasPermission("issue_statuses.manage")} />
           ) : null}
-          {activeSection === "github" ? (
-            <GithubSettings canEdit={hasPermission("integrations.github.manage")} />
+          {activeSection === "integrations" ? (
+            <IntegrationsSettings canEditGithub={hasPermission("integrations.github.manage")} />
           ) : null}
-          {activeSection === "discord" ? <DiscordSettings /> : null}
-          {activeSection === "mcp" ? <McpKeySettings /> : null}
           {activeSection === "ai" ? <AiSettings /> : null}
           {activeSection === "templates" ? <McpTemplatesSettings /> : null}
           {activeSection === "danger" ? (
@@ -566,6 +579,116 @@ function StatusColor({ color }: { color: string }) {
     pink: "bg-pink-400",
   };
   return <span className={cn("size-2 rounded-full", colors[color] ?? colors.gray)} aria-hidden />;
+}
+
+type IntegrationSubtabId = "github" | "discord" | "mcp" | "rest";
+
+const INTEGRATION_SUBTABS: { id: IntegrationSubtabId; label: string }[] = [
+  { id: "github", label: "GitHub" },
+  { id: "discord", label: "Discord" },
+  { id: "mcp", label: "MCP" },
+  { id: "rest", label: "REST API" },
+];
+
+function IntegrationSubtabBar({
+  active,
+  onSelect,
+}: {
+  active: IntegrationSubtabId;
+  onSelect: (id: IntegrationSubtabId) => void;
+}) {
+  return (
+    <nav
+      aria-label="Integration types"
+      className="-mx-px -mt-px flex flex-nowrap items-end gap-x-px overflow-x-auto border-border-subtle border-b [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-x-8 [&::-webkit-scrollbar]:hidden"
+      role="tablist"
+    >
+      {INTEGRATION_SUBTABS.map(({ id, label }) => {
+        const selected = active === id;
+        return (
+          <button
+            key={id}
+            id={`integrations-subtab-${id}`}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            tabIndex={selected ? 0 : -1}
+            onClick={() => onSelect(id)}
+            className={cn(
+              "-mb-px shrink-0 border-b-[1.5px] border-transparent px-2 pb-3 pt-1 text-[13px] tracking-[-0.01em] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-offset-2 sm:px-0",
+              selected ? "border-fg font-medium text-fg" : "text-fg-muted hover:text-fg",
+            )}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function IntegrationsSettings({ canEditGithub }: { canEditGithub: boolean }) {
+  const [sub, setSub] = useState<IntegrationSubtabId>("github");
+
+  return (
+    <div className="min-w-0">
+      <IntegrationSubtabBar active={sub} onSelect={setSub} />
+
+      <div
+        role="tabpanel"
+        aria-labelledby={`integrations-subtab-${sub}`}
+        className="min-w-0 pt-8"
+      >
+        {sub === "github" ? <GithubSettings canEdit={canEditGithub} /> : null}
+        {sub === "discord" ? <DiscordSettings /> : null}
+        {sub === "mcp" ? <HostedMcpSettingsRows /> : null}
+        {sub === "rest" ? <McpKeySettings /> : null}
+      </div>
+    </div>
+  );
+}
+
+function HostedMcpSettingsRows() {
+  const onCopyEndpoint = async () => {
+    try {
+      await navigator.clipboard.writeText(PRODUKTIVE_MCP_ENDPOINT);
+      toast.success("MCP endpoint copied");
+    } catch {
+      toast.error("Could not copy to clipboard");
+    }
+  };
+
+  return (
+    <>
+      <SettingRow label="Server URL">
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href={PRODUKTIVE_MCP_ENDPOINT}
+            target="_blank"
+            rel="noreferrer"
+            className="min-w-0 flex-1 break-all font-mono text-[12px] text-accent hover:underline"
+          >
+            {PRODUKTIVE_MCP_ENDPOINT}
+          </a>
+          <Button type="button" variant="outline" size="sm" onClick={() => void onCopyEndpoint()}>
+            Copy
+          </Button>
+        </div>
+      </SettingRow>
+      <SettingRow label="Authentication">
+        <span className="text-[13px] text-fg-muted">
+          OAuth. Complete Produktive sign-in when your MCP client opens the browser.
+        </span>
+      </SettingRow>
+      <SettingRow label="Documentation">
+        <Button asChild variant="outline" size="sm">
+          <a href={PRODUKTIVE_MCP_ENDPOINT} target="_blank" rel="noreferrer">
+            Open MCP reference
+          </a>
+        </Button>
+      </SettingRow>
+    </>
+  );
 }
 
 function DiscordSettings() {
@@ -1512,13 +1635,11 @@ function SectionButton({
   active,
   onSelect,
   danger = false,
-  trailing,
 }: {
   section: SettingsSection;
   active: boolean;
   onSelect: (id: SettingsSectionId) => void;
   danger?: boolean;
-  trailing?: React.ReactNode;
 }) {
   const baseColor = danger ? "text-danger/80 hover:text-danger" : "text-fg-muted hover:text-fg";
   const activeColor = danger ? "bg-danger/10 text-danger" : "bg-surface text-fg";
@@ -1530,12 +1651,11 @@ function SectionButton({
       aria-selected={active}
       onClick={() => onSelect(section.id)}
       className={cn(
-        "flex h-8 items-center justify-between gap-2 rounded-md px-2.5 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+        "flex h-8 items-center rounded-md px-2.5 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
         active ? activeColor : `${baseColor} hover:bg-surface/60`,
       )}
     >
       <span className="truncate">{section.label}</span>
-      {trailing}
     </button>
   );
 }

@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ONBOARDING_SKIP_FLAG, useOnboarding } from "@/components/onboarding/onboarding-context";
 import { Button } from "@/components/ui/button";
@@ -30,13 +30,138 @@ export const Route = createFileRoute("/_app/account")({
   component: AccountPage,
 });
 
+type AccountSectionId =
+  | "profile"
+  | "appearance"
+  | "notifications"
+  | "sessions"
+  | "tour"
+  | "danger";
+
+type AccountSection = {
+  id: AccountSectionId;
+  label: string;
+  description: string;
+  group: "main" | "danger";
+};
+
+const accountSections: AccountSection[] = [
+  {
+    id: "profile",
+    label: "Profile",
+    description: "Icon, name, and email.",
+    group: "main",
+  },
+  {
+    id: "appearance",
+    label: "Appearance",
+    description: "Theme and tab bar.",
+    group: "main",
+  },
+  {
+    id: "notifications",
+    label: "Notifications",
+    description:
+      "Email for assignments, comments, and recap. Inbox alerts stay on.",
+    group: "main",
+  },
+  {
+    id: "sessions",
+    label: "Sessions",
+    description: "Active sign-ins across workspaces.",
+    group: "main",
+  },
+  {
+    id: "tour",
+    label: "Product tour",
+    description: "Replay the welcome walkthrough.",
+    group: "main",
+  },
+  {
+    id: "danger",
+    label: "Danger zone",
+    description: "Irreversible account actions.",
+    group: "danger",
+  },
+];
+
+const isAccountSectionId = (value: string): value is AccountSectionId =>
+  accountSections.some((item) => item.id === value);
+
+const accountNavGroups: { label: string; ids: AccountSectionId[] }[] = [
+  { label: "Settings", ids: ["profile", "appearance", "notifications", "sessions"] },
+  { label: "Help", ids: ["tour"] },
+];
+
+function sectionById(id: AccountSectionId): AccountSection {
+  return accountSections.find((item) => item.id === id)!;
+}
+
+function AccountPaneSections({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col [&>section+section]:border-t [&>section+section]:border-border-subtle [&>section+section]:pt-9">
+      {children}
+    </div>
+  );
+}
+
+function AccountSectionBlock({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  const id = useId();
+  const headingId = `${id}-heading`;
+
+  return (
+    <section aria-labelledby={headingId}>
+      <h3 id={headingId} className="m-0 text-[11px] font-medium uppercase tracking-[0.1em] text-fg-faint">
+        {title}
+      </h3>
+      {description ? (
+        <p className="mt-1.5 max-w-xl text-[12px] leading-relaxed text-fg-muted">{description}</p>
+      ) : null}
+      <div className={description ? "mt-4" : "mt-3"}>{children}</div>
+    </section>
+  );
+}
+
 function AccountPage() {
   const session = useSession();
   const navigate = useNavigate();
   const user = session.data?.user;
 
+  const [activeSection, setActiveSection] = useState<AccountSectionId>("profile");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const section = new URLSearchParams(window.location.search).get("section");
+    if (section && isAccountSectionId(section)) {
+      setActiveSection(section);
+    }
+  }, []);
+
+  const onSelectSection = (id: AccountSectionId) => {
+    setActiveSection(id);
+    void navigate({
+      to: "/account",
+      search: { section: id },
+      replace: true,
+    });
+  };
+
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    void navigate({ to: "/issues" });
+  };
 
   const canDelete = !!user && confirm.trim() === user.email && !busy;
 
@@ -53,13 +178,16 @@ function AccountPage() {
     }
   };
 
+  const activeMeta = accountSections.find((item) => item.id === activeSection);
+  const dangerSections = accountSections.filter((section) => section.group === "danger");
+
   return (
-    <div className="mx-auto w-full max-w-[520px] px-6 py-10">
+    <div className="mx-auto w-full max-w-[880px] px-6 py-10">
       <header className="mb-8">
         <button
           type="button"
-          onClick={() => void navigate({ to: "/issues" })}
-          className="mb-4 inline-flex items-center gap-1 text-[12px] text-fg-muted transition-colors hover:text-fg"
+          onClick={handleBack}
+          className="mb-4 inline-flex items-center gap-1 rounded-[3px] text-[12px] text-fg-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
         >
           ← Back
         </button>
@@ -67,77 +195,167 @@ function AccountPage() {
         <p className="mt-1 text-[13px] text-fg-muted">Profile, preferences, and sessions.</p>
       </header>
 
-      <div className="divide-y divide-border-subtle">
-        <Section title="Profile">
-          {!user ? (
-            <LoadingTip compact />
-          ) : (
-            <div className="grid gap-4">
-              <ProfileIconUpload user={user} />
-              <dl className="grid grid-cols-[100px_minmax(0,1fr)] gap-y-2 text-[13px]">
-                <dt className="text-[11px] uppercase tracking-[0.08em] text-fg-faint">Name</dt>
-                <dd className="text-fg">{user.name}</dd>
-                <dt className="text-[11px] uppercase tracking-[0.08em] text-fg-faint">Email</dt>
-                <dd className="text-fg">
-                  {user.email}
-                  {user.emailVerified ? null : (
-                    <span className="ml-2 rounded-[4px] border border-warning/40 bg-warning/10 px-1.5 py-px text-[10px] uppercase tracking-[0.06em] text-warning">
-                      Unverified
-                    </span>
-                  )}
-                </dd>
-              </dl>
-            </div>
-          )}
-        </Section>
-
-        <AppearanceSection />
-
-        <NotificationPrefsSection />
-
-        <SessionsSection />
-
-        <ProductTourSection />
-
-        <Section
-          title="Delete account"
-          tone="danger"
-          description="Permanently delete your account, sessions, memberships, and pinned items. This cannot be undone."
+      <div className="grid gap-8 md:grid-cols-[180px_minmax(0,1fr)] md:gap-12">
+        <nav
+          role="tablist"
+          aria-label="Account sections"
+          aria-orientation="vertical"
+          className="flex flex-col gap-0.5 md:sticky md:top-10 md:self-start"
         >
-          <label className="block">
-            <span className="mb-1.5 block text-[12px] text-fg-muted">
-              Type your email <span className="font-mono text-fg">{user?.email ?? "…"}</span> to
-              confirm
-            </span>
-            <Input
-              type="email"
-              autoComplete="off"
-              value={confirm}
-              onChange={(event) => setConfirm(event.target.value)}
-              disabled={busy || !user}
-              placeholder={user?.email ?? ""}
-              className={cn(
-                "max-w-[360px]",
-                confirm.length > 0 &&
-                  confirm.trim() !== user?.email &&
-                  "border-danger/50 focus-visible:border-danger focus-visible:ring-danger",
-              )}
-            />
-          </label>
-          <div className="mt-3">
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              disabled={!canDelete}
-              onClick={() => void handleDelete()}
-            >
-              {busy ? "Deleting…" : "Delete my account"}
-            </Button>
-          </div>
-        </Section>
+          {accountNavGroups.map((group, groupIndex) => (
+            <div key={group.label} className={cn(groupIndex > 0 && "mt-4")}>
+              <p className="mb-1 px-2.5 text-[10px] font-medium uppercase tracking-[0.12em] text-fg-faint">
+                {group.label}
+              </p>
+              <AccountSectionGroup>
+                {group.ids.map((id) => {
+                  const section = sectionById(id);
+                  return (
+                    <AccountSectionNavButton
+                      key={id}
+                      section={section}
+                      active={activeSection === id}
+                      onSelect={onSelectSection}
+                    />
+                  );
+                })}
+              </AccountSectionGroup>
+            </div>
+          ))}
+          {dangerSections.length > 0 ? (
+            <>
+              <div className="my-1 h-px bg-border-subtle" />
+              <AccountSectionGroup>
+                {dangerSections.map((section) => (
+                  <AccountSectionNavButton
+                    key={section.id}
+                    section={section}
+                    active={activeSection === section.id}
+                    onSelect={onSelectSection}
+                    danger
+                  />
+                ))}
+              </AccountSectionGroup>
+            </>
+          ) : null}
+        </nav>
+
+        <main className="min-w-0">
+          {activeMeta ? (
+            <header className="mb-5 border-b border-border-subtle pb-4">
+              <h2 className="m-0 text-[15px] font-medium text-fg">{activeMeta.label}</h2>
+              <p className="mt-1 text-[12.5px] text-fg-faint">{activeMeta.description}</p>
+            </header>
+          ) : null}
+
+          {activeSection === "profile" ? (
+            !user ? (
+              <LoadingTip compact />
+            ) : (
+              <AccountPaneSections>
+                <AccountSectionBlock title="Photo" description="Shown next to your name in the workspace.">
+                  <ProfileIconUpload user={user} />
+                </AccountSectionBlock>
+                <AccountSectionBlock title="Account" description="Name and email from your sign-in.">
+                  <dl className="m-0 grid grid-cols-[100px_minmax(0,1fr)] gap-y-2 text-[13px]">
+                    <dt className="text-[11px] uppercase tracking-[0.08em] text-fg-faint">Name</dt>
+                    <dd className="text-fg">{user.name}</dd>
+                    <dt className="text-[11px] uppercase tracking-[0.08em] text-fg-faint">Email</dt>
+                    <dd className="text-fg">
+                      {user.email}
+                      {user.emailVerified ? null : (
+                        <span className="ml-2 rounded-[4px] border border-warning/40 bg-warning/10 px-1.5 py-px text-[10px] uppercase tracking-[0.06em] text-warning">
+                          Unverified
+                        </span>
+                      )}
+                    </dd>
+                  </dl>
+                </AccountSectionBlock>
+              </AccountPaneSections>
+            )
+          ) : null}
+
+          {activeSection === "appearance" ? <AppearanceSectionBody /> : null}
+          {activeSection === "notifications" ? <NotificationPrefsSectionBody /> : null}
+          {activeSection === "sessions" ? <SessionsSectionBody /> : null}
+          {activeSection === "tour" ? <ProductTourSectionBody /> : null}
+
+          {activeSection === "danger" ? (
+            <AccountPaneSections>
+              <AccountSectionBlock
+                title="Confirmation"
+                description="Permanently removes this account, its sessions and memberships, and pinned items. This cannot be undone."
+              >
+                <label className="block">
+                  <span className="mb-1.5 block text-[12px] text-fg-muted">
+                    Type <span className="font-mono text-fg">{user?.email ?? "…"}</span> to confirm
+                  </span>
+                  <Input
+                    type="email"
+                    autoComplete="off"
+                    value={confirm}
+                    onChange={(event) => setConfirm(event.target.value)}
+                    disabled={busy || !user}
+                    placeholder={user?.email ?? ""}
+                    className={cn(
+                      "max-w-[360px]",
+                      confirm.length > 0 &&
+                        confirm.trim() !== user?.email &&
+                        "border-danger/50 focus-visible:border-danger focus-visible:ring-danger",
+                    )}
+                  />
+                </label>
+                <div className="mt-4">
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    disabled={!canDelete}
+                    onClick={() => void handleDelete()}
+                  >
+                    {busy ? "Deleting…" : "Delete my account"}
+                  </Button>
+                </div>
+              </AccountSectionBlock>
+            </AccountPaneSections>
+          ) : null}
+        </main>
       </div>
     </div>
+  );
+}
+
+function AccountSectionGroup({ children }: { children: React.ReactNode }) {
+  return <div className="flex flex-col gap-0.5">{children}</div>;
+}
+
+function AccountSectionNavButton({
+  section,
+  active,
+  onSelect,
+  danger = false,
+}: {
+  section: AccountSection;
+  active: boolean;
+  onSelect: (id: AccountSectionId) => void;
+  danger?: boolean;
+}) {
+  const baseColor = danger ? "text-danger/80 hover:text-danger" : "text-fg-muted hover:text-fg";
+  const activeColor = danger ? "bg-danger/10 text-danger" : "bg-surface text-fg";
+
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={() => onSelect(section.id)}
+      className={cn(
+        "flex h-8 items-center justify-between gap-2 rounded-md px-2.5 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+        active ? activeColor : `${baseColor} hover:bg-surface/60`,
+      )}
+    >
+      <span className="truncate">{section.label}</span>
+    </button>
   );
 }
 
@@ -193,7 +411,7 @@ function ProfileIcon({ name, image }: { name: string; image?: string | null }) {
   );
 }
 
-function SessionsSection() {
+function SessionsSectionBody() {
   const [sessions, setSessions] = useState<AccountSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -255,77 +473,120 @@ function SessionsSection() {
   };
 
   const otherSessions = sessions.filter((session) => !session.current);
+  const sortedSessions = useMemo(
+    () =>
+      [...sessions].sort((a, b) => {
+        if (a.current === b.current) return 0;
+        return a.current ? -1 : 1;
+      }),
+    [sessions],
+  );
 
   return (
-    <Section
-      title="Sessions"
-      description="Review active sign-ins and revoke sessions you no longer use."
-    >
+    <>
       {loading ? (
         <LoadingTip compact />
       ) : sessions.length === 0 ? (
         <p className="m-0 text-[12.5px] text-fg-muted">No active sessions.</p>
       ) : (
-        <div className="grid gap-2">
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={otherSessions.length === 0 || busy !== null}
-              onClick={() => void revokeOthers()}
-            >
-              {busy === "others" ? "Revoking…" : "Sign out others"}
-            </Button>
-          </div>
-
-          <div className="divide-y divide-border-subtle rounded-md border border-border-subtle">
-            {sessions.map((session) => (
-              <div
-                key={session.id}
-                className="grid gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+        <AccountPaneSections>
+          <AccountSectionBlock title="Overview" description="End every session except this browser.">
+            <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+              <p className="m-0 text-[12px] tabular-nums tracking-tight text-fg-muted">
+                {sessions.length} session{sessions.length === 1 ? "" : "s"}
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={otherSessions.length === 0 || busy !== null}
+                onClick={() => void revokeOthers()}
               >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[13px] font-medium text-fg">
-                      {session.activeOrganizationName ?? "Unknown workspace"}
-                    </span>
-                    {session.current ? (
-                      <span className="rounded-[4px] border border-accent/30 bg-accent/10 px-1.5 py-px text-[10px] uppercase tracking-[0.06em] text-accent">
-                        Current
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-1 grid gap-1 text-[12px] text-fg-muted sm:grid-cols-2">
-                    <span>Created {formatDateTime(session.createdAt)}</span>
-                    <span>Expires {formatDateTime(session.expiresAt)}</span>
-                  </div>
-                  <div className="mt-1 font-mono text-[11px] text-fg-faint">
-                    {shortSessionId(session.id)}
-                  </div>
-                </div>
+                {busy === "others" ? "Revoking…" : "Sign out others"}
+              </Button>
+            </div>
+          </AccountSectionBlock>
 
-                {session.current ? null : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={busy !== null}
-                    onClick={() => void revoke(session.id)}
-                  >
-                    {busy === session.id ? "Revoking…" : "Revoke"}
-                  </Button>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+          <AccountSectionBlock title="Signed in">
+            <ul
+              className="m-0 list-none divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle p-0"
+              aria-label="Sessions"
+            >
+              {sortedSessions.map((session) => (
+                <SessionListItem key={session.id} session={session} busy={busy} onRevoke={revoke} />
+              ))}
+            </ul>
+          </AccountSectionBlock>
+        </AccountPaneSections>
       )}
-    </Section>
+    </>
   );
 }
 
-function ProductTourSection() {
+function SessionListItem({
+  session,
+  busy,
+  onRevoke,
+}: {
+  session: AccountSession;
+  busy: string | null;
+  onRevoke: (id: string) => void | Promise<void>;
+}) {
+  const workspace = session.activeOrganizationName ?? "Unknown workspace";
+
+  return (
+    <li className="px-4 py-4">
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(78px,max-content)] sm:gap-8">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-[13px] font-medium tracking-[-0.01em] text-fg">{workspace}</span>
+            {session.current ? (
+              <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-fg-faint">
+                Current
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 mb-0 font-mono text-[11px] leading-relaxed tracking-tight text-fg-muted">
+            <span className="tabular-nums">created {formatDateTime(session.createdAt)}</span>
+            <MetaSep />
+            <span className="tabular-nums">expires {formatDateTime(session.expiresAt)}</span>
+            <MetaSep />
+            <span title={session.id} className="text-fg-faint tabular-nums">
+              id {sessionIdShort(session.id)}
+            </span>
+          </p>
+        </div>
+        <div className="flex items-start pt-px sm:justify-end">
+          {session.current ? (
+            <div className="min-h-8 sm:min-w-[4rem]" aria-hidden />
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={busy !== null}
+              className="-mr-2 h-8 px-2 text-[12px] font-medium text-fg-muted hover:bg-transparent hover:text-danger"
+              onClick={() => void onRevoke(session.id)}
+            >
+              {busy === session.id ? "Revoking…" : "Revoke"}
+            </Button>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function MetaSep() {
+  return <span aria-hidden className="text-fg-faint">&nbsp;·&nbsp;</span>;
+}
+
+function sessionIdShort(id: string) {
+  if (id.length <= 12) return id;
+  return `${id.slice(0, 8)}…`;
+}
+
+function ProductTourSectionBody() {
   const navigate = useNavigate();
   const onboarding = useOnboarding();
   const [busy, setBusy] = useState(false);
@@ -348,24 +609,20 @@ function ProductTourSection() {
   };
 
   return (
-    <Section
-      title="Product tour"
-      description="Replay the welcome tour any time to revisit the basics."
-    >
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={busy}
-        onClick={() => void replay()}
+    <AccountPaneSections>
+      <AccountSectionBlock
+        title="Walkthrough"
+        description="Rebuilds onboarding on the Issues view whenever you replay it."
       >
-        {busy ? "Starting…" : "Replay product tour"}
-      </Button>
-    </Section>
+        <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => void replay()}>
+          {busy ? "Starting…" : "Replay product tour"}
+        </Button>
+      </AccountSectionBlock>
+    </AccountPaneSections>
   );
 }
 
-function AppearanceSection() {
+function AppearanceSectionBody() {
   const [current, setCurrent] = useState<ThemeName>(() => readStoredTheme());
   const qc = useQueryClient();
   const { prefs } = useUserPreferences();
@@ -395,61 +652,69 @@ function AppearanceSection() {
   };
 
   return (
-    <Section title="Appearance" description="Pick the theme and toggle the tab bar.">
-      <div className="grid gap-2 sm:grid-cols-2">
-        {THEMES.map((theme) => {
-          const active = current === theme.id;
-          return (
-            <button
-              key={theme.id}
-              type="button"
-              onClick={() => choose(theme.id)}
-              aria-pressed={active}
-              className={cn(
-                "flex items-center gap-3 rounded-md border px-3 py-2.5 text-left transition-colors",
-                active
-                  ? "border-accent bg-surface"
-                  : "border-border-subtle bg-bg/40 hover:border-border hover:bg-surface/60",
-              )}
-            >
-              <span
-                aria-hidden
-                className="grid size-9 shrink-0 place-items-center rounded-md border border-border-subtle"
-                style={{ backgroundColor: theme.swatchBg }}
-              >
-                <span
-                  className="block size-4 rounded-full"
-                  style={{ backgroundColor: theme.swatchAccent }}
-                />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-medium text-fg">{theme.label}</span>
-                <span className="block text-[11.5px] text-fg-muted">{theme.hint}</span>
-              </span>
-              {active ? (
-                <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-accent">
-                  Active
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
+    <AccountPaneSections>
+      <AccountSectionBlock title="Color theme" description="Stored in this browser; does not sync to other devices.">
+        <ul
+          role="radiogroup"
+          aria-label="Color theme choices"
+          className="m-0 list-none divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle p-0"
+        >
+          {THEMES.map((theme) => {
+            const active = current === theme.id;
+            return (
+              <li key={theme.id}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => choose(theme.id)}
+                  className={cn(
+                    "flex w-full items-start gap-3 px-3 py-4 text-left transition-colors",
+                    "hover:bg-surface/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className="mt-[6px] size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: theme.swatchAccent }}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <span className="text-[13px] font-medium tracking-[-0.01em] text-fg">{theme.label}</span>
+                      {active ? (
+                        <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-fg-faint">
+                          Current
+                        </span>
+                      ) : (
+                        <span className="font-mono text-[10px] leading-none tracking-tight text-fg-faint" aria-hidden>
+                          {theme.id}
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-0.5 block text-[11.5px] leading-snug text-fg-muted">{theme.hint}</span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </AccountSectionBlock>
 
-      <div className="mt-3">
-        <ToggleRow
-          label="Tab bar"
-          hint="Show a bottom tab bar that tracks the issues, projects, and chats you've opened."
-          checked={tabsEnabledLocal ?? prefs?.tabsEnabled ?? true}
-          disabled={tabsEnabledLocal === null && !prefs}
-          onChange={(value) => void toggleTabs(value)}
-        />
-      </div>
-    </Section>
+      <AccountSectionBlock title="Bottom tab bar" description="Keeps Issues, Projects, and Chats reachable while you work.">
+        <div className="flex justify-end">
+          <Toggle
+            checked={tabsEnabledLocal ?? prefs?.tabsEnabled ?? true}
+            disabled={tabsEnabledLocal === null && !prefs}
+            onChange={(value) => void toggleTabs(value)}
+            ariaLabel="Bottom tab bar"
+          />
+        </div>
+      </AccountSectionBlock>
+    </AccountPaneSections>
   );
 }
 
-function NotificationPrefsSection() {
+function NotificationPrefsSectionBody() {
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -484,44 +749,62 @@ function NotificationPrefsSection() {
   };
 
   return (
-    <Section
-      title="Email notifications"
-      description="Choose which events should also send you an email. Inbox notifications are always on."
-    >
+    <>
       {loading || !prefs ? (
         <LoadingTip compact />
       ) : (
-        <div className="divide-y divide-border-subtle">
-          <ToggleRow
-            label="Pause all"
-            hint="Don't send any email notifications until I unpause."
-            checked={prefs.emailPaused}
-            onChange={(value) => void apply({ emailPaused: value })}
-          />
-          <ToggleRow
-            label="Assignments"
-            hint="Email me when an issue is assigned to me."
-            checked={prefs.emailAssignments}
-            disabled={prefs.emailPaused}
-            onChange={(value) => void apply({ emailAssignments: value })}
-          />
-          <ToggleRow
-            label="Comments"
-            hint="Email me when someone comments on an issue I subscribe to."
-            checked={prefs.emailComments}
-            disabled={prefs.emailPaused}
-            onChange={(value) => void apply({ emailComments: value })}
-          />
-          <ToggleRow
-            label="Progress recap"
-            hint="A short personal recap of what you closed and what's still on your plate. Sent on a random day each week so it never feels routine."
-            checked={prefs.emailProgress}
-            disabled={prefs.emailPaused}
-            onChange={(value) => void apply({ emailProgress: value })}
-          />
-        </div>
+        <AccountPaneSections>
+          <AccountSectionBlock title="Quiet mode">
+            <div className="overflow-hidden rounded-md border border-border-subtle">
+              <ToggleRow
+                label="Pause all"
+                hint="Hold every outbound email notification until unpaused."
+                checked={prefs.emailPaused}
+                className="px-4 py-3.5"
+                onChange={(value) => void apply({ emailPaused: value })}
+              />
+            </div>
+          </AccountSectionBlock>
+
+          <AccountSectionBlock
+            title="Issue activity"
+            description="Emails for events on issues tied to your account."
+          >
+            <div className="divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle">
+              <ToggleRow
+                label="Assignments"
+                hint="Someone assigns an issue to you."
+                checked={prefs.emailAssignments}
+                disabled={prefs.emailPaused}
+                className="px-4 py-3.5"
+                onChange={(value) => void apply({ emailAssignments: value })}
+              />
+              <ToggleRow
+                label="Comments"
+                hint="Someone comments on an issue you follow."
+                checked={prefs.emailComments}
+                disabled={prefs.emailPaused}
+                className="px-4 py-3.5"
+                onChange={(value) => void apply({ emailComments: value })}
+              />
+            </div>
+          </AccountSectionBlock>
+
+          <AccountSectionBlock title="Digest" description="One weekly recap of what moved and what's left.">
+            <div className="overflow-hidden rounded-md border border-border-subtle">
+              <ToggleRow
+                label="Progress recap"
+                hint="Queued on different weekdays so mail never feels scripted."
+                checked={prefs.emailProgress}
+                disabled={prefs.emailPaused}
+                className="px-4 py-3.5"
+                onChange={(value) => void apply({ emailProgress: value })}
+              />
+            </div>
+          </AccountSectionBlock>
+        </AccountPaneSections>
       )}
-    </Section>
+    </>
   );
 }
 
@@ -530,16 +813,24 @@ function ToggleRow({
   hint,
   checked,
   disabled,
+  className,
   onChange,
 }: {
   label: string;
   hint: string;
   checked: boolean;
   disabled?: boolean;
+  className?: string;
   onChange: (next: boolean) => void;
 }) {
   return (
-    <div className={cn("flex items-center justify-between gap-4 py-3", disabled && "opacity-60")}>
+    <div
+      className={cn(
+        "flex items-center justify-between gap-4 py-3",
+        disabled && "opacity-60",
+        className,
+      )}
+    >
       <div className="min-w-0">
         <div className="text-[13px] text-fg">{label}</div>
         <div className="text-[12px] text-fg-muted">{hint}</div>
@@ -590,39 +881,4 @@ function formatDateTime(value: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
-}
-
-function shortSessionId(value: string) {
-  return `Session ${value.slice(0, 8)}`;
-}
-
-function Section({
-  title,
-  description,
-  tone = "default",
-  children,
-}: {
-  title: string;
-  description?: string;
-  tone?: "default" | "danger";
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="py-5 first:pt-0 last:pb-0">
-      <h2
-        className={cn(
-          "m-0 text-[11px] font-medium uppercase tracking-[0.1em]",
-          tone === "danger" ? "text-danger" : "text-fg-faint",
-        )}
-      >
-        {title}
-      </h2>
-      {description ? (
-        <p className="mb-4 mt-1.5 text-[13px] leading-relaxed text-fg-muted">{description}</p>
-      ) : (
-        <div className="mb-4" />
-      )}
-      {children}
-    </section>
-  );
 }

@@ -1,11 +1,8 @@
-import { MultiFileDiff, type FileContents } from "@pierre/diffs/react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  ChatComposer,
-  type PendingQuestion,
-} from "@/components/chat/chat-composer";
+import type { FileContents } from "@pierre/diffs/react";
+import { ChatComposer, type PendingQuestion } from "@/components/chat/chat-composer";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatMarkdown } from "@/components/chat/chat-markdown";
 import { ChatShare } from "@/components/chat/chat-share";
@@ -38,6 +35,12 @@ import { useRegisterTab } from "@/lib/use-tabs";
 import { useUserPreferences } from "@/lib/use-user-preferences";
 import { cn } from "@/lib/utils";
 
+const LazyMultiFileDiff = lazy(() =>
+  import("@pierre/diffs/react").then((mod) => ({
+    default: mod.MultiFileDiff,
+  })),
+);
+
 const MODEL_STORAGE_KEY = "produktive:chat-model";
 
 export function ChatPane({ chatId }: { chatId: string | null }) {
@@ -48,10 +51,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   const [chatTitle, setChatTitle] = useState("New conversation");
   const [chatCreatedById, setChatCreatedById] = useState<string | null>(null);
   const currentUserId = session.data?.user?.id ?? null;
-  const isCreator =
-    Boolean(chatId) &&
-    currentUserId !== null &&
-    chatCreatedById === currentUserId;
+  const isCreator = Boolean(chatId) && currentUserId !== null && chatCreatedById === currentUserId;
   const { tabsEnabled } = useUserPreferences();
   useRegisterTab({
     tabType: "chat",
@@ -65,9 +65,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   const [error, setError] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [changesOpen, setChangesOpen] = useState(false);
-  const [likedMessageIds, setLikedMessageIds] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [likedMessageIds, setLikedMessageIds] = useState<Set<string>>(() => new Set());
 
   const convoRef = useRef<HTMLDivElement | null>(null);
   const activeChatIdRef = useRef<string | null>(null);
@@ -131,8 +129,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
         setMessages(response.messages.map(recordToMessage));
       } catch (loadError) {
         if (!isMounted) return;
-        const message =
-          loadError instanceof Error ? loadError.message : "Failed to load chat";
+        const message = loadError instanceof Error ? loadError.message : "Failed to load chat";
         setError(message);
         toast.error(message);
       } finally {
@@ -151,10 +148,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
     }
   }, [messages]);
 
-  const handleSend = async (
-    text: string,
-    attachmentDrafts: ChatAttachmentDraft[] = [],
-  ) => {
+  const handleSend = async (text: string, attachmentDrafts: ChatAttachmentDraft[] = []) => {
     setError(null);
     stopRef.current = false;
     setBusy(true);
@@ -179,79 +173,75 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
         });
       }
 
-      const uploadedAttachments = await uploadAttachments(
-        activeId,
-        attachmentDrafts,
-      );
+      const uploadedAttachments = await uploadAttachments(activeId, attachmentDrafts);
       const messageText = buildOutgoingMessage(text, uploadedAttachments);
       let streamedText = "";
       let receivedDone = false;
 
-      await streamChatMessage(activeId, messageText, (event) => {
-        if (stopRef.current) return;
+      await streamChatMessage(
+        activeId,
+        messageText,
+        (event) => {
+          if (stopRef.current) return;
 
-        if (event.type === "user") {
-          streamedUserId = event.message.id;
-          setMessages((prev) => [
-            ...prev,
-            recordToMessage(event.message),
-            { role: "assistant", typing: true },
-          ]);
-          return;
-        }
-
-        if (event.type === "delta") {
-          streamedText += event.content;
-          setMessages((prev) => {
-            const next = [...prev];
-            const last = next[next.length - 1];
-            if (last?.role === "assistant") {
-              next[next.length - 1] = {
-                role: "assistant",
-                content: <ChatMarkdown content={streamedText} />,
-              };
-            }
-            return next;
-          });
-          return;
-        }
-
-        if (event.type === "done") {
-          receivedDone = true;
-          setMessages((prev) => {
-            const withoutLoading = prev.filter((message) => !message.typing);
-            const last = withoutLoading[withoutLoading.length - 1];
-            const base =
-              last?.role === "assistant"
-                ? withoutLoading.slice(0, -1)
-                : withoutLoading;
-            return [
-              ...base,
-              ...event.messages
-                .filter((record) => record.role === "assistant")
-                .map(recordToMessage),
-            ];
-          });
-          return;
-        }
-
-        if (event.type === "error") {
-          if (event.messages?.length) {
-            setMessages(event.messages.map(recordToMessage));
-            if (
-              didRecoverAssistantResponse(
-                event.messages,
-                streamedUserId,
-                previousMessageCount,
-              )
-            ) {
-              receivedDone = true;
-              return;
-            }
+          if (event.type === "user") {
+            streamedUserId = event.message.id;
+            setMessages((prev) => [
+              ...prev,
+              recordToMessage(event.message),
+              { role: "assistant", typing: true },
+            ]);
+            return;
           }
-          throw new Error(event.error);
-        }
-      }, selectedModel ? { model: selectedModel } : undefined);
+
+          if (event.type === "delta") {
+            streamedText += event.content;
+            setMessages((prev) => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last?.role === "assistant") {
+                next[next.length - 1] = {
+                  role: "assistant",
+                  content: <ChatMarkdown content={streamedText} />,
+                };
+              }
+              return next;
+            });
+            return;
+          }
+
+          if (event.type === "done") {
+            receivedDone = true;
+            setMessages((prev) => {
+              const withoutLoading = prev.filter((message) => !message.typing);
+              const last = withoutLoading[withoutLoading.length - 1];
+              const base =
+                last?.role === "assistant" ? withoutLoading.slice(0, -1) : withoutLoading;
+              return [
+                ...base,
+                ...event.messages
+                  .filter((record) => record.role === "assistant")
+                  .map(recordToMessage),
+              ];
+            });
+            return;
+          }
+
+          if (event.type === "error") {
+            if (event.messages?.length) {
+              setMessages(event.messages.map(recordToMessage));
+              if (
+                didRecoverAssistantResponse(event.messages, streamedUserId, previousMessageCount)
+              ) {
+                receivedDone = true;
+                return;
+              }
+            }
+            throw new Error(event.error);
+          }
+        },
+        selectedModel ? { model: selectedModel } : undefined,
+      );
 
       if (!receivedDone && stopRef.current) {
         setMessages((prev) => prev.filter((m) => !m.typing));
@@ -283,11 +273,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
           }
 
           if (
-            didRecoverAssistantResponse(
-              response.messages,
-              streamedUserId,
-              previousMessageCount,
-            )
+            didRecoverAssistantResponse(response.messages, streamedUserId, previousMessageCount)
           ) {
             setError(null);
             return;
@@ -296,8 +282,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
           // Fall through to the normal error state below.
         }
       }
-      const message =
-        sendError instanceof Error ? sendError.message : "Failed to send message";
+      const message = sendError instanceof Error ? sendError.message : "Failed to send message";
       setError(message);
       toast.error(message);
       // Drop the typing placeholder so the UI doesn't get stuck.
@@ -316,9 +301,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
       toast.success("Copied response");
       setCopiedMessageId(message.id ?? null);
       window.setTimeout(() => {
-        setCopiedMessageId((current) =>
-          current === message.id ? null : current,
-        );
+        setCopiedMessageId((current) => (current === message.id ? null : current));
       }, 1400);
     } catch {
       toast.error("Failed to copy message");
@@ -340,9 +323,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
       return;
     }
 
-    setMessages((current) =>
-      current.filter((_, messageIndex) => messageIndex !== index),
-    );
+    setMessages((current) => current.filter((_, messageIndex) => messageIndex !== index));
     toast.message("Regenerating response");
     void handleSend(previousUser.rawContent);
   };
@@ -468,13 +449,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   );
 }
 
-function ChatErrorNotice({
-  message,
-  onDismiss,
-}: {
-  message: string;
-  onDismiss: () => void;
-}) {
+function ChatErrorNotice({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   return (
     <div className="relative z-20 px-6 pb-1">
       <div className="mx-auto flex min-h-9 w-full max-w-[760px] items-center justify-between gap-3 rounded-md border border-danger/25 bg-danger/[0.08] px-3 py-2 text-[12px] text-danger">
@@ -520,9 +495,7 @@ function ChatChangesPanel({
       <div
         className={cn(
           "flex h-full w-[392px] min-w-0 flex-col transition-[opacity,transform] duration-300 ease-out",
-          open
-            ? "translate-x-0 opacity-100"
-            : "pointer-events-none translate-x-3 opacity-0",
+          open ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-3 opacity-0",
         )}
       >
         <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-4">
@@ -581,9 +554,7 @@ function ChatChangesPanel({
                     <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-fg-faint">
                       {change.action}
                     </span>
-                    <p className="min-w-0 truncate text-[13px] text-fg">
-                      {change.title}
-                    </p>
+                    <p className="min-w-0 truncate text-[13px] text-fg">{change.title}</p>
                     <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-fg-faint">
                       {change.fields.length}
                     </span>
@@ -615,11 +586,7 @@ function ChatChangesPanel({
   );
 }
 
-function ChatChangeField({
-  field,
-}: {
-  field: { name: string; before?: unknown; after: unknown };
-}) {
+function ChatChangeField({ field }: { field: { name: string; before?: unknown; after: unknown } }) {
   const name = `${fieldLabel(field.name)}.md`;
   const oldFile: FileContents = {
     name,
@@ -634,22 +601,39 @@ function ChatChangeField({
 
   return (
     <div className="border-b border-border-subtle bg-bg last:border-b-0">
-      <MultiFileDiff
-        oldFile={oldFile}
-        newFile={newFile}
-        disableWorkerPool
-        options={{
-          theme: "pierre-dark",
-          themeType: "dark",
-          diffStyle: "unified",
-          diffIndicators: "bars",
-          disableLineNumbers: true,
-          hunkSeparators: "simple",
-          lineDiffType: "word-alt",
-          overflow: "wrap",
-        }}
-        className="produktive-diff"
-      />
+      <Suspense fallback={<DiffLoadingState name={name} />}>
+        <LazyMultiFileDiff
+          oldFile={oldFile}
+          newFile={newFile}
+          disableWorkerPool
+          options={{
+            theme: "pierre-dark",
+            themeType: "dark",
+            diffStyle: "unified",
+            diffIndicators: "bars",
+            disableLineNumbers: true,
+            hunkSeparators: "simple",
+            lineDiffType: "word-alt",
+            overflow: "wrap",
+          }}
+          className="produktive-diff"
+        />
+      </Suspense>
+    </div>
+  );
+}
+
+function DiffLoadingState({ name }: { name: string }) {
+  return (
+    <div>
+      <div className="border-b border-border-subtle bg-surface/20 px-3 py-2 font-mono text-[11px] text-fg-faint">
+        {name}
+      </div>
+      <div className="space-y-1 p-3">
+        <div className="h-3 w-3/4 rounded-full bg-surface" />
+        <div className="h-3 w-1/2 rounded-full bg-surface/70" />
+        <div className="h-3 w-2/3 rounded-full bg-surface/50" />
+      </div>
     </div>
   );
 }
@@ -687,10 +671,7 @@ function didRecoverAssistantResponse(
 ) {
   if (streamedUserId) {
     const userIndex = records.findIndex((record) => record.id === streamedUserId);
-    return (
-      userIndex >= 0 &&
-      records.slice(userIndex + 1).some(isUsableAssistantRecord)
-    );
+    return userIndex >= 0 && records.slice(userIndex + 1).some(isUsableAssistantRecord);
   }
 
   return (

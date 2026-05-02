@@ -9,8 +9,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, dirname, "");
-  const apiProxyTarget =
-    env.VITE_API_PROXY_TARGET ?? "http://localhost:3000";
+  const apiProxyTarget = env.VITE_API_PROXY_TARGET ?? "http://localhost:3000";
 
   return {
     resolve: {
@@ -34,5 +33,21 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       react(),
     ],
+    build: {
+      chunkSizeWarningLimit: 800,
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: "initial",
+                tags: ["$initial"],
+                maxSize: 450_000,
+              },
+            ],
+          },
+        },
+      },
+    },
   };
 });

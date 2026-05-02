@@ -335,7 +335,7 @@ async fn oauth_callback(
     State(state): State<AppState>,
     Query(query): Query<OAuthCallbackQuery>,
 ) -> Result<Redirect, ApiError> {
-    let redirect_base = "/workspace/settings?section=github";
+    let redirect_base = "/workspace/settings?section=integrations";
     if let Some(error) = query.error {
         return Ok(Redirect::to(&format!(
             "{redirect_base}&github=oauth_error&message={error}"

@@ -1,5 +1,5 @@
 import { Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   CaretIcon,
@@ -10,7 +10,6 @@ import {
   SparkleIcon,
   StarIcon,
 } from "@/components/chat/icons";
-import { ChatWidget } from "@/components/chat/chat-widget";
 import { CommandPalette } from "@/components/command-palette";
 import { KeyboardHelp } from "@/components/keyboard-help";
 import { StatusIcon } from "@/components/issue/status-icon";
@@ -53,6 +52,12 @@ import { userPreferencesQueryOptions, useUserPreferences } from "@/lib/use-user-
 import type { SidebarLayoutItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+const ChatWidget = lazy(() =>
+  import("@/components/chat/chat-widget").then((mod) => ({
+    default: mod.ChatWidget,
+  })),
+);
+
 export const Route = createFileRoute("/_app")({
   loader: ({ context }) => {
     void context.queryClient.prefetchQuery(tabsQueryOptions());
@@ -77,7 +82,12 @@ function AppLayout() {
     enabled: tabsEnabled && Boolean(staticPage),
   });
   const { chats, isLoading: chatsLoading, removeChat } = useChats();
-  const { favorites: rawFavorites, isLoading: favoritesLoading, isFavorite, toggleFavorite } = useFavorites();
+  const {
+    favorites: rawFavorites,
+    isLoading: favoritesLoading,
+    isFavorite,
+    toggleFavorite,
+  } = useFavorites();
   const { unreadCount: inboxUnread } = useInbox();
   const currentUserId = session.data?.user.id ?? null;
   const {
@@ -88,11 +98,7 @@ function AppLayout() {
     setChatsLimit,
     setChatsSort,
   } = useSidebarLayout();
-  const favorites = applyOrder(
-    rawFavorites,
-    sidebarLayout.favoritesOrder,
-    (fav) => fav.favoriteId,
-  );
+  const favorites = applyOrder(rawFavorites, sidebarLayout.favoritesOrder, (fav) => fav.favoriteId);
   const [favDragId, setFavDragId] = useState<string | null>(null);
   const [chatsSettingsOpen, setChatsSettingsOpen] = useState(false);
   const chatsSettingsRef = useRef<HTMLDivElement | null>(null);
@@ -150,10 +156,7 @@ function AppLayout() {
   useEffect(() => {
     if (!chatsSettingsOpen) return;
     const handlePointerDown = (event: PointerEvent) => {
-      if (
-        chatsSettingsRef.current &&
-        !chatsSettingsRef.current.contains(event.target as Node)
-      ) {
+      if (chatsSettingsRef.current && !chatsSettingsRef.current.contains(event.target as Node)) {
         setChatsSettingsOpen(false);
       }
     };
@@ -330,116 +333,116 @@ function AppLayout() {
                 groupClass="group/favs-header"
               />
               {sidebarLayout.favoritesCollapsed ? null : (
-              <div className="flex flex-col gap-px">
-                {favoritesLoading && favorites.length === 0 ? (
-                  <div className="px-2.5 py-1">
-                    <LoadingTip compact />
-                  </div>
-                ) : (
-                  favorites.map((fav) => {
-                    let targetPath = `/issues/${fav.id}`;
-                    if (fav.type === "chat") {
-                      targetPath = `/chat/${fav.id}`;
-                    } else if (fav.type === "project") {
-                      targetPath = `/projects/${fav.id}`;
-                    }
-                    const isActive = pathname === targetPath;
-                    const goTo = () => {
+                <div className="flex flex-col gap-px">
+                  {favoritesLoading && favorites.length === 0 ? (
+                    <div className="px-2.5 py-1">
+                      <LoadingTip compact />
+                    </div>
+                  ) : (
+                    favorites.map((fav) => {
+                      let targetPath = `/issues/${fav.id}`;
                       if (fav.type === "chat") {
+                        targetPath = `/chat/${fav.id}`;
+                      } else if (fav.type === "project") {
+                        targetPath = `/projects/${fav.id}`;
+                      }
+                      const isActive = pathname === targetPath;
+                      const goTo = () => {
+                        if (fav.type === "chat") {
+                          return navigate({
+                            to: "/chat/$chatId",
+                            params: { chatId: fav.id },
+                          });
+                        }
+                        if (fav.type === "project") {
+                          return navigate({
+                            to: "/projects/$projectId",
+                            params: { projectId: fav.id },
+                          });
+                        }
                         return navigate({
-                          to: "/chat/$chatId",
-                          params: { chatId: fav.id },
+                          to: "/issues/$issueId",
+                          params: { issueId: fav.id },
                         });
-                      }
-                      if (fav.type === "project") {
-                        return navigate({
-                          to: "/projects/$projectId",
-                          params: { projectId: fav.id },
-                        });
-                      }
-                      return navigate({
-                        to: "/issues/$issueId",
-                        params: { issueId: fav.id },
-                      });
-                    };
-                    const onUnpin = async () => {
-                      try {
-                        await toggleFavorite(fav.type, fav.id);
-                        toast.success("Removed from favorites");
-                      } catch {
-                        toast.error("Failed to update favorite");
-                      }
-                    };
-                    return (
-                      <div
-                        key={fav.favoriteId}
-                        role="button"
-                        tabIndex={0}
-                        draggable
-                        onDragStart={(event) => {
-                          event.dataTransfer.setData(FAVORITE_DRAG_MIME, fav.favoriteId);
-                          event.dataTransfer.effectAllowed = "move";
-                          setFavDragId(fav.favoriteId);
-                        }}
-                        onDragEnd={() => setFavDragId(null)}
-                        onDragOver={(event) => {
-                          if (!event.dataTransfer.types.includes(FAVORITE_DRAG_MIME)) return;
-                          event.preventDefault();
-                          event.dataTransfer.dropEffect = "move";
-                        }}
-                        onDrop={(event) => {
-                          const sourceId = event.dataTransfer.getData(FAVORITE_DRAG_MIME);
-                          if (!sourceId) return;
-                          event.preventDefault();
-                          moveFavoriteBefore(sourceId, fav.favoriteId);
-                        }}
-                        onClick={() => void goTo()}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void goTo();
-                          }
-                        }}
-                        title={displayFavoriteTitle(fav.title)}
-                        className={cn(
-                          "group flex h-8 w-full cursor-pointer items-center gap-2 rounded-[7px] px-2.5 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
-                          isActive
-                            ? "bg-surface text-fg"
-                            : "text-fg-muted hover:bg-surface hover:text-fg",
-                          favDragId === fav.favoriteId && "opacity-60",
-                        )}
-                      >
-                        <span className="shrink-0 text-fg-faint group-hover:text-fg-muted">
-                          {fav.type === "issue" ? (
-                            <StatusIcon status={fav.status} statuses={statuses} />
-                          ) : fav.type === "project" ? (
-                            <ProjectIcon
-                              color={fav.color}
-                              icon={fav.icon}
-                              name={fav.title}
-                              size="sm"
-                            />
-                          ) : (
-                            <SparkleIcon size={11} />
-                          )}
-                        </span>
-                        <span className="flex-1 truncate">{displayFavoriteTitle(fav.title)}</span>
-                        <button
-                          type="button"
-                          aria-label={`Unpin ${displayFavoriteTitle(fav.title)}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void onUnpin();
+                      };
+                      const onUnpin = async () => {
+                        try {
+                          await toggleFavorite(fav.type, fav.id);
+                          toast.success("Removed from favorites");
+                        } catch {
+                          toast.error("Failed to update favorite");
+                        }
+                      };
+                      return (
+                        <div
+                          key={fav.favoriteId}
+                          role="button"
+                          tabIndex={0}
+                          draggable
+                          onDragStart={(event) => {
+                            event.dataTransfer.setData(FAVORITE_DRAG_MIME, fav.favoriteId);
+                            event.dataTransfer.effectAllowed = "move";
+                            setFavDragId(fav.favoriteId);
                           }}
-                          className="shrink-0 rounded-[3px] text-warning opacity-0 transition-opacity hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent group-hover:opacity-100"
+                          onDragEnd={() => setFavDragId(null)}
+                          onDragOver={(event) => {
+                            if (!event.dataTransfer.types.includes(FAVORITE_DRAG_MIME)) return;
+                            event.preventDefault();
+                            event.dataTransfer.dropEffect = "move";
+                          }}
+                          onDrop={(event) => {
+                            const sourceId = event.dataTransfer.getData(FAVORITE_DRAG_MIME);
+                            if (!sourceId) return;
+                            event.preventDefault();
+                            moveFavoriteBefore(sourceId, fav.favoriteId);
+                          }}
+                          onClick={() => void goTo()}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void goTo();
+                            }
+                          }}
+                          title={displayFavoriteTitle(fav.title)}
+                          className={cn(
+                            "group flex h-8 w-full cursor-pointer items-center gap-2 rounded-[7px] px-2.5 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                            isActive
+                              ? "bg-surface text-fg"
+                              : "text-fg-muted hover:bg-surface hover:text-fg",
+                            favDragId === fav.favoriteId && "opacity-60",
+                          )}
                         >
-                          <StarIcon size={11} filled />
-                        </button>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+                          <span className="shrink-0 text-fg-faint group-hover:text-fg-muted">
+                            {fav.type === "issue" ? (
+                              <StatusIcon status={fav.status} statuses={statuses} />
+                            ) : fav.type === "project" ? (
+                              <ProjectIcon
+                                color={fav.color}
+                                icon={fav.icon}
+                                name={fav.title}
+                                size="sm"
+                              />
+                            ) : (
+                              <SparkleIcon size={11} />
+                            )}
+                          </span>
+                          <span className="flex-1 truncate">{displayFavoriteTitle(fav.title)}</span>
+                          <button
+                            type="button"
+                            aria-label={`Unpin ${displayFavoriteTitle(fav.title)}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void onUnpin();
+                            }}
+                            className="shrink-0 rounded-[3px] text-warning opacity-0 transition-opacity hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent group-hover:opacity-100"
+                          >
+                            <StarIcon size={11} filled />
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               )}
             </div>
           ) : null}
@@ -449,17 +452,11 @@ function AppLayout() {
               <button
                 type="button"
                 onClick={toggleChatsCollapsed}
-                aria-label={
-                  sidebarLayout.chatsCollapsed
-                    ? "Expand chats"
-                    : "Collapse chats"
-                }
+                aria-label={sidebarLayout.chatsCollapsed ? "Expand chats" : "Collapse chats"}
                 className="flex flex-1 items-center gap-1 rounded-[4px] px-0 py-px text-left text-fg-faint transition-colors hover:text-fg-muted"
               >
                 <SectionChevron collapsed={sidebarLayout.chatsCollapsed} />
-                <span className="text-[10.5px] font-medium uppercase tracking-[0.08em]">
-                  Chats
-                </span>
+                <span className="text-[10.5px] font-medium uppercase tracking-[0.08em]">Chats</span>
               </button>
               <div ref={chatsSettingsRef} className="relative flex items-center gap-0.5">
                 <button
@@ -500,112 +497,112 @@ function AppLayout() {
               </div>
             </div>
             {sidebarLayout.chatsCollapsed ? null : (
-            <div className="flex flex-col gap-px">
-              {chatsLoading ? (
-                <div className="px-2.5 py-1">
-                  <LoadingTip compact />
-                </div>
-              ) : chats.length === 0 ? (
-                <div className="px-2.5 py-1 text-[12px] text-fg-faint">No chats yet</div>
-              ) : (
-                recentChats.map((entry) => {
-                  const isActive = pathname === `/chat/${entry.id}`;
-                  const isCreator =
-                    currentUserId !== null &&
-                    entry.createdById === currentUserId;
-                  return (
-                    <div key={entry.id} className="relative">
-                      <div
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => void openChat(entry.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void openChat(entry.id);
-                          }
-                        }}
-                        title={displayChatTitle(entry)}
-                        className={cn(
-                          "group flex h-8 w-full cursor-pointer items-center gap-2 rounded-[7px] px-2.5 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
-                          isActive
-                            ? "bg-surface text-fg"
-                            : "text-fg-muted hover:bg-surface hover:text-fg",
-                        )}
-                      >
-                        <span className="flex-1 truncate">{displayChatTitle(entry)}</span>
-                        <button
-                          type="button"
-                          aria-label={`Actions for ${displayChatTitle(entry)}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setChatMenuOpenId((current) =>
-                              current === entry.id ? null : entry.id,
-                            );
+              <div className="flex flex-col gap-px">
+                {chatsLoading ? (
+                  <div className="px-2.5 py-1">
+                    <LoadingTip compact />
+                  </div>
+                ) : chats.length === 0 ? (
+                  <div className="px-2.5 py-1 text-[12px] text-fg-faint">No chats yet</div>
+                ) : (
+                  recentChats.map((entry) => {
+                    const isActive = pathname === `/chat/${entry.id}`;
+                    const isCreator = currentUserId !== null && entry.createdById === currentUserId;
+                    return (
+                      <div key={entry.id} className="relative">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => void openChat(entry.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void openChat(entry.id);
+                            }
                           }}
+                          title={displayChatTitle(entry)}
                           className={cn(
-                            "grid size-6 shrink-0 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
-                            chatMenuOpenId === entry.id
-                              ? "bg-surface-2 opacity-100"
-                              : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+                            "group flex h-8 w-full cursor-pointer items-center gap-2 rounded-[7px] px-2.5 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                            isActive
+                              ? "bg-surface text-fg"
+                              : "text-fg-muted hover:bg-surface hover:text-fg",
                           )}
                         >
-                          <DotsIcon />
-                        </button>
-                      </div>
-                      {chatMenuOpenId === entry.id ? (
-                        <div
-                          className="absolute right-1 top-8 z-30 w-36 overflow-hidden rounded-[8px] border border-border bg-surface py-1 shadow-xl"
-                          onClick={(event) => event.stopPropagation()}
-                          onPointerDown={(event) => event.stopPropagation()}
-                        >
-                          <ChatMenuItem onClick={() => void openChat(entry.id)}>Open</ChatMenuItem>
-                          <ChatMenuItem
-                            onClick={async () => {
-                              setChatMenuOpenId(null);
-                              const wasFavorite = isFavorite("chat", entry.id);
-                              try {
-                                await toggleFavorite("chat", entry.id);
-                                toast.success(
-                                  wasFavorite ? "Removed from favorites" : "Pinned to sidebar",
-                                );
-                              } catch {
-                                toast.error("Failed to update favorite");
-                              }
+                          <span className="flex-1 truncate">{displayChatTitle(entry)}</span>
+                          <button
+                            type="button"
+                            aria-label={`Actions for ${displayChatTitle(entry)}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setChatMenuOpenId((current) =>
+                                current === entry.id ? null : entry.id,
+                              );
                             }}
+                            className={cn(
+                              "grid size-6 shrink-0 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                              chatMenuOpenId === entry.id
+                                ? "bg-surface-2 opacity-100"
+                                : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+                            )}
                           >
-                            {isFavorite("chat", entry.id) ? "Unpin" : "Pin"}
-                          </ChatMenuItem>
-                          <ChatMenuItem onClick={() => void exportChat(entry)}>
-                            Export JSON
-                          </ChatMenuItem>
-                          <ChatMenuItem onClick={() => void copyChatLink(entry.id)}>
-                            Copy link
-                          </ChatMenuItem>
-                          {isCreator ? (
-                            <>
-                              <div className="my-1 h-px bg-border-subtle" />
-                              <ChatMenuItem danger onClick={() => void handleDeleteChat(entry)}>
-                                Delete
-                              </ChatMenuItem>
-                            </>
-                          ) : null}
+                            <DotsIcon />
+                          </button>
                         </div>
-                      ) : null}
-                    </div>
-                  );
-                })
-              )}
-              {chats.length > recentChats.length ? (
-                <button
-                  type="button"
-                  onClick={() => void navigate({ to: "/chats" })}
-                  className="mt-0.5 px-2.5 py-1 text-left text-[11.5px] text-fg-muted transition-colors hover:text-fg"
-                >
-                  View all {chats.length} →
-                </button>
-              ) : null}
-            </div>
+                        {chatMenuOpenId === entry.id ? (
+                          <div
+                            className="absolute right-1 top-8 z-30 w-36 overflow-hidden rounded-[8px] border border-border bg-surface py-1 shadow-xl"
+                            onClick={(event) => event.stopPropagation()}
+                            onPointerDown={(event) => event.stopPropagation()}
+                          >
+                            <ChatMenuItem onClick={() => void openChat(entry.id)}>
+                              Open
+                            </ChatMenuItem>
+                            <ChatMenuItem
+                              onClick={async () => {
+                                setChatMenuOpenId(null);
+                                const wasFavorite = isFavorite("chat", entry.id);
+                                try {
+                                  await toggleFavorite("chat", entry.id);
+                                  toast.success(
+                                    wasFavorite ? "Removed from favorites" : "Pinned to sidebar",
+                                  );
+                                } catch {
+                                  toast.error("Failed to update favorite");
+                                }
+                              }}
+                            >
+                              {isFavorite("chat", entry.id) ? "Unpin" : "Pin"}
+                            </ChatMenuItem>
+                            <ChatMenuItem onClick={() => void exportChat(entry)}>
+                              Export JSON
+                            </ChatMenuItem>
+                            <ChatMenuItem onClick={() => void copyChatLink(entry.id)}>
+                              Copy link
+                            </ChatMenuItem>
+                            {isCreator ? (
+                              <>
+                                <div className="my-1 h-px bg-border-subtle" />
+                                <ChatMenuItem danger onClick={() => void handleDeleteChat(entry)}>
+                                  Delete
+                                </ChatMenuItem>
+                              </>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })
+                )}
+                {chats.length > recentChats.length ? (
+                  <button
+                    type="button"
+                    onClick={() => void navigate({ to: "/chats" })}
+                    className="mt-0.5 px-2.5 py-1 text-left text-[11.5px] text-fg-muted transition-colors hover:text-fg"
+                  >
+                    View all {chats.length} →
+                  </button>
+                ) : null}
+              </div>
             )}
           </div>
         </SidebarContent>
@@ -704,7 +701,9 @@ function AppLayout() {
         <Outlet />
         <TabBar enabled={tabsEnabled} />
       </SidebarInset>
-      <ChatWidget />
+      <Suspense fallback={null}>
+        <ChatWidget />
+      </Suspense>
     </SidebarProvider>
   );
 }
@@ -999,9 +998,7 @@ function SidebarNav({
 
   const toggleHidden = (id: string) => {
     setDraft((current) =>
-      current.map((item) =>
-        item.id === id ? { ...item, hidden: !item.hidden } : item,
-      ),
+      current.map((item) => (item.id === id ? { ...item, hidden: !item.hidden } : item)),
     );
   };
 
@@ -1027,8 +1024,7 @@ function SidebarNav({
         const hidden = entry.hidden === true;
         if (!isEditing && hidden) return null;
         const active = spec.isActive(pathname);
-        const showRecent =
-          !isEditing && spec.id === "projects" && !hidden;
+        const showRecent = !isEditing && spec.id === "projects" && !hidden;
         return (
           <div key={entry.id}>
             <SidebarNavRow
@@ -1135,10 +1131,7 @@ function SidebarNavRow({
           if (!dropping) setDropping(true);
         }}
         onDragLeave={(event) => {
-          if (
-            event.currentTarget.contains(event.relatedTarget as Node | null)
-          )
-            return;
+          if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
           setDropping(false);
         }}
         onDrop={(event) => {
@@ -1150,9 +1143,7 @@ function SidebarNavRow({
         }}
         className={cn(
           "group flex h-8 w-full select-none items-center gap-1.5 rounded-[7px] border border-transparent pl-1 pr-1.5 text-[13px] transition-colors",
-          dropping
-            ? "border-accent/40 bg-accent/10"
-            : "border-border-subtle/60 bg-surface/30",
+          dropping ? "border-accent/40 bg-accent/10" : "border-border-subtle/60 bg-surface/30",
           isDragging && "opacity-60",
           hidden && !dropping && "text-fg-faint",
         )}
@@ -1305,7 +1296,6 @@ function PopoverChoice({
   );
 }
 
-
 function SidebarSectionHeader({
   icon,
   label,
@@ -1331,9 +1321,7 @@ function SidebarSectionHeader({
       >
         <SectionChevron collapsed={collapsed} />
         {icon}
-        <span className="text-[10.5px] font-medium uppercase tracking-[0.08em]">
-          {label}
-        </span>
+        <span className="text-[10.5px] font-medium uppercase tracking-[0.08em]">{label}</span>
       </button>
       {trailing}
     </div>

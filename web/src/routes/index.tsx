@@ -20,7 +20,7 @@ function LandingPage() {
           fetchPriority="high"
           className="animate-ken-burns absolute inset-0 h-full w-full object-cover object-[center_65%]"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-bg/0 via-bg/15 to-bg" />
+        <div className="absolute inset-0 bg-linear-to-b from-bg/0 via-bg/15 to-bg" />
         <div
           className="absolute inset-0"
           style={{
