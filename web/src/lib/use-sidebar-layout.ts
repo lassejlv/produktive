@@ -17,11 +17,17 @@ export const SIDEBAR_ITEM_IDS = [
 
 export type SidebarItemId = (typeof SIDEBAR_ITEM_IDS)[number];
 
+export type ChatsSortMode = "recent" | "alphabetical";
+
+export const CHATS_LIMIT_OPTIONS = [3, 5, 8, 12, 20, 50] as const;
+
 export type SidebarLayout = {
   items: SidebarLayoutItem[];
   favoritesCollapsed: boolean;
   chatsCollapsed: boolean;
   favoritesOrder: string[];
+  chatsLimit: number;
+  chatsSort: ChatsSortMode;
 };
 
 const KNOWN_IDS = new Set<string>(SIDEBAR_ITEM_IDS);
@@ -35,6 +41,8 @@ export const defaultSidebarLayout: SidebarLayout = {
   favoritesCollapsed: false,
   chatsCollapsed: false,
   favoritesOrder: [],
+  chatsLimit: 8,
+  chatsSort: "recent",
 };
 
 function normalizeItems(raw: unknown): SidebarLayoutItem[] {
@@ -74,11 +82,19 @@ export function normalizeLayout(raw: unknown): SidebarLayout {
   }
   if (!raw || typeof raw !== "object") return defaultSidebarLayout;
   const obj = raw as Record<string, unknown>;
+  const rawLimit = obj.chatsLimit;
+  const limit = typeof rawLimit === "number" && Number.isFinite(rawLimit)
+    ? Math.max(1, Math.min(200, Math.round(rawLimit)))
+    : defaultSidebarLayout.chatsLimit;
+  const sort: ChatsSortMode =
+    obj.chatsSort === "alphabetical" ? "alphabetical" : "recent";
   return {
     items: normalizeItems(obj.items),
     favoritesCollapsed: obj.favoritesCollapsed === true,
     chatsCollapsed: obj.chatsCollapsed === true,
     favoritesOrder: normalizeStringArray(obj.favoritesOrder),
+    chatsLimit: limit,
+    chatsSort: sort,
   };
 }
 
@@ -132,6 +148,8 @@ export function useSidebarLayout() {
       update({ chatsCollapsed: !layout.chatsCollapsed }),
     setFavoritesOrder: (favoritesOrder: string[]) =>
       update({ favoritesOrder }),
+    setChatsLimit: (chatsLimit: number) => update({ chatsLimit }),
+    setChatsSort: (chatsSort: ChatsSortMode) => update({ chatsSort }),
     reset: () => mutation.mutate(null),
     isSaving: mutation.isPending,
   };

@@ -24,6 +24,7 @@ import { Route as AppProjectsRouteImport } from './routes/_app.projects'
 import { Route as AppLabelsRouteImport } from './routes/_app.labels'
 import { Route as AppIssuesRouteImport } from './routes/_app.issues'
 import { Route as AppInboxRouteImport } from './routes/_app.inbox'
+import { Route as AppChatsRouteImport } from './routes/_app.chats'
 import { Route as AppChatRouteImport } from './routes/_app.chat'
 import { Route as AppAccountRouteImport } from './routes/_app.account'
 import { Route as AppWorkspaceSettingsRouteImport } from './routes/_app.workspace.settings'
@@ -106,6 +107,11 @@ const AppInboxRoute = AppInboxRouteImport.update({
   path: '/inbox',
   getParentRoute: () => AppRoute,
 } as any)
+const AppChatsRoute = AppChatsRouteImport.update({
+  id: '/chats',
+  path: '/chats',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppChatRoute = AppChatRouteImport.update({
   id: '/chat',
   path: '/chat',
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/verify-email': typeof VerifyEmailRoute
   '/account': typeof AppAccountRoute
   '/chat': typeof AppChatRouteWithChildren
+  '/chats': typeof AppChatsRoute
   '/inbox': typeof AppInboxRoute
   '/issues': typeof AppIssuesRouteWithChildren
   '/labels': typeof AppLabelsRoute
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/verify-email': typeof VerifyEmailRoute
   '/account': typeof AppAccountRoute
   '/chat': typeof AppChatRouteWithChildren
+  '/chats': typeof AppChatsRoute
   '/inbox': typeof AppInboxRoute
   '/issues': typeof AppIssuesRouteWithChildren
   '/labels': typeof AppLabelsRoute
@@ -198,6 +206,7 @@ export interface FileRoutesById {
   '/verify-email': typeof VerifyEmailRoute
   '/_app/account': typeof AppAccountRoute
   '/_app/chat': typeof AppChatRouteWithChildren
+  '/_app/chats': typeof AppChatsRoute
   '/_app/inbox': typeof AppInboxRoute
   '/_app/issues': typeof AppIssuesRouteWithChildren
   '/_app/labels': typeof AppLabelsRoute
@@ -223,6 +232,7 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/account'
     | '/chat'
+    | '/chats'
     | '/inbox'
     | '/issues'
     | '/labels'
@@ -246,6 +256,7 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/account'
     | '/chat'
+    | '/chats'
     | '/inbox'
     | '/issues'
     | '/labels'
@@ -270,6 +281,7 @@ export interface FileRouteTypes {
     | '/verify-email'
     | '/_app/account'
     | '/_app/chat'
+    | '/_app/chats'
     | '/_app/inbox'
     | '/_app/issues'
     | '/_app/labels'
@@ -405,6 +417,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppInboxRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/chats': {
+      id: '/_app/chats'
+      path: '/chats'
+      fullPath: '/chats'
+      preLoaderRoute: typeof AppChatsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/chat': {
       id: '/_app/chat'
       path: '/chat'
@@ -507,6 +526,7 @@ const AppWorkspaceRouteWithChildren = AppWorkspaceRoute._addFileChildren(
 interface AppRouteChildren {
   AppAccountRoute: typeof AppAccountRoute
   AppChatRoute: typeof AppChatRouteWithChildren
+  AppChatsRoute: typeof AppChatsRoute
   AppInboxRoute: typeof AppInboxRoute
   AppIssuesRoute: typeof AppIssuesRouteWithChildren
   AppLabelsRoute: typeof AppLabelsRoute
@@ -518,6 +538,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppAccountRoute: AppAccountRoute,
   AppChatRoute: AppChatRouteWithChildren,
+  AppChatsRoute: AppChatsRoute,
   AppInboxRoute: AppInboxRoute,
   AppIssuesRoute: AppIssuesRouteWithChildren,
   AppLabelsRoute: AppLabelsRoute,
