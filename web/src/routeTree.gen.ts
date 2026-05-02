@@ -24,6 +24,7 @@ import { Route as AppProjectsRouteImport } from './routes/_app.projects'
 import { Route as AppLabelsRouteImport } from './routes/_app.labels'
 import { Route as AppIssuesRouteImport } from './routes/_app.issues'
 import { Route as AppInboxRouteImport } from './routes/_app.inbox'
+import { Route as AppFavoritesRouteImport } from './routes/_app.favorites'
 import { Route as AppChatsRouteImport } from './routes/_app.chats'
 import { Route as AppChatRouteImport } from './routes/_app.chat'
 import { Route as AppAccountRouteImport } from './routes/_app.account'
@@ -107,6 +108,11 @@ const AppInboxRoute = AppInboxRouteImport.update({
   path: '/inbox',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFavoritesRoute = AppFavoritesRouteImport.update({
+  id: '/favorites',
+  path: '/favorites',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppChatsRoute = AppChatsRouteImport.update({
   id: '/chats',
   path: '/chats',
@@ -157,6 +163,7 @@ export interface FileRoutesByFullPath {
   '/account': typeof AppAccountRoute
   '/chat': typeof AppChatRouteWithChildren
   '/chats': typeof AppChatsRoute
+  '/favorites': typeof AppFavoritesRoute
   '/inbox': typeof AppInboxRoute
   '/issues': typeof AppIssuesRouteWithChildren
   '/labels': typeof AppLabelsRoute
@@ -181,6 +188,7 @@ export interface FileRoutesByTo {
   '/account': typeof AppAccountRoute
   '/chat': typeof AppChatRouteWithChildren
   '/chats': typeof AppChatsRoute
+  '/favorites': typeof AppFavoritesRoute
   '/inbox': typeof AppInboxRoute
   '/issues': typeof AppIssuesRouteWithChildren
   '/labels': typeof AppLabelsRoute
@@ -207,6 +215,7 @@ export interface FileRoutesById {
   '/_app/account': typeof AppAccountRoute
   '/_app/chat': typeof AppChatRouteWithChildren
   '/_app/chats': typeof AppChatsRoute
+  '/_app/favorites': typeof AppFavoritesRoute
   '/_app/inbox': typeof AppInboxRoute
   '/_app/issues': typeof AppIssuesRouteWithChildren
   '/_app/labels': typeof AppLabelsRoute
@@ -233,6 +242,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/chat'
     | '/chats'
+    | '/favorites'
     | '/inbox'
     | '/issues'
     | '/labels'
@@ -257,6 +267,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/chat'
     | '/chats'
+    | '/favorites'
     | '/inbox'
     | '/issues'
     | '/labels'
@@ -282,6 +293,7 @@ export interface FileRouteTypes {
     | '/_app/account'
     | '/_app/chat'
     | '/_app/chats'
+    | '/_app/favorites'
     | '/_app/inbox'
     | '/_app/issues'
     | '/_app/labels'
@@ -417,6 +429,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppInboxRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/favorites': {
+      id: '/_app/favorites'
+      path: '/favorites'
+      fullPath: '/favorites'
+      preLoaderRoute: typeof AppFavoritesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/chats': {
       id: '/_app/chats'
       path: '/chats'
@@ -527,6 +546,7 @@ interface AppRouteChildren {
   AppAccountRoute: typeof AppAccountRoute
   AppChatRoute: typeof AppChatRouteWithChildren
   AppChatsRoute: typeof AppChatsRoute
+  AppFavoritesRoute: typeof AppFavoritesRoute
   AppInboxRoute: typeof AppInboxRoute
   AppIssuesRoute: typeof AppIssuesRouteWithChildren
   AppLabelsRoute: typeof AppLabelsRoute
@@ -539,6 +559,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccountRoute: AppAccountRoute,
   AppChatRoute: AppChatRouteWithChildren,
   AppChatsRoute: AppChatsRoute,
+  AppFavoritesRoute: AppFavoritesRoute,
   AppInboxRoute: AppInboxRoute,
   AppIssuesRoute: AppIssuesRouteWithChildren,
   AppLabelsRoute: AppLabelsRoute,
