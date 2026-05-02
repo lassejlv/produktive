@@ -289,10 +289,10 @@ export function ChatComposer({
     <div className="relative z-10 px-6 pb-3 pt-2">
       <div
         className={cn(
-          "mx-auto w-full max-w-[760px] overflow-hidden rounded-[14px] border bg-surface/80 transition-colors focus-within:bg-surface-2",
+          "mx-auto w-full max-w-[760px] overflow-hidden rounded-[10px] border bg-surface/80 transition-colors focus-within:bg-surface-2",
           pendingQuestion
             ? "border-accent/40 focus-within:border-accent/60"
-            : "border-border focus-within:border-[#4a4a52]",
+            : "border-border-subtle focus-within:border-border",
         )}
       >
         <input
@@ -303,8 +303,8 @@ export function ChatComposer({
           onChange={(event) => void handleFiles(event.target.files)}
         />
         {pendingQuestion ? (
-          <div className="border-b border-accent/25 bg-accent/[0.06] px-3.5 py-3">
-            <div className="mb-1 flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-accent">
+          <div className="border-b border-border-subtle bg-surface/40 px-3.5 py-3">
+            <div className="mb-1 flex items-center gap-1.5 font-mono text-[10.5px] font-medium uppercase tracking-[0.16em] text-fg-faint">
               <span aria-hidden="true">?</span>
               Question
             </div>
@@ -319,7 +319,7 @@ export function ChatComposer({
                     type="button"
                     onClick={() => pendingQuestion.onAnswer(option)}
                     disabled={busy}
-                    className="inline-flex h-7 items-center rounded-[6px] border border-border bg-surface px-2 text-[12px] text-fg transition-colors hover:border-accent/40 hover:bg-accent/15 hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-7 items-center rounded-[5px] border border-border-subtle bg-surface px-2 text-[12px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {option}
                   </button>
@@ -337,9 +337,9 @@ export function ChatComposer({
               {mentionedChats.map((chat) => (
                 <div
                   key={chat.id}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-[6px] border border-accent/30 bg-accent/[0.06] px-2 py-1 text-[11px] text-fg-muted"
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-[5px] border border-border-subtle bg-surface px-2 py-1 text-[11px] text-fg-muted"
                 >
-                  <span className="text-accent">
+                  <span className="text-fg-faint">
                     <SparkleIcon size={11} />
                   </span>
                   <span className="max-w-[180px] truncate text-fg">
@@ -358,9 +358,9 @@ export function ChatComposer({
               {mentionedTools.map((tool) => (
                 <div
                   key={tool.id}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-[6px] border border-accent/30 bg-accent/[0.06] px-2 py-1 text-[11px] text-fg-muted"
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-[5px] border border-border-subtle bg-surface px-2 py-1 text-[11px] text-fg-muted"
                 >
-                  <span className="font-mono text-[10px] text-accent">@</span>
+                  <span className="font-mono text-[10px] text-fg-faint">@</span>
                   <span className="max-w-[180px] truncate font-mono text-fg">
                     {prettyToolName(tool)}
                   </span>
@@ -378,7 +378,7 @@ export function ChatComposer({
               {issues.map((issue) => (
                 <div
                   key={issue.id}
-                  className="inline-flex max-w-full items-center gap-1.5 rounded-[6px] border border-border bg-bg px-2 py-1 text-[11px] text-fg-muted"
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-[5px] border border-border-subtle bg-surface px-2 py-1 text-[11px] text-fg-muted"
                 >
                   <StatusIcon status={issue.status} />
                   <span className="max-w-[220px] truncate text-fg">
@@ -397,7 +397,7 @@ export function ChatComposer({
               {attachments.map((file) => (
                 <div
                   key={file.id}
-                  className="inline-flex max-w-full items-center gap-2 rounded-[6px] border border-border bg-bg px-2 py-1 font-mono text-[11px] text-fg-muted"
+                  className="inline-flex max-w-full items-center gap-2 rounded-[5px] border border-border-subtle bg-surface px-2 py-1 font-mono text-[11px] text-fg-muted"
                 >
                   <span className="max-w-[220px] truncate text-fg">
                     {file.file.name}

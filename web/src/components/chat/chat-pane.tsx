@@ -16,13 +16,13 @@ import {
   readAskUserQuestion,
 } from "@/components/chat/chat-message";
 import { ChatSkeleton } from "@/components/chat/chat-skeleton";
+import { ModelPicker } from "@/components/chat/model-picker";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   type ChatMessageRecord,
   createChat,
   getChat,
   streamChatMessage,
-  type AiModel,
   uploadChatAttachment,
 } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
@@ -369,15 +369,24 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   return (
     <div className="flex h-screen min-w-0 flex-1 overflow-hidden bg-bg md:h-full">
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="relative z-10 flex min-h-[58px] items-center gap-3 border-b border-border-subtle bg-bg/86 px-6 py-3 backdrop-blur">
-          <div className="flex min-w-0 flex-1 items-center gap-3 text-[13px] text-fg-muted">
-            <span className="text-fg-muted">Chat</span>
-            <span className="text-fg-muted">/</span>
-            {isLoadingChat ? (
-              <Skeleton className="h-3.5 w-40" />
-            ) : (
-              <span className="truncate font-medium text-fg">{chatTitle}</span>
-            )}
+        <header className="sticky top-0 z-10 border-b border-border-subtle bg-bg/85 backdrop-blur">
+          <div className="mx-auto flex h-11 w-full max-w-[760px] items-center gap-3 px-6">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-faint">
+                Chat
+              </span>
+              {isLoadingChat ? (
+                <Skeleton className="h-3.5 w-40" />
+              ) : (
+                <span className="truncate text-[14px] text-fg">{chatTitle}</span>
+              )}
+            </div>
+            <ModelPicker
+              value={selectedModel}
+              models={availableModels}
+              onChange={handleModelChange}
+              disabled={busy}
+            />
           </div>
         </header>
 
@@ -453,7 +462,7 @@ function ChatErrorNotice({
 }) {
   return (
     <div className="relative z-20 px-6 pb-1">
-      <div className="mx-auto flex min-h-9 w-full max-w-[760px] items-center justify-between gap-3 rounded-[8px] border border-danger/25 bg-danger/[0.08] px-3 py-2 text-[12px] text-danger shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
+      <div className="mx-auto flex min-h-9 w-full max-w-[760px] items-center justify-between gap-3 rounded-md border border-danger/25 bg-danger/[0.08] px-3 py-2 text-[12px] text-danger">
         <span className="min-w-0 truncate">{message}</span>
         <button
           type="button"
@@ -488,100 +497,104 @@ function ChatChangesPanel({
   return (
     <aside
       className={cn(
-        "flex h-full shrink-0 flex-col overflow-hidden bg-bg transition-[width] duration-300 ease-out",
-        open ? "w-[392px]" : "w-0",
+        "flex h-full shrink-0 flex-col overflow-hidden border-l border-border-subtle bg-bg transition-[width] duration-300 ease-out",
+        open ? "w-[392px]" : "w-0 border-l-0",
       )}
       aria-hidden={!open}
     >
       <div
         className={cn(
-          "flex h-full w-[392px] flex-col p-3 pl-2 transition-[opacity,transform] duration-300 ease-out",
+          "flex h-full w-[392px] min-w-0 flex-col transition-[opacity,transform] duration-300 ease-out",
           open
             ? "translate-x-0 opacity-100"
             : "pointer-events-none translate-x-3 opacity-0",
         )}
       >
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg">
-          <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-4">
-            <div className="min-w-0">
-              <h2 className="text-[13px] font-medium leading-tight text-fg">
-                Changes
-              </h2>
-              <p className="mt-0.5 text-[11px] leading-none text-fg-faint">
-                {changes.length} in this chat
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="grid size-7 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg active:scale-[0.98]"
-              aria-label="Close changes panel"
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-faint">
+              Changes
+            </span>
+            <span className="font-mono text-[11px] tabular-nums text-fg-faint">
+              {changes.length}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid size-7 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+            aria-label="Close changes panel"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path
+                d="M3 3l8 8M11 3l-8 8"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        </div>
+        {changes.length === 0 ? (
+          <div className="flex flex-1 flex-col items-center px-6 py-16 text-center">
+            <div className="mb-4 grid size-10 place-items-center rounded-[10px] border border-border-subtle bg-surface/40 text-fg-muted">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
                 <path
-                  d="M3 3l8 8M11 3l-8 8"
+                  d="M3 7h8M7 3v8"
                   stroke="currentColor"
                   strokeWidth="1.5"
                   strokeLinecap="round"
                 />
               </svg>
-            </button>
+            </div>
+            <p className="max-w-60 text-[13px] leading-relaxed text-fg-muted">
+              No issue changes have been made from this chat yet.
+            </p>
           </div>
-          {changes.length === 0 ? (
-            <div className="flex flex-1 items-center justify-center px-6 text-center">
-              <p className="max-w-60 text-sm leading-relaxed text-fg-muted">
-                No issue changes have been made from this chat yet.
-              </p>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto px-3 py-3">
-              <div className="grid gap-3">
-                {changes.map((change) => (
-                  <article
-                    key={change.id}
-                    className="overflow-hidden rounded-lg border border-border-subtle bg-bg transition-colors duration-200 hover:border-border"
-                  >
-                    <div className="px-3.5 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span className="shrink-0 rounded-[4px] border border-border-subtle px-1.5 py-0.5 text-[10px] capitalize leading-none text-fg-muted">
-                              {change.action}
-                            </span>
-                            <p className="min-w-0 truncate text-[13px] font-medium text-fg">
-                              {change.title}
-                            </p>
-                          </div>
-                          <p className="mt-1.5 text-[11px] text-fg-faint">
-                            {change.fields.length}{" "}
-                            {change.fields.length === 1 ? "field" : "fields"}
-                          </p>
-                        </div>
-                        {change.issueId ? (
-                          <Link
-                            to="/issues/$issueId"
-                            params={{ issueId: change.issueId }}
-                            className="shrink-0 rounded-md border border-border-subtle px-2.5 py-1.5 text-[11px] text-fg-muted transition-colors hover:bg-surface hover:text-fg active:scale-[0.98]"
-                            onClick={onClose}
-                          >
-                            Open
-                          </Link>
-                        ) : null}
-                      </div>
-                    </div>
-                    {change.fields.length > 0 ? (
-                      <div className="grid border-t border-border-subtle">
-                        {change.fields.map((field) => (
-                          <ChatChangeField key={field.name} field={field} />
-                        ))}
-                      </div>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto">
+            {changes.map((change, idx) => (
+              <article
+                key={change.id}
+                className={cn(
+                  "border-b border-border-subtle/60",
+                  idx === 0 && "border-t border-border-subtle/60",
+                )}
+              >
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-surface/50">
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                      {change.action}
+                    </span>
+                    <p className="min-w-0 truncate text-[13px] text-fg">
+                      {change.title}
+                    </p>
+                    <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-fg-faint">
+                      {change.fields.length}
+                    </span>
+                  </div>
+                  {change.issueId ? (
+                    <Link
+                      to="/issues/$issueId"
+                      params={{ issueId: change.issueId }}
+                      className="shrink-0 text-[11px] text-fg-muted transition-colors hover:text-fg"
+                      onClick={onClose}
+                    >
+                      Open →
+                    </Link>
+                  ) : null}
+                </div>
+                {change.fields.length > 0 ? (
+                  <div className="grid border-t border-border-subtle/60 bg-surface/20">
+                    {change.fields.map((field) => (
+                      <ChatChangeField key={field.name} field={field} />
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        )}
       </div>
     </aside>
   );

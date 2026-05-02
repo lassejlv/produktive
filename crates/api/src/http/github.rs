@@ -5,6 +5,7 @@ use crate::{
     mcp::{decrypt_secret, encrypt_secret},
     permissions::{require_permission, GITHUB_MANAGE},
     state::AppState,
+    storage,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -19,6 +20,7 @@ use produktive_entity::{
     github_connection, github_imported_issue, github_oauth_state, github_repository, issue, label,
     user,
 };
+use regex::Regex;
 use reqwest::header::{HeaderMap as ReqwestHeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
 use sea_orm::{
     sea_query::{Expr, SimpleExpr},
@@ -28,6 +30,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
+use std::{collections::HashMap, sync::OnceLock};
 use uuid::Uuid;
 
 const GITHUB_API_BASE: &str = "https://api.github.com";
@@ -39,6 +42,7 @@ const MIN_IMPORT_INTERVAL_MINUTES: i32 = 15;
 const DEFAULT_IMPORT_INTERVAL_MINUTES: i32 = 360;
 const AUTO_IMPORT_TICK_SECONDS: u64 = 60;
 const IMPORT_LOCK_TTL_MINUTES: i64 = 30;
+const MAX_GITHUB_MEDIA_BYTES: usize = 25 * 1024 * 1024;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -921,7 +925,6 @@ async fn import_one_issue(
         .filter(github_imported_issue::Column::GithubIssueNumber.eq(github_issue.number))
         .one(&state.db)
         .await?;
-    let description = github_description(owner, repo, github_issue);
     let status = if github_issue.state == "closed" {
         "done"
     } else {
@@ -935,6 +938,8 @@ async fn import_one_issue(
             .await?;
         if let Some(existing_issue) = existing_issue {
             let issue_id = mapping.issue_id.clone();
+            let description =
+                github_description(state, auth, owner, repo, github_issue, &issue_id).await;
             update_imported_issue(
                 state,
                 auth,
@@ -951,8 +956,10 @@ async fn import_one_issue(
     }
 
     let now = now();
+    let issue_id = Uuid::new_v4().to_string();
+    let description = github_description(state, auth, owner, repo, github_issue, &issue_id).await;
     let issue = issue::ActiveModel {
-        id: Set(Uuid::new_v4().to_string()),
+        id: Set(issue_id),
         organization_id: Set(auth.organization.id.clone()),
         title: Set(github_issue.title.trim().to_owned()),
         description: Set(Some(description)),
@@ -1416,7 +1423,14 @@ async fn require_owner(state: &AppState, auth: &AuthContext) -> Result<(), ApiEr
     require_permission(state, auth, GITHUB_MANAGE).await
 }
 
-fn github_description(owner: &str, repo: &str, issue: &GithubIssue) -> String {
+async fn github_description(
+    state: &AppState,
+    auth: &AuthContext,
+    owner: &str,
+    repo: &str,
+    issue: &GithubIssue,
+    issue_id: &str,
+) -> String {
     let author = issue
         .user
         .as_ref()
@@ -1439,10 +1453,286 @@ fn github_description(owner: &str, repo: &str, issue: &GithubIssue) -> String {
         url = issue.html_url,
     );
     if !body.is_empty() {
+        let body = mirror_github_body_media(state, &auth.organization.id, issue_id, body).await;
         description.push_str("\n\n---\n\n");
-        description.push_str(body);
+        description.push_str(&body);
     }
     description
+}
+
+async fn mirror_github_body_media(
+    state: &AppState,
+    organization_id: &str,
+    issue_id: &str,
+    body: &str,
+) -> String {
+    let Some(storage_config) = state.config.storage.as_ref() else {
+        return body.to_owned();
+    };
+
+    let urls = extract_github_body_media_urls(body);
+    if urls.is_empty() {
+        return body.to_owned();
+    }
+
+    let http = reqwest::Client::new();
+    let mut replacements = HashMap::new();
+    for source_url in urls {
+        match mirror_one_github_media(
+            storage_config,
+            organization_id,
+            issue_id,
+            &http,
+            &source_url,
+        )
+        .await
+        {
+            Ok(url) => {
+                replacements.insert(source_url, url);
+            }
+            Err(error) => {
+                tracing::warn!(
+                    issue_id,
+                    source_url,
+                    %error,
+                    "failed to mirror github issue media; keeping original URL"
+                );
+            }
+        }
+    }
+
+    rewrite_github_body_media_urls(body, &replacements)
+}
+
+async fn mirror_one_github_media(
+    storage_config: &crate::config::StorageConfig,
+    organization_id: &str,
+    issue_id: &str,
+    http: &reqwest::Client,
+    source_url: &str,
+) -> Result<String, anyhow::Error> {
+    let parsed = reqwest::Url::parse(source_url)?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        anyhow::bail!("unsupported media URL scheme");
+    }
+
+    let response = http
+        .get(parsed)
+        .header("User-Agent", "Produktive")
+        .send()
+        .await?
+        .error_for_status()?;
+
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .map(str::trim)
+        .filter(|value| {
+            value.starts_with("image/")
+                || value.starts_with("video/")
+                || *value == "application/octet-stream"
+        })
+        .unwrap_or("application/octet-stream")
+        .to_owned();
+
+    if let Some(length) = response.content_length() {
+        if length > MAX_GITHUB_MEDIA_BYTES as u64 {
+            anyhow::bail!("media is larger than {} bytes", MAX_GITHUB_MEDIA_BYTES);
+        }
+    }
+
+    let bytes = response.bytes().await?;
+    if bytes.is_empty() {
+        anyhow::bail!("media response was empty");
+    }
+    if bytes.len() > MAX_GITHUB_MEDIA_BYTES {
+        anyhow::bail!("media is larger than {} bytes", MAX_GITHUB_MEDIA_BYTES);
+    }
+
+    let content_type = if content_type == "application/octet-stream" {
+        infer_media_content_type(source_url).unwrap_or(content_type)
+    } else {
+        content_type
+    };
+    if !content_type.starts_with("image/") && !content_type.starts_with("video/") {
+        anyhow::bail!("unsupported media content type {content_type}");
+    }
+
+    let hash = hex::encode(Sha256::digest(source_url.as_bytes()));
+    let extension = media_extension(source_url, &content_type);
+    let key = storage::safe_issue_github_media_key(organization_id, issue_id, &hash, &extension);
+    let stored = storage::put_object(storage_config, &key, &content_type, bytes.to_vec()).await?;
+
+    Ok(stored.url)
+}
+
+fn extract_github_body_media_urls(body: &str) -> Vec<String> {
+    let mut urls = Vec::new();
+    for url in markdown_image_url_regex()
+        .captures_iter(body)
+        .filter_map(|captures| captures.name("url").map(|value| value.as_str()))
+    {
+        push_media_url(&mut urls, url);
+    }
+
+    for tag in media_tag_regex()
+        .find_iter(body)
+        .map(|match_| match_.as_str())
+    {
+        for url in media_attribute_regex()
+            .captures_iter(tag)
+            .filter_map(|captures| captures.name("url").map(|value| value.as_str()))
+        {
+            push_media_url(&mut urls, url);
+        }
+    }
+
+    urls
+}
+
+fn rewrite_github_body_media_urls(body: &str, replacements: &HashMap<String, String>) -> String {
+    if replacements.is_empty() {
+        return body.to_owned();
+    }
+
+    let markdown_rewritten =
+        markdown_image_url_regex().replace_all(body, |captures: &regex::Captures| {
+            let Some(url) = captures.name("url") else {
+                return captures[0].to_owned();
+            };
+            let Some(next) = replacements.get(url.as_str()) else {
+                return captures[0].to_owned();
+            };
+            format!(
+                "![{}]({}{})",
+                captures
+                    .name("alt")
+                    .map(|value| value.as_str())
+                    .unwrap_or(""),
+                next,
+                captures
+                    .name("suffix")
+                    .map(|value| value.as_str())
+                    .unwrap_or("")
+            )
+        });
+
+    media_tag_regex()
+        .replace_all(&markdown_rewritten, |captures: &regex::Captures| {
+            let tag = captures.get(0).map(|value| value.as_str()).unwrap_or("");
+            media_attribute_regex()
+                .replace_all(tag, |attr_captures: &regex::Captures| {
+                    let Some(url) = attr_captures.name("url") else {
+                        return attr_captures[0].to_owned();
+                    };
+                    let Some(next) = replacements.get(url.as_str()) else {
+                        return attr_captures[0].to_owned();
+                    };
+                    format!(
+                        "{}{}{}{}",
+                        attr_captures
+                            .name("prefix")
+                            .map(|value| value.as_str())
+                            .unwrap_or(""),
+                        attr_captures
+                            .name("quote")
+                            .map(|value| value.as_str())
+                            .unwrap_or("\""),
+                        next,
+                        attr_captures
+                            .name("quote")
+                            .map(|value| value.as_str())
+                            .unwrap_or("\"")
+                    )
+                })
+                .into_owned()
+        })
+        .into_owned()
+}
+
+fn push_media_url(urls: &mut Vec<String>, url: &str) {
+    let trimmed = url.trim();
+    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+        return;
+    }
+    if !urls.iter().any(|existing| existing == trimmed) {
+        urls.push(trimmed.to_owned());
+    }
+}
+
+fn markdown_image_url_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r#"!\[(?P<alt>[^\]]*)\]\((?P<url>https?://[^\s\)]+)(?P<suffix>(?:\s+["'][^"']*["'])?)\)"#)
+            .expect("valid markdown image regex")
+    })
+}
+
+fn media_tag_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r#"(?is)<\s*(?:img|video|source)\b[^>]*>"#).expect("valid media tag regex")
+    })
+}
+
+fn media_attribute_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| {
+        Regex::new(r#"(?is)(?P<prefix>\b(?:src|poster)\s*=\s*)(?P<quote>["'])(?P<url>https?://[^"']+)["']"#)
+            .expect("valid media attribute regex")
+    })
+}
+
+fn infer_media_content_type(source_url: &str) -> Option<String> {
+    let extension = extension_from_url(source_url)?;
+    let content_type = match extension.as_str() {
+        "apng" => "image/apng",
+        "avif" => "image/avif",
+        "gif" => "image/gif",
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "svg" => "image/svg+xml",
+        "webp" => "image/webp",
+        "mov" => "video/quicktime",
+        "mp4" => "video/mp4",
+        "m4v" => "video/mp4",
+        "ogg" | "ogv" => "video/ogg",
+        "webm" => "video/webm",
+        _ => return None,
+    };
+    Some(content_type.to_owned())
+}
+
+fn media_extension(source_url: &str, content_type: &str) -> String {
+    extension_from_url(source_url).unwrap_or_else(|| match content_type {
+        "image/apng" => "apng".to_owned(),
+        "image/avif" => "avif".to_owned(),
+        "image/gif" => "gif".to_owned(),
+        "image/jpeg" => "jpg".to_owned(),
+        "image/png" => "png".to_owned(),
+        "image/svg+xml" => "svg".to_owned(),
+        "image/webp" => "webp".to_owned(),
+        "video/mp4" => "mp4".to_owned(),
+        "video/ogg" => "ogv".to_owned(),
+        "video/quicktime" => "mov".to_owned(),
+        "video/webm" => "webm".to_owned(),
+        _ => "bin".to_owned(),
+    })
+}
+
+fn extension_from_url(source_url: &str) -> Option<String> {
+    reqwest::Url::parse(source_url)
+        .ok()
+        .and_then(|url| {
+            url.path_segments()
+                .and_then(|mut segments| segments.next_back().map(ToOwned::to_owned))
+        })
+        .and_then(|filename| filename.rsplit_once('.').map(|(_, ext)| ext.to_lowercase()))
+        .filter(|ext| {
+            !ext.is_empty() && ext.len() <= 8 && ext.chars().all(|ch| ch.is_ascii_alphanumeric())
+        })
 }
 
 fn unique_label_names(issues: &[GithubIssue]) -> std::collections::HashSet<String> {
@@ -1559,6 +1849,86 @@ mod tests {
     #[test]
     fn import_lock_ttl_is_long_enough_for_crash_recovery() {
         assert_eq!(IMPORT_LOCK_TTL_MINUTES, 30);
+    }
+
+    #[test]
+    fn github_media_rewrite_updates_markdown_and_html_media() {
+        let body = r#"![diagram](https://github.com/a/b/assets/one.png "diagram")
+<img alt="x" src="https://github.com/a/b/assets/two.webp">
+<video src='https://github.com/a/b/assets/three.mp4' poster="https://github.com/a/b/assets/poster.jpg"></video>
+<video controls><source src="https://github.com/a/b/assets/four.webm" type="video/webm"></video>"#;
+        let mut replacements = HashMap::new();
+        replacements.insert(
+            "https://github.com/a/b/assets/one.png".to_owned(),
+            "https://cdn.produktive.app/one.png".to_owned(),
+        );
+        replacements.insert(
+            "https://github.com/a/b/assets/two.webp".to_owned(),
+            "https://cdn.produktive.app/two.webp".to_owned(),
+        );
+        replacements.insert(
+            "https://github.com/a/b/assets/three.mp4".to_owned(),
+            "https://cdn.produktive.app/three.mp4".to_owned(),
+        );
+        replacements.insert(
+            "https://github.com/a/b/assets/poster.jpg".to_owned(),
+            "https://cdn.produktive.app/poster.jpg".to_owned(),
+        );
+        replacements.insert(
+            "https://github.com/a/b/assets/four.webm".to_owned(),
+            "https://cdn.produktive.app/four.webm".to_owned(),
+        );
+
+        let rewritten = rewrite_github_body_media_urls(body, &replacements);
+
+        assert!(rewritten.contains(r#"![diagram](https://cdn.produktive.app/one.png "diagram")"#));
+        assert!(rewritten.contains(r#"src="https://cdn.produktive.app/two.webp""#));
+        assert!(rewritten.contains(r#"src='https://cdn.produktive.app/three.mp4'"#));
+        assert!(rewritten.contains(r#"poster="https://cdn.produktive.app/poster.jpg""#));
+        assert!(rewritten.contains(r#"src="https://cdn.produktive.app/four.webm""#));
+    }
+
+    #[test]
+    fn github_media_rewrite_keeps_unmirrored_or_unsupported_urls() {
+        let body = r#"![remote](https://example.com/image.png)
+![relative](../image.png)
+<img src="data:image/png;base64,abc">
+<video src="https://example.com/video.mp4"></video>"#;
+        let replacements = HashMap::from([(
+            "https://example.com/image.png".to_owned(),
+            "https://cdn.produktive.app/image.png".to_owned(),
+        )]);
+
+        let extracted = extract_github_body_media_urls(body);
+        let rewritten = rewrite_github_body_media_urls(body, &replacements);
+
+        assert_eq!(
+            extracted,
+            vec![
+                "https://example.com/image.png".to_owned(),
+                "https://example.com/video.mp4".to_owned()
+            ]
+        );
+        assert!(rewritten.contains("https://cdn.produktive.app/image.png"));
+        assert!(rewritten.contains("../image.png"));
+        assert!(rewritten.contains("data:image/png;base64,abc"));
+        assert!(rewritten.contains("https://example.com/video.mp4"));
+    }
+
+    #[test]
+    fn github_media_type_helpers_accept_images_and_videos() {
+        assert_eq!(
+            infer_media_content_type("https://example.com/image.PNG").as_deref(),
+            Some("image/png")
+        );
+        assert_eq!(
+            infer_media_content_type("https://example.com/demo.webm").as_deref(),
+            Some("video/webm")
+        );
+        assert_eq!(
+            media_extension("https://example.com/no-extension", "video/mp4"),
+            "mp4"
+        );
     }
 }
 

@@ -22,6 +22,7 @@ produktive-entity = { path = "../entity" }
 produktive-migration = { path = "../migration" }
 unkey-rs = { path = "../unkey" }
 rand_core.workspace = true
+regex.workspace = true
 reqwest.workspace = true
 resend-rs.workspace = true
 sea-orm.workspace = true

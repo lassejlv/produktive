@@ -2361,6 +2361,7 @@ dependencies = [
  "produktive-entity",
  "produktive-migration",
  "rand_core 0.6.4",
+ "regex",
  "reqwest 0.12.28",
  "resend-rs",
  "sea-orm",

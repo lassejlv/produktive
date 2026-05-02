@@ -98,6 +98,20 @@ pub fn safe_issue_object_key(organization_id: &str, issue_id: &str, filename: &s
     )
 }
 
+pub fn safe_issue_github_media_key(
+    organization_id: &str,
+    issue_id: &str,
+    source_hash: &str,
+    extension: &str,
+) -> String {
+    let extension = sanitize_filename(extension.trim_start_matches('.'));
+    format!(
+        "organizations/{organization_id}/issues/{issue_id}/github-media/{}.{}",
+        sanitize_filename(source_hash),
+        extension
+    )
+}
+
 pub fn safe_workspace_icon_key(organization_id: &str, filename: &str) -> String {
     format!(
         "organizations/{organization_id}/icons/{}-{}",

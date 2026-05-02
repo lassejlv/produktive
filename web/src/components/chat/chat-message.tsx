@@ -70,7 +70,7 @@ export function ChatMessageItem({
           className={cn(
             "max-w-full text-[14px] leading-[1.65] text-fg text-pretty",
             isUser &&
-              "max-w-110 rounded-lg border border-border bg-surface/80 px-3.5 py-2.5",
+              "max-w-110 rounded-md border border-border-subtle bg-surface/60 px-3 py-2",
             !isUser && "max-w-170",
           )}
         >
@@ -179,20 +179,35 @@ function ToolCallChip({ group }: { group: ToolCallGroup }) {
 
   return (
     <span
-      className="inline-flex max-w-full items-center gap-1 rounded-[5px] border border-border-subtle bg-surface/40 py-[2px] pl-1 pr-1.5 text-[11px] leading-none"
+      className={cn(
+        "inline-flex max-w-full items-center gap-1.5 rounded-[5px] border border-border-subtle bg-surface/60 py-[3px] pl-1.5 pr-2 text-[11px] leading-none",
+        allErrored && "text-danger",
+      )}
       title={summary ?? group.name}
     >
       <span
         className={cn(
-          "grid size-[13px] shrink-0 place-items-center rounded-[3px]",
-          allErrored ? "bg-danger/15 text-danger" : "bg-accent/15 text-accent",
+          "grid size-[11px] shrink-0 place-items-center",
+          allErrored ? "text-danger" : "text-fg-faint",
         )}
       >
         <PlayIcon size={7} />
       </span>
-      <span className="truncate font-mono text-fg-muted">{group.name}</span>
+      <span
+        className={cn(
+          "truncate font-mono",
+          allErrored ? "text-danger" : "text-fg-muted",
+        )}
+      >
+        {group.name}
+      </span>
       {count > 1 ? (
-        <span className="grid h-[14px] min-w-[16px] place-items-center rounded-full bg-accent/20 px-1 font-mono text-[9.5px] font-medium tabular-nums text-accent">
+        <span
+          className={cn(
+            "font-mono text-[10px] tabular-nums",
+            allErrored ? "text-danger/80" : "text-fg-faint",
+          )}
+        >
           ×{count}
         </span>
       ) : null}
@@ -330,7 +345,7 @@ function ChatAttachmentList({
   attachments: ChatAttachment[];
 }) {
   return (
-    <div className="mt-2 grid gap-px overflow-hidden rounded-[7px] border border-border-subtle bg-border-subtle">
+    <div className="mt-2 divide-y divide-border-subtle/60 overflow-hidden rounded-md border border-border-subtle">
       {attachments.map((file) => (
         <a
           key={file.id}
@@ -345,9 +360,9 @@ function ChatAttachmentList({
                 src={file.url}
                 alt={file.name}
                 loading="lazy"
-                className="max-h-[360px] w-full rounded-[6px] object-contain"
+                className="max-h-[360px] w-full object-contain"
               />
-              <figcaption className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-2.5 py-2">
+              <figcaption className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-t border-border-subtle/60 px-2.5 py-2">
                 <span className="truncate font-mono text-[10px] text-fg-muted">
                   {file.name}
                 </span>
@@ -398,8 +413,8 @@ function ActionButton({
       title={title}
       onClick={onClick}
       className={cn(
-        "grid size-6 place-items-center rounded-[5px] transition-colors hover:bg-surface hover:text-fg focus-visible:bg-surface focus-visible:text-fg focus-visible:outline-none",
-        active ? "bg-surface text-fg" : "text-fg-faint",
+        "grid size-6 place-items-center rounded-[5px] transition-colors hover:text-fg focus-visible:text-fg focus-visible:outline-none",
+        active ? "text-fg" : "text-fg-faint",
       )}
     >
       {children}

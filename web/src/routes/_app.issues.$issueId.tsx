@@ -1,12 +1,6 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  type ChangeEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AttachIcon, DotsIcon, StarIcon } from "@/components/chat/icons";
 import { ChatMarkdown } from "@/components/chat/chat-markdown";
@@ -47,11 +41,7 @@ import {
   useIssuesQuery,
 } from "@/lib/queries/issues";
 import { queryKeys } from "@/lib/queries/keys";
-import {
-  useCreateIssue,
-  useDeleteIssue,
-  useUpdateIssue,
-} from "@/lib/mutations/issues";
+import { useCreateIssue, useDeleteIssue, useUpdateIssue } from "@/lib/mutations/issues";
 import { useLabelsQuery } from "@/lib/queries/labels";
 import { useProjectsQuery } from "@/lib/queries/projects";
 import { useRegisterTab } from "@/lib/use-tabs";
@@ -61,15 +51,9 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/issues/$issueId")({
   loader: ({ context, params }) => {
-    void context.queryClient.prefetchQuery(
-      issueHistoryQueryOptions(params.issueId),
-    );
-    void context.queryClient.prefetchQuery(
-      issueCommentsQueryOptions(params.issueId),
-    );
-    return context.queryClient.ensureQueryData(
-      issueDetailQueryOptions(params.issueId),
-    );
+    void context.queryClient.prefetchQuery(issueHistoryQueryOptions(params.issueId));
+    void context.queryClient.prefetchQuery(issueCommentsQueryOptions(params.issueId));
+    return context.queryClient.ensureQueryData(issueDetailQueryOptions(params.issueId));
   },
   component: IssueDetailPage,
 });
@@ -122,15 +106,9 @@ export function IssueDetail({
 
   const lookups = useMemo<Lookups>(
     () => ({
-      projects: new Map(
-        (projectsQuery.data ?? []).map((p) => [p.id, p.name]),
-      ),
-      members: new Map(
-        (membersQuery.data ?? []).map((m) => [m.id, m.name]),
-      ),
-      labels: new Map(
-        (labelsQuery.data ?? []).map((l) => [l.id, l.name]),
-      ),
+      projects: new Map((projectsQuery.data ?? []).map((p) => [p.id, p.name])),
+      members: new Map((membersQuery.data ?? []).map((m) => [m.id, m.name])),
+      labels: new Map((labelsQuery.data ?? []).map((l) => [l.id, l.name])),
     }),
     [projectsQuery.data, membersQuery.data, labelsQuery.data],
   );
@@ -183,19 +161,13 @@ export function IssueDetail({
         return;
       }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (
-        (event.key === "j" || event.key === "ArrowDown") &&
-        siblings.nextId
-      ) {
+      if ((event.key === "j" || event.key === "ArrowDown") && siblings.nextId) {
         event.preventDefault();
         void navigate({
           to: "/issues/$issueId",
           params: { issueId: siblings.nextId },
         });
-      } else if (
-        (event.key === "k" || event.key === "ArrowUp") &&
-        siblings.prevId
-      ) {
+      } else if ((event.key === "k" || event.key === "ArrowUp") && siblings.prevId) {
         event.preventDefault();
         void navigate({
           to: "/issues/$issueId",
@@ -217,9 +189,7 @@ export function IssueDetail({
 
   useEffect(() => {
     const source = new EventSource(
-      apiPath(
-        `/api/realtime?channel=issueSystem&id=${encodeURIComponent(issueId)}`,
-      ),
+      apiPath(`/api/realtime?channel=issueSystem&id=${encodeURIComponent(issueId)}`),
       { withCredentials: true },
     );
 
@@ -235,10 +205,7 @@ export function IssueDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [issueId, navigate]);
 
-  const timeline = useMemo(
-    () => buildTimeline(history, comments),
-    [history, comments],
-  );
+  const timeline = useMemo(() => buildTimeline(history, comments), [history, comments]);
 
   const handleTogglePin = async () => {
     try {
@@ -260,8 +227,7 @@ export function IssueDetail({
       onSuccess?.();
       await reloadAfterChange();
     } catch (updateError) {
-      const message =
-        updateError instanceof Error ? updateError.message : errorLabel;
+      const message = updateError instanceof Error ? updateError.message : errorLabel;
       setError(message);
       toast.error(message);
     }
@@ -275,28 +241,22 @@ export function IssueDetail({
       onboarding.signal("priority-or-assignee-changed"),
     );
 
-  const handleTitle = (next: string) =>
-    void updateField({ title: next }, "Failed to update title");
+  const handleTitle = (next: string) => void updateField({ title: next }, "Failed to update title");
 
   const handleDescription = (next: string) =>
     void updateField({ description: next }, "Failed to update description");
 
   const handleAssignee = (memberId: string | null) =>
-    void updateField(
-      { assignedToId: memberId },
-      "Failed to update assignee",
-      () => onboarding.signal("priority-or-assignee-changed"),
+    void updateField({ assignedToId: memberId }, "Failed to update assignee", () =>
+      onboarding.signal("priority-or-assignee-changed"),
     );
 
   const handleLabels = (labelIds: string[]) =>
     void updateField({ labelIds }, "Failed to update labels");
 
   const handleProject = (projectId: string | null) =>
-    void updateField(
-      { projectId: projectId ?? "" },
-      "Failed to update project",
-      () =>
-        toast.success(projectId ? "Project updated" : "Project cleared"),
+    void updateField({ projectId: projectId ?? "" }, "Failed to update project", () =>
+      toast.success(projectId ? "Project updated" : "Project cleared"),
     );
 
   const handleDelete = () => {
@@ -312,9 +272,7 @@ export function IssueDetail({
           void navigate({ to: "/issues" });
         } catch (deleteError) {
           const message =
-            deleteError instanceof Error
-              ? deleteError.message
-              : "Failed to delete issue";
+            deleteError instanceof Error ? deleteError.message : "Failed to delete issue";
           setError(message);
           toast.error(message);
         }
@@ -331,9 +289,8 @@ export function IssueDetail({
     setError(null);
     try {
       const response = await createIssueComment(issue.id, body);
-      qc.setQueryData<IssueComment[]>(
-        queryKeys.issues.comments(issue.id),
-        (old) => (old ? [...old, response.comment] : [response.comment]),
+      qc.setQueryData<IssueComment[]>(queryKeys.issues.comments(issue.id), (old) =>
+        old ? [...old, response.comment] : [response.comment],
       );
       setCommentBody("");
       await reloadAfterChange();
@@ -347,15 +304,10 @@ export function IssueDetail({
     }
   };
 
-  const handleAttachmentChange = async (
-    event: ChangeEvent<HTMLInputElement>,
-  ) => {
+  const handleAttachmentChange = async (event: ChangeEvent<HTMLInputElement>) => {
     if (!issue || !event.target.files?.length) return;
 
-    const result = prepareChatAttachments(
-      event.target.files,
-      issue.attachments?.length ?? 0,
-    );
+    const result = prepareChatAttachments(event.target.files, issue.attachments?.length ?? 0);
     event.target.value = "";
 
     if (result.errors.length > 0) {
@@ -383,9 +335,7 @@ export function IssueDetail({
       );
     } catch (uploadError) {
       const message =
-        uploadError instanceof Error
-          ? uploadError.message
-          : "Failed to upload attachment";
+        uploadError instanceof Error ? uploadError.message : "Failed to upload attachment";
       setError(message);
       toast.error(message);
     } finally {
@@ -516,26 +466,18 @@ export function IssueDetail({
               <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[12px] text-fg-faint">
                 {issue.createdBy ? (
                   <span className="inline-flex items-center gap-1.5 text-fg-muted">
-                    <Avatar
-                      name={issue.createdBy.name}
-                      image={issue.createdBy.image}
-                    />
+                    <Avatar name={issue.createdBy.name} image={issue.createdBy.image} />
                     {issue.createdBy.name}
                   </span>
                 ) : null}
-                {issue.createdBy ? (
-                  <span className="text-fg-faint/60">·</span>
-                ) : null}
+                {issue.createdBy ? <span className="text-fg-faint/60">·</span> : null}
                 <span>Created {formatDate(issue.createdAt)}</span>
                 <span className="text-fg-faint/60">·</span>
                 <span>Updated {formatDate(issue.updatedAt)}</span>
               </div>
 
               <div className="mt-10">
-                <EditableDescription
-                  value={issue.description}
-                  onSave={handleDescription}
-                />
+                <EditableDescription value={issue.description} onSave={handleDescription} />
               </div>
 
               <SubIssuesSection parentId={issueId} />
@@ -599,8 +541,7 @@ function SubIssuesSection({ parentId }: { parentId: string }) {
   const issuesQuery = useIssuesQuery();
   const { statuses } = useIssueStatuses();
   const children = useMemo(
-    () =>
-      (issuesQuery.data ?? []).filter((issue) => issue.parentId === parentId),
+    () => (issuesQuery.data ?? []).filter((issue) => issue.parentId === parentId),
     [issuesQuery.data, parentId],
   );
   const loading = issuesQuery.isPending;
@@ -619,9 +560,7 @@ function SubIssuesSection({ parentId }: { parentId: string }) {
       setCreating(false);
       toast.success("Sub-issue added");
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to create",
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to create");
     } finally {
       setSubmitting(false);
     }
@@ -659,10 +598,7 @@ function SubIssuesSection({ parentId }: { parentId: string }) {
           {children.map((child, index) => (
             <li
               key={child.id}
-              className={cn(
-                "border-border-subtle",
-                index !== children.length - 1 && "border-b",
-              )}
+              className={cn("border-border-subtle", index !== children.length - 1 && "border-b")}
             >
               <button
                 type="button"
@@ -756,9 +692,7 @@ function SubscribeStrip({ issueId }: { issueId: string }) {
       qc.setQueryData(queryKeys.issues.subscribers(issueId), response);
       toast.success(subscribed ? "Unsubscribed" : "Subscribed");
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to update",
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to update");
     } finally {
       setBusy(false);
     }
@@ -788,11 +722,7 @@ function SubscribeStrip({ issueId }: { issueId: string }) {
               className="grid size-5 place-items-center rounded-full border border-bg bg-surface-2 text-[9px] font-medium text-fg-muted"
             >
               {user.image ? (
-                <img
-                  src={user.image}
-                  alt=""
-                  className="size-5 rounded-full object-cover"
-                />
+                <img src={user.image} alt="" className="size-5 rounded-full object-cover" />
               ) : (
                 user.name.slice(0, 2).toUpperCase()
               )}
@@ -826,8 +756,7 @@ function SiblingsNav({
   return (
     <div className="inline-flex items-center gap-2 rounded-full border border-border-subtle bg-surface/40 px-2 py-0.5 text-[11px] text-fg-muted">
       <span className="tabular-nums">
-        {siblings.position} <span className="text-fg-faint">/</span>{" "}
-        {siblings.total}
+        {siblings.position} <span className="text-fg-faint">/</span> {siblings.total}
       </span>
       <div className="flex items-center">
         <button
@@ -914,6 +843,34 @@ function AttachmentRail({ attachments }: { attachments: IssueAttachment[] }) {
     <div className="flex flex-wrap gap-2">
       {attachments.map((file) => {
         const isImage = file.contentType.startsWith("image/");
+        const isVideo = file.contentType.startsWith("video/");
+        if (isVideo) {
+          return (
+            <div
+              key={file.id}
+              className="max-w-full overflow-hidden rounded-[7px] border border-border-subtle bg-surface/40"
+            >
+              <video
+                src={file.url}
+                controls
+                playsInline
+                preload="metadata"
+                className="block h-32 w-56 max-w-full bg-black object-contain"
+              />
+              <a
+                href={file.url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex min-w-0 flex-col px-2.5 py-1.5 transition-colors hover:bg-surface"
+              >
+                <span className="truncate font-mono text-[11.5px] text-fg">{file.name}</span>
+                <span className="truncate font-mono text-[10px] text-fg-faint">
+                  {formatBytes(file.size)}
+                </span>
+              </a>
+            </div>
+          );
+        }
         return (
           <a
             key={file.id}
@@ -935,9 +892,7 @@ function AttachmentRail({ attachments }: { attachments: IssueAttachment[] }) {
               </span>
             )}
             <span className="flex min-w-0 flex-col py-1 pr-2.5">
-              <span className="truncate font-mono text-[11.5px] text-fg">
-                {file.name}
-              </span>
+              <span className="truncate font-mono text-[11.5px] text-fg">{file.name}</span>
               <span className="truncate font-mono text-[10px] text-fg-faint">
                 {formatBytes(file.size)}
               </span>
@@ -978,10 +933,7 @@ type TimelineItem =
     }
   | { type: "comment"; key: string; date: string; comment: IssueComment };
 
-function buildTimeline(
-  events: IssueHistoryEvent[],
-  comments: IssueComment[],
-): TimelineItem[] {
+function buildTimeline(events: IssueHistoryEvent[], comments: IssueComment[]): TimelineItem[] {
   const items: TimelineItem[] = [];
   for (const event of events) {
     if (event.action === "created") {
@@ -1025,28 +977,17 @@ function buildTimeline(
       comment,
     });
   }
-  return items.sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-  );
+  return items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 }
 
-function IssueTimeline({
-  items,
-  lookups,
-}: {
-  items: TimelineItem[];
-  lookups: Lookups;
-}) {
+function IssueTimeline({ items, lookups }: { items: TimelineItem[]; lookups: Lookups }) {
   if (items.length === 0) {
     return <p className="text-[13px] text-fg-faint">No activity yet.</p>;
   }
 
   return (
     <ol className="relative flex flex-col">
-      <span
-        aria-hidden
-        className="absolute left-[11px] top-2 bottom-2 w-px bg-border-subtle"
-      />
+      <span aria-hidden className="absolute left-[11px] top-2 bottom-2 w-px bg-border-subtle" />
       {items.map((item) => (
         <li key={item.key} className="relative">
           {item.type === "comment" ? (
@@ -1068,12 +1009,8 @@ function CommentRow({ comment }: { comment: IssueComment }) {
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2 text-[12.5px]">
-          <span className="font-medium text-fg">
-            {comment.author?.name ?? "Unknown user"}
-          </span>
-          <span className="text-[11.5px] text-fg-faint">
-            {formatDate(comment.createdAt)}
-          </span>
+          <span className="font-medium text-fg">{comment.author?.name ?? "Unknown user"}</span>
+          <span className="text-[11.5px] text-fg-faint">{formatDate(comment.createdAt)}</span>
         </div>
         <div className="mt-1 text-[14px] leading-[1.6] text-fg">
           <ChatMarkdown content={comment.body} />
@@ -1097,13 +1034,8 @@ function EventRow({
         <span className="size-[7px] rounded-full border border-border bg-surface" />
       </span>
       <div className="min-w-0 flex-1 truncate text-[12.5px] text-fg-muted">
-        <span className="text-fg">
-          {item.actor?.name ?? "Someone"}
-        </span>{" "}
-        {summary}
-        <span className="ml-2 text-[11.5px] text-fg-faint">
-          {formatDate(item.date)}
-        </span>
+        <span className="text-fg">{item.actor?.name ?? "Someone"}</span> {summary}
+        <span className="ml-2 text-[11.5px] text-fg-faint">{formatDate(item.date)}</span>
       </div>
     </div>
   );
@@ -1124,10 +1056,7 @@ function describeEvent(
   return describeChange(item.change, lookups);
 }
 
-function describeChange(
-  change: IssueHistoryChange,
-  lookups: Lookups,
-): React.ReactNode {
+function describeChange(change: IssueHistoryChange, lookups: Lookups): React.ReactNode {
   switch (change.field) {
     case "title":
       return <>renamed the issue</>;
@@ -1189,11 +1118,7 @@ function describeChange(
       return <>updated labels</>;
     }
     case "parentId":
-      return isEmpty(change.after) ? (
-        <>removed the parent issue</>
-      ) : (
-        <>set the parent issue</>
-      );
+      return isEmpty(change.after) ? <>removed the parent issue</> : <>set the parent issue</>;
     default:
       return <>updated {fieldLabel(change.field).toLowerCase()}</>;
   }
@@ -1220,9 +1145,7 @@ function CommentComposer({
     <div
       className={cn(
         "flex flex-col gap-2 rounded-[10px] border bg-surface/30 px-3.5 py-3 transition-colors",
-        focused
-          ? "border-border bg-surface/60"
-          : "border-border-subtle hover:border-border",
+        focused ? "border-border bg-surface/60" : "border-border-subtle hover:border-border",
       )}
     >
       <label className="sr-only" htmlFor="issue-comment">
@@ -1246,18 +1169,14 @@ function CommentComposer({
         className="min-h-[40px] w-full resize-none border-0 bg-transparent p-0 text-[14px] leading-[1.6] text-fg outline-none placeholder:text-fg-faint disabled:opacity-60"
       />
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[11px] text-fg-faint">
-          Markdown · ⌘↵ to send
-        </span>
+        <span className="text-[11px] text-fg-faint">Markdown · ⌘↵ to send</span>
         <button
           type="button"
           onClick={onSubmit}
           disabled={disabled || empty}
           className={cn(
             "inline-flex h-7 items-center rounded-[6px] px-2.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed",
-            empty || disabled
-              ? "text-fg-faint"
-              : "bg-fg text-bg hover:bg-fg/90",
+            empty || disabled ? "text-fg-faint" : "bg-fg text-bg hover:bg-fg/90",
           )}
         >
           {disabled ? "Sending…" : "Reply"}
@@ -1273,10 +1192,7 @@ function isMeaningfulChange(change: IssueHistoryChange): boolean {
   if (change.field === "labelIds") {
     const before = toIdArray(change.before);
     const after = toIdArray(change.after);
-    if (
-      before.length === after.length &&
-      before.every((id) => after.includes(id))
-    ) {
+    if (before.length === after.length && before.every((id) => after.includes(id))) {
       return false;
     }
   }
@@ -1302,19 +1218,14 @@ function toIdArray(value: unknown): string[] {
   return value.map((entry) => String(entry));
 }
 
-function resolveId(
-  value: unknown,
-  map: Map<string, string>,
-): string | null {
+function resolveId(value: unknown, map: Map<string, string>): string | null {
   if (typeof value !== "string" || value.length === 0) return null;
   return map.get(value) ?? null;
 }
 
 function formatToken(value: unknown): string {
   if (typeof value === "string" && value.length > 0) {
-    return value
-      .replace(/[_-]+/g, " ")
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+    return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   }
   return displayValue(value);
 }
