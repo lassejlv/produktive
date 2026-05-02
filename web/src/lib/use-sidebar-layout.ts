@@ -17,34 +17,92 @@ export const SIDEBAR_ITEM_IDS = [
 
 export type SidebarItemId = (typeof SIDEBAR_ITEM_IDS)[number];
 
+export type SidebarLayout = {
+  items: SidebarLayoutItem[];
+  favoritesCollapsed: boolean;
+  chatsCollapsed: boolean;
+  favoritesOrder: string[];
+};
+
 const KNOWN_IDS = new Set<string>(SIDEBAR_ITEM_IDS);
 
-export const defaultSidebarLayout: SidebarLayoutItem[] = SIDEBAR_ITEM_IDS.map(
+export const defaultSidebarItems: SidebarLayoutItem[] = SIDEBAR_ITEM_IDS.map(
   (id) => ({ id }),
 );
 
-export function normalizeLayout(
-  raw: SidebarLayoutItem[] | null | undefined,
-): SidebarLayoutItem[] {
-  if (!raw || raw.length === 0) return defaultSidebarLayout;
+export const defaultSidebarLayout: SidebarLayout = {
+  items: defaultSidebarItems,
+  favoritesCollapsed: false,
+  chatsCollapsed: false,
+  favoritesOrder: [],
+};
+
+function normalizeItems(raw: unknown): SidebarLayoutItem[] {
+  if (!Array.isArray(raw) || raw.length === 0) return defaultSidebarItems;
   const seen = new Set<string>();
   const ordered: SidebarLayoutItem[] = [];
   for (const entry of raw) {
-    if (!entry || typeof entry.id !== "string") continue;
-    if (!KNOWN_IDS.has(entry.id)) continue;
-    if (seen.has(entry.id)) continue;
-    seen.add(entry.id);
-    ordered.push({
-      id: entry.id,
-      hidden: entry.hidden === true ? true : undefined,
-    });
+    if (!entry || typeof entry !== "object") continue;
+    const id = (entry as { id?: unknown }).id;
+    if (typeof id !== "string" || !KNOWN_IDS.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    const hidden = (entry as { hidden?: unknown }).hidden === true;
+    ordered.push({ id, ...(hidden ? { hidden: true } : {}) });
   }
-  // Append any new (unknown to the saved layout) item ids at the end so newly
-  // added nav items show up rather than disappear after a release.
   for (const id of SIDEBAR_ITEM_IDS) {
     if (!seen.has(id)) ordered.push({ id });
   }
   return ordered;
+}
+
+function normalizeStringArray(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of raw) {
+    if (typeof value !== "string" || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
+
+export function normalizeLayout(raw: unknown): SidebarLayout {
+  // Legacy shape: just an array of items.
+  if (Array.isArray(raw)) {
+    return { ...defaultSidebarLayout, items: normalizeItems(raw) };
+  }
+  if (!raw || typeof raw !== "object") return defaultSidebarLayout;
+  const obj = raw as Record<string, unknown>;
+  return {
+    items: normalizeItems(obj.items),
+    favoritesCollapsed: obj.favoritesCollapsed === true,
+    chatsCollapsed: obj.chatsCollapsed === true,
+    favoritesOrder: normalizeStringArray(obj.favoritesOrder),
+  };
+}
+
+// Order a list of objects by a saved id sequence; objects whose id is not in
+// the saved order keep their original relative position at the end.
+export function applyOrder<T>(
+  items: T[],
+  savedOrder: string[],
+  getId: (item: T) => string,
+): T[] {
+  if (savedOrder.length === 0) return items;
+  const indexById = new Map<string, number>();
+  savedOrder.forEach((id, index) => indexById.set(id, index));
+  const known: T[] = [];
+  const unknown: T[] = [];
+  for (const item of items) {
+    if (indexById.has(getId(item))) known.push(item);
+    else unknown.push(item);
+  }
+  known.sort(
+    (a, b) =>
+      (indexById.get(getId(a)) ?? 0) - (indexById.get(getId(b)) ?? 0),
+  );
+  return [...known, ...unknown];
 }
 
 export function useSidebarLayout() {
@@ -53,16 +111,27 @@ export function useSidebarLayout() {
   const layout = normalizeLayout(prefs?.sidebarLayout);
 
   const mutation = useMutation({
-    mutationFn: (next: SidebarLayoutItem[] | null) =>
+    mutationFn: (next: SidebarLayout | null) =>
       updateMyPreferences({ sidebarLayout: next }),
     onSuccess: (data: NotificationPreferences) => {
       qc.setQueryData<NotificationPreferences>(["user-preferences"], data);
     },
   });
 
+  const update = (patch: Partial<SidebarLayout>) => {
+    mutation.mutate({ ...layout, ...patch });
+  };
+
   return {
     layout,
-    save: (next: SidebarLayoutItem[]) => mutation.mutate(next),
+    update,
+    saveItems: (items: SidebarLayoutItem[]) => update({ items }),
+    toggleFavoritesCollapsed: () =>
+      update({ favoritesCollapsed: !layout.favoritesCollapsed }),
+    toggleChatsCollapsed: () =>
+      update({ chatsCollapsed: !layout.chatsCollapsed }),
+    setFavoritesOrder: (favoritesOrder: string[]) =>
+      update({ favoritesOrder }),
     reset: () => mutation.mutate(null),
     isSaving: mutation.isPending,
   };

@@ -292,13 +292,14 @@ export type SidebarLayoutItem = {
   hidden?: boolean;
 };
 
+// The wire format is opaque JSON — see lib/use-sidebar-layout for normalization.
 export type NotificationPreferences = {
   emailPaused: boolean;
   emailAssignments: boolean;
   emailComments: boolean;
   emailProgress: boolean;
   tabsEnabled: boolean;
-  sidebarLayout: SidebarLayoutItem[] | null;
+  sidebarLayout: unknown;
 };
 
 export const getMyPreferences = () => request<NotificationPreferences>("/api/me/preferences");

@@ -41,7 +41,8 @@ import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { useProjects } from "@/lib/use-projects";
 import {
   type SidebarItemId,
-  defaultSidebarLayout,
+  applyOrder,
+  defaultSidebarItems,
   useSidebarLayout,
 } from "@/lib/use-sidebar-layout";
 import { tabsQueryOptions, useRegisterTab } from "@/lib/use-tabs";
@@ -73,8 +74,20 @@ function AppLayout() {
     enabled: tabsEnabled && Boolean(staticPage),
   });
   const { chats, isLoading: chatsLoading, removeChat } = useChats();
-  const { favorites, isLoading: favoritesLoading, isFavorite, toggleFavorite } = useFavorites();
+  const { favorites: rawFavorites, isLoading: favoritesLoading, isFavorite, toggleFavorite } = useFavorites();
   const { unreadCount: inboxUnread } = useInbox();
+  const {
+    layout: sidebarLayout,
+    toggleFavoritesCollapsed,
+    toggleChatsCollapsed,
+    setFavoritesOrder,
+  } = useSidebarLayout();
+  const favorites = applyOrder(
+    rawFavorites,
+    sidebarLayout.favoritesOrder,
+    (fav) => fav.favoriteId,
+  );
+  const [favDragId, setFavDragId] = useState<string | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [chatMenuOpenId, setChatMenuOpenId] = useState<string | null>(null);
   const [editingLayout, setEditingLayout] = useState(false);
@@ -199,6 +212,18 @@ function AppLayout() {
     }
   };
 
+  const moveFavoriteBefore = (sourceFavoriteId: string, targetFavoriteId: string) => {
+    if (sourceFavoriteId === targetFavoriteId) return;
+    const currentOrder = favorites.map((fav) => fav.favoriteId);
+    const sourceIdx = currentOrder.indexOf(sourceFavoriteId);
+    const targetIdx = currentOrder.indexOf(targetFavoriteId);
+    if (sourceIdx < 0 || targetIdx < 0) return;
+    const next = currentOrder.filter((id) => id !== sourceFavoriteId);
+    const insertAt = next.indexOf(targetFavoriteId);
+    next.splice(insertAt, 0, sourceFavoriteId);
+    setFavoritesOrder(next);
+  };
+
   const handleDeleteChat = async (chat: Chat) => {
     setChatMenuOpenId(null);
     try {
@@ -246,10 +271,13 @@ function AppLayout() {
 
           {favoritesLoading || favorites.length > 0 ? (
             <div>
-              <div className="flex items-center gap-1.5 px-2 pb-1.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
-                <StarIcon size={10} filled />
-                Favorites
-              </div>
+              <SidebarSectionHeader
+                icon={<StarIcon size={10} filled />}
+                label="Favorites"
+                collapsed={sidebarLayout.favoritesCollapsed}
+                onToggle={toggleFavoritesCollapsed}
+              />
+              {sidebarLayout.favoritesCollapsed ? null : (
               <div className="flex flex-col gap-px">
                 {favoritesLoading && favorites.length === 0 ? (
                   <div className="px-2.5 py-1">
@@ -295,6 +323,24 @@ function AppLayout() {
                         key={fav.favoriteId}
                         role="button"
                         tabIndex={0}
+                        draggable
+                        onDragStart={(event) => {
+                          event.dataTransfer.setData(FAVORITE_DRAG_MIME, fav.favoriteId);
+                          event.dataTransfer.effectAllowed = "move";
+                          setFavDragId(fav.favoriteId);
+                        }}
+                        onDragEnd={() => setFavDragId(null)}
+                        onDragOver={(event) => {
+                          if (!event.dataTransfer.types.includes(FAVORITE_DRAG_MIME)) return;
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = "move";
+                        }}
+                        onDrop={(event) => {
+                          const sourceId = event.dataTransfer.getData(FAVORITE_DRAG_MIME);
+                          if (!sourceId) return;
+                          event.preventDefault();
+                          moveFavoriteBefore(sourceId, fav.favoriteId);
+                        }}
                         onClick={() => void goTo()}
                         onKeyDown={(event) => {
                           if (event.key === "Enter") {
@@ -308,6 +354,7 @@ function AppLayout() {
                           isActive
                             ? "bg-surface text-fg"
                             : "text-fg-muted hover:bg-surface hover:text-fg",
+                          favDragId === fav.favoriteId && "opacity-60",
                         )}
                       >
                         <span className="shrink-0 text-fg-faint group-hover:text-fg-muted">
@@ -341,14 +388,27 @@ function AppLayout() {
                   })
                 )}
               </div>
+              )}
             </div>
           ) : null}
 
           <div>
             <div className="flex items-center justify-between pb-1.5 pl-2 pr-1">
-              <span className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
-                Chats
-              </span>
+              <button
+                type="button"
+                onClick={toggleChatsCollapsed}
+                aria-label={
+                  sidebarLayout.chatsCollapsed
+                    ? "Expand chats"
+                    : "Collapse chats"
+                }
+                className="flex flex-1 items-center gap-1 rounded-[4px] px-0 py-px text-left text-fg-faint transition-colors hover:text-fg-muted"
+              >
+                <SectionChevron collapsed={sidebarLayout.chatsCollapsed} />
+                <span className="text-[10.5px] font-medium uppercase tracking-[0.08em]">
+                  Chats
+                </span>
+              </button>
               <button
                 type="button"
                 onClick={() => void navigate({ to: "/chat" })}
@@ -359,6 +419,7 @@ function AppLayout() {
                 <PlusIcon />
               </button>
             </div>
+            {sidebarLayout.chatsCollapsed ? null : (
             <div className="flex flex-col gap-px">
               {chatsLoading ? (
                 <div className="px-2.5 py-1">
@@ -449,6 +510,7 @@ function AppLayout() {
                 })
               )}
             </div>
+            )}
           </div>
         </SidebarContent>
 
@@ -814,15 +876,16 @@ function SidebarNav({
   onExitEditing: () => void;
 }) {
   const navigate = useNavigate();
-  const { layout: savedLayout, save, reset, isSaving } = useSidebarLayout();
-  const [draft, setDraft] = useState<SidebarLayoutItem[]>(savedLayout);
+  const { layout, saveItems, reset, isSaving } = useSidebarLayout();
+  const savedItems = layout.items;
+  const [draft, setDraft] = useState<SidebarLayoutItem[]>(savedItems);
   const [dragId, setDragId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isEditing) setDraft(savedLayout);
-  }, [isEditing, savedLayout]);
+    if (!isEditing) setDraft(savedItems);
+  }, [isEditing, savedItems]);
 
-  const items = isEditing ? draft : savedLayout;
+  const items = isEditing ? draft : savedItems;
 
   const moveBefore = (sourceId: string, targetId: string) => {
     if (sourceId === targetId) return;
@@ -846,17 +909,17 @@ function SidebarNav({
   };
 
   const onDone = () => {
-    save(draft);
+    saveItems(draft);
     onExitEditing();
   };
 
   const onCancel = () => {
-    setDraft(savedLayout);
+    setDraft(savedItems);
     onExitEditing();
   };
 
   const onReset = () => {
-    setDraft(defaultSidebarLayout);
+    setDraft(defaultSidebarItems);
   };
 
   return (
@@ -1036,6 +1099,59 @@ function SidebarNavRow({
       <span className="flex-1 truncate">{spec.label}</span>
       {trailing}
     </button>
+  );
+}
+
+const FAVORITE_DRAG_MIME = "application/x-produktive-favorite";
+
+function SidebarSectionHeader({
+  icon,
+  label,
+  collapsed,
+  onToggle,
+}: {
+  icon?: React.ReactNode;
+  label: string;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={collapsed ? `Expand ${label}` : `Collapse ${label}`}
+      className="flex w-full items-center gap-1.5 rounded-[4px] px-2 pb-1.5 text-left text-fg-faint transition-colors hover:text-fg-muted"
+    >
+      <SectionChevron collapsed={collapsed} />
+      {icon}
+      <span className="text-[10.5px] font-medium uppercase tracking-[0.08em]">
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function SectionChevron({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg
+      width="9"
+      height="9"
+      viewBox="0 0 12 12"
+      fill="none"
+      aria-hidden
+      style={{
+        transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)",
+        transition: "transform 120ms ease",
+      }}
+    >
+      <path
+        d="M3 4.5l3 3 3-3"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
