@@ -26,9 +26,10 @@ export function useUpdateProject() {
       updateProject(id, patch).then((r) => r.project),
 
     onMutate: async ({ id, patch }) => {
-      await qc.cancelQueries({ queryKey: queryKeys.projects.all });
+      const projectListKey = ["projects", "list"] as const;
+      await qc.cancelQueries({ queryKey: projectListKey });
       const prevLists = qc.getQueriesData<Project[]>({
-        queryKey: queryKeys.projects.all,
+        queryKey: projectListKey,
       });
       const { archived, ...rest } = patch;
       const projectPatch: Partial<Project> = { ...rest };
