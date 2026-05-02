@@ -51,54 +51,56 @@ function OAuthAuthorizePage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-bg px-6 py-12 text-fg">
-      <div className="w-full max-w-md rounded-lg border border-border bg-surface p-5 shadow-xl shadow-black/20">
-        <div className="mb-5">
-          <div className="text-[12px] uppercase tracking-[0.14em] text-fg-faint">Produktive OAuth</div>
-          <h1 className="mt-2 text-xl font-medium">Connect MCP client</h1>
-        </div>
+      <div className="w-full max-w-sm rounded-[12px] border border-white/10 bg-bg/72 p-5 backdrop-blur-xl">
+        <h1 className="text-lg font-medium">Authorize access</h1>
 
         {error ? (
-          <div className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+          <p className="mt-4 border-t border-danger/25 pt-3 text-xs text-danger" role="alert">
             {error}
-          </div>
+          </p>
         ) : null}
 
         {!preview && !error ? (
-          <div className="text-sm text-fg-muted">Loading authorization request...</div>
+          <p className="mt-4 text-sm text-fg-muted">Loading…</p>
         ) : null}
 
         {preview ? (
-          <div className="grid gap-4 text-sm">
-            <p className="m-0 text-fg-muted">
-              <span className="font-medium text-fg">{preview.clientName}</span> wants access to
-              Produktive MCP as {preview.user.email}.
+          <div className="mt-4 grid gap-4 text-sm">
+            <p className="text-fg-muted">
+              <span className="font-medium text-fg">{preview.clientName}</span> requests access to
+              your workspace <span className="font-medium text-fg">{preview.organization.name}</span>.
             </p>
-            <div className="grid gap-2 rounded-md border border-border-subtle bg-bg p-3">
-              <Row label="Workspace" value={preview.organization.name} />
-              <Row label="Scope" value={preview.scope} />
-              <Row label="Resource" value={preview.resource} mono />
+
+            <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 border-t border-border-subtle pt-3 text-xs">
+              <span className="text-fg-faint">Account</span>
+              <span className="text-fg-muted">{preview.user.email}</span>
+              <span className="text-fg-faint">Scope</span>
+              <span className="text-fg-muted">{preview.scope}</span>
+              <span className="text-fg-faint">Resource</span>
+              <span className="break-all font-mono text-[11px] text-fg-muted">{preview.resource}</span>
             </div>
-            <div className="flex items-center justify-between gap-3">
-              <Button asChild variant="ghost">
+
+            <div className="flex items-center justify-end gap-2 border-t border-border-subtle pt-4">
+              <Button asChild variant="ghost" size="sm">
                 <Link to="/chat">Cancel</Link>
               </Button>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={busy !== null}
-                  onClick={() => void decide(false)}
-                >
-                  {busy === "deny" ? "Denying..." : "Deny"}
-                </Button>
-                <Button
-                  type="button"
-                  disabled={busy !== null}
-                  onClick={() => void decide(true)}
-                >
-                  {busy === "approve" ? "Approving..." : "Approve"}
-                </Button>
-              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busy !== null}
+                onClick={() => void decide(false)}
+              >
+                {busy === "deny" ? "Denying…" : "Deny"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={busy !== null}
+                onClick={() => void decide(true)}
+              >
+                {busy === "approve" ? "Approving…" : "Approve"}
+              </Button>
             </div>
           </div>
         ) : null}
@@ -107,13 +109,4 @@ function OAuthAuthorizePage() {
   );
 }
 
-function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="grid gap-1">
-      <span className="text-[11px] uppercase tracking-[0.1em] text-fg-faint">{label}</span>
-      <span className={mono ? "break-all font-mono text-[12px] text-fg-muted" : "text-fg"}>
-        {value}
-      </span>
-    </div>
-  );
-}
+

@@ -63,7 +63,7 @@ function AccountPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[640px] px-6 py-10">
+    <div className="mx-auto w-full max-w-[520px] px-6 py-10">
       <header className="mb-8">
         <button
           type="button"
@@ -73,21 +73,22 @@ function AccountPage() {
           ← Back
         </button>
         <h1 className="m-0 text-[22px] font-semibold tracking-[-0.02em] text-fg">
-          Personal account
+          Account
         </h1>
         <p className="mt-1 text-[13px] text-fg-muted">
-          Manage your profile, notifications, and account data.
+          Profile, preferences, and sessions.
         </p>
       </header>
 
+      <div className="divide-y divide-border-subtle">
       <Section title="Profile">
         {!user ? (
           <LoadingTip compact />
         ) : (
-          <dl className="grid grid-cols-[120px_minmax(0,1fr)] gap-y-2 text-[13px]">
-            <dt className="text-fg-faint">Name</dt>
+          <dl className="grid grid-cols-[100px_minmax(0,1fr)] gap-y-2 text-[13px]">
+            <dt className="text-[11px] uppercase tracking-[0.08em] text-fg-faint">Name</dt>
             <dd className="text-fg">{user.name}</dd>
-            <dt className="text-fg-faint">Email</dt>
+            <dt className="text-[11px] uppercase tracking-[0.08em] text-fg-faint">Email</dt>
             <dd className="text-fg">
               {user.email}
               {user.emailVerified ? null : (
@@ -100,11 +101,11 @@ function AccountPage() {
         )}
       </Section>
 
-      <SessionsSection />
-
       <AppearanceSection />
 
       <NotificationPrefsSection />
+
+      <SessionsSection />
 
       <ProductTourSection />
 
@@ -146,6 +147,7 @@ function AccountPage() {
           </Button>
         </div>
       </Section>
+      </div>
     </div>
   );
 }
@@ -244,7 +246,7 @@ function SessionsSection() {
             </Button>
           </div>
 
-          <div className="divide-y divide-border-subtle rounded-md border border-border-subtle bg-bg/40">
+          <div className="divide-y divide-border-subtle rounded-md border border-border-subtle">
             {sessions.map((session) => (
               <div
                 key={session.id}
@@ -469,7 +471,7 @@ function NotificationPrefsSection() {
       {loading || !prefs ? (
         <LoadingTip compact />
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="divide-y divide-border-subtle">
           <ToggleRow
             label="Pause all"
             hint="Don't send any email notifications until I unpause."
@@ -519,7 +521,7 @@ function ToggleRow({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-4 rounded-md border border-border-subtle bg-bg/40 px-3 py-2.5",
+        "flex items-center justify-between gap-4 py-3",
         disabled && "opacity-60",
       )}
     >
@@ -596,24 +598,21 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section
-      className={cn(
-        "mb-6 rounded-[10px] border bg-surface/40 p-4",
-        tone === "danger" ? "border-danger/30" : "border-border-subtle",
-      )}
-    >
+    <section className="py-5 first:pt-0 last:pb-0">
       <h2
         className={cn(
-          "m-0 text-[13px] font-medium",
-          tone === "danger" ? "text-danger" : "text-fg",
+          "m-0 text-[11px] font-medium uppercase tracking-[0.1em]",
+          tone === "danger" ? "text-danger" : "text-fg-faint",
         )}
       >
         {title}
       </h2>
       {description ? (
-        <p className="mb-3 mt-1 text-[12.5px] text-fg-muted">{description}</p>
+        <p className="mb-4 mt-1.5 text-[13px] leading-relaxed text-fg-muted">
+          {description}
+        </p>
       ) : (
-        <div className="mt-3" />
+        <div className="mb-4" />
       )}
       {children}
     </section>

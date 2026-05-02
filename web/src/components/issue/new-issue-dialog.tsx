@@ -1,10 +1,4 @@
-import {
-  type FormEvent,
-  type PointerEvent,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type FormEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AttachIcon } from "@/components/chat/icons";
 import { Button } from "@/components/ui/button";
@@ -21,12 +15,25 @@ import { PillSelect } from "@/components/issue/pill-select";
 import { PriorityIcon } from "@/components/issue/priority-icon";
 import { StatusIcon } from "@/components/issue/status-icon";
 import { LabelPicker } from "@/components/label/label-picker";
-import { type Issue, createIssue, uploadIssueAttachment } from "@/lib/api";
+import { MemberPicker } from "@/components/issue/member-picker";
+import { ProjectPicker } from "@/components/project/project-picker";
+import {
+  type Issue,
+  type Label,
+  type Member,
+  type Project,
+  createIssue,
+  listLabels,
+  listMembers,
+  listProjects,
+  uploadIssueAttachment,
+} from "@/lib/api";
 import {
   type ChatAttachmentDraft,
   formatBytes,
   prepareChatAttachments,
 } from "@/lib/chat-attachments";
+import { parseNaturalIssueInput } from "@/lib/issue-natural-input";
 import { priorityOptions, statusOptions } from "@/lib/issue-constants";
 
 export function NewIssueDialog({
@@ -49,10 +56,22 @@ export function NewIssueDialog({
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<string>("backlog");
   const [priority, setPriority] = useState<string>("medium");
+  const [assignedToId, setAssignedToId] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
   const [labelIds, setLabelIds] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [labels, setLabels] = useState<Label[]>([]);
+  const [manualFields, setManualFields] = useState({
+    status: false,
+    priority: false,
+    assignee: false,
+    project: false,
+    labels: false,
+  });
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState<{
     startX: number;
@@ -89,15 +108,8 @@ export function NewIssueDialog({
   useEffect(() => {
     if (!shortcutEnabled) return;
     const onOpenEvent = () => setOpen(true);
-    window.addEventListener(
-      "produktive:new-issue",
-      onOpenEvent as EventListener,
-    );
-    return () =>
-      window.removeEventListener(
-        "produktive:new-issue",
-        onOpenEvent as EventListener,
-      );
+    window.addEventListener("produktive:new-issue", onOpenEvent as EventListener);
+    return () => window.removeEventListener("produktive:new-issue", onOpenEvent as EventListener);
   }, [shortcutEnabled]);
 
   useEffect(() => {
@@ -123,13 +135,59 @@ export function NewIssueDialog({
     if (open) setPosition({ x: 0, y: 0 });
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    void Promise.all([listMembers(), listProjects(false), listLabels(false)])
+      .then(([membersResponse, projectsResponse, labelsResponse]) => {
+        if (cancelled) return;
+        setMembers(membersResponse.members);
+        setProjects(projectsResponse.projects);
+        setLabels(labelsResponse.labels);
+      })
+      .catch(() => {
+        // Natural parsing is best-effort. The core issue form still works.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const parsedIssue = useMemo(
+    () => parseNaturalIssueInput(title, { members, projects, labels }),
+    [title, members, projects, labels],
+  );
+
+  useEffect(() => {
+    if (!manualFields.status) setStatus(parsedIssue.status ?? "backlog");
+    if (!manualFields.priority) setPriority(parsedIssue.priority ?? "medium");
+    if (!manualFields.assignee) setAssignedToId(parsedIssue.assignedToId);
+    if (!manualFields.project) setProjectId(parsedIssue.projectId);
+    if (!manualFields.labels) setLabelIds(parsedIssue.labelIds);
+  }, [manualFields, parsedIssue]);
+
+  const selectedMember = members.find((member) => member.id === assignedToId);
+  const selectedProject = projects.find((project) => project.id === projectId);
+  const submitTitle = parsedIssue.title || title.trim();
+
   const reset = () => {
     setTitle("");
     setDescription("");
     setStatus("backlog");
     setPriority("medium");
+    setAssignedToId(null);
+    setProjectId(null);
     setLabelIds([]);
     setAttachments([]);
+    setManualFields({
+      status: false,
+      priority: false,
+      assignee: false,
+      project: false,
+      labels: false,
+    });
   };
 
   const close = () => {
@@ -139,15 +197,22 @@ export function NewIssueDialog({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!submitTitle) {
+      setError("Issue title is required");
+      return;
+    }
+
     setIsSaving(true);
     setError(null);
 
     try {
       let response = await createIssue({
-        title,
+        title: submitTitle,
         description: description || undefined,
         status,
         priority,
+        assignedToId: assignedToId || undefined,
+        projectId: projectId || undefined,
         labelIds: labelIds.length > 0 ? labelIds : undefined,
       });
 
@@ -160,10 +225,7 @@ export function NewIssueDialog({
       setOpen(false);
       toast.success("Issue created");
     } catch (createError) {
-      const message =
-        createError instanceof Error
-          ? createError.message
-          : "Failed to create issue";
+      const message = createError instanceof Error ? createError.message : "Failed to create issue";
       setError(message);
       toast.error(message);
     } finally {
@@ -221,10 +283,7 @@ export function NewIssueDialog({
         style={{ transform: `translate3d(${position.x}px, ${position.y}px, 0)` }}
       >
         <form onSubmit={handleSubmit}>
-          <DialogHeader
-            className="cursor-move select-none"
-            onPointerDown={startDrag}
-          >
+          <DialogHeader className="cursor-move select-none" onPointerDown={startDrag}>
             <DialogTitle>New issue</DialogTitle>
             <DialogClose onClose={close} />
           </DialogHeader>
@@ -238,6 +297,30 @@ export function NewIssueDialog({
               placeholder="Issue title"
               className="h-10 border-0 bg-transparent px-0 text-base focus-visible:ring-0"
             />
+            {title.trim() &&
+            (parsedIssue.chips.length > 0 || parsedIssue.title !== title.trim()) ? (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-y border-border-subtle py-2 text-[11px] text-fg-muted">
+                {parsedIssue.title && parsedIssue.title !== title.trim() ? (
+                  <span className="min-w-0 truncate">
+                    <span className="font-mono uppercase tracking-[0.12em] text-fg-faint">
+                      title
+                    </span>{" "}
+                    <span className="text-fg">{parsedIssue.title}</span>
+                  </span>
+                ) : null}
+                {parsedIssue.chips.map((chip) => (
+                  <span
+                    key={`${chip.kind}:${chip.label}`}
+                    className="inline-flex items-baseline gap-1.5"
+                  >
+                    <span className="font-mono uppercase tracking-[0.12em] text-fg-faint">
+                      {chip.kind}
+                    </span>
+                    <span className="text-fg-muted">{chip.label}</span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <textarea
               value={description}
               onChange={(event) => setDescription(event.target.value)}
@@ -250,20 +333,61 @@ export function NewIssueDialog({
               <PillSelect
                 ariaLabel="Status"
                 value={status}
-                onChange={setStatus}
+                onChange={(value) => {
+                  setManualFields((current) => ({ ...current, status: true }));
+                  setStatus(value);
+                }}
                 options={statusOptions}
                 icon={<StatusIcon status={status} />}
               />
               <PillSelect
                 ariaLabel="Priority"
                 value={priority}
-                onChange={setPriority}
+                onChange={(value) => {
+                  setManualFields((current) => ({ ...current, priority: true }));
+                  setPriority(value);
+                }}
                 options={priorityOptions}
                 icon={<PriorityIcon priority={priority} />}
               />
+              <MemberPicker
+                selectedId={assignedToId}
+                onSelect={(value) => {
+                  setManualFields((current) => ({ ...current, assignee: true }));
+                  setAssignedToId(value);
+                }}
+                trigger={({ onClick }) => (
+                  <button
+                    type="button"
+                    onClick={onClick}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border-subtle bg-bg px-2 font-mono text-[11px] text-fg-muted transition-colors hover:border-border hover:text-fg"
+                  >
+                    {selectedMember ? `@${selectedMember.name}` : "assignee"}
+                  </button>
+                )}
+              />
+              <ProjectPicker
+                selectedId={projectId}
+                onSelect={(value) => {
+                  setManualFields((current) => ({ ...current, project: true }));
+                  setProjectId(value);
+                }}
+                trigger={({ onClick }) => (
+                  <button
+                    type="button"
+                    onClick={onClick}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border-subtle bg-bg px-2 font-mono text-[11px] text-fg-muted transition-colors hover:border-border hover:text-fg"
+                  >
+                    {selectedProject ? `#${selectedProject.name}` : "project"}
+                  </button>
+                )}
+              />
               <NewIssueLabels
                 selectedIds={labelIds}
-                onChange={setLabelIds}
+                onChange={(value) => {
+                  setManualFields((current) => ({ ...current, labels: true }));
+                  setLabelIds(value);
+                }}
               />
               <Button
                 type="button"
@@ -294,9 +418,7 @@ export function NewIssueDialog({
                     className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 bg-bg px-3 py-2"
                   >
                     <div className="min-w-0">
-                      <p className="truncate font-mono text-[11px] text-fg">
-                        {file.name}
-                      </p>
+                      <p className="truncate font-mono text-[11px] text-fg">{file.name}</p>
                       <p className="mt-1 truncate font-mono text-[10px] text-fg-faint">
                         {file.type || "application/octet-stream"}
                       </p>
@@ -335,7 +457,7 @@ export function NewIssueDialog({
             <Button type="button" variant="ghost" size="sm" onClick={close}>
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={isSaving || !title.trim()}>
+            <Button type="submit" size="sm" disabled={isSaving || !submitTitle}>
               {isSaving ? (
                 <span className="flex items-center gap-2">
                   <span className="inline-block size-3 animate-spin rounded-full border-2 border-bg/30 border-t-bg" />
@@ -367,10 +489,10 @@ function NewIssueLabels({
         <button
           type="button"
           onClick={onClick}
-          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border-subtle bg-surface/40 px-2 text-[12px] text-fg-muted transition-colors hover:border-border hover:text-fg"
+          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border-subtle bg-bg px-2 font-mono text-[11px] text-fg-muted transition-colors hover:border-border hover:text-fg"
         >
           <LabelTagIcon />
-          {selectedIds.length > 0 ? `${selectedIds.length} labels` : "Labels"}
+          {selectedIds.length > 0 ? `${selectedIds.length} labels` : "labels"}
         </button>
       )}
     />

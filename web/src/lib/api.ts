@@ -134,6 +134,7 @@ type CreateIssueInput = {
   description?: string;
   status?: string;
   priority?: string;
+  assignedToId?: string | null;
   parentId?: string | null;
   projectId?: string | null;
   labelIds?: string[];
