@@ -18,6 +18,7 @@ pub const ROLES_MANAGE: &str = "roles.manage";
 pub const ISSUES_CREATE: &str = "issues.create";
 pub const ISSUES_UPDATE: &str = "issues.update";
 pub const ISSUES_DELETE: &str = "issues.delete";
+pub const ISSUE_STATUSES_MANAGE: &str = "issue_statuses.manage";
 pub const PROJECTS_CREATE: &str = "projects.create";
 pub const PROJECTS_UPDATE: &str = "projects.update";
 pub const PROJECTS_DELETE: &str = "projects.delete";
@@ -61,6 +62,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         permission(ISSUES_CREATE, "Create issues", "Issues"),
         permission(ISSUES_UPDATE, "Update issues", "Issues"),
         permission(ISSUES_DELETE, "Delete issues", "Issues"),
+        permission(ISSUE_STATUSES_MANAGE, "Manage issue statuses", "Issues"),
         permission(PROJECTS_CREATE, "Create projects", "Projects"),
         permission(PROJECTS_UPDATE, "Update projects", "Projects"),
         permission(PROJECTS_DELETE, "Delete projects", "Projects"),

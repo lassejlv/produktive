@@ -1,14 +1,19 @@
 import { cn } from "@/lib/utils";
+import type { IssueStatus } from "@/lib/api";
+import { statusCategory } from "@/lib/issue-constants";
 
 export function StatusIcon({
   status,
+  statuses,
   className,
 }: {
   status: string;
+  statuses?: IssueStatus[];
   className?: string;
 }) {
   const base = cn("shrink-0", className);
-  switch (status) {
+  const category = statuses ? statusCategory(statuses, status) : status;
+  switch (category) {
     case "done":
       return (
         <svg
@@ -28,6 +33,7 @@ export function StatusIcon({
           />
         </svg>
       );
+    case "active":
     case "in-progress":
       return (
         <svg
@@ -62,6 +68,30 @@ export function StatusIcon({
             stroke="currentColor"
             strokeWidth="1.5"
             fill="none"
+          />
+        </svg>
+      );
+    case "canceled":
+      return (
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 14 14"
+          className={cn(base, "text-danger")}
+        >
+          <circle
+            cx="7"
+            cy="7"
+            r="6"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            fill="none"
+          />
+          <path
+            d="M4.6 4.6l4.8 4.8M9.4 4.6L4.6 9.4"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
           />
         </svg>
       );

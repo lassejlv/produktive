@@ -6,6 +6,7 @@ use crate::{
         non_empty_optional, normalize_assignee, optional_string, required_string, validate_assignee,
     },
     issue_history::{record_issue_event, string_change, IssueChange},
+    http::issue_statuses::validate_issue_status,
     permissions::{require_permission, ISSUES_CREATE, ISSUES_DELETE, ISSUES_UPDATE},
     state::AppState,
     storage,
@@ -295,12 +296,19 @@ async fn create_issue(
         .collect();
     crate::http::labels::validate_labels(&state, &organization_id, &label_ids).await?;
 
+    let status = validate_issue_status(
+        &state,
+        &organization_id,
+        &optional_string(payload.status, "backlog")?,
+    )
+    .await?;
+
     let issue = issue::ActiveModel {
         id: Set(Uuid::new_v4().to_string()),
         organization_id: Set(organization_id.clone()),
         title: Set(required_string(payload.title, "Title")?),
         description: Set(non_empty_optional(payload.description.unwrap_or_default())?),
-        status: Set(optional_string(payload.status, "backlog")?),
+        status: Set(status),
         priority: Set(optional_string(payload.priority, "medium")?),
         created_by_id: Set(Some(actor_id.clone())),
         assigned_to_id: Set(assigned_to_id.clone()),
@@ -418,7 +426,12 @@ async fn update_issue(
         issue.description = Set(next);
     }
     if let Some(status) = payload.status {
-        let next = required_string(status, "Status")?;
+        let next = validate_issue_status(
+            &state,
+            &auth.organization.id,
+            &required_string(status, "Status")?,
+        )
+        .await?;
         if let Some(change) = string_change("status", Some(&before.status), Some(&next)) {
             changes.push(change);
         }

@@ -2,6 +2,7 @@ export const queryKeys = {
   issues: {
     all: ["issues"] as const,
     list: () => ["issues", "list"] as const,
+    statuses: () => ["issues", "statuses"] as const,
     detail: (id: string) => ["issues", "detail", id] as const,
     history: (id: string) => ["issues", "detail", id, "history"] as const,
     comments: (id: string) => ["issues", "detail", id, "comments"] as const,

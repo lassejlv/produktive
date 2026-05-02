@@ -72,6 +72,8 @@ mod m20260502_000034_create_discord_mention_issues;
 mod m20260502_000035_create_organization_roles;
 #[path = "../migrations/m20260502_000036_add_organization_image.rs"]
 mod m20260502_000036_add_organization_image;
+#[path = "../migrations/m20260502_000037_create_issue_statuses.rs"]
+mod m20260502_000037_create_issue_statuses;
 
 pub struct Migrator;
 
@@ -115,6 +117,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260502_000034_create_discord_mention_issues::Migration),
             Box::new(m20260502_000035_create_organization_roles::Migration),
             Box::new(m20260502_000036_add_organization_image::Migration),
+            Box::new(m20260502_000037_create_issue_statuses::Migration),
         ]
     }
 }

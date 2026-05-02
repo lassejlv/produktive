@@ -4,21 +4,23 @@ import { Avatar } from "@/components/issue/avatar";
 import { ISSUE_DRAG_MIME } from "@/components/issue/issue-list";
 import { PriorityIcon } from "@/components/issue/priority-icon";
 import { StatusIcon } from "@/components/issue/status-icon";
-import { type Issue } from "@/lib/api";
+import { type Issue, type IssueStatus } from "@/lib/api";
 import {
   formatDate,
-  statusLabel,
-  statusOrder,
+  sortedStatuses,
+  statusName,
 } from "@/lib/issue-constants";
 import { cn } from "@/lib/utils";
 
 export function IssueBoard({
   issues,
+  statuses,
   onSelect,
   onMoveToStatus,
   onCreateInGroup,
 }: {
   issues: Issue[];
+  statuses: IssueStatus[];
   onSelect: (issueId: string) => void;
   onMoveToStatus?: (issueId: string, status: string) => void;
   onCreateInGroup?: (status: string, title: string) => Promise<void> | void;
@@ -26,9 +28,10 @@ export function IssueBoard({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
+  const orderedStatuses = sortedStatuses(statuses);
   const buckets: Record<string, Issue[]> = {};
-  for (const status of statusOrder) {
-    buckets[status] = [];
+  for (const status of orderedStatuses) {
+    buckets[status.key] = [];
   }
   for (const issue of issues) {
     (buckets[issue.status] ??= []).push(issue);
@@ -36,13 +39,15 @@ export function IssueBoard({
 
   return (
     <div className="flex h-[calc(100vh-110px)] gap-3 overflow-x-auto px-5 py-4">
-      {statusOrder.map((status) => {
+      {orderedStatuses.map((statusMeta) => {
+        const status = statusMeta.key;
         const items = buckets[status] ?? [];
         const isDropping = dropTarget === status;
         return (
           <Column
             key={status}
             status={status}
+            statuses={statuses}
             items={items}
             isDropping={isDropping}
             draggingId={draggingId}
@@ -95,6 +100,7 @@ export function IssueBoard({
 
 function Column({
   status,
+  statuses,
   items,
   isDropping,
   draggingId,
@@ -107,6 +113,7 @@ function Column({
   onDrop,
 }: {
   status: string;
+  statuses: IssueStatus[];
   items: Issue[];
   isDropping: boolean;
   draggingId: string | null;
@@ -146,9 +153,9 @@ function Column({
       )}
     >
       <header className="flex items-center gap-2 px-3 py-2.5">
-        <StatusIcon status={status} />
+        <StatusIcon status={status} statuses={statuses} />
         <span className="text-[12px] font-medium text-fg">
-          {statusLabel[status] ?? status}
+          {statusName(statuses, status)}
         </span>
         <span className="text-[11px] tabular-nums text-fg-faint">
           {items.length}

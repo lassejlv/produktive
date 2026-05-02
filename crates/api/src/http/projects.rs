@@ -1,6 +1,9 @@
 use crate::{
     auth::require_auth,
     error::ApiError,
+    http::issue_statuses::{
+        self, CATEGORY_ACTIVE, CATEGORY_BACKLOG, CATEGORY_CANCELED, CATEGORY_DONE,
+    },
     permissions::{require_permission, PROJECTS_CREATE, PROJECTS_DELETE, PROJECTS_UPDATE},
     state::AppState,
 };
@@ -312,25 +315,28 @@ async fn project_response(
         .count(&state.db)
         .await?;
 
-    let done_count = issue::Entity::find()
-        .filter(issue::Column::OrganizationId.eq(&row.organization_id))
-        .filter(issue::Column::ProjectId.eq(&row.id))
-        .filter(issue::Column::Status.eq("done"))
-        .count(&state.db)
-        .await?;
-
+    let statuses = issue_statuses::list_issue_statuses(state, &row.organization_id, false).await?;
     let mut breakdown = StatusBreakdown::default();
+    let mut done_count = 0_u64;
     let issues = issue::Entity::find()
         .filter(issue::Column::OrganizationId.eq(&row.organization_id))
         .filter(issue::Column::ProjectId.eq(&row.id))
         .all(&state.db)
         .await?;
     for issue_row in issues {
-        match issue_row.status.as_str() {
-            "backlog" => breakdown.backlog += 1,
-            "todo" => breakdown.todo += 1,
-            "in-progress" => breakdown.in_progress += 1,
-            "done" => breakdown.done += 1,
+        let category = statuses
+            .iter()
+            .find(|status| status.key == issue_row.status)
+            .map(|status| status.category.as_str())
+            .unwrap_or(CATEGORY_ACTIVE);
+        match category {
+            CATEGORY_BACKLOG => breakdown.backlog += 1,
+            CATEGORY_ACTIVE => breakdown.todo += 1,
+            CATEGORY_DONE => {
+                breakdown.done += 1;
+                done_count += 1;
+            }
+            CATEGORY_CANCELED => {}
             _ => {}
         }
     }

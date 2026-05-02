@@ -16,6 +16,7 @@ pub mod issue_comment;
 pub mod issue_event;
 pub mod issue_label;
 pub mod issue_subscriber;
+pub mod issue_status;
 pub mod label;
 pub mod mcp_api_key;
 pub mod mcp_oauth_client;

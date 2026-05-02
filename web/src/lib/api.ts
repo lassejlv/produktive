@@ -54,6 +54,19 @@ export type Issue = {
   attachments: IssueAttachment[];
 };
 
+export type IssueStatusCategory = "backlog" | "active" | "done" | "canceled";
+
+export type IssueStatus = {
+  id: string;
+  key: string;
+  name: string;
+  color: string;
+  category: IssueStatusCategory;
+  sortOrder: number;
+  isSystem: boolean;
+  archived: boolean;
+};
+
 export type IssueAttachment = {
   id: string;
   name: string;
@@ -169,6 +182,42 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
 };
 
 export const listIssues = () => request<{ issues: Issue[] }>("/api/issues");
+
+export const listIssueStatuses = () =>
+  request<{ statuses: IssueStatus[] }>("/api/issue-statuses");
+
+export const createIssueStatus = (input: {
+  name: string;
+  color?: string;
+  category: IssueStatusCategory;
+}) =>
+  request<{ status: IssueStatus }>("/api/issue-statuses", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const updateIssueStatus = (
+  id: string,
+  input: { name: string; color?: string; category: IssueStatusCategory },
+) =>
+  request<{ status: IssueStatus }>(`/api/issue-statuses/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+
+export const deleteIssueStatus = (id: string, replacementStatus?: string) =>
+  request<void>(`/api/issue-statuses/${id}`, {
+    method: "DELETE",
+    body: JSON.stringify({ replacementStatus }),
+  });
+
+export const reorderIssueStatuses = (
+  statuses: { id: string; sortOrder: number }[],
+) =>
+  request<{ statuses: IssueStatus[] }>("/api/issue-statuses/reorder", {
+    method: "POST",
+    body: JSON.stringify({ statuses }),
+  });
 
 export const getIssue = (id: string) => request<{ issue: Issue }>(`/api/issues/${id}`);
 

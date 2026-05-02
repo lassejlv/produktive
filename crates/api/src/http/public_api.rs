@@ -3,6 +3,10 @@ use crate::{
     error::ApiError,
     issue_helpers::{non_empty_optional, normalize_assignee, required_string, validate_assignee},
     issue_history::{record_issue_event, string_change, IssueChange},
+    http::issue_statuses::{
+        self, validate_issue_status, CATEGORY_ACTIVE, CATEGORY_BACKLOG, CATEGORY_CANCELED,
+        CATEGORY_DONE,
+    },
     state::AppState,
 };
 use axum::{
@@ -327,13 +331,19 @@ async fn create_issue(
     let label_ids = normalize_ids(payload.label_ids.unwrap_or_default());
     crate::http::labels::validate_labels(&state, &organization_id, &label_ids).await?;
 
+    let status = validate_issue_status(
+        &state,
+        &organization_id,
+        &non_empty(payload.status).unwrap_or_else(|| "backlog".to_owned()),
+    )
+    .await?;
     let now = Utc::now().fixed_offset();
     let row = issue::ActiveModel {
         id: Set(Uuid::new_v4().to_string()),
         organization_id: Set(organization_id.clone()),
         title: Set(required_string(payload.title, "Title")?),
         description: Set(non_empty_optional(payload.description.unwrap_or_default())?),
-        status: Set(non_empty(payload.status).unwrap_or_else(|| "backlog".to_owned())),
+        status: Set(status),
         priority: Set(non_empty(payload.priority).unwrap_or_else(|| "medium".to_owned())),
         created_by_id: Set(Some(actor_id.clone())),
         assigned_to_id: Set(assigned_to_id.clone()),
@@ -434,7 +444,12 @@ async fn update_issue(
         active.description = Set(next);
     }
     if let Some(status) = payload.status {
-        let next = required_string(status, "Status")?;
+        let next = validate_issue_status(
+            &state,
+            &auth.organization.id,
+            &required_string(status, "Status")?,
+        )
+        .await?;
         if let Some(change) = string_change("status", Some(&before.status), Some(&next)) {
             changes.push(change);
         }
@@ -880,24 +895,28 @@ async fn project_response(
         .filter(issue::Column::ProjectId.eq(&row.id))
         .count(&state.db)
         .await?;
-    let done_count = issue::Entity::find()
-        .filter(issue::Column::OrganizationId.eq(&row.organization_id))
-        .filter(issue::Column::ProjectId.eq(&row.id))
-        .filter(issue::Column::Status.eq("done"))
-        .count(&state.db)
-        .await?;
+    let statuses = issue_statuses::list_issue_statuses(state, &row.organization_id, false).await?;
     let mut status_breakdown = StatusBreakdown::default();
+    let mut done_count = 0_u64;
     let project_issues = issue::Entity::find()
         .filter(issue::Column::OrganizationId.eq(&row.organization_id))
         .filter(issue::Column::ProjectId.eq(&row.id))
         .all(&state.db)
         .await?;
     for issue in project_issues {
-        match issue.status.as_str() {
-            "backlog" => status_breakdown.backlog += 1,
-            "todo" => status_breakdown.todo += 1,
-            "in-progress" => status_breakdown.in_progress += 1,
-            "done" => status_breakdown.done += 1,
+        let category = statuses
+            .iter()
+            .find(|status| status.key == issue.status)
+            .map(|status| status.category.as_str())
+            .unwrap_or(CATEGORY_ACTIVE);
+        match category {
+            CATEGORY_BACKLOG => status_breakdown.backlog += 1,
+            CATEGORY_ACTIVE => status_breakdown.todo += 1,
+            CATEGORY_DONE => {
+                status_breakdown.done += 1;
+                done_count += 1;
+            }
+            CATEGORY_CANCELED => {}
             _ => {}
         }
     }
