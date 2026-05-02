@@ -40,6 +40,8 @@ mod m20260429_000018_create_mcp_servers;
 mod m20260429_000019_add_mcp_oauth_token_url;
 #[path = "../migrations/m20260429_000020_add_mcp_oauth_clients.rs"]
 mod m20260429_000020_add_mcp_oauth_clients;
+#[path = "../migrations/m20260429_000021_create_organization_subscriptions.rs"]
+mod m20260429_000021_create_organization_subscriptions;
 #[path = "../migrations/m20260430_000022_create_mcp_api_keys.rs"]
 mod m20260430_000022_create_mcp_api_keys;
 #[path = "../migrations/m20260501_000023_add_user_onboarding.rs"]
@@ -58,6 +60,10 @@ mod m20260501_000028_add_github_import_locks;
 mod m20260501_000029_add_unkey_api_key_columns;
 #[path = "../migrations/m20260501_000030_create_produktive_oauth.rs"]
 mod m20260501_000030_create_produktive_oauth;
+#[path = "../migrations/m20260501_000031_create_billing_usage_events.rs"]
+mod m20260501_000031_create_billing_usage_events;
+#[path = "../migrations/m20260501_000032_add_subscription_period_start.rs"]
+mod m20260501_000032_add_subscription_period_start;
 
 pub struct Migrator;
 
@@ -85,6 +91,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260429_000018_create_mcp_servers::Migration),
             Box::new(m20260429_000019_add_mcp_oauth_token_url::Migration),
             Box::new(m20260429_000020_add_mcp_oauth_clients::Migration),
+            Box::new(m20260429_000021_create_organization_subscriptions::Migration),
             Box::new(m20260430_000022_create_mcp_api_keys::Migration),
             Box::new(m20260501_000023_add_user_onboarding::Migration),
             Box::new(m20260501_000024_create_github_integration::Migration),
@@ -94,6 +101,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260501_000028_add_github_import_locks::Migration),
             Box::new(m20260501_000029_add_unkey_api_key_columns::Migration),
             Box::new(m20260501_000030_create_produktive_oauth::Migration),
+            Box::new(m20260501_000031_create_billing_usage_events::Migration),
+            Box::new(m20260501_000032_add_subscription_period_start::Migration),
         ]
     }
 }
