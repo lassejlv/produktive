@@ -1,9 +1,15 @@
 import { type Dispatch, type FormEvent, type SetStateAction, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { AtIcon, DotsIcon } from "@/components/chat/icons";
 import { Avatar } from "@/components/issue/avatar";
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   type Invitation,
@@ -138,13 +144,14 @@ export function MembersSettings({
   };
 
   return (
-    <div className="flex flex-col gap-8">
+    <div>
       {dialog}
-      <section>
-        <h3 className="m-0 text-[13px] font-medium text-fg">Invite a teammate</h3>
+
+      <SectionEyebrow label="Members" count={members.length} />
+      {canInvite ? (
         <form
           onSubmit={onInvite}
-          className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px_auto]"
+          className="flex flex-wrap items-center gap-2 border-b border-border-subtle pb-3"
         >
           <Input
             type="email"
@@ -152,90 +159,82 @@ export function MembersSettings({
             placeholder="alice@example.com"
             value={inviteEmail}
             onChange={(event) => setInviteEmail(event.target.value)}
-            disabled={inviteSubmitting || !canInvite}
+            disabled={inviteSubmitting}
+            className="h-8 min-w-0 flex-1 basis-[220px]"
           />
           <RoleSelect
             value={inviteRole}
             roles={roles}
-            disabled={inviteSubmitting || !canInvite}
+            disabled={inviteSubmitting}
             currentRole={currentRole}
             onChange={setInviteRole}
           />
           <Button
             type="submit"
             size="sm"
-            disabled={!inviteEmail.trim() || inviteSubmitting || !canInvite}
+            disabled={!inviteEmail.trim() || inviteSubmitting}
           >
-            {inviteSubmitting ? "Sending..." : "Send invite"}
+            {inviteSubmitting ? "Sending…" : "Send invite"}
           </Button>
         </form>
-      </section>
+      ) : null}
+      <MembersList
+        loading={loading}
+        members={members}
+        roles={roles}
+        currentRole={currentRole}
+        currentUserEmail={currentUserEmail}
+        canAssignRole={canAssignRole}
+        canRemove={canRemove}
+        onChangeRole={onChangeMemberRole}
+        onRemove={onRemoveMember}
+      />
 
       {invitations.length > 0 ? (
-        <section>
-          <h3 className="m-0 text-[13px] font-medium text-fg">
-            Pending invitations
-            <span className="ml-2 text-[11px] tabular-nums text-fg-faint">
-              {invitations.length}
-            </span>
-          </h3>
-          <ul className="mt-3 overflow-hidden rounded-md border border-border-subtle">
-            {invitations.map((invitation, index) => (
+        <>
+          <SectionEyebrow
+            label="Pending"
+            count={invitations.length}
+            className="mt-8"
+          />
+          <ul className="flex flex-col">
+            {invitations.map((invitation) => (
               <li
                 key={invitation.id}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 text-[13px]",
-                  index !== invitations.length - 1 && "border-b border-border-subtle",
-                )}
+                className="group flex items-center gap-3 border-b border-border-subtle/60 px-2 py-2.5 last:border-b-0 hover:bg-surface/50"
               >
-                <span className="grid size-6 place-items-center rounded-full border border-dashed border-border text-[10px] text-fg-faint">
-                  ?
+                <span className="grid size-6 shrink-0 place-items-center rounded-full border border-border-subtle text-fg-faint">
+                  <AtIcon size={11} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-fg">{invitation.email}</div>
-                  <div className="truncate text-[11px] text-fg-faint">
-                    {roleByKey.get(invitation.role)?.name ?? invitation.role} · invited{" "}
-                    {formatRelative(invitation.createdAt)} · expires{" "}
+                  <p className="m-0 truncate text-[13px] text-fg">
+                    {invitation.email}
+                  </p>
+                  <p className="m-0 mt-0.5 truncate text-[11px] text-fg-faint">
+                    {roleByKey.get(invitation.role)?.name ?? invitation.role} ·
+                    invited {formatRelative(invitation.createdAt)} · expires{" "}
                     {formatRelative(invitation.expiresAt)}
-                  </div>
+                  </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => void onResend(invitation.id)}
-                  className="rounded-md border border-border-subtle bg-bg px-2 py-1 text-[11px] text-fg-muted transition-colors hover:border-border hover:text-fg"
+                  className="rounded px-1.5 py-1 text-[11px] text-fg-muted opacity-0 transition-colors hover:text-fg group-hover:opacity-100 focus-visible:opacity-100"
                 >
                   Resend
                 </button>
                 <button
                   type="button"
                   onClick={() => onRevoke(invitation.id, invitation.email)}
-                  className="rounded-md px-2 py-1 text-[11px] text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger"
+                  className="rounded px-1.5 py-1 text-[11px] text-fg-muted opacity-0 transition-colors hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
                 >
                   Revoke
                 </button>
               </li>
             ))}
           </ul>
-        </section>
+        </>
       ) : null}
-
-      <section>
-        <h3 className="m-0 text-[13px] font-medium text-fg">
-          Members
-          <span className="ml-2 text-[11px] tabular-nums text-fg-faint">{members.length}</span>
-        </h3>
-        <MembersList
-          loading={loading}
-          members={members}
-          roles={roles}
-          currentRole={currentRole}
-          currentUserEmail={currentUserEmail}
-          canAssignRole={canAssignRole}
-          canRemove={canRemove}
-          onChangeRole={onChangeMemberRole}
-          onRemove={onRemoveMember}
-        />
-      </section>
 
       <RoleManager
         roles={roles}
@@ -243,6 +242,34 @@ export function MembersSettings({
         permissions={permissions}
         canManageRoles={canManageRoles}
       />
+    </div>
+  );
+}
+
+function SectionEyebrow({
+  label,
+  count,
+  className,
+}: {
+  label: string;
+  count?: number;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "mb-2 flex items-baseline gap-2",
+        className,
+      )}
+    >
+      <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-faint">
+        {label}
+      </span>
+      {typeof count === "number" ? (
+        <span className="font-mono text-[10.5px] tabular-nums text-fg-faint">
+          {count}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -271,48 +298,51 @@ function MembersList({
   const roleByKey = useMemo(() => new Map(roles.map((role) => [role.key, role])), [roles]);
   if (loading) {
     return (
-      <ul aria-hidden className="mt-3 overflow-hidden rounded-md border border-border-subtle">
+      <ul aria-hidden className="flex flex-col">
         {Array.from({ length: 3 }).map((_, index) => (
           <li
             key={index}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2.5",
-              index !== 2 && "border-b border-border-subtle",
-            )}
+            className="flex items-center gap-3 border-b border-border-subtle/60 px-2 py-2.5 last:border-b-0"
           >
             <Skeleton className="size-7 rounded-full" />
             <div className="flex-1 space-y-1.5">
               <Skeleton className="h-3.5 w-32" />
               <Skeleton className="h-3 w-48" />
             </div>
-            <Skeleton className="h-7 w-28" />
+            <Skeleton className="h-7 w-24" />
           </li>
         ))}
       </ul>
     );
   }
   if (members.length === 0)
-    return <p className="mt-3 text-[12px] text-fg-faint">No members yet.</p>;
+    return <p className="px-2 py-3 text-[12px] text-fg-faint">No members yet.</p>;
   return (
-    <ul className="mt-3 overflow-hidden rounded-md border border-border-subtle">
-      {members.map((member, index) => {
+    <ul className="flex flex-col">
+      {members.map((member) => {
         const isSelf = currentUserEmail === member.email;
         const isOwner = member.role === "owner";
         const canTouchOwner = currentRole === "owner";
+        const canEditThisRole = canAssignRole && (!isOwner || canTouchOwner);
+        const canRemoveThis = canRemove && !isSelf && (!isOwner || canTouchOwner);
         return (
           <li
             key={member.id}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2.5 text-[13px]",
-              index !== members.length - 1 && "border-b border-border-subtle",
-            )}
+            className="group flex items-center gap-3 border-b border-border-subtle/60 px-2 py-2.5 last:border-b-0 hover:bg-surface/50"
           >
             <Avatar name={member.name} image={member.image} />
             <div className="min-w-0 flex-1">
-              <div className="truncate text-fg">{member.name}</div>
-              <div className="truncate text-[11px] text-fg-muted">{member.email}</div>
+              <p className="m-0 truncate text-[13px] text-fg">
+                {member.name}
+                {isSelf ? (
+                  <span className="ml-1.5 text-fg-faint">(you)</span>
+                ) : null}
+              </p>
+              <p className="m-0 mt-0.5 truncate text-[11px] text-fg-muted">
+                {member.email}
+              </p>
             </div>
-            {canAssignRole && (!isOwner || canTouchOwner) ? (
+            {canEditThisRole ? (
               <RoleSelect
                 value={member.role}
                 roles={roles}
@@ -320,23 +350,77 @@ function MembersList({
                 onChange={(role) => onChangeRole(member, role)}
               />
             ) : (
-              <span className="text-[11px] text-fg-faint">
+              <span className="font-mono text-[11px] uppercase tracking-[0.06em] text-fg-faint">
                 {roleByKey.get(member.role)?.name ?? member.role}
               </span>
             )}
-            {canRemove && !isSelf && (!isOwner || canTouchOwner) ? (
-              <button
-                type="button"
-                onClick={() => onRemove(member)}
-                className="rounded-md px-2 py-1 text-[11px] text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger"
-              >
-                Remove
-              </button>
+            {canRemoveThis ? (
+              <MemberRowMenu onRemove={() => onRemove(member)} />
             ) : null}
           </li>
         );
       })}
     </ul>
+  );
+}
+
+function MemberRowMenu({ onRemove }: { onRemove: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Member actions"
+          className={cn(
+            "grid size-7 shrink-0 place-items-center rounded-md text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+            open
+              ? "bg-surface-2 text-fg opacity-100"
+              : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+          )}
+        >
+          <DotsIcon size={13} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={4}
+        className="w-44 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-xl"
+      >
+        <RowMenuItem
+          danger
+          onClick={() => {
+            setOpen(false);
+            onRemove();
+          }}
+        >
+          Remove member
+        </RowMenuItem>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function RowMenuItem({
+  children,
+  onClick,
+  danger,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "flex h-8 w-full items-center px-2.5 text-left text-[12.5px] transition-colors hover:bg-surface-2",
+        danger ? "text-danger" : "text-fg",
+      )}
+      onClick={onClick}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -412,100 +496,150 @@ function RoleManager({
   };
 
   return (
-    <section>
-      <h3 className="m-0 text-[13px] font-medium text-fg">Roles</h3>
-      <div className="mt-3 grid gap-4">
-        <div className="overflow-hidden rounded-md border border-border-subtle">
-          {roles.map((role, index) => (
-            <div
-              key={role.id}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 text-[13px]",
-                index !== roles.length - 1 && "border-b border-border-subtle",
-              )}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-fg">{role.name}</div>
-                <div className="truncate text-[11px] text-fg-faint">
-                  {role.isSystem ? "System role" : `${role.permissions.length} permissions`}
-                </div>
-              </div>
-              {!role.isSystem && canManageRoles ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => editRole(role)}
-                    className="rounded-md px-2 py-1 text-[11px] text-fg-muted hover:bg-surface-2 hover:text-fg"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void archiveRole(role)}
-                    className="rounded-md px-2 py-1 text-[11px] text-fg-muted hover:bg-danger/10 hover:text-danger"
-                  >
-                    Archive
-                  </button>
-                </>
-              ) : null}
-            </div>
-          ))}
-          {customRoles.length === 0 ? (
-            <div className="border-t border-border-subtle px-3 py-2 text-[12px] text-fg-faint">
-              No custom roles yet.
-            </div>
-          ) : null}
-        </div>
-
-        {canManageRoles ? (
-          <form onSubmit={saveRole} className="rounded-md border border-border-subtle p-3">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Role name"
-                required
-              />
-              <Input
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Description"
-              />
-            </div>
-            <div className="mt-3 grid gap-1 sm:grid-cols-2">
-              {permissions.map((permission) => (
-                <label
-                  key={permission.key}
-                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-fg-muted hover:bg-surface-2"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedPermissions.includes(permission.key)}
-                    onChange={() => togglePermission(permission.key)}
-                  />
-                  <span className="min-w-0 flex-1 truncate">{permission.label}</span>
-                  <span className="text-[10px] text-fg-faint">{permission.group}</span>
-                </label>
-              ))}
-            </div>
-            <div className="mt-3 flex items-center gap-2">
-              <Button type="submit" size="sm" disabled={saving || !name.trim()}>
-                {saving ? "Saving..." : editingId ? "Save role" : "Create role"}
-              </Button>
-              {editingId ? (
-                <button
-                  type="button"
-                  onClick={reset}
-                  className="rounded-md px-2 py-1 text-[12px] text-fg-muted hover:bg-surface-2 hover:text-fg"
-                >
-                  Cancel
-                </button>
-              ) : null}
-            </div>
-          </form>
-        ) : null}
+    <section className="mt-8">
+      <div className="mb-2 flex items-baseline gap-2">
+        <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-faint">
+          Roles
+        </span>
+        <span className="font-mono text-[10.5px] tabular-nums text-fg-faint">
+          {roles.length}
+        </span>
       </div>
+      <ul className="flex flex-col">
+        {roles.map((role) => (
+          <li
+            key={role.id}
+            className="group flex items-center gap-3 border-b border-border-subtle/60 px-2 py-2.5 last:border-b-0 hover:bg-surface/50"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="m-0 truncate text-[13px] text-fg">{role.name}</p>
+              <p className="m-0 mt-0.5 truncate font-mono text-[11px] text-fg-faint">
+                {role.isSystem
+                  ? "system role"
+                  : `${role.permissions.length} permission${role.permissions.length === 1 ? "" : "s"}`}
+              </p>
+            </div>
+            {!role.isSystem && canManageRoles ? (
+              <RoleRowMenu
+                onEdit={() => editRole(role)}
+                onArchive={() => void archiveRole(role)}
+              />
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {customRoles.length === 0 ? (
+        <p className="px-2 py-2 text-[12px] text-fg-faint">No custom roles yet.</p>
+      ) : null}
+
+      {canManageRoles ? (
+        <form
+          onSubmit={saveRole}
+          className="mt-4 border-t border-border-subtle pt-4"
+        >
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Role name"
+              required
+            />
+            <Input
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Description"
+            />
+          </div>
+          <div className="mt-3 grid gap-px sm:grid-cols-2">
+            {permissions.map((permission) => (
+              <label
+                key={permission.key}
+                className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-fg-muted hover:bg-surface/50"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedPermissions.includes(permission.key)}
+                  onChange={() => togglePermission(permission.key)}
+                  className="h-3.5 w-3.5 accent-fg"
+                />
+                <span className="min-w-0 flex-1 truncate text-fg">
+                  {permission.label}
+                </span>
+                <span className="font-mono text-[10px] text-fg-faint">
+                  {permission.group}
+                </span>
+              </label>
+            ))}
+          </div>
+          <div className="mt-3 flex items-center justify-end gap-2">
+            {editingId ? (
+              <button
+                type="button"
+                onClick={reset}
+                className="rounded-md px-2 py-1 text-[12px] text-fg-muted hover:bg-surface-2 hover:text-fg"
+              >
+                Cancel
+              </button>
+            ) : null}
+            <Button type="submit" size="sm" disabled={saving || !name.trim()}>
+              {saving ? "Saving…" : editingId ? "Save role" : "Create role"}
+            </Button>
+          </div>
+        </form>
+      ) : null}
     </section>
+  );
+}
+
+function RoleRowMenu({
+  onEdit,
+  onArchive,
+}: {
+  onEdit: () => void;
+  onArchive: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Role actions"
+          className={cn(
+            "grid size-7 shrink-0 place-items-center rounded-md text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+            open
+              ? "bg-surface-2 text-fg opacity-100"
+              : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+          )}
+        >
+          <DotsIcon size={13} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={4}
+        className="w-40 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-xl"
+      >
+        <RowMenuItem
+          onClick={() => {
+            setOpen(false);
+            onEdit();
+          }}
+        >
+          Edit
+        </RowMenuItem>
+        <div className="my-1 h-px bg-border-subtle" />
+        <RowMenuItem
+          danger
+          onClick={() => {
+            setOpen(false);
+            onArchive();
+          }}
+        >
+          Archive
+        </RowMenuItem>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -527,7 +661,7 @@ function RoleSelect({
       value={value}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
-      className="h-8 rounded-md border border-border-subtle bg-bg px-2 text-[12px] text-fg outline-none transition-colors hover:border-border focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+      className="h-7 rounded-md border border-border-subtle bg-bg px-2 text-[12px] text-fg outline-none transition-colors hover:border-border focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
     >
       {roles.map((role) => (
         <option
