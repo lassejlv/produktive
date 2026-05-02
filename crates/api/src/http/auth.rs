@@ -9,6 +9,7 @@ use crate::{
     },
     email::{send_password_reset_email, send_verification_email},
     error::ApiError,
+    permissions::{require_permission, ROLE_OWNER, WORKSPACE_DELETE, WORKSPACE_RENAME},
     state::AppState,
 };
 use axum::{
@@ -450,19 +451,7 @@ async fn update_active_organization(
     Json(payload): Json<UpdateOrganizationRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let auth = require_auth(&headers, &state).await?;
-
-    let membership = member::Entity::find()
-        .filter(member::Column::UserId.eq(&auth.user.id))
-        .filter(member::Column::OrganizationId.eq(&auth.organization.id))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| ApiError::Forbidden("Not a member of this workspace".to_owned()))?;
-
-    if membership.role != "owner" {
-        return Err(ApiError::Forbidden(
-            "Only workspace owners can rename the workspace".to_owned(),
-        ));
-    }
+    require_permission(&state, &auth, WORKSPACE_RENAME).await?;
 
     let name = payload.name.trim();
     if name.is_empty() {
@@ -505,19 +494,7 @@ async fn delete_active_organization(
     Json(payload): Json<DeleteOrganizationRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let auth = require_auth(&headers, &state).await?;
-
-    let membership = member::Entity::find()
-        .filter(member::Column::UserId.eq(&auth.user.id))
-        .filter(member::Column::OrganizationId.eq(&auth.organization.id))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| ApiError::Forbidden("Not a member of this workspace".to_owned()))?;
-
-    if membership.role != "owner" {
-        return Err(ApiError::Forbidden(
-            "Only workspace owners can delete the workspace".to_owned(),
-        ));
-    }
+    require_permission(&state, &auth, WORKSPACE_DELETE).await?;
 
     if payload.confirm.trim() != auth.organization.name {
         return Err(ApiError::BadRequest(
@@ -580,7 +557,7 @@ async fn leave_active_organization(
         .await?
         .ok_or_else(|| ApiError::Forbidden("Not a member of this workspace".to_owned()))?;
 
-    if membership.role == "owner" {
+    if membership.role == ROLE_OWNER {
         return Err(ApiError::BadRequest(
             "Owners can't leave. Transfer ownership or delete the workspace.".to_owned(),
         ));

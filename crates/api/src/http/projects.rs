@@ -1,4 +1,9 @@
-use crate::{auth::require_auth, error::ApiError, state::AppState};
+use crate::{
+    auth::require_auth,
+    error::ApiError,
+    permissions::{require_permission, PROJECTS_CREATE, PROJECTS_DELETE, PROJECTS_UPDATE},
+    state::AppState,
+};
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
@@ -123,6 +128,7 @@ async fn create_project(
     Json(payload): Json<CreateProjectRequest>,
 ) -> Result<(StatusCode, Json<ProjectEnvelope>), ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, PROJECTS_CREATE).await?;
 
     let name = payload.name.trim();
     if name.is_empty() {
@@ -181,6 +187,7 @@ async fn get_project(
     Path(id): Path<String>,
 ) -> Result<Json<ProjectEnvelope>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, PROJECTS_UPDATE).await?;
     let row = find_project(&state, &auth.organization.id, &id).await?;
     Ok(Json(ProjectEnvelope {
         project: project_response(&state, row).await?,
@@ -264,6 +271,7 @@ async fn delete_project(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, PROJECTS_DELETE).await?;
     let row = find_project(&state, &auth.organization.id, &id).await?;
     row.delete(&state.db).await?;
     Ok(StatusCode::NO_CONTENT)

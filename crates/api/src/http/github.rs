@@ -3,6 +3,7 @@ use crate::{
     error::ApiError,
     issue_history::{record_issue_event, string_change, IssueChange},
     mcp::{decrypt_secret, encrypt_secret},
+    permissions::{require_permission, GITHUB_MANAGE},
     state::AppState,
 };
 use axum::{
@@ -16,7 +17,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use produktive_entity::{
     github_connection, github_imported_issue, github_oauth_state, github_repository, issue, label,
-    member, user,
+    user,
 };
 use reqwest::header::{HeaderMap as ReqwestHeaderMap, HeaderValue, ACCEPT, AUTHORIZATION};
 use sea_orm::{
@@ -1412,17 +1413,7 @@ fn repository_response(row: github_repository::Model) -> RepositoryResponse {
 }
 
 async fn require_owner(state: &AppState, auth: &AuthContext) -> Result<(), ApiError> {
-    let membership = member::Entity::find()
-        .filter(member::Column::OrganizationId.eq(&auth.organization.id))
-        .filter(member::Column::UserId.eq(&auth.user.id))
-        .one(&state.db)
-        .await?;
-    if membership.as_ref().map(|m| m.role.as_str()) != Some("owner") {
-        return Err(ApiError::Forbidden(
-            "Only workspace owners can manage GitHub".to_owned(),
-        ));
-    }
-    Ok(())
+    require_permission(state, auth, GITHUB_MANAGE).await
 }
 
 fn github_description(owner: &str, repo: &str, issue: &GithubIssue) -> String {

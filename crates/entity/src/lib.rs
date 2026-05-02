@@ -26,6 +26,7 @@ pub mod member;
 pub mod notification;
 pub mod notification_preference;
 pub mod organization;
+pub mod organization_role;
 pub mod produktive_oauth_client;
 pub mod produktive_oauth_code;
 pub mod produktive_oauth_grant;

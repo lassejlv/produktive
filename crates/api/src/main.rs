@@ -9,6 +9,7 @@ mod http;
 mod issue_helpers;
 mod issue_history;
 mod mcp;
+mod permissions;
 mod state;
 mod storage;
 
@@ -29,7 +30,7 @@ use http::{
     favorite_routes, github_routes, inbox_routes, invitation_routes, issue_routes, label_routes,
     mcp_key_routes, member_routes, oauth_metadata_routes, oauth_routes, onboarding_routes,
     org_invitation_routes, preferences_routes, project_routes, public_api_routes, realtime_routes,
-    spawn_github_auto_importer, tabs_routes, unsubscribe_routes, waitlist_routes,
+    role_routes, spawn_github_auto_importer, tabs_routes, unsubscribe_routes, waitlist_routes,
 };
 use produktive_ai::AiClient;
 use sea_orm::Database;
@@ -108,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/me/preferences", preferences_routes())
         .nest("/api/me/tabs", tabs_routes())
         .nest("/api/members", member_routes())
+        .nest("/api/roles", role_routes())
         .nest("/api/projects", project_routes())
         .nest("/api/realtime", realtime_routes())
         .nest("/api/unsubscribe", unsubscribe_routes())

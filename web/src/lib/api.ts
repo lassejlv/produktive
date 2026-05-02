@@ -552,10 +552,10 @@ export type Invitation = {
 export const listInvitations = () =>
   request<{ invitations: Invitation[] }>("/api/organizations/me/invitations");
 
-export const createInvitation = (email: string) =>
+export const createInvitation = (email: string, role?: string) =>
   request<Invitation>("/api/organizations/me/invitations", {
     method: "POST",
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, role }),
   });
 
 export const revokeInvitation = (id: string) =>
@@ -723,6 +723,51 @@ export type Member = {
 };
 
 export const listMembers = () => request<{ members: Member[] }>("/api/members");
+
+export type PermissionInfo = {
+  key: string;
+  label: string;
+  group: string;
+};
+
+export type Role = {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  permissions: string[];
+  isSystem: boolean;
+  archived: boolean;
+};
+
+export const listRoles = () =>
+  request<{ roles: Role[]; permissions: PermissionInfo[] }>("/api/roles");
+
+export const createRole = (input: { name: string; description?: string; permissions: string[] }) =>
+  request<{ role: Role }>("/api/roles", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const updateRole = (
+  id: string,
+  input: { name: string; description?: string; permissions: string[] },
+) =>
+  request<{ role: Role }>(`/api/roles/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+
+export const deleteRole = (id: string) => request<void>(`/api/roles/${id}`, { method: "DELETE" });
+
+export const updateMemberRole = (id: string, role: string) =>
+  request<void>(`/api/members/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ role }),
+  });
+
+export const removeMember = (id: string) =>
+  request<void>(`/api/members/${id}`, { method: "DELETE" });
 
 export const createIssue = (input: CreateIssueInput) =>
   request<{ issue: Issue }>("/api/issues", {

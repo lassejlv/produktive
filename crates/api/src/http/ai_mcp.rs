@@ -5,6 +5,7 @@ use crate::{
         allow_local_mcp, cached_tools, default_name, encrypt_secret, namespaced_tool_name, now,
         oauth_state_ttl, probe_server, slugify, validate_remote_url, OAuthDiscovery, ProbeOutcome,
     },
+    permissions::{require_permission, AI_MANAGE},
     state::AppState,
 };
 use axum::{
@@ -16,7 +17,7 @@ use axum::{
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Duration, FixedOffset, Utc};
-use produktive_entity::{mcp_oauth_client, mcp_oauth_state, mcp_oauth_token, mcp_server, member};
+use produktive_entity::{mcp_oauth_client, mcp_oauth_state, mcp_oauth_token, mcp_server};
 use reqwest::Url;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter,
@@ -660,19 +661,7 @@ async fn register_oauth_client(
 }
 
 async fn require_owner(state: &AppState, auth: &AuthContext) -> Result<(), ApiError> {
-    let role = member::Entity::find()
-        .filter(member::Column::OrganizationId.eq(&auth.organization.id))
-        .filter(member::Column::UserId.eq(&auth.user.id))
-        .one(&state.db)
-        .await?
-        .map(|member| member.role);
-    if role.as_deref() == Some("owner") {
-        Ok(())
-    } else {
-        Err(ApiError::Forbidden(
-            "Only organization owners can manage AI settings".to_owned(),
-        ))
-    }
+    require_permission(state, auth, AI_MANAGE).await
 }
 
 fn server_response(server: mcp_server::Model) -> McpServerResponse {

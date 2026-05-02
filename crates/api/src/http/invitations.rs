@@ -4,6 +4,7 @@ use crate::{
     },
     email,
     error::ApiError,
+    permissions::{has_permission, require_permission, role_exists, MEMBERS_INVITE, ROLE_MEMBER},
     state::AppState,
 };
 use axum::{
@@ -145,6 +146,11 @@ async fn accept_invitation(
             row.email
         )));
     }
+    if !role_exists(&state.db, &row.organization_id, &row.role).await? {
+        return Err(ApiError::BadRequest(
+            "This invitation uses a role that no longer exists".to_owned(),
+        ));
+    }
 
     // Idempotent member insert
     let existing = member::Entity::find()
@@ -255,6 +261,7 @@ async fn list_invitations(
 #[derive(Deserialize)]
 struct CreateInvitationRequest {
     email: String,
+    role: Option<String>,
 }
 
 async fn create_invitation(
@@ -263,8 +270,18 @@ async fn create_invitation(
     Json(payload): Json<CreateInvitationRequest>,
 ) -> Result<(StatusCode, Json<InvitationResponse>), ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, MEMBERS_INVITE).await?;
 
     let email = validate_email(&payload.email)?;
+    let role = payload
+        .role
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(ROLE_MEMBER);
+    if !role_exists(&state.db, &auth.organization.id, role).await? {
+        return Err(ApiError::BadRequest("Role does not exist".to_owned()));
+    }
 
     // If a user with this email is already a member, reject
     if let Some(existing_user) = user::Entity::find()
@@ -310,7 +327,7 @@ async fn create_invitation(
         organization_id: Set(auth.organization.id.clone()),
         email: Set(email.clone()),
         token: Set(token.clone()),
-        role: Set("member".to_owned()),
+        role: Set(role.to_owned()),
         invited_by_id: Set(Some(auth.user.id.clone())),
         expires_at: Set(expires),
         accepted_at: Set(None),
@@ -373,16 +390,16 @@ async fn revoke_invitation(
         return Err(ApiError::NotFound("Invitation not found".to_owned()));
     }
 
-    // Allowed: original inviter, or any owner in the org
+    // Allowed: original inviter, or anyone with invitation management permission.
     let is_inviter = row.invited_by_id.as_deref() == Some(&auth.user.id);
-    let is_owner = member::Entity::find()
-        .filter(member::Column::OrganizationId.eq(&auth.organization.id))
-        .filter(member::Column::UserId.eq(&auth.user.id))
-        .filter(member::Column::Role.eq("owner"))
-        .one(&state.db)
-        .await?
-        .is_some();
-    if !is_inviter && !is_owner {
+    let can_invite = has_permission(
+        &state.db,
+        &auth.user.id,
+        &auth.organization.id,
+        MEMBERS_INVITE,
+    )
+    .await?;
+    if !is_inviter && !can_invite {
         return Err(ApiError::NotFound("Invitation not found".to_owned()));
     }
 
@@ -406,6 +423,17 @@ async fn resend_invitation(
         .ok_or_else(|| ApiError::NotFound("Invitation not found".to_owned()))?;
 
     if row.organization_id != auth.organization.id {
+        return Err(ApiError::NotFound("Invitation not found".to_owned()));
+    }
+    let is_inviter = row.invited_by_id.as_deref() == Some(&auth.user.id);
+    let can_invite = has_permission(
+        &state.db,
+        &auth.user.id,
+        &auth.organization.id,
+        MEMBERS_INVITE,
+    )
+    .await?;
+    if !is_inviter && !can_invite {
         return Err(ApiError::NotFound("Invitation not found".to_owned()));
     }
     if row.accepted_at.is_some() {

@@ -78,7 +78,7 @@ async fn list_keys(
         &state.db,
         &auth.user.id,
         &auth.organization.id,
-        "Only workspace owners can manage API keys",
+        "Missing permission to manage API keys",
     )
     .await?;
     let keys = mcp_api_key::Entity::find()
@@ -105,7 +105,7 @@ async fn create_key(
                 &state.db,
                 &auth.user.id,
                 &id,
-                "Only workspace owners can create API keys",
+                "Missing permission to create API keys",
             )
             .await?;
             Some(id)
@@ -116,7 +116,7 @@ async fn create_key(
         &state.db,
         &auth.user.id,
         organization_id.as_deref().unwrap_or(&auth.organization.id),
-        "Only workspace owners can create API keys",
+        "Missing permission to create API keys",
     )
     .await?;
     let name = payload
@@ -217,7 +217,7 @@ async fn revoke_key(
         &state.db,
         &auth.user.id,
         &auth.organization.id,
-        "Only workspace owners can revoke API keys",
+        "Missing permission to revoke API keys",
     )
     .await?;
     let key = mcp_api_key::Entity::find()
@@ -263,7 +263,7 @@ async fn delete_key(
         &state.db,
         &auth.user.id,
         &auth.organization.id,
-        "Only workspace owners can delete API keys",
+        "Missing permission to delete API keys",
     )
     .await?;
     let key = mcp_api_key::Entity::find()

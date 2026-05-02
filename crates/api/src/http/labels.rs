@@ -1,4 +1,9 @@
-use crate::{auth::require_auth, error::ApiError, state::AppState};
+use crate::{
+    auth::require_auth,
+    error::ApiError,
+    permissions::{require_permission, LABELS_CREATE, LABELS_DELETE, LABELS_UPDATE},
+    state::AppState,
+};
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
@@ -89,6 +94,7 @@ async fn create_label(
     Json(payload): Json<CreateLabelRequest>,
 ) -> Result<(StatusCode, Json<LabelEnvelope>), ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, LABELS_CREATE).await?;
 
     let name = payload.name.trim();
     if name.is_empty() {
@@ -131,6 +137,7 @@ async fn get_label(
     Path(id): Path<String>,
 ) -> Result<Json<LabelEnvelope>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, LABELS_UPDATE).await?;
     let row = find_label(&state, &auth.organization.id, &id).await?;
     Ok(Json(LabelEnvelope {
         label: label_response(&state, row).await?,
@@ -197,6 +204,7 @@ async fn delete_label(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, LABELS_DELETE).await?;
     let row = find_label(&state, &auth.organization.id, &id).await?;
     row.delete(&state.db).await?;
     Ok(StatusCode::NO_CONTENT)

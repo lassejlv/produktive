@@ -6,6 +6,7 @@ use crate::{
         non_empty_optional, normalize_assignee, optional_string, required_string, validate_assignee,
     },
     issue_history::{record_issue_event, string_change, IssueChange},
+    permissions::{require_permission, ISSUES_CREATE, ISSUES_DELETE, ISSUES_UPDATE},
     state::AppState,
     storage,
 };
@@ -255,6 +256,7 @@ async fn create_issue(
     Json(payload): Json<CreateIssueRequest>,
 ) -> Result<(StatusCode, Json<IssueEnvelope>), ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, ISSUES_CREATE).await?;
     let assigned_to_id = normalize_assignee(payload.assigned_to_id)?;
     validate_assignee(&state, &auth.organization.id, assigned_to_id.as_deref()).await?;
     let now = Utc::now().fixed_offset();
@@ -369,6 +371,7 @@ async fn get_issue(
     Path(id): Path<String>,
 ) -> Result<Json<IssueEnvelope>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, ISSUES_UPDATE).await?;
     let issue = find_issue(&state, &auth.organization.id, &id).await?;
 
     Ok(Json(IssueEnvelope {
@@ -512,6 +515,7 @@ async fn delete_issue(
     Path(id): Path<String>,
 ) -> Result<Json<OkResponse>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, ISSUES_DELETE).await?;
     let issue = find_issue(&state, &auth.organization.id, &id).await?;
     issue.delete(&state.db).await?;
 

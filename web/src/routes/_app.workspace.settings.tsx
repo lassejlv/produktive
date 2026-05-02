@@ -16,13 +16,13 @@ import {
   type GithubRepository,
   type McpApiKey,
   type Member,
+  type PermissionInfo,
+  type Role,
   listInvitations,
   listMembers,
+  listRoles,
 } from "@/lib/api";
-import {
-  useGithubConnectionQuery,
-  useGithubRepositoriesQuery,
-} from "@/lib/queries/github";
+import { useGithubConnectionQuery, useGithubRepositoriesQuery } from "@/lib/queries/github";
 import { useMcpKeysQuery } from "@/lib/queries/mcp";
 import {
   useCreateGithubRepository,
@@ -33,11 +33,7 @@ import {
   useStartGithubOAuth,
   useUpdateGithubRepository,
 } from "@/lib/mutations/github";
-import {
-  useCreateMcpApiKey,
-  useDeleteMcpApiKey,
-  useRevokeMcpApiKey,
-} from "@/lib/mutations/mcp";
+import { useCreateMcpApiKey, useDeleteMcpApiKey, useRevokeMcpApiKey } from "@/lib/mutations/mcp";
 import { refreshSession, updateActiveOrganization, useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -124,6 +120,8 @@ function WorkspaceSettingsPage() {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("general");
   const [members, setMembers] = useState<Member[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [permissions, setPermissions] = useState<PermissionInfo[]>([]);
   const [membersLoading, setMembersLoading] = useState(true);
 
   useEffect(() => {
@@ -135,11 +133,13 @@ function WorkspaceSettingsPage() {
 
   useEffect(() => {
     let mounted = true;
-    void Promise.all([listMembers(), listInvitations()])
-      .then(([membersResponse, invitationsResponse]) => {
+    void Promise.all([listMembers(), listInvitations(), listRoles()])
+      .then(([membersResponse, invitationsResponse, rolesResponse]) => {
         if (!mounted) return;
         setMembers(membersResponse.members);
         setInvitations(invitationsResponse.invitations);
+        setRoles(rolesResponse.roles);
+        setPermissions(rolesResponse.permissions);
       })
       .catch(() => {})
       .finally(() => {
@@ -172,7 +172,13 @@ function WorkspaceSettingsPage() {
     return members.find((member) => member.email === currentUserEmail)?.role ?? null;
   }, [members, currentUserEmail]);
 
-  const canEditWorkspace = currentRole === "owner";
+  const currentPermissions = useMemo(() => {
+    const role = roles.find((role) => role.key === currentRole);
+    return new Set(role?.permissions ?? []);
+  }, [roles, currentRole]);
+
+  const hasPermission = (permission: string) => currentPermissions.has(permission);
+  const canEditWorkspace = hasPermission("workspace.rename");
   const activeMeta = settingsSections.find((s) => s.id === activeSection);
 
   const mainSections = settingsSections.filter((s) => s.group === "main");
@@ -251,11 +257,20 @@ function WorkspaceSettingsPage() {
             <MembersSettings
               loading={membersLoading}
               members={members}
+              setMembers={setMembers}
               invitations={invitations}
               setInvitations={setInvitations}
+              roles={roles}
+              setRoles={setRoles}
+              permissions={permissions}
+              currentUserEmail={currentUserEmail}
+              currentRole={currentRole}
+              currentPermissions={currentPermissions}
             />
           ) : null}
-          {activeSection === "github" ? <GithubSettings canEdit={canEditWorkspace} /> : null}
+          {activeSection === "github" ? (
+            <GithubSettings canEdit={hasPermission("integrations.github.manage")} />
+          ) : null}
           {activeSection === "discord" ? <DiscordSettings /> : null}
           {activeSection === "mcp" ? <McpKeySettings /> : null}
           {activeSection === "ai" ? <AiSettings /> : null}
@@ -304,9 +319,7 @@ function DiscordSettings() {
 function GithubSettings({ canEdit }: { canEdit: boolean }) {
   const connectionQuery = useGithubConnectionQuery();
   const connection = connectionQuery.data ?? null;
-  const repositoriesQuery = useGithubRepositoriesQuery(
-    connection?.connected === true,
-  );
+  const repositoriesQuery = useGithubRepositoriesQuery(connection?.connected === true);
   const repositories = repositoriesQuery.data ?? [];
 
   const startOAuth = useStartGithubOAuth();
@@ -357,10 +370,7 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
     busy === null;
 
   const excludedKeys = useMemo(
-    () =>
-      new Set(
-        repositories.map((r) => `${r.owner}/${r.repo}`.toLowerCase()),
-      ),
+    () => new Set(repositories.map((r) => `${r.owner}/${r.repo}`.toLowerCase())),
     [repositories],
   );
 
@@ -502,10 +512,7 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
     });
   };
 
-  if (
-    connectionQuery.isPending ||
-    (connection?.connected && repositoriesQuery.isPending)
-  ) {
+  if (connectionQuery.isPending || (connection?.connected && repositoriesQuery.isPending)) {
     return <SettingsSkeleton rows={4} />;
   }
 
@@ -526,7 +533,7 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
           </>
         ) : (
           <span className="text-fg-muted">
-            {canEdit ? "Not connected." : "Only owners can connect GitHub."}
+            {canEdit ? "Not connected." : "Missing permission to connect GitHub."}
           </span>
         )}
       </SettingRow>
@@ -651,11 +658,12 @@ function GithubRepositoryRow({
   const intervalValid = Number.isFinite(parsedInterval) && parsedInterval >= 15;
   const intervalDirty = parsedInterval !== repository.importIntervalMinutes;
 
-  const statusLabel = repository.lastImportStatus === "error"
-    ? "Error"
-    : repository.autoImportEnabled
-      ? "Auto"
-      : "Manual";
+  const statusLabel =
+    repository.lastImportStatus === "error"
+      ? "Error"
+      : repository.autoImportEnabled
+        ? "Auto"
+        : "Manual";
 
   return (
     <div className="grid gap-2 border-b border-border-subtle py-3 text-[13px] md:grid-cols-[140px_minmax(0,1fr)]">
@@ -1127,7 +1135,7 @@ function GeneralSettings({
           <span>
             {canEdit
               ? "Visible to teammates and on shared links."
-              : "Only owners can rename the workspace."}
+              : "Missing permission to rename the workspace."}
           </span>
           <span className={cn("tabular-nums", tooLong ? "text-danger" : "text-fg-faint")}>
             {trimmed.length}/64

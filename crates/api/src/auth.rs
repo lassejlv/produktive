@@ -1,4 +1,8 @@
-use crate::{error::ApiError, state::AppState};
+use crate::{
+    error::ApiError,
+    permissions::{has_permission, API_KEYS_MANAGE, ROLE_OWNER},
+    state::AppState,
+};
 use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
@@ -307,7 +311,7 @@ pub async fn create_signup_records(
         id: Set(Uuid::new_v4().to_string()),
         organization_id: Set(organization.id.clone()),
         user_id: Set(user.id.clone()),
-        role: Set("owner".to_owned()),
+        role: Set(ROLE_OWNER.to_owned()),
         created_at: Set(now),
     }
     .insert(&txn)
@@ -342,7 +346,7 @@ pub async fn first_or_create_organization(
         id: Set(Uuid::new_v4().to_string()),
         organization_id: Set(organization.id.clone()),
         user_id: Set(user.id.clone()),
-        role: Set("owner".to_owned()),
+        role: Set(ROLE_OWNER.to_owned()),
         created_at: Set(Utc::now().fixed_offset()),
     }
     .insert(&txn)
@@ -384,7 +388,7 @@ pub async fn create_organization_for_user(
         id: Set(Uuid::new_v4().to_string()),
         organization_id: Set(organization.id.clone()),
         user_id: Set(user.id.clone()),
-        role: Set("owner".to_owned()),
+        role: Set(ROLE_OWNER.to_owned()),
         created_at: Set(now),
     }
     .insert(&txn)
@@ -428,13 +432,7 @@ pub async fn require_workspace_owner(
     organization_id: &str,
     message: &str,
 ) -> Result<(), ApiError> {
-    let membership = member::Entity::find()
-        .filter(member::Column::UserId.eq(user_id))
-        .filter(member::Column::OrganizationId.eq(organization_id))
-        .one(db)
-        .await?;
-
-    if membership.as_ref().map(|m| m.role.as_str()) == Some("owner") {
+    if has_permission(db, user_id, organization_id, API_KEYS_MANAGE).await? {
         return Ok(());
     }
 

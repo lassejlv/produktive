@@ -1,4 +1,9 @@
-use crate::{auth::require_auth, error::ApiError, state::AppState};
+use crate::{
+    auth::require_auth,
+    error::ApiError,
+    permissions::{has_permission, DISCORD_MANAGE},
+    state::AppState,
+};
 use axum::{
     extract::{Path, State},
     http::HeaderMap,
@@ -92,7 +97,7 @@ async fn complete_link(
         .await?;
     let target_organization_id = payload.organization_id;
 
-    let membership = member::Entity::find()
+    let _membership = member::Entity::find()
         .filter(member::Column::UserId.eq(&auth.user.id))
         .filter(member::Column::OrganizationId.eq(&target_organization_id))
         .one(&state.db)
@@ -103,9 +108,17 @@ async fn complete_link(
         .as_ref()
         .map(|server| server.organization_id != target_organization_id)
         .unwrap_or(true);
-    if changes_server_workspace && membership.role != "owner" {
+    if changes_server_workspace
+        && !has_permission(
+            &state.db,
+            &auth.user.id,
+            &target_organization_id,
+            DISCORD_MANAGE,
+        )
+        .await?
+    {
         return Err(ApiError::Forbidden(
-            "Only workspace owners can link Discord servers".to_owned(),
+            "Missing permission to link Discord servers".to_owned(),
         ));
     }
 
