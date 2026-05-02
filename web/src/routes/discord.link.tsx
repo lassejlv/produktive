@@ -2,6 +2,13 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { completeDiscordLink, previewDiscordLink, type DiscordLinkPreview } from "@/lib/api";
 import { listOrganizations, useSession, type OrganizationMembership } from "@/lib/auth-client";
 
@@ -114,17 +121,18 @@ function DiscordLinkPage() {
           <div className="mt-5 grid gap-4">
             <label className="grid gap-1.5 text-[13px] text-fg">
               Workspace
-              <select
-                value={selectedOrganizationId}
-                onChange={(event) => setSelectedOrganizationId(event.target.value)}
-                className="h-9 border border-border-subtle bg-bg px-2 text-[13px] text-fg outline-none focus:border-accent"
-              >
-                {organizations.map((org) => (
-                  <option key={org.id} value={org.id}>
-                    {org.name}
-                  </option>
-                ))}
-              </select>
+              <Select value={selectedOrganizationId} onValueChange={setSelectedOrganizationId}>
+                <SelectTrigger className="text-[13px]">
+                  <SelectValue placeholder="Select workspace" />
+                </SelectTrigger>
+                <SelectContent>
+                  {organizations.map((org) => (
+                    <SelectItem key={org.id} value={org.id}>
+                      {org.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <p className="m-0 text-[12.5px] text-fg-muted">
               Server ID <span className="font-mono">{preview.guildId}</span> will use{" "}
@@ -132,9 +140,8 @@ function DiscordLinkPage() {
             </p>
             {preview.linkedOrganization ? (
               <p className="m-0 text-[12.5px] text-fg-muted">
-                Already linked to{" "}
-                <span className="text-fg">{preview.linkedOrganization.name}</span>. Selecting a
-                different workspace requires owner access.
+                Already linked to <span className="text-fg">{preview.linkedOrganization.name}</span>
+                . Selecting a different workspace requires owner access.
               </p>
             ) : null}
             <Button type="button" onClick={onLink} disabled={busy || !selectedOrganizationId}>

@@ -3,11 +3,8 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { NewLabelDialog } from "@/components/label/new-label-dialog";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  type Label,
-  deleteLabel,
-  updateLabel,
-} from "@/lib/api";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { type Label, deleteLabel, updateLabel } from "@/lib/api";
 import { labelColorHex, labelColorOptions } from "@/lib/label-constants";
 import { useLabels } from "@/lib/use-labels";
 import { cn } from "@/lib/utils";
@@ -36,14 +33,8 @@ function LabelsPage() {
   const navigate = useNavigate();
   const [view, setView] = useState<ViewKey>("active");
   const includeArchived = view === "archived" || view === "all";
-  const {
-    labels,
-    isLoading,
-    refresh,
-    addLabel,
-    updateLabelLocal,
-    removeLabelLocal,
-  } = useLabels(includeArchived);
+  const { labels, isLoading, refresh, addLabel, updateLabelLocal, removeLabelLocal } =
+    useLabels(includeArchived);
   const { confirm, dialog } = useConfirmDialog();
 
   const filtered = useMemo(() => {
@@ -72,9 +63,7 @@ function LabelsPage() {
       toast.success(next ? "Label archived" : "Label restored");
     } catch (error) {
       updateLabelLocal(label.id, { archivedAt: label.archivedAt });
-      toast.error(
-        error instanceof Error ? error.message : "Failed to update label",
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to update label");
     }
   };
 
@@ -86,9 +75,7 @@ function LabelsPage() {
       updateLabelLocal(label.id, response.label);
     } catch (error) {
       updateLabelLocal(label.id, { color: previous });
-      toast.error(
-        error instanceof Error ? error.message : "Failed to update color",
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to update color");
     }
   };
 
@@ -104,9 +91,7 @@ function LabelsPage() {
           await deleteLabel(label.id);
           toast.success("Label deleted");
         } catch (error) {
-          toast.error(
-            error instanceof Error ? error.message : "Failed to delete label",
-          );
+          toast.error(error instanceof Error ? error.message : "Failed to delete label");
           void refresh();
         }
       },
@@ -123,9 +108,7 @@ function LabelsPage() {
       updateLabelLocal(label.id, response.label);
     } catch (error) {
       updateLabelLocal(label.id, { name: previous });
-      toast.error(
-        error instanceof Error ? error.message : "Failed to rename label",
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to rename label");
     }
   };
 
@@ -138,9 +121,7 @@ function LabelsPage() {
             <LabelsHeaderIcon />
           </span>
           <h1 className="text-sm font-medium text-fg">Labels</h1>
-          <span className="text-xs text-fg-muted tabular-nums">
-            {filtered.length}
-          </span>
+          <span className="text-xs text-fg-muted tabular-nums">{filtered.length}</span>
         </div>
         <NewLabelDialog onCreated={(label) => addLabel(label)} />
       </header>
@@ -155,9 +136,7 @@ function LabelsPage() {
               onClick={() => setView(key)}
               className={cn(
                 "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors",
-                isActive
-                  ? "bg-surface text-fg"
-                  : "text-fg-muted hover:bg-surface hover:text-fg",
+                isActive ? "bg-surface text-fg" : "text-fg-muted hover:bg-surface hover:text-fg",
               )}
             >
               <span>{viewLabels[key]}</span>
@@ -241,36 +220,38 @@ function LabelsPage() {
   );
 }
 
-function ColorMenu({
-  color,
-  onChange,
-}: {
-  color: string;
-  onChange: (next: string) => void;
-}) {
+function ColorMenu({ color, onChange }: { color: string; onChange: (next: string) => void }) {
   return (
-    <label className="relative inline-flex size-4 cursor-pointer items-center justify-center">
-      <span
-        aria-hidden
-        className="size-2.5 rounded-full"
-        style={{
-          backgroundColor:
-            labelColorHex[color] ?? labelColorHex.gray,
-        }}
-      />
-      <select
+    <Select value={color} onValueChange={onChange}>
+      <SelectTrigger
         aria-label="Color"
-        value={color}
-        onChange={(event) => onChange(event.target.value)}
-        className="absolute inset-0 cursor-pointer opacity-0"
+        className="size-6 justify-center rounded-full border-0 bg-transparent p-0 hover:border-transparent hover:bg-surface [&>svg]:hidden"
       >
+        <span
+          aria-hidden
+          className="size-2.5 rounded-full"
+          style={{
+            backgroundColor: labelColorHex[color] ?? labelColorHex.gray,
+          }}
+        />
+      </SelectTrigger>
+      <SelectContent align="start" className="min-w-32">
         {labelColorOptions.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
+          <SelectItem key={option} value={option}>
+            <span className="inline-flex items-center gap-2">
+              <span
+                aria-hidden
+                className="size-2.5 rounded-full"
+                style={{
+                  backgroundColor: labelColorHex[option] ?? labelColorHex.gray,
+                }}
+              />
+              {option}
+            </span>
+          </SelectItem>
         ))}
-      </select>
-    </label>
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -319,22 +300,16 @@ function RenameField({
   );
 }
 
-function EmptyState({
-  onCreate,
-}: {
-  onCreate: (name?: string) => void;
-}) {
+function EmptyState({ onCreate }: { onCreate: (name?: string) => void }) {
   return (
     <div className="flex flex-col items-center py-16 text-center">
       <div className="mb-4 grid size-12 place-items-center rounded-xl bg-surface/60 text-fg-muted">
         <LabelsHeaderIcon size={22} />
       </div>
-      <h2 className="text-[15px] font-medium text-fg">
-        Tag issues with labels
-      </h2>
+      <h2 className="text-[15px] font-medium text-fg">Tag issues with labels</h2>
       <p className="mt-1 max-w-[360px] text-[13px] text-fg-muted">
-        Lightweight, free-form tags. Filter by them, attach as many as you
-        want. Try one of these to get started:
+        Lightweight, free-form tags. Filter by them, attach as many as you want. Try one of these to
+        get started:
       </p>
       <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5">
         {exampleLabels.map((example) => (
@@ -368,13 +343,7 @@ function EmptyState({
 
 function LabelsHeaderIcon({ size = 14 }: { size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 14 14"
-      fill="none"
-      aria-hidden
-    >
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden>
       <path
         d="M7.5 1.5h4a1 1 0 011 1v4l-6 6a1 1 0 01-1.4 0L1.5 8.4a1 1 0 010-1.4l6-6z"
         stroke="currentColor"

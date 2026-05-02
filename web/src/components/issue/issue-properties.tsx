@@ -6,12 +6,9 @@ import { LabelChip } from "@/components/label/label-chip";
 import { LabelPicker } from "@/components/label/label-picker";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { ProjectPicker } from "@/components/project/project-picker";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { type IssueStatus, type LabelSummary, type ProjectSummary } from "@/lib/api";
-import {
-  priorityOptions,
-  sortedStatuses,
-  statusName,
-} from "@/lib/issue-constants";
+import { priorityOptions, sortedStatuses, statusName } from "@/lib/issue-constants";
 import { priorityLabels } from "@/lib/issue-display";
 
 type Assignee = { id: string; name: string; image: string | null };
@@ -81,9 +78,7 @@ export function IssueProperties({
                 {assignee ? (
                   <>
                     <Avatar name={assignee.name} image={assignee.image} />
-                    <span className="min-w-0 flex-1 truncate">
-                      {assignee.name}
-                    </span>
+                    <span className="min-w-0 flex-1 truncate">{assignee.name}</span>
                   </>
                 ) : (
                   <span className="text-fg-faint">Unassigned</span>
@@ -108,9 +103,7 @@ export function IssueProperties({
                     name={project.name}
                     size="sm"
                   />
-                  <span className="min-w-0 flex-1 truncate">
-                    {project.name}
-                  </span>
+                  <span className="min-w-0 flex-1 truncate">{project.name}</span>
                 </>
               ) : (
                 <span className="text-fg-faint">No project</span>
@@ -132,12 +125,7 @@ export function IssueProperties({
             >
               {labels.length > 0 ? (
                 labels.map((label) => (
-                  <LabelChip
-                    key={label.id}
-                    name={label.name}
-                    color={label.color}
-                    size="sm"
-                  />
+                  <LabelChip key={label.id} name={label.name} color={label.color} size="sm" />
                 ))
               ) : (
                 <span className="text-fg-faint">+ Add label</span>
@@ -167,21 +155,13 @@ function PropertyRow({
           : "grid grid-cols-[64px_minmax(0,1fr)] items-center gap-2 py-1 text-[12.5px]"
       }
     >
-      <span className={align === "start" ? "pt-2 text-fg-faint" : "text-fg-faint"}>
-        {label}
-      </span>
+      <span className={align === "start" ? "pt-2 text-fg-faint" : "text-fg-faint"}>{label}</span>
       <div className="min-w-0 text-fg">{children}</div>
     </div>
   );
 }
 
-function PickerTrigger({
-  children,
-  onClick,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
+function PickerTrigger({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -209,21 +189,21 @@ function NativeSelectTrigger({
   onChange: (next: string) => void;
 }) {
   return (
-    <label className="relative flex h-7 w-full cursor-pointer items-center gap-2 rounded-md px-1.5 transition-colors hover:bg-surface">
-      {icon}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      <select
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger
         aria-label={ariaLabel}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="absolute inset-0 cursor-pointer opacity-0"
+        className="h-7 border-0 bg-transparent px-1.5 hover:border-transparent hover:bg-surface [&>svg]:ml-auto"
       >
+        {icon}
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+      </SelectTrigger>
+      <SelectContent align="start">
         {options.map((option) => (
-          <option key={option.value} value={option.value}>
+          <SelectItem key={option.value} value={option.value}>
             {option.label}
-          </option>
+          </SelectItem>
         ))}
-      </select>
-    </label>
+      </SelectContent>
+    </Select>
   );
 }

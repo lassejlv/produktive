@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import type { IssueStatus } from "@/lib/api";
 import { priorityOptions, sortedStatuses } from "@/lib/issue-constants";
 import { priorityLabels } from "@/lib/issue-display";
@@ -87,29 +89,29 @@ function BulkSelect({
   options: { value: string; label: string }[];
   onChange: (value: string) => void;
 }) {
+  const [resetKey, setResetKey] = useState(0);
+
   return (
-    <label className="relative inline-flex h-7 cursor-pointer items-center rounded-full px-3 text-fg-muted transition-colors hover:bg-surface hover:text-fg">
-      <span>{label}</span>
-      <select
+    <Select
+      key={resetKey}
+      onValueChange={(value) => {
+        onChange(value);
+        setResetKey((current) => current + 1);
+      }}
+    >
+      <SelectTrigger
         aria-label={ariaLabel}
-        defaultValue=""
-        onChange={(event) => {
-          if (event.target.value) {
-            onChange(event.target.value);
-            event.target.value = "";
-          }
-        }}
-        className="absolute inset-0 cursor-pointer opacity-0"
+        className="h-7 w-auto rounded-full border-0 bg-transparent px-3 text-fg-muted hover:border-transparent hover:bg-surface hover:text-fg [&>svg]:hidden"
       >
-        <option value="" disabled hidden>
-          {label}
-        </option>
+        <span>{label}</span>
+      </SelectTrigger>
+      <SelectContent align="start">
         {options.map((option) => (
-          <option key={option.value} value={option.value}>
+          <SelectItem key={option.value} value={option.value}>
             {option.label}
-          </option>
+          </SelectItem>
         ))}
-      </select>
-    </label>
+      </SelectContent>
+    </Select>
   );
 }

@@ -9,24 +9,18 @@ import { IssueList } from "@/components/issue/issue-list";
 import { MemberPicker } from "@/components/issue/member-picker";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { ProjectStatusIcon } from "@/components/project/project-status-icon";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import type { UpdateProjectInput } from "@/lib/api";
 import { sortedStatuses, statusName } from "@/lib/issue-constants";
 import { defaultDisplayOptions } from "@/lib/issue-display";
-import {
-  projectColorHex,
-  projectStatusLabel,
-  projectStatusOptions,
-} from "@/lib/project-constants";
+import { projectColorHex, projectStatusLabel, projectStatusOptions } from "@/lib/project-constants";
 import { useProjectDetailQuery } from "@/lib/queries/projects";
 import { useIssues } from "@/lib/use-issues";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { useRegisterTab } from "@/lib/use-tabs";
 import { useUserPreferences } from "@/lib/use-user-preferences";
 import { useCreateIssue, useUpdateIssue } from "@/lib/mutations/issues";
-import {
-  useDeleteProject,
-  useUpdateProject,
-} from "@/lib/mutations/projects";
+import { useDeleteProject, useUpdateProject } from "@/lib/mutations/projects";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/projects/$projectId")({
@@ -76,16 +70,13 @@ function ProjectDetailPage() {
     try {
       await updateProjectMutation.mutateAsync({ id: projectId, patch });
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to update",
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to update");
     }
   };
 
   const handleStatus = (next: string) => void updateField({ status: next });
 
-  const handleLead = (leadId: string | null) =>
-    void updateField({ leadId });
+  const handleLead = (leadId: string | null) => void updateField({ leadId });
 
   const handleArchiveToggle = async () => {
     if (!project) return;
@@ -108,9 +99,7 @@ function ProjectDetailPage() {
           toast.success("Project deleted");
           await navigate({ to: "/projects" });
         } catch (error) {
-          toast.error(
-            error instanceof Error ? error.message : "Failed to delete",
-          );
+          toast.error(error instanceof Error ? error.message : "Failed to delete");
         }
       },
     });
@@ -121,9 +110,7 @@ function ProjectDetailPage() {
       await createIssueMutation.mutateAsync({ title, status, projectId });
       void projectQuery.refetch();
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to create issue",
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to create issue");
     }
   };
 
@@ -138,9 +125,7 @@ function ProjectDetailPage() {
       toast.success(`Moved to ${statusName(statuses, nextStatus)}`);
       void projectQuery.refetch();
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to move issue",
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to move issue");
     }
   };
 
@@ -152,8 +137,7 @@ function ProjectDetailPage() {
     );
   }
 
-  const progress =
-    project.issueCount === 0 ? 0 : project.doneCount / project.issueCount;
+  const progress = project.issueCount === 0 ? 0 : project.doneCount / project.issueCount;
 
   return (
     <main className="min-h-full bg-bg">
@@ -190,9 +174,7 @@ function ProjectDetailPage() {
                   void handleArchiveToggle();
                 }}
               >
-                {project.archivedAt === null
-                  ? "Archive project"
-                  : "Restore project"}
+                {project.archivedAt === null ? "Archive project" : "Restore project"}
               </MenuItem>
               <div className="my-1 h-px bg-border-subtle" />
               <MenuItem
@@ -211,12 +193,7 @@ function ProjectDetailPage() {
 
       <article className="mx-auto w-full max-w-[760px] px-6 pb-24 pt-10">
         <div className="flex items-center gap-3">
-          <ProjectIcon
-            color={project.color}
-            icon={project.icon}
-            name={project.name}
-            size="lg"
-          />
+          <ProjectIcon color={project.color} icon={project.icon} name={project.name} size="lg" />
           {project.archivedAt !== null ? (
             <span className="rounded-full border border-border-subtle bg-surface/40 px-2 py-0.5 text-[10.5px] uppercase tracking-[0.06em] text-fg-muted">
               Archived
@@ -233,11 +210,7 @@ function ProjectDetailPage() {
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-x-1 gap-y-1.5 text-[13px] text-fg-muted">
-          <InlineStatusSelect
-            status={project.status}
-            progress={progress}
-            onChange={handleStatus}
-          />
+          <InlineStatusSelect status={project.status} progress={progress} onChange={handleStatus} />
           <Sep />
           <MemberPicker
             selectedId={project.leadId}
@@ -250,10 +223,7 @@ function ProjectDetailPage() {
               >
                 {project.lead ? (
                   <>
-                    <Avatar
-                      name={project.lead.name}
-                      image={project.lead.image}
-                    />
+                    <Avatar name={project.lead.name} image={project.lead.image} />
                     <span>{project.lead.name}</span>
                   </>
                 ) : (
@@ -302,8 +272,7 @@ function ProjectDetailPage() {
               className="h-full transition-all"
               style={{
                 width: `${Math.round(progress * 100)}%`,
-                backgroundColor:
-                  projectColorHex[project.color] ?? "#5b8cff",
+                backgroundColor: projectColorHex[project.color] ?? "#5b8cff",
               }}
             />
           </div>
@@ -353,22 +322,22 @@ function InlineStatusSelect({
   onChange: (next: string) => void;
 }) {
   return (
-    <label className="relative inline-flex h-6 cursor-pointer items-center gap-1.5 rounded-[5px] px-1 capitalize transition-colors hover:bg-surface/60 hover:text-fg">
-      <ProjectStatusIcon status={status} progress={progress} size="sm" />
-      <span>{projectStatusLabel[status] ?? status}</span>
-      <select
+    <Select value={status} onValueChange={onChange}>
+      <SelectTrigger
         aria-label="Status"
-        value={status}
-        onChange={(event) => onChange(event.target.value)}
-        className="absolute inset-0 cursor-pointer opacity-0"
+        className="h-6 w-auto justify-start gap-1.5 rounded-[5px] border-0 bg-transparent px-1 capitalize hover:border-transparent hover:bg-surface/60 hover:text-fg [&>svg]:hidden"
       >
+        <ProjectStatusIcon status={status} progress={progress} size="sm" />
+        <span>{projectStatusLabel[status] ?? status}</span>
+      </SelectTrigger>
+      <SelectContent align="start">
         {projectStatusOptions.map((option) => (
-          <option key={option} value={option}>
+          <SelectItem key={option} value={option}>
             {projectStatusLabel[option] ?? option}
-          </option>
+          </SelectItem>
         ))}
-      </select>
-    </label>
+      </SelectContent>
+    </Select>
   );
 }
 

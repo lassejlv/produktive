@@ -1,3 +1,5 @@
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+
 export function PillSelect({
   value,
   onChange,
@@ -12,21 +14,21 @@ export function PillSelect({
   ariaLabel: string;
 }) {
   return (
-    <label className="relative inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-surface px-2 text-xs text-fg transition-colors hover:bg-surface-2">
-      {icon}
-      <span className="capitalize">{value}</span>
-      <select
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger
         aria-label={ariaLabel}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="absolute inset-0 cursor-pointer opacity-0"
+        className="h-7 w-auto justify-start gap-1.5 border-border bg-surface px-2 text-xs hover:bg-surface-2 [&>svg]:ml-0"
       >
+        {icon}
+        <span className="capitalize">{value}</span>
+      </SelectTrigger>
+      <SelectContent align="start">
         {options.map((option) => (
-          <option key={option} value={option}>
+          <SelectItem key={option} value={option}>
             {option}
-          </option>
+          </SelectItem>
         ))}
-      </select>
-    </label>
+      </SelectContent>
+    </Select>
   );
 }

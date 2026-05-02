@@ -6,11 +6,14 @@ import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { LoadingTip } from "@/components/ui/loading-tip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { AiSettings, McpTemplatesSettings } from "@/components/workspace/ai-settings";
 import { DangerSettings } from "@/components/workspace/danger-settings";
 import { GithubRepoPicker } from "@/components/workspace/github-repo-picker";
@@ -335,10 +338,7 @@ function StatusSettings({ canEdit }: { canEdit: boolean }) {
   const [saving, setSaving] = useState(false);
   const [replacementByStatus, setReplacementByStatus] = useState<Record<string, string>>({});
 
-  const sorted = useMemo(
-    () => [...statuses].sort((a, b) => a.sortOrder - b.sortOrder),
-    [statuses],
-  );
+  const sorted = useMemo(() => [...statuses].sort((a, b) => a.sortOrder - b.sortOrder), [statuses]);
 
   const createStatus = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -426,54 +426,66 @@ function StatusSettings({ canEdit }: { canEdit: boolean }) {
                   />
                 )}
               </div>
-              <select
+              <Select
                 value={status.category}
                 disabled={status.isSystem || !canEdit}
-                onChange={(event) =>
+                onValueChange={(value) =>
                   void saveStatus(status, {
-                    category: event.target.value as IssueStatusCategory,
+                    category: value as IssueStatusCategory,
                   })
                 }
-                className="h-8 rounded-md border border-border-subtle bg-bg px-2 text-[12px] text-fg disabled:opacity-60"
               >
-                {statusCategories.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <select
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="start">
+                  {statusCategories.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
                 value={status.color}
                 disabled={status.isSystem || !canEdit}
-                onChange={(event) => void saveStatus(status, { color: event.target.value })}
-                className="h-8 rounded-md border border-border-subtle bg-bg px-2 text-[12px] text-fg disabled:opacity-60"
+                onValueChange={(value) => void saveStatus(status, { color: value })}
               >
-                {statusColors.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="start">
+                  {statusColors.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {!status.isSystem && canEdit ? (
-                <select
+                <Select
                   aria-label="Replacement status"
                   value={replacementByStatus[status.id] ?? replacementFor(status)?.key ?? ""}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     setReplacementByStatus((current) => ({
                       ...current,
-                      [status.id]: event.target.value,
+                      [status.id]: value,
                     }))
                   }
-                  className="h-8 rounded-md border border-border-subtle bg-bg px-2 text-[12px] text-fg"
                 >
-                  {sorted
-                    .filter((item) => item.id !== status.id)
-                    .map((item) => (
-                      <option key={item.key} value={item.key}>
-                        Move to {item.name}
-                      </option>
-                    ))}
-                </select>
+                  <SelectTrigger className="h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent align="start">
+                    {sorted
+                      .filter((item) => item.id !== status.id)
+                      .map((item) => (
+                        <SelectItem key={item.key} value={item.key}>
+                          Move to {item.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
               ) : (
                 <span className="hidden md:block" />
               )}
@@ -496,35 +508,43 @@ function StatusSettings({ canEdit }: { canEdit: boolean }) {
       {canEdit ? (
         <section>
           <h3 className="m-0 text-[13px] font-medium text-fg">Create status</h3>
-          <form onSubmit={createStatus} className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_120px_110px_auto]">
+          <form
+            onSubmit={createStatus}
+            className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_120px_110px_auto]"
+          >
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="Ready for review"
               disabled={saving}
             />
-            <select
+            <Select
               value={category}
-              onChange={(event) => setCategory(event.target.value as IssueStatusCategory)}
-              className="h-9 rounded-md border border-border-subtle bg-bg px-2 text-[12px] text-fg"
+              onValueChange={(value) => setCategory(value as IssueStatusCategory)}
             >
-              {statusCategories.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <select
-              value={color}
-              onChange={(event) => setColor(event.target.value)}
-              className="h-9 rounded-md border border-border-subtle bg-bg px-2 text-[12px] text-fg"
-            >
-              {statusColors.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="start">
+                {statusCategories.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={color} onValueChange={setColor}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="start">
+                {statusColors.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {item}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button type="submit" size="sm" disabled={saving || !name.trim()}>
               {saving ? "Creating..." : "Create"}
             </Button>
@@ -791,8 +811,7 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
           {connection?.connected ? (
             <>
               <p className="m-0 text-[13px] text-fg">
-                Connected as{" "}
-                <span className="font-mono">@{connection.login}</span>
+                Connected as <span className="font-mono">@{connection.login}</span>
               </p>
               {connection.connectedAt ? (
                 <p className="m-0 mt-0.5 text-[11.5px] text-fg-faint">
@@ -802,9 +821,7 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
             </>
           ) : (
             <p className="m-0 text-[13px] text-fg-muted">
-              {canEdit
-                ? "Not connected"
-                : "Missing permission to connect GitHub"}
+              {canEdit ? "Not connected" : "Missing permission to connect GitHub"}
             </p>
           )}
         </div>
@@ -891,9 +908,7 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
               <div className="mb-3 grid size-10 place-items-center rounded-[10px] border border-border-subtle bg-surface/40 text-fg-muted">
                 <GithubIcon size={16} />
               </div>
-              <p className="m-0 text-[13px] text-fg-muted">
-                No repositories yet — add one above.
-              </p>
+              <p className="m-0 text-[13px] text-fg-muted">No repositories yet — add one above.</p>
             </div>
           ) : (
             <ul className="flex flex-col">
@@ -905,9 +920,7 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
                   busy={busy}
                   preview={previewRepoId === repository.id ? preview : null}
                   editingInterval={
-                    editingInterval?.id === repository.id
-                      ? editingInterval.value
-                      : null
+                    editingInterval?.id === repository.id ? editingInterval.value : null
                   }
                   onPreview={onPreview}
                   onImport={onImport}
@@ -923,17 +936,11 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
                     })
                   }
                   onChangeEditInterval={(value) =>
-                    setEditingInterval((current) =>
-                      current ? { ...current, value } : current,
-                    )
+                    setEditingInterval((current) => (current ? { ...current, value } : current))
                   }
                   onCancelEditInterval={() => setEditingInterval(null)}
                   onSaveEditInterval={(repo) => {
-                    if (
-                      !editingInterval ||
-                      editingInterval.id !== repo.id
-                    )
-                      return;
+                    if (!editingInterval || editingInterval.id !== repo.id) return;
                     const parsed = Number.parseInt(editingInterval.value, 10);
                     if (!Number.isFinite(parsed) || parsed < 15) return;
                     void onUpdateRepository(repo, {
@@ -1003,10 +1010,7 @@ function GithubRepositoryRow({
   return (
     <li className="border-b border-border-subtle/60 last:border-b-0">
       <div className="group flex items-center gap-3 px-2 py-2.5 transition-colors hover:bg-surface/50">
-        <GithubStatusDot
-          autoEnabled={repository.autoImportEnabled}
-          errored={isErrored}
-        />
+        <GithubStatusDot autoEnabled={repository.autoImportEnabled} errored={isErrored} />
         <p className="m-0 min-w-0 flex-1 truncate font-mono text-[13px] text-fg">
           {repository.owner}/{repository.repo}
         </p>
@@ -1038,9 +1042,8 @@ function GithubRepositoryRow({
       ) : null}
       {preview ? (
         <div className="border-t border-border-subtle/60 bg-surface/30 px-2 py-2 font-mono text-[11.5px] text-fg-muted">
-          {preview.total} issues · {preview.newIssues} new ·{" "}
-          {preview.updateIssues} updates · {preview.labels} labels ·{" "}
-          {preview.skippedPullRequests} PRs skipped
+          {preview.total} issues · {preview.newIssues} new · {preview.updateIssues} updates ·{" "}
+          {preview.labels} labels · {preview.skippedPullRequests} PRs skipped
         </div>
       ) : null}
       {editingDraft !== null ? (
@@ -1058,12 +1061,7 @@ function GithubRepositoryRow({
           />
           <span className="font-mono text-[11px] text-fg-faint">min</span>
           <span className="flex-1" />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onCancelEditInterval}
-          >
+          <Button type="button" variant="ghost" size="sm" onClick={onCancelEditInterval}>
             Cancel
           </Button>
           <Button
@@ -1080,22 +1078,14 @@ function GithubRepositoryRow({
   );
 }
 
-function GithubStatusDot({
-  autoEnabled,
-  errored,
-}: {
-  autoEnabled: boolean;
-  errored: boolean;
-}) {
+function GithubStatusDot({ autoEnabled, errored }: { autoEnabled: boolean; errored: boolean }) {
   if (errored) {
     return <span className="size-[8px] shrink-0 rounded-full bg-danger" />;
   }
   if (autoEnabled) {
     return <span className="size-[8px] shrink-0 rounded-full bg-success" />;
   }
-  return (
-    <span className="size-[8px] shrink-0 rounded-full border border-fg-faint" />
-  );
+  return <span className="size-[8px] shrink-0 rounded-full border border-fg-faint" />;
 }
 
 function GithubRowMenu({
@@ -1155,9 +1145,7 @@ function GithubRowMenu({
             onToggleAuto();
           }}
         >
-          {repository.autoImportEnabled
-            ? "Disable auto-import"
-            : "Enable auto-import"}
+          {repository.autoImportEnabled ? "Disable auto-import" : "Enable auto-import"}
         </GithubMenuItem>
         <GithubMenuItem
           onClick={() => {

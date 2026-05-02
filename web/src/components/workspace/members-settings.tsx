@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   type Invitation,
@@ -612,22 +619,22 @@ function RoleSelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <select
-      value={value}
-      disabled={disabled}
-      onChange={(event) => onChange(event.target.value)}
-      className="h-7 rounded-md border border-border-subtle bg-bg px-2 text-[12px] text-fg outline-none transition-colors hover:border-border focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      {roles.map((role) => (
-        <option
-          key={role.key}
-          value={role.key}
-          disabled={isPrivilegedRole(role.key) && currentRole !== "owner"}
-        >
-          {role.name}
-        </option>
-      ))}
-    </select>
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger className="h-7 w-32">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="end">
+        {roles.map((role) => (
+          <SelectItem
+            key={role.key}
+            value={role.key}
+            disabled={isPrivilegedRole(role.key) && currentRole !== "owner"}
+          >
+            {role.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
