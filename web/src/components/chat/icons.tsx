@@ -8,6 +8,7 @@ import {
   Folder01Icon,
   FolderKanbanIcon,
   GitCompareIcon,
+  Github01Icon,
   HashtagIcon,
   InboxUnreadIcon,
   MoreHorizontalIcon,
@@ -107,6 +108,10 @@ export function AtIcon({ size = 13, ...rest }: IconProps) {
 
 export function ChangesIcon({ size = 13, ...rest }: IconProps) {
   return <Icon icon={GitCompareIcon} size={size} {...rest} />;
+}
+
+export function GithubIcon({ size = 14, ...rest }: IconProps) {
+  return <Icon icon={Github01Icon} size={size} {...rest} />;
 }
 
 export function CheckIcon({ size = 13, ...rest }: IconProps) {

@@ -1,10 +1,16 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { DotsIcon, GithubIcon } from "@/components/chat/icons";
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { LoadingTip } from "@/components/ui/loading-tip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { AiSettings, McpTemplatesSettings } from "@/components/workspace/ai-settings";
 import { DangerSettings } from "@/components/workspace/danger-settings";
 import { GithubRepoPicker } from "@/components/workspace/github-repo-picker";
@@ -588,6 +594,10 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
   const [autoImportEnabled, setAutoImportEnabled] = useState(false);
   const [preview, setPreview] = useState<GithubImportPreview | null>(null);
   const [previewRepoId, setPreviewRepoId] = useState<string | null>(null);
+  const [editingInterval, setEditingInterval] = useState<{
+    id: string;
+    value: string;
+  } | null>(null);
   const { confirm, dialog } = useConfirmDialog();
 
   useEffect(() => {
@@ -773,85 +783,33 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
     <div>
       {dialog}
 
-      <SettingRow label="Status">
-        {connection?.connected ? (
-          <>
-            <span className="text-fg">Connected as {connection.login}</span>
-            <div className="mt-0.5 text-[12px] text-fg-muted">
-              {connection.connectedAt ? `Connected ${formatDate(connection.connectedAt)}` : null}
-              {connection.scope ? ` · ${connection.scope}` : null}
-            </div>
-          </>
-        ) : (
-          <span className="text-fg-muted">
-            {canEdit ? "Not connected." : "Missing permission to connect GitHub."}
-          </span>
-        )}
-      </SettingRow>
-
-      <form onSubmit={(event) => void onCreateRepository(event)}>
-        <SettingRow label="Add repo">
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_100px]">
-            <GithubRepoPicker
-              selected={pickerSelection}
-              excludedKeys={excludedKeys}
-              disabled={inputsDisabled}
-              onSelect={({ owner: nextOwner, repo: nextRepo }) => {
-                setOwner(nextOwner);
-                setRepo(nextRepo);
-                setPreview(null);
-              }}
-            />
-            <Input
-              value={intervalMinutes}
-              onChange={(event) => setIntervalMinutes(event.target.value)}
-              inputMode="numeric"
-              placeholder="min"
-              aria-label="Auto import interval in minutes"
-              disabled={inputsDisabled}
-            />
-          </div>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-3 text-[11.5px] text-fg-faint">
-            <label className="inline-flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={autoImportEnabled}
-                disabled={inputsDisabled}
-                onChange={(event) => setAutoImportEnabled(event.target.checked)}
-                className="h-3.5 w-3.5 accent-fg"
-              />
-              Auto import
-            </label>
-            <Button type="submit" size="sm" disabled={!canCreateRepository}>
-              {busy === "create-repository" ? "Adding…" : "Add"}
-            </Button>
-          </div>
-        </SettingRow>
-      </form>
-
-      {repositories.length === 0 ? (
-        <SettingRow label="Repositories">
-          <span className="text-fg-muted">No repositories added.</span>
-        </SettingRow>
-      ) : (
-        repositories.map((repository) => (
-          <GithubRepositoryRow
-            key={repository.id}
-            repository={repository}
-            canEdit={canEdit}
-            busy={busy}
-            preview={previewRepoId === repository.id ? preview : null}
-            onPreview={onPreview}
-            onImport={onImport}
-            onUpdate={onUpdateRepository}
-            onDelete={onDeleteRepository}
-          />
-        ))
-      )}
-
-      {canEdit ? (
-        <div className="flex flex-wrap justify-end gap-2 pt-4">
+      <div className="flex items-center gap-3 border-b border-border-subtle py-3">
+        <span className="grid size-8 shrink-0 place-items-center rounded-md border border-border-subtle bg-surface/40 text-fg-muted">
+          <GithubIcon size={14} />
+        </span>
+        <div className="min-w-0 flex-1">
           {connection?.connected ? (
+            <>
+              <p className="m-0 text-[13px] text-fg">
+                Connected as{" "}
+                <span className="font-mono">@{connection.login}</span>
+              </p>
+              {connection.connectedAt ? (
+                <p className="m-0 mt-0.5 text-[11.5px] text-fg-faint">
+                  since {formatDate(connection.connectedAt)}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="m-0 text-[13px] text-fg-muted">
+              {canEdit
+                ? "Not connected"
+                : "Missing permission to connect GitHub"}
+            </p>
+          )}
+        </div>
+        {canEdit ? (
+          connection?.connected ? (
             <Button
               type="button"
               variant="outline"
@@ -870,8 +828,125 @@ function GithubSettings({ canEdit }: { canEdit: boolean }) {
             >
               {busy === "connect" ? "Opening…" : "Connect GitHub"}
             </Button>
+          )
+        ) : null}
+      </div>
+
+      {connection?.connected ? (
+        <>
+          <div className="mb-2 mt-6 flex items-baseline gap-2">
+            <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-faint">
+              Repositories
+            </span>
+            <span className="font-mono text-[10.5px] tabular-nums text-fg-faint">
+              {repositories.length}
+            </span>
+          </div>
+
+          <form
+            onSubmit={(event) => void onCreateRepository(event)}
+            className="flex flex-wrap items-center gap-2 border-b border-border-subtle pb-3"
+          >
+            <div className="min-w-0 flex-1 basis-[260px]">
+              <GithubRepoPicker
+                selected={pickerSelection}
+                excludedKeys={excludedKeys}
+                disabled={inputsDisabled}
+                onSelect={({ owner: nextOwner, repo: nextRepo }) => {
+                  setOwner(nextOwner);
+                  setRepo(nextRepo);
+                  setPreview(null);
+                }}
+              />
+            </div>
+            <label className="inline-flex h-8 items-center gap-1.5 text-[12px] text-fg-muted">
+              <input
+                type="checkbox"
+                checked={autoImportEnabled}
+                disabled={inputsDisabled}
+                onChange={(event) => setAutoImportEnabled(event.target.checked)}
+                className="h-3.5 w-3.5 accent-fg"
+              />
+              Auto
+            </label>
+            <div className="inline-flex items-center gap-1.5">
+              <Input
+                value={intervalMinutes}
+                onChange={(event) => setIntervalMinutes(event.target.value)}
+                inputMode="numeric"
+                placeholder="360"
+                aria-label="Auto import interval in minutes"
+                disabled={inputsDisabled}
+                className="h-8 w-16"
+              />
+              <span className="font-mono text-[11px] text-fg-faint">min</span>
+            </div>
+            <Button type="submit" size="sm" disabled={!canCreateRepository}>
+              {busy === "create-repository" ? "Adding…" : "Add"}
+            </Button>
+          </form>
+
+          {repositories.length === 0 ? (
+            <div className="flex flex-col items-center px-6 py-10 text-center">
+              <div className="mb-3 grid size-10 place-items-center rounded-[10px] border border-border-subtle bg-surface/40 text-fg-muted">
+                <GithubIcon size={16} />
+              </div>
+              <p className="m-0 text-[13px] text-fg-muted">
+                No repositories yet — add one above.
+              </p>
+            </div>
+          ) : (
+            <ul className="flex flex-col">
+              {repositories.map((repository) => (
+                <GithubRepositoryRow
+                  key={repository.id}
+                  repository={repository}
+                  canEdit={canEdit}
+                  busy={busy}
+                  preview={previewRepoId === repository.id ? preview : null}
+                  editingInterval={
+                    editingInterval?.id === repository.id
+                      ? editingInterval.value
+                      : null
+                  }
+                  onPreview={onPreview}
+                  onImport={onImport}
+                  onToggleAutoImport={(repo) =>
+                    void onUpdateRepository(repo, {
+                      autoImportEnabled: !repo.autoImportEnabled,
+                    })
+                  }
+                  onStartEditInterval={(repo) =>
+                    setEditingInterval({
+                      id: repo.id,
+                      value: String(repo.importIntervalMinutes),
+                    })
+                  }
+                  onChangeEditInterval={(value) =>
+                    setEditingInterval((current) =>
+                      current ? { ...current, value } : current,
+                    )
+                  }
+                  onCancelEditInterval={() => setEditingInterval(null)}
+                  onSaveEditInterval={(repo) => {
+                    if (
+                      !editingInterval ||
+                      editingInterval.id !== repo.id
+                    )
+                      return;
+                    const parsed = Number.parseInt(editingInterval.value, 10);
+                    if (!Number.isFinite(parsed) || parsed < 15) return;
+                    void onUpdateRepository(repo, {
+                      importIntervalMinutes: parsed,
+                    });
+                    setEditingInterval(null);
+                  }}
+                  onDelete={onDeleteRepository}
+                />
+              ))}
+            </ul>
           )}
-        </div>
+        </>
       ) : null}
     </div>
   );
@@ -882,132 +957,251 @@ function GithubRepositoryRow({
   canEdit,
   busy,
   preview,
+  editingInterval,
   onPreview,
   onImport,
-  onUpdate,
+  onToggleAutoImport,
+  onStartEditInterval,
+  onChangeEditInterval,
+  onCancelEditInterval,
+  onSaveEditInterval,
   onDelete,
 }: {
   repository: GithubRepository;
   canEdit: boolean;
   busy: string | null;
   preview: GithubImportPreview | null;
+  editingInterval: string | null;
   onPreview: (repository: GithubRepository) => void;
   onImport: (repository: GithubRepository) => void;
-  onUpdate: (
-    repository: GithubRepository,
-    patch: { autoImportEnabled?: boolean; importIntervalMinutes?: number },
-  ) => void;
+  onToggleAutoImport: (repository: GithubRepository) => void;
+  onStartEditInterval: (repository: GithubRepository) => void;
+  onChangeEditInterval: (value: string) => void;
+  onCancelEditInterval: () => void;
+  onSaveEditInterval: (repository: GithubRepository) => void;
   onDelete: (repository: GithubRepository) => void;
 }) {
-  const [intervalDraft, setIntervalDraft] = useState(String(repository.importIntervalMinutes));
+  const isErrored = repository.lastImportStatus === "error";
+  const metaParts: string[] = [];
+  metaParts.push(repository.autoImportEnabled ? "auto" : "manual");
+  if (repository.autoImportEnabled) {
+    metaParts.push(`every ${formatInterval(repository.importIntervalMinutes)}`);
+  }
+  metaParts.push(
+    repository.lastImportedAt
+      ? `synced ${formatRelative(repository.lastImportedAt)}`
+      : "never synced",
+  );
+  const metaString = metaParts.join(" · ");
 
-  useEffect(() => {
-    setIntervalDraft(String(repository.importIntervalMinutes));
-  }, [repository.importIntervalMinutes]);
-
-  const parsedInterval = Number.parseInt(intervalDraft, 10);
-  const intervalValid = Number.isFinite(parsedInterval) && parsedInterval >= 15;
-  const intervalDirty = parsedInterval !== repository.importIntervalMinutes;
-
-  const statusLabel =
-    repository.lastImportStatus === "error"
-      ? "Error"
-      : repository.autoImportEnabled
-        ? "Auto"
-        : "Manual";
+  const editingDraft = editingInterval;
+  const parsedDraft = editingDraft ? Number.parseInt(editingDraft, 10) : NaN;
+  const draftValid = Number.isFinite(parsedDraft) && parsedDraft >= 15;
+  const draftDirty = parsedDraft !== repository.importIntervalMinutes;
+  const rowBusy = busy !== null;
 
   return (
-    <div className="grid gap-2 border-b border-border-subtle py-3 text-[13px] md:grid-cols-[140px_minmax(0,1fr)]">
-      <div className="text-fg-faint">{statusLabel}</div>
-      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="font-mono text-fg">
-            {repository.owner}/{repository.repo}
-          </div>
-          <div className="mt-0.5 text-[11.5px] text-fg-faint">
-            {repository.lastImportedAt
-              ? `Last import ${formatDate(repository.lastImportedAt)}`
-              : "Never imported"}
-            {repository.nextImportAt && repository.autoImportEnabled
-              ? ` · Next ${formatDate(repository.nextImportAt)}`
-              : ""}
-          </div>
-          {repository.lastImportStatus === "error" && repository.lastImportError ? (
-            <div className="mt-0.5 text-[11.5px] text-danger">{repository.lastImportError}</div>
-          ) : null}
-          {preview ? (
-            <div className="mt-1 text-[11.5px] text-fg-muted">
-              {preview.total} issues · {preview.newIssues} new · {preview.updateIssues} updates ·{" "}
-              {preview.labels} labels · {preview.skippedPullRequests} PRs skipped
-            </div>
-          ) : null}
-          <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[11.5px] text-fg-faint">
-            <label className="inline-flex items-center gap-1.5">
-              <input
-                type="checkbox"
-                checked={repository.autoImportEnabled}
-                disabled={!canEdit || busy !== null}
-                onChange={(event) =>
-                  onUpdate(repository, { autoImportEnabled: event.target.checked })
-                }
-                className="h-3.5 w-3.5 accent-fg"
-              />
-              Auto import
-            </label>
-            <span className="inline-flex items-center gap-1.5">
-              <Input
-                value={intervalDraft}
-                onChange={(event) => setIntervalDraft(event.target.value)}
-                inputMode="numeric"
-                disabled={!canEdit || busy !== null}
-                aria-label={`Import interval for ${repository.owner}/${repository.repo}`}
-                className="h-7 w-16"
-              />
-              min
-              {intervalDirty ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={!canEdit || busy !== null || !intervalValid}
-                  onClick={() => onUpdate(repository, { importIntervalMinutes: parsedInterval })}
-                >
-                  {busy === `update:${repository.id}` ? "Saving…" : "Save"}
-                </Button>
-              ) : null}
-            </span>
-          </div>
+    <li className="border-b border-border-subtle/60 last:border-b-0">
+      <div className="group flex items-center gap-3 px-2 py-2.5 transition-colors hover:bg-surface/50">
+        <GithubStatusDot
+          autoEnabled={repository.autoImportEnabled}
+          errored={isErrored}
+        />
+        <p className="m-0 min-w-0 flex-1 truncate font-mono text-[13px] text-fg">
+          {repository.owner}/{repository.repo}
+        </p>
+        <span className="hidden shrink-0 font-mono text-[11px] tabular-nums text-fg-faint sm:inline">
+          {metaString}
+        </span>
+        <Button
+          type="button"
+          size="sm"
+          disabled={!canEdit || rowBusy}
+          onClick={() => onImport(repository)}
+        >
+          {busy === `import:${repository.id}` ? "Importing…" : "Import"}
+        </Button>
+        <GithubRowMenu
+          repository={repository}
+          canEdit={canEdit}
+          busy={busy}
+          onPreview={() => onPreview(repository)}
+          onToggleAuto={() => onToggleAutoImport(repository)}
+          onEditInterval={() => onStartEditInterval(repository)}
+          onDelete={() => onDelete(repository)}
+        />
+      </div>
+      {isErrored && repository.lastImportError ? (
+        <div className="border-t border-border-subtle/60 px-2 py-1.5 text-[11.5px] text-danger">
+          {repository.lastImportError}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={!canEdit || busy !== null}
-            onClick={() => onPreview(repository)}
-          >
-            {busy === `preview:${repository.id}` ? "Previewing…" : "Preview"}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={!canEdit || busy !== null}
-            onClick={() => onImport(repository)}
-          >
-            {busy === `import:${repository.id}` ? "Importing…" : "Import"}
-          </Button>
+      ) : null}
+      {preview ? (
+        <div className="border-t border-border-subtle/60 bg-surface/30 px-2 py-2 font-mono text-[11.5px] text-fg-muted">
+          {preview.total} issues · {preview.newIssues} new ·{" "}
+          {preview.updateIssues} updates · {preview.labels} labels ·{" "}
+          {preview.skippedPullRequests} PRs skipped
+        </div>
+      ) : null}
+      {editingDraft !== null ? (
+        <div className="flex flex-wrap items-center gap-2 border-t border-border-subtle/60 bg-surface/30 px-2 py-2">
+          <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-faint">
+            Interval
+          </span>
+          <Input
+            value={editingDraft}
+            onChange={(event) => onChangeEditInterval(event.target.value)}
+            inputMode="numeric"
+            disabled={!canEdit || rowBusy}
+            aria-label={`Import interval for ${repository.owner}/${repository.repo}`}
+            className="h-7 w-20"
+          />
+          <span className="font-mono text-[11px] text-fg-faint">min</span>
+          <span className="flex-1" />
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            disabled={!canEdit || busy !== null}
-            onClick={() => onDelete(repository)}
+            onClick={onCancelEditInterval}
           >
-            {busy === `delete:${repository.id}` ? "Removing…" : "Remove"}
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!canEdit || rowBusy || !draftValid || !draftDirty}
+            onClick={() => onSaveEditInterval(repository)}
+          >
+            {busy === `update:${repository.id}` ? "Saving…" : "Save"}
           </Button>
         </div>
-      </div>
-    </div>
+      ) : null}
+    </li>
+  );
+}
+
+function GithubStatusDot({
+  autoEnabled,
+  errored,
+}: {
+  autoEnabled: boolean;
+  errored: boolean;
+}) {
+  if (errored) {
+    return <span className="size-[8px] shrink-0 rounded-full bg-danger" />;
+  }
+  if (autoEnabled) {
+    return <span className="size-[8px] shrink-0 rounded-full bg-success" />;
+  }
+  return (
+    <span className="size-[8px] shrink-0 rounded-full border border-fg-faint" />
+  );
+}
+
+function GithubRowMenu({
+  repository,
+  canEdit,
+  busy,
+  onPreview,
+  onToggleAuto,
+  onEditInterval,
+  onDelete,
+}: {
+  repository: GithubRepository;
+  canEdit: boolean;
+  busy: string | null;
+  onPreview: () => void;
+  onToggleAuto: () => void;
+  onEditInterval: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
+  const previewing = busy === `preview:${repository.id}`;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Repository actions"
+          disabled={!canEdit || busy !== null}
+          className={cn(
+            "grid size-7 shrink-0 place-items-center rounded-md text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50",
+            open
+              ? "bg-surface-2 text-fg opacity-100"
+              : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+          )}
+        >
+          <DotsIcon size={13} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={4}
+        className="w-48 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-xl"
+      >
+        <GithubMenuItem
+          onClick={() => {
+            close();
+            onPreview();
+          }}
+        >
+          {previewing ? "Previewing…" : "Preview import"}
+        </GithubMenuItem>
+        <GithubMenuItem
+          onClick={() => {
+            close();
+            onToggleAuto();
+          }}
+        >
+          {repository.autoImportEnabled
+            ? "Disable auto-import"
+            : "Enable auto-import"}
+        </GithubMenuItem>
+        <GithubMenuItem
+          onClick={() => {
+            close();
+            onEditInterval();
+          }}
+        >
+          Edit interval…
+        </GithubMenuItem>
+        <div className="my-1 h-px bg-border-subtle" />
+        <GithubMenuItem
+          danger
+          onClick={() => {
+            close();
+            onDelete();
+          }}
+        >
+          Remove
+        </GithubMenuItem>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function GithubMenuItem({
+  children,
+  onClick,
+  danger,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "flex h-8 w-full items-center px-2.5 text-left text-[12.5px] transition-colors hover:bg-surface-2",
+        danger ? "text-danger" : "text-fg",
+      )}
+      onClick={onClick}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -1287,6 +1481,30 @@ function formatDate(value: string) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function formatRelative(value: string) {
+  const then = new Date(value).getTime();
+  const diffMs = Date.now() - then;
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatInterval(minutes: number): string {
+  if (minutes >= 60 && minutes % 60 === 0) {
+    const hours = minutes / 60;
+    return `${hours}h`;
+  }
+  return `${minutes}m`;
 }
 
 function getPublicApiUrl() {
