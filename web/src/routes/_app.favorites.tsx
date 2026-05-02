@@ -11,12 +11,14 @@ import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { applyOrder, useSidebarLayout } from "@/lib/use-sidebar-layout";
 import { cn } from "@/lib/utils";
 
+type TypeFilter = FavoriteTarget | "all";
+
 type FavoritesSearch = {
   q?: string;
-  type?: FavoriteTarget | "all";
+  type?: TypeFilter;
 };
 
-const isType = (value: unknown): value is FavoriteTarget | "all" =>
+const isType = (value: unknown): value is TypeFilter =>
   value === "all" || value === "issue" || value === "project" || value === "chat";
 
 export const Route = createFileRoute("/_app/favorites")({
@@ -27,12 +29,20 @@ export const Route = createFileRoute("/_app/favorites")({
   component: FavoritesPage,
 });
 
-const typeTabs: { value: FavoriteTarget | "all"; label: string }[] = [
+const typeTabs: { value: TypeFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "issue", label: "Issues" },
   { value: "project", label: "Projects" },
   { value: "chat", label: "Chats" },
 ];
+
+const typeOrder: FavoriteTarget[] = ["issue", "project", "chat"];
+
+const typeLabels: Record<FavoriteTarget, string> = {
+  issue: "Issues",
+  project: "Projects",
+  chat: "Chats",
+};
 
 const FAVORITE_DRAG_MIME = "application/x-produktive-favorite-page";
 
@@ -49,7 +59,7 @@ function FavoritesPage() {
   );
 
   const [query, setQuery] = useState(search.q ?? "");
-  const [typeFilter, setTypeFilter] = useState<FavoriteTarget | "all">(
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>(
     search.type ?? "all",
   );
   const [dragId, setDragId] = useState<string | null>(null);
@@ -62,6 +72,21 @@ function FavoritesPage() {
       return fav.title.toLowerCase().includes(q);
     });
   }, [ordered, typeFilter, query]);
+
+  const groups = useMemo(() => {
+    if (typeFilter !== "all") {
+      return [{ type: typeFilter as FavoriteTarget, items: filtered }];
+    }
+    const buckets = new Map<FavoriteTarget, Favorite[]>();
+    for (const fav of filtered) {
+      const list = buckets.get(fav.type) ?? [];
+      list.push(fav);
+      buckets.set(fav.type, list);
+    }
+    return typeOrder
+      .filter((type) => buckets.has(type))
+      .map((type) => ({ type, items: buckets.get(type) ?? [] }));
+  }, [filtered, typeFilter]);
 
   const counts = useMemo(
     () => ({
@@ -114,145 +139,230 @@ function FavoritesPage() {
 
   return (
     <main className="min-h-full bg-bg">
-      <header className="sticky top-0 z-10 flex h-12 items-center justify-between gap-3 border-b border-border-subtle bg-bg/85 px-5 backdrop-blur">
-        <div className="flex items-center gap-2">
-          <span className="text-warning">
-            <StarIcon size={12} filled />
-          </span>
-          <h1 className="text-sm font-medium text-fg">Favorites</h1>
-          <span className="text-xs text-fg-muted tabular-nums">
-            {filtered.length}
-          </span>
+      <header className="border-b border-border-subtle px-8 pb-6 pt-10">
+        <div className="mx-auto flex w-full max-w-[920px] items-end justify-between gap-6">
+          <div>
+            <p className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-fg-faint">
+              Pinned items
+            </p>
+            <h1 className="mt-1.5 flex items-center gap-2 text-[26px] font-medium leading-none tracking-[-0.02em] text-fg">
+              <span className="text-warning">
+                <StarIcon size={18} filled />
+              </span>
+              Favorites
+            </h1>
+            <p className="mt-1.5 text-[12.5px] text-fg-muted">
+              <span className="tabular-nums text-fg">{counts.all}</span>{" "}
+              {counts.all === 1 ? "item" : "items"} pinned
+              {ordered.length > 0 ? (
+                <>
+                  {" · "}
+                  <span className="text-fg-faint">drag to reorder</span>
+                </>
+              ) : null}
+            </p>
+          </div>
         </div>
-        <span className="hidden text-[11px] text-fg-faint sm:inline">
-          Drag to reorder
-        </span>
       </header>
 
-      <nav className="flex flex-wrap items-center gap-2 border-b border-border-subtle bg-bg px-5 py-2">
-        <div className="flex flex-1 items-center gap-1">
-          {typeTabs.map((tab) => {
-            const isActive = typeFilter === tab.value;
-            return (
-              <button
-                key={tab.value}
-                type="button"
-                onClick={() => {
-                  setTypeFilter(tab.value);
-                  updateSearch({ type: tab.value === "all" ? undefined : tab.value });
-                }}
-                className={cn(
-                  "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors",
-                  isActive
-                    ? "bg-surface text-fg"
-                    : "text-fg-muted hover:bg-surface hover:text-fg",
-                )}
-              >
-                <span>{tab.label}</span>
-                <span
+      <div className="sticky top-0 z-10 border-b border-border-subtle bg-bg/85 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-[920px] items-center gap-3 px-8 py-2.5">
+          <div className="relative flex min-w-0 flex-1 items-center">
+            <span className="pointer-events-none absolute left-2 text-fg-faint">
+              <SearchIcon />
+            </span>
+            <input
+              type="search"
+              placeholder="Search favorites…"
+              value={query}
+              onChange={(event) => {
+                const next = event.target.value;
+                setQuery(next);
+                updateSearch({ q: next.trim() ? next.trim() : undefined });
+              }}
+              className="h-8 w-full bg-transparent pl-7 pr-2 text-[13px] text-fg outline-none placeholder:text-fg-faint"
+            />
+          </div>
+          <div className="flex items-center gap-0.5 rounded-md border border-border-subtle p-0.5">
+            {typeTabs.map((tab) => {
+              const isActive = typeFilter === tab.value;
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => {
+                    setTypeFilter(tab.value);
+                    updateSearch({
+                      type: tab.value === "all" ? undefined : tab.value,
+                    });
+                  }}
                   className={cn(
-                    "text-[11px] tabular-nums",
-                    isActive ? "text-fg-muted" : "text-fg-faint",
+                    "inline-flex h-6 items-center gap-1.5 rounded-[4px] px-2 text-[11.5px] transition-colors",
+                    isActive
+                      ? "bg-surface text-fg"
+                      : "text-fg-muted hover:text-fg",
                   )}
                 >
-                  {counts[tab.value]}
-                </span>
-              </button>
-            );
-          })}
+                  <span>{tab.label}</span>
+                  <span
+                    className={cn(
+                      "tabular-nums text-[10.5px]",
+                      isActive ? "text-fg-muted" : "text-fg-faint",
+                    )}
+                  >
+                    {counts[tab.value]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <input
-          type="search"
-          placeholder="Search favorites…"
-          value={query}
-          onChange={(event) => {
-            const next = event.target.value;
-            setQuery(next);
-            updateSearch({ q: next.trim() ? next.trim() : undefined });
-          }}
-          className="h-7 w-44 rounded-md border border-border-subtle bg-transparent px-2 text-[12.5px] text-fg outline-none transition-colors placeholder:text-fg-faint focus:border-border"
-        />
-      </nav>
+      </div>
 
-      <section className="mx-auto w-full max-w-[760px] px-5 py-6">
+      <section className="mx-auto w-full max-w-[920px] px-8 pb-24 pt-2">
         {isLoading ? (
-          <p className="text-[13px] text-fg-faint">Loading…</p>
+          <p className="px-2 py-8 text-[13px] text-fg-faint">Loading…</p>
         ) : ordered.length === 0 ? (
           <FavoritesEmptyState />
         ) : filtered.length === 0 ? (
-          <p className="text-[13px] text-fg-faint">
-            No favorites match this filter.
-          </p>
+          <div className="px-2 py-12 text-center">
+            <p className="text-[13px] text-fg">
+              No favorites match this filter.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                setTypeFilter("all");
+                updateSearch({ q: undefined, type: undefined });
+              }}
+              className="mt-2 text-[12px] text-fg-muted transition-colors hover:text-fg"
+            >
+              Clear filters
+            </button>
+          </div>
         ) : (
-          <ul className="overflow-hidden rounded-[10px] border border-border-subtle">
-            {filtered.map((fav, index) => (
-              <li
-                key={fav.favoriteId}
-                draggable
-                onDragStart={(event) => {
-                  event.dataTransfer.setData(FAVORITE_DRAG_MIME, fav.favoriteId);
-                  event.dataTransfer.effectAllowed = "move";
-                  setDragId(fav.favoriteId);
-                }}
-                onDragEnd={() => setDragId(null)}
-                onDragOver={(event) => {
-                  if (!event.dataTransfer.types.includes(FAVORITE_DRAG_MIME)) return;
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                }}
-                onDrop={(event) => {
-                  const sourceId = event.dataTransfer.getData(FAVORITE_DRAG_MIME);
-                  if (!sourceId) return;
-                  event.preventDefault();
-                  moveBefore(sourceId, fav.favoriteId);
-                }}
-                className={cn(
-                  "group flex items-center gap-3 px-4 py-2.5 text-[13px] transition-colors",
-                  index !== filtered.length - 1 && "border-b border-border-subtle",
-                  dragId === fav.favoriteId && "opacity-60",
-                )}
-              >
-                <span className="text-fg-faint" aria-hidden>
-                  <DragHandleIcon />
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void goTo(fav)}
-                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                >
-                  <span className="shrink-0 text-fg-faint">
-                    {fav.type === "issue" ? (
-                      <StatusIcon status={fav.status} statuses={statuses} />
-                    ) : fav.type === "project" ? (
-                      <ProjectIcon
-                        color={fav.color}
-                        icon={fav.icon}
-                        name={fav.title}
-                        size="sm"
-                      />
-                    ) : (
-                      <SparkleIcon size={11} />
-                    )}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-fg">
-                    {displayFavoriteTitle(fav.title)}
-                  </span>
-                  <span className="shrink-0 rounded-[4px] border border-border-subtle px-1.5 py-px text-[10px] uppercase tracking-[0.06em] text-fg-faint">
-                    {fav.type}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleUnpin(fav)}
-                  aria-label={`Unpin ${displayFavoriteTitle(fav.title)}`}
-                  className="rounded-md px-2 py-0.5 text-[11.5px] text-warning opacity-60 transition-colors hover:bg-surface hover:text-fg group-hover:opacity-100"
-                >
-                  Unpin
-                </button>
-              </li>
+          <div className="flex flex-col">
+            {groups.map((group, gIdx) => (
+              <div key={group.type} className={cn(gIdx > 0 && "mt-8")}>
+                {typeFilter === "all" ? (
+                  <div className="mb-2 flex items-baseline gap-2 px-2">
+                    <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-faint">
+                      {typeLabels[group.type]}
+                    </span>
+                    <span className="text-[10.5px] tabular-nums text-fg-faint">
+                      {group.items.length}
+                    </span>
+                  </div>
+                ) : null}
+                <ul>
+                  {group.items.map((fav, idx) => (
+                    <li
+                      key={fav.favoriteId}
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.setData(
+                          FAVORITE_DRAG_MIME,
+                          fav.favoriteId,
+                        );
+                        event.dataTransfer.effectAllowed = "move";
+                        setDragId(fav.favoriteId);
+                      }}
+                      onDragEnd={() => setDragId(null)}
+                      onDragOver={(event) => {
+                        if (
+                          !event.dataTransfer.types.includes(FAVORITE_DRAG_MIME)
+                        )
+                          return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(event) => {
+                        const sourceId = event.dataTransfer.getData(
+                          FAVORITE_DRAG_MIME,
+                        );
+                        if (!sourceId) return;
+                        event.preventDefault();
+                        moveBefore(sourceId, fav.favoriteId);
+                      }}
+                      className={cn(
+                        "group flex items-center gap-3 border-b border-border-subtle/60 px-2 py-3 transition-colors hover:bg-surface/50 last:border-b-0",
+                        idx === 0 && "border-t border-border-subtle/60",
+                        dragId === fav.favoriteId && "opacity-50",
+                      )}
+                    >
+                      <span
+                        className="cursor-grab text-fg-faint opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing"
+                        aria-hidden
+                        title="Drag to reorder"
+                      >
+                        <DragHandleIcon />
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void goTo(fav)}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      >
+                        <span className="shrink-0 text-fg-faint">
+                          {fav.type === "issue" ? (
+                            <StatusIcon
+                              status={fav.status}
+                              statuses={statuses}
+                            />
+                          ) : fav.type === "project" ? (
+                            <ProjectIcon
+                              color={fav.color}
+                              icon={fav.icon}
+                              name={fav.title}
+                              size="sm"
+                            />
+                          ) : (
+                            <SparkleIcon size={11} />
+                          )}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[14px] text-fg">
+                          {displayFavoriteTitle(fav.title)}
+                        </span>
+                        {typeFilter === "all" ? null : (
+                          <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.06em] text-fg-faint">
+                            {fav.type}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleUnpin(fav)}
+                        aria-label={`Unpin ${displayFavoriteTitle(fav.title)}`}
+                        className="grid size-7 shrink-0 place-items-center rounded-md text-warning opacity-0 transition-colors hover:bg-surface-2 hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent group-hover:opacity-100"
+                        title="Unpin"
+                      >
+                        <StarIcon size={11} filled />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
+
+        {ordered.length > 0 ? (
+          <footer className="mt-12 flex items-center justify-center gap-3 border-t border-border-subtle/50 pt-4 text-[11px] text-fg-faint">
+            <span className="inline-flex items-center gap-1.5">
+              <Kbd>⌘</Kbd>
+              <Kbd>K</Kbd>
+              <span className="text-fg-muted">Search anything</span>
+            </span>
+            <span className="text-fg-faint/40">·</span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="text-fg-muted">Pin from any item's</span>
+              <span className="inline-flex size-3.5 items-center justify-center rounded-[3px] border border-border-subtle text-warning">
+                <StarIcon size={9} filled />
+              </span>
+              <span className="text-fg-muted">menu</span>
+            </span>
+          </footer>
+        ) : null}
       </section>
     </main>
   );
@@ -260,13 +370,16 @@ function FavoritesPage() {
 
 function FavoritesEmptyState() {
   return (
-    <div className="flex flex-col items-center py-16 text-center">
-      <div className="mb-4 grid size-12 place-items-center rounded-xl bg-surface/60 text-fg-muted">
-        <StarIcon size={20} filled />
+    <div className="flex flex-col items-center px-6 py-24 text-center">
+      <div className="mb-5 grid size-12 place-items-center rounded-[10px] border border-border-subtle bg-surface/40 text-warning">
+        <StarIcon size={18} filled />
       </div>
-      <h2 className="text-[15px] font-medium text-fg">Nothing pinned yet</h2>
-      <p className="mt-1 max-w-[360px] text-[13px] text-fg-muted">
-        Pin issues, projects, or chats to see them here and in the sidebar.
+      <h2 className="text-[16px] font-medium tracking-[-0.01em] text-fg">
+        Nothing pinned yet
+      </h2>
+      <p className="mt-1.5 max-w-[400px] text-[13px] leading-relaxed text-fg-muted">
+        Pin issues, projects, or chats — they'll show up here and at the top of
+        the sidebar so you can jump back fast.
       </p>
     </div>
   );
@@ -282,6 +395,23 @@ function DragHandleIcon() {
       <circle cx="4" cy="9" r="0.9" fill="currentColor" />
       <circle cx="8" cy="9" r="0.9" fill="currentColor" />
     </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <circle cx="6" cy="6" r="3.5" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M11 11l-2.4-2.4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd className="grid h-4 min-w-4 place-items-center rounded-[3px] border border-border-subtle bg-surface px-1 font-mono text-[10px] text-fg-muted">
+      {children}
+    </kbd>
   );
 }
 
