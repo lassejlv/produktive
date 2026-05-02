@@ -39,6 +39,8 @@ import {
   priorityOptions,
   sortedStatuses,
 } from "@/lib/issue-constants";
+import { findSimilarIssues } from "@/lib/issue-similarity";
+import { useIssues } from "@/lib/use-issues";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
 
 export function NewIssueDialog({
@@ -86,6 +88,11 @@ export function NewIssueDialog({
     originX: number;
     originY: number;
   } | null>(null);
+  const [debouncedTitle, setDebouncedTitle] = useState("");
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const { issues: existingIssues } = useIssues();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -139,8 +146,16 @@ export function NewIssueDialog({
   }, [dragging]);
 
   useEffect(() => {
-    if (open) setPosition({ x: 0, y: 0 });
+    if (open) {
+      setPosition({ x: 0, y: 0 });
+      setDismissedSuggestions(new Set());
+    }
   }, [open]);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebouncedTitle(title), 250);
+    return () => window.clearTimeout(handle);
+  }, [title]);
 
   useEffect(() => {
     if (!open) return;
@@ -178,6 +193,27 @@ export function NewIssueDialog({
   const selectedMember = members.find((member) => member.id === assignedToId);
   const selectedProject = projects.find((project) => project.id === projectId);
   const submitTitle = parsedIssue.title || title.trim();
+
+  const debouncedParsed = useMemo(
+    () => parseNaturalIssueInput(debouncedTitle, { members, projects, labels }),
+    [debouncedTitle, members, projects, labels],
+  );
+  const similarityQuery = (debouncedParsed.title || debouncedTitle).trim();
+  const similarSuggestions = useMemo(() => {
+    if (similarityQuery.length < 6) return [];
+    return findSimilarIssues(similarityQuery, existingIssues, { limit: 3 });
+  }, [similarityQuery, existingIssues]);
+  const visibleSuggestions = similarSuggestions.filter(
+    (s) => !dismissedSuggestions.has(s.issue.id),
+  );
+
+  const dismissSuggestion = (id: string) => {
+    setDismissedSuggestions((current) => {
+      const next = new Set(current);
+      next.add(id);
+      return next;
+    });
+  };
 
   const reset = () => {
     setTitle("");
@@ -326,6 +362,47 @@ export function NewIssueDialog({
                     <span className="text-fg-muted">{chip.label}</span>
                   </span>
                 ))}
+              </div>
+            ) : null}
+            {visibleSuggestions.length > 0 ? (
+              <div>
+                <div className="mb-1.5 flex items-baseline gap-2">
+                  <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-faint">
+                    Similar
+                  </span>
+                  <span className="font-mono text-[10.5px] tabular-nums text-fg-faint">
+                    {visibleSuggestions.length}
+                  </span>
+                </div>
+                <ul className="flex flex-col">
+                  {visibleSuggestions.map(({ issue }) => (
+                    <li
+                      key={issue.id}
+                      className="group flex items-center gap-3 border-b border-border-subtle/60 px-2 py-1.5 last:border-b-0 hover:bg-surface/50"
+                    >
+                      <StatusIcon status={issue.status} statuses={statuses} />
+                      <p className="m-0 min-w-0 flex-1 truncate text-[13px] text-fg">
+                        {issue.title}
+                      </p>
+                      <a
+                        href={`/issues/${issue.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-fg-muted opacity-0 transition-colors hover:text-fg group-hover:opacity-100 focus-visible:opacity-100"
+                      >
+                        Open
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => dismissSuggestion(issue.id)}
+                        aria-label={`Dismiss ${issue.title}`}
+                        className="text-[14px] leading-none text-fg-faint opacity-0 transition-colors hover:text-fg group-hover:opacity-100 focus-visible:opacity-100"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
             <textarea
