@@ -47,7 +47,7 @@ function LandingPage() {
           </div>
           <div className="flex items-center gap-1">
             <Link
-              to={isLoggedIn ? "/issues" : "/login"}
+              to={isLoggedIn ? "/workspace" : "/login"}
               className="rounded-full px-3 py-1 text-[12.5px] text-fg/70 transition-colors hover:text-fg"
             >
               {isLoggedIn ? "Open app" : "Sign in"}
@@ -85,7 +85,7 @@ function LandingPage() {
             style={{ animationDelay: "320ms" }}
           >
             <Link
-              to={isLoggedIn ? "/issues" : "/login"}
+              to={isLoggedIn ? "/workspace" : "/login"}
               className={cn(
                 "inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-[10px] bg-fg px-6 text-[13px] font-medium text-bg transition-colors",
                 "hover:bg-white",
