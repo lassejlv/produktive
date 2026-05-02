@@ -25,10 +25,10 @@ use axum::{
 };
 use config::{Config, DatabaseConfig};
 use http::{
-    ai_mcp_routes, ai_routes, auth_routes, chat_routes, cors_layer, dev_routes, favorite_routes,
-    github_routes, inbox_routes, invitation_routes, issue_routes, label_routes, mcp_key_routes,
-    member_routes, oauth_metadata_routes, oauth_routes, onboarding_routes, org_invitation_routes,
-    preferences_routes, project_routes, public_api_routes, realtime_routes,
+    ai_mcp_routes, ai_routes, auth_routes, chat_routes, cors_layer, dev_routes, discord_routes,
+    favorite_routes, github_routes, inbox_routes, invitation_routes, issue_routes, label_routes,
+    mcp_key_routes, member_routes, oauth_metadata_routes, oauth_routes, onboarding_routes,
+    org_invitation_routes, preferences_routes, project_routes, public_api_routes, realtime_routes,
     spawn_github_auto_importer, tabs_routes, unsubscribe_routes, waitlist_routes,
 };
 use produktive_ai::AiClient;
@@ -95,6 +95,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/issues", issue_routes())
         .nest("/api/waitlist", waitlist_routes())
         .nest("/api/chats", chat_routes())
+        .nest("/api/discord", discord_routes())
         .nest("/api/favorites", favorite_routes())
         .nest("/api/github", github_routes())
         .nest("/api/inbox", inbox_routes())

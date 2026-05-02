@@ -20,6 +20,10 @@ api:
 web:
     cd web && bun run dev
 
+# Run the Discord bot only
+discord:
+    cargo run -p produktive-discord-bot --bin produktive-discord-bot
+
 # Run database migrations
 migrate:
     cargo run -p produktive-migration -- up

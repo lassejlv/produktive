@@ -64,6 +64,8 @@ mod m20260501_000030_create_produktive_oauth;
 mod m20260501_000031_create_billing_usage_events;
 #[path = "../migrations/m20260501_000032_add_subscription_period_start.rs"]
 mod m20260501_000032_add_subscription_period_start;
+#[path = "../migrations/m20260502_000033_create_discord_integration.rs"]
+mod m20260502_000033_create_discord_integration;
 
 pub struct Migrator;
 
@@ -103,6 +105,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260501_000030_create_produktive_oauth::Migration),
             Box::new(m20260501_000031_create_billing_usage_events::Migration),
             Box::new(m20260501_000032_add_subscription_period_start::Migration),
+            Box::new(m20260502_000033_create_discord_integration::Migration),
         ]
     }
 }

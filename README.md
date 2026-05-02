@@ -157,3 +157,12 @@ The standalone MCP server has its own Dockerfile:
 docker build -f Dockerfile.mcp -t produktive-mcp .
 docker run --env-file .env -p 3001:3001 produktive-mcp
 ```
+
+The Discord bot also has its own Dockerfile:
+
+```sh
+docker build -f Dockerfile.bot -t produktive-discord-bot .
+docker run --env-file .env produktive-discord-bot
+```
+
+The bot exposes `GET /status` on `PORT` (default `3000`) for health checks.

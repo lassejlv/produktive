@@ -18,6 +18,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as LegalTypeRouteImport } from './routes/legal.$type'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as DiscordLinkRouteImport } from './routes/discord.link'
 import { Route as AppWorkspaceRouteImport } from './routes/_app.workspace'
 import { Route as AppProjectsRouteImport } from './routes/_app.projects'
 import { Route as AppLabelsRouteImport } from './routes/_app.labels'
@@ -73,6 +74,11 @@ const LegalTypeRoute = LegalTypeRouteImport.update({
 const InviteTokenRoute = InviteTokenRouteImport.update({
   id: '/invite/$token',
   path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DiscordLinkRoute = DiscordLinkRouteImport.update({
+  id: '/discord/link',
+  path: '/discord/link',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppWorkspaceRoute = AppWorkspaceRouteImport.update({
@@ -149,6 +155,7 @@ export interface FileRoutesByFullPath {
   '/labels': typeof AppLabelsRoute
   '/projects': typeof AppProjectsRouteWithChildren
   '/workspace': typeof AppWorkspaceRouteWithChildren
+  '/discord/link': typeof DiscordLinkRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$type': typeof LegalTypeRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
@@ -171,6 +178,7 @@ export interface FileRoutesByTo {
   '/labels': typeof AppLabelsRoute
   '/projects': typeof AppProjectsRouteWithChildren
   '/workspace': typeof AppWorkspaceRouteWithChildren
+  '/discord/link': typeof DiscordLinkRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$type': typeof LegalTypeRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
@@ -195,6 +203,7 @@ export interface FileRoutesById {
   '/_app/labels': typeof AppLabelsRoute
   '/_app/projects': typeof AppProjectsRouteWithChildren
   '/_app/workspace': typeof AppWorkspaceRouteWithChildren
+  '/discord/link': typeof DiscordLinkRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$type': typeof LegalTypeRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
@@ -219,6 +228,7 @@ export interface FileRouteTypes {
     | '/labels'
     | '/projects'
     | '/workspace'
+    | '/discord/link'
     | '/invite/$token'
     | '/legal/$type'
     | '/oauth/authorize'
@@ -241,6 +251,7 @@ export interface FileRouteTypes {
     | '/labels'
     | '/projects'
     | '/workspace'
+    | '/discord/link'
     | '/invite/$token'
     | '/legal/$type'
     | '/oauth/authorize'
@@ -264,6 +275,7 @@ export interface FileRouteTypes {
     | '/_app/labels'
     | '/_app/projects'
     | '/_app/workspace'
+    | '/discord/link'
     | '/invite/$token'
     | '/legal/$type'
     | '/oauth/authorize'
@@ -281,6 +293,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
+  DiscordLinkRoute: typeof DiscordLinkRoute
   InviteTokenRoute: typeof InviteTokenRoute
   OauthAuthorizeRoute: typeof OauthAuthorizeRoute
 }
@@ -348,6 +361,13 @@ declare module '@tanstack/react-router' {
       path: '/invite/$token'
       fullPath: '/invite/$token'
       preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/discord/link': {
+      id: '/discord/link'
+      path: '/discord/link'
+      fullPath: '/discord/link'
+      preLoaderRoute: typeof DiscordLinkRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/workspace': {
@@ -525,6 +545,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   VerifyEmailRoute: VerifyEmailRoute,
+  DiscordLinkRoute: DiscordLinkRoute,
   InviteTokenRoute: InviteTokenRoute,
   OauthAuthorizeRoute: OauthAuthorizeRoute,
 }

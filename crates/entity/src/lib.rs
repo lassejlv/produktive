@@ -1,6 +1,9 @@
 pub mod auth_token;
 pub mod chat;
 pub mod chat_message;
+pub mod discord_link_state;
+pub mod discord_server_link;
+pub mod discord_user_link;
 pub mod favorite;
 pub mod github_connection;
 pub mod github_imported_issue;
