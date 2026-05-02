@@ -11,15 +11,15 @@ use axum::{
     extract::{DefaultBodyLimit, Multipart, Path, State},
     http::{header, HeaderMap, Response, StatusCode},
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use chrono::Utc;
 use produktive_ai::{CompletionResult, Message as AiMessage, ToolCall as AiToolCall};
-use produktive_entity::{chat, chat_message};
+use produktive_entity::{chat, chat_access, chat_message, member, user};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, Set,
+    QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -41,6 +41,8 @@ pub fn routes() -> Router<AppState> {
         )
         .route("/{id}/messages", post(post_message))
         .route("/{id}/messages/stream", post(stream_message))
+        .route("/{id}/access", get(list_access).post(grant_access))
+        .route("/{id}/access/{user_id}", delete(revoke_access))
 }
 
 #[derive(Serialize)]
@@ -48,6 +50,7 @@ pub fn routes() -> Router<AppState> {
 struct ChatSummary {
     id: String,
     title: String,
+    created_by_id: Option<String>,
     created_at: String,
     updated_at: String,
 }
@@ -57,6 +60,7 @@ impl From<&chat::Model> for ChatSummary {
         Self {
             id: c.id.clone(),
             title: c.title.clone(),
+            created_by_id: c.created_by_id.clone(),
             created_at: c.created_at.to_rfc3339(),
             updated_at: c.updated_at.to_rfc3339(),
         }
@@ -155,8 +159,14 @@ async fn list_chats(
     headers: HeaderMap,
 ) -> Result<Json<ChatsResponse>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    let accessible_ids = accessible_chat_ids(&state, &auth).await?;
+    if accessible_ids.is_empty() {
+        return Ok(Json(ChatsResponse { chats: Vec::new() }));
+    }
+
     let chats = chat::Entity::find()
         .filter(chat::Column::OrganizationId.eq(&auth.organization.id))
+        .filter(chat::Column::Id.is_in(accessible_ids))
         .order_by_desc(chat::Column::UpdatedAt)
         .all(&state.db)
         .await?;
@@ -166,23 +176,48 @@ async fn list_chats(
     }))
 }
 
+async fn accessible_chat_ids(
+    state: &AppState,
+    auth: &AuthContext,
+) -> Result<Vec<String>, ApiError> {
+    let rows = chat_access::Entity::find()
+        .filter(chat_access::Column::UserId.eq(&auth.user.id))
+        .all(&state.db)
+        .await?;
+    Ok(rows.into_iter().map(|r| r.chat_id).collect())
+}
+
 async fn create_chat(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<(StatusCode, Json<ChatEnvelope>), ApiError> {
     let auth = require_auth(&headers, &state).await?;
     let now = Utc::now().fixed_offset();
+    let chat_id = Uuid::new_v4().to_string();
+    let creator_id = auth.user.id.clone();
 
+    let txn = state.db.begin().await?;
     let model = chat::ActiveModel {
-        id: Set(Uuid::new_v4().to_string()),
+        id: Set(chat_id.clone()),
         organization_id: Set(auth.organization.id.clone()),
-        created_by_id: Set(Some(auth.user.id.clone())),
+        created_by_id: Set(Some(creator_id.clone())),
         title: Set("New conversation".to_owned()),
         created_at: Set(now),
         updated_at: Set(now),
     }
-    .insert(&state.db)
+    .insert(&txn)
     .await?;
+
+    chat_access::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        chat_id: Set(chat_id),
+        user_id: Set(creator_id.clone()),
+        granted_by_id: Set(Some(creator_id)),
+        created_at: Set(now),
+    }
+    .insert(&txn)
+    .await?;
+    txn.commit().await?;
 
     Ok((
         StatusCode::CREATED,
@@ -220,6 +255,11 @@ async fn delete_chat(
 ) -> Result<Json<OkResponse>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     let chat = find_chat(&state, &auth, &id).await?;
+    if chat.created_by_id.as_deref() != Some(auth.user.id.as_str()) {
+        return Err(ApiError::Forbidden(
+            "Only the chat creator can delete this chat".to_owned(),
+        ));
+    }
     chat.delete(&state.db).await?;
     Ok(Json(OkResponse { ok: true }))
 }
@@ -600,12 +640,176 @@ async fn find_chat(
     auth: &AuthContext,
     id: &str,
 ) -> Result<chat::Model, ApiError> {
+    let access = chat_access::Entity::find()
+        .filter(chat_access::Column::ChatId.eq(id))
+        .filter(chat_access::Column::UserId.eq(&auth.user.id))
+        .one(&state.db)
+        .await?;
+    if access.is_none() {
+        return Err(ApiError::NotFound("Chat not found".to_owned()));
+    }
+
     chat::Entity::find()
         .filter(chat::Column::Id.eq(id))
         .filter(chat::Column::OrganizationId.eq(&auth.organization.id))
         .one(&state.db)
         .await?
         .ok_or_else(|| ApiError::NotFound("Chat not found".to_owned()))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatAccessEntry {
+    user_id: String,
+    name: String,
+    email: String,
+    image: Option<String>,
+    is_creator: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatAccessListResponse {
+    access: Vec<ChatAccessEntry>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatAccessSingleResponse {
+    access: ChatAccessEntry,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GrantAccessRequest {
+    user_id: String,
+}
+
+async fn list_access(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(chat_id): Path<String>,
+) -> Result<Json<ChatAccessListResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    let chat = find_chat(&state, &auth, &chat_id).await?;
+
+    let rows = chat_access::Entity::find()
+        .filter(chat_access::Column::ChatId.eq(&chat.id))
+        .order_by_asc(chat_access::Column::CreatedAt)
+        .all(&state.db)
+        .await?;
+
+    let mut entries = Vec::with_capacity(rows.len());
+    for row in rows {
+        let Some(user) = user::Entity::find_by_id(&row.user_id)
+            .one(&state.db)
+            .await?
+        else {
+            continue;
+        };
+        entries.push(ChatAccessEntry {
+            is_creator: chat.created_by_id.as_deref() == Some(user.id.as_str()),
+            user_id: user.id,
+            name: user.name,
+            email: user.email,
+            image: user.image,
+        });
+    }
+
+    Ok(Json(ChatAccessListResponse { access: entries }))
+}
+
+async fn grant_access(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(chat_id): Path<String>,
+    Json(payload): Json<GrantAccessRequest>,
+) -> Result<Json<ChatAccessSingleResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    let chat = find_chat(&state, &auth, &chat_id).await?;
+    require_creator(&chat, &auth)?;
+
+    let target_user_id = payload.user_id.trim().to_owned();
+    if target_user_id.is_empty() {
+        return Err(ApiError::BadRequest("userId is required".to_owned()));
+    }
+
+    let membership = member::Entity::find()
+        .filter(member::Column::OrganizationId.eq(&auth.organization.id))
+        .filter(member::Column::UserId.eq(&target_user_id))
+        .one(&state.db)
+        .await?;
+    if membership.is_none() {
+        return Err(ApiError::BadRequest(
+            "User is not a member of this workspace".to_owned(),
+        ));
+    }
+
+    let user = user::Entity::find_by_id(&target_user_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("User not found".to_owned()))?;
+
+    let existing = chat_access::Entity::find()
+        .filter(chat_access::Column::ChatId.eq(&chat.id))
+        .filter(chat_access::Column::UserId.eq(&user.id))
+        .one(&state.db)
+        .await?;
+    if existing.is_none() {
+        chat_access::ActiveModel {
+            id: Set(Uuid::new_v4().to_string()),
+            chat_id: Set(chat.id.clone()),
+            user_id: Set(user.id.clone()),
+            granted_by_id: Set(Some(auth.user.id.clone())),
+            created_at: Set(Utc::now().fixed_offset()),
+        }
+        .insert(&state.db)
+        .await?;
+    }
+
+    Ok(Json(ChatAccessSingleResponse {
+        access: ChatAccessEntry {
+            is_creator: chat.created_by_id.as_deref() == Some(user.id.as_str()),
+            user_id: user.id,
+            name: user.name,
+            email: user.email,
+            image: user.image,
+        },
+    }))
+}
+
+async fn revoke_access(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((chat_id, user_id)): Path<(String, String)>,
+) -> Result<Json<OkResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    let chat = find_chat(&state, &auth, &chat_id).await?;
+    require_creator(&chat, &auth)?;
+
+    if chat.created_by_id.as_deref() == Some(user_id.as_str()) {
+        return Err(ApiError::BadRequest(
+            "Cannot revoke the creator's access".to_owned(),
+        ));
+    }
+
+    chat_access::Entity::delete_many()
+        .filter(chat_access::Column::ChatId.eq(&chat.id))
+        .filter(chat_access::Column::UserId.eq(&user_id))
+        .exec(&state.db)
+        .await?;
+
+    Ok(Json(OkResponse { ok: true }))
+}
+
+fn require_creator(chat: &chat::Model, auth: &AuthContext) -> Result<(), ApiError> {
+    if chat.created_by_id.as_deref() == Some(auth.user.id.as_str()) {
+        Ok(())
+    } else {
+        Err(ApiError::Forbidden(
+            "Only the chat creator can manage access".to_owned(),
+        ))
+    }
 }
 
 async fn insert_message(

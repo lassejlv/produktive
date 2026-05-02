@@ -8,6 +8,7 @@ import {
 } from "@/components/chat/chat-composer";
 import { ChatEmptyState } from "@/components/chat/chat-empty-state";
 import { ChatMarkdown } from "@/components/chat/chat-markdown";
+import { ChatShare } from "@/components/chat/chat-share";
 import {
   ChatMessageItem,
   type ChatMessage,
@@ -45,6 +46,12 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   const userName = session.data?.user?.name ?? "there";
 
   const [chatTitle, setChatTitle] = useState("New conversation");
+  const [chatCreatedById, setChatCreatedById] = useState<string | null>(null);
+  const currentUserId = session.data?.user?.id ?? null;
+  const isCreator =
+    Boolean(chatId) &&
+    currentUserId !== null &&
+    chatCreatedById === currentUserId;
   const { tabsEnabled } = useUserPreferences();
   useRegisterTab({
     tabType: "chat",
@@ -99,6 +106,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
       activeChatIdRef.current = null;
       skipLoadChatIdRef.current = null;
       setChatTitle("New conversation");
+      setChatCreatedById(null);
       setMessages([]);
       setIsLoadingChat(false);
       return;
@@ -119,6 +127,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
         if (!isMounted) return;
         activeChatIdRef.current = chatId;
         setChatTitle(response.chat.title);
+        setChatCreatedById(response.chat.createdById ?? null);
         setMessages(response.messages.map(recordToMessage));
       } catch (loadError) {
         if (!isMounted) return;
@@ -162,6 +171,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
         activeChatIdRef.current = created.chat.id;
         skipLoadChatIdRef.current = created.chat.id;
         setChatTitle(created.chat.title);
+        setChatCreatedById(created.chat.createdById ?? null);
         await navigate({
           to: "/chat/$chatId",
           params: { chatId: created.chat.id },
@@ -260,6 +270,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
         try {
           const response = await getChat(recoverId);
           setChatTitle(response.chat.title);
+          setChatCreatedById(response.chat.createdById ?? null);
           const recoveredMessages = response.messages.map(recordToMessage);
           setMessages(recoveredMessages);
 
@@ -378,6 +389,20 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
               <span className="truncate font-medium text-fg">{chatTitle}</span>
             )}
           </div>
+          {isCreator && chatId ? (
+            <ChatShare
+              chatId={chatId}
+              trigger={
+                <button
+                  type="button"
+                  aria-label="Share chat"
+                  className="h-7 shrink-0 rounded-md border border-border-subtle px-2.5 text-[12px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
+                >
+                  Share
+                </button>
+              }
+            />
+          ) : null}
         </header>
 
         {isLoadingChat ? (

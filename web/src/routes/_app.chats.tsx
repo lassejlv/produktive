@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ChatShare } from "@/components/chat/chat-share";
 import { DotsIcon, SparkleIcon, StarIcon } from "@/components/chat/icons";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
@@ -8,6 +9,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useSession } from "@/lib/auth-client";
 import { type Chat, deleteChat, getChat } from "@/lib/api";
 import { parseMessageWithAttachments } from "@/lib/chat-attachments";
 import { chatsQueryOptions } from "@/lib/queries/chats";
@@ -61,6 +63,8 @@ function ChatsPage() {
   const { chats, isLoading, removeChat } = useChats();
   const { isFavorite, toggleFavorite } = useFavorites();
   const { confirm, dialog } = useConfirmDialog();
+  const session = useSession();
+  const currentUserId = session.data?.user.id ?? null;
   const [sort, setSort] = useState<SortKey>("recent");
   const [query, setQuery] = useState(search.q ?? "");
 
@@ -276,6 +280,9 @@ function ChatsPage() {
                 <ul>
                   {group.chats.map((chat, idx) => {
                     const pinned = isFavorite("chat", chat.id);
+                    const isCreator =
+                      currentUserId !== null &&
+                      chat.createdById === currentUserId;
                     return (
                       <li
                         key={chat.id}
@@ -317,7 +324,9 @@ function ChatsPage() {
                           </span>
                         </button>
                         <RowMenu
+                          chatId={chat.id}
                           pinned={pinned}
+                          isCreator={isCreator}
                           onPin={() => void handlePin(chat)}
                           onExport={() => void handleExport(chat)}
                           onCopy={() => void handleCopy(chat)}
@@ -350,13 +359,17 @@ function ChatsPage() {
 }
 
 function RowMenu({
+  chatId,
   pinned,
+  isCreator,
   onPin,
   onExport,
   onCopy,
   onDelete,
 }: {
+  chatId: string;
   pinned: boolean;
+  isCreator: boolean;
   onPin: () => void;
   onExport: () => void;
   onCopy: () => void;
@@ -365,39 +378,61 @@ function RowMenu({
   const [open, setOpen] = useState(false);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label="Actions"
-          className={cn(
-            "grid size-7 shrink-0 place-items-center rounded-md text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
-            open
-              ? "bg-surface-2 text-fg opacity-100"
-              : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
-          )}
+    <div className="flex items-center gap-1">
+      {isCreator ? (
+        <ChatShare
+          chatId={chatId}
+          trigger={
+            <button
+              type="button"
+              aria-label="Share"
+              className="h-7 shrink-0 rounded-md px-2 text-[11.5px] text-fg-faint opacity-0 transition-colors hover:bg-surface-2 hover:text-fg focus-visible:opacity-100 group-hover:opacity-100"
+            >
+              Share
+            </button>
+          }
+        />
+      ) : null}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            aria-label="Actions"
+            className={cn(
+              "grid size-7 shrink-0 place-items-center rounded-md text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+              open
+                ? "bg-surface-2 text-fg opacity-100"
+                : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+            )}
+          >
+            <DotsIcon size={13} />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          sideOffset={4}
+          className="w-40 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-xl"
         >
-          <DotsIcon size={13} />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        sideOffset={4}
-        className="w-40 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-xl"
-      >
-        <MenuItem onClick={() => closeAnd(setOpen, onPin)}>
-          {pinned ? "Unpin" : "Pin to sidebar"}
-        </MenuItem>
-        <MenuItem onClick={() => closeAnd(setOpen, onExport)}>
-          Export JSON
-        </MenuItem>
-        <MenuItem onClick={() => closeAnd(setOpen, onCopy)}>Copy link</MenuItem>
-        <div className="my-1 h-px bg-border-subtle" />
-        <MenuItem danger onClick={() => closeAnd(setOpen, onDelete)}>
-          Delete
-        </MenuItem>
-      </PopoverContent>
-    </Popover>
+          <MenuItem onClick={() => closeAnd(setOpen, onPin)}>
+            {pinned ? "Unpin" : "Pin to sidebar"}
+          </MenuItem>
+          <MenuItem onClick={() => closeAnd(setOpen, onExport)}>
+            Export JSON
+          </MenuItem>
+          <MenuItem onClick={() => closeAnd(setOpen, onCopy)}>
+            Copy link
+          </MenuItem>
+          {isCreator ? (
+            <>
+              <div className="my-1 h-px bg-border-subtle" />
+              <MenuItem danger onClick={() => closeAnd(setOpen, onDelete)}>
+                Delete
+              </MenuItem>
+            </>
+          ) : null}
+        </PopoverContent>
+      </Popover>
+    </div>
   );
 }
 

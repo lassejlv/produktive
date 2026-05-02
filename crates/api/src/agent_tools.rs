@@ -9,7 +9,7 @@ use crate::{
 };
 use chrono::Utc;
 use produktive_ai::Tool;
-use produktive_entity::{chat, chat_message, issue, member, user};
+use produktive_entity::{chat, chat_access, chat_message, issue, member, user};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect, Set,
@@ -452,8 +452,14 @@ async fn list_chats(args: Value, state: &AppState, auth: &AuthContext) -> Result
     let args: ListChatsArgs = serde_json::from_value(args).unwrap_or_default();
     let limit = args.limit.unwrap_or(30).clamp(1, 30);
 
+    let accessible_ids = accessible_chat_ids(state, auth).await?;
+    if accessible_ids.is_empty() {
+        return Ok(json!({ "chats": [] }));
+    }
+
     let mut select = chat::Entity::find()
         .filter(chat::Column::OrganizationId.eq(&auth.organization.id))
+        .filter(chat::Column::Id.is_in(accessible_ids))
         .order_by_desc(chat::Column::UpdatedAt)
         .limit(limit);
 
@@ -483,6 +489,17 @@ async fn list_chats(args: Value, state: &AppState, auth: &AuthContext) -> Result
     Ok(json!({ "chats": response }))
 }
 
+async fn accessible_chat_ids(
+    state: &AppState,
+    auth: &AuthContext,
+) -> Result<Vec<String>, ApiError> {
+    let rows = chat_access::Entity::find()
+        .filter(chat_access::Column::UserId.eq(&auth.user.id))
+        .all(&state.db)
+        .await?;
+    Ok(rows.into_iter().map(|r| r.chat_id).collect())
+}
+
 #[derive(Deserialize)]
 struct GetChatArgs {
     id: String,
@@ -491,6 +508,15 @@ struct GetChatArgs {
 async fn get_chat(args: Value, state: &AppState, auth: &AuthContext) -> Result<Value, ApiError> {
     let args: GetChatArgs = serde_json::from_value(args)
         .map_err(|e| ApiError::BadRequest(format!("Invalid arguments for get_chat: {e}")))?;
+
+    let access = chat_access::Entity::find()
+        .filter(chat_access::Column::ChatId.eq(&args.id))
+        .filter(chat_access::Column::UserId.eq(&auth.user.id))
+        .one(&state.db)
+        .await?;
+    if access.is_none() {
+        return Err(ApiError::NotFound(format!("Chat {} not found", args.id)));
+    }
 
     let chat = chat::Entity::find()
         .filter(chat::Column::Id.eq(&args.id))

@@ -925,8 +925,17 @@ export const reorderFavorites = (favoriteIds: string[]) =>
 export type Chat = {
   id: string;
   title: string;
+  createdById: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ChatAccessEntry = {
+  userId: string;
+  name: string;
+  email: string;
+  image: string | null;
+  isCreator: boolean;
 };
 
 export type ChatMessageRecord = {
@@ -962,6 +971,20 @@ export const getChat = (id: string) =>
 
 export const deleteChat = (id: string) =>
   request<{ ok: true }>(`/api/chats/${id}`, { method: "DELETE" });
+
+export const listChatAccess = (id: string) =>
+  request<{ access: ChatAccessEntry[] }>(`/api/chats/${id}/access`);
+
+export const grantChatAccess = (id: string, userId: string) =>
+  request<{ access: ChatAccessEntry }>(`/api/chats/${id}/access`, {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  });
+
+export const revokeChatAccess = (id: string, userId: string) =>
+  request<{ ok: true }>(`/api/chats/${id}/access/${userId}`, {
+    method: "DELETE",
+  });
 
 export const postChatMessage = (id: string, content: string) =>
   request<{ messages: ChatMessageRecord[] }>(`/api/chats/${id}/messages`, {

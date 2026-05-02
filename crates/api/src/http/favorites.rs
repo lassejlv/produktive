@@ -6,7 +6,7 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
-use produktive_entity::{chat, favorite, issue, project};
+use produktive_entity::{chat, chat_access, favorite, issue, project};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, Set,
 };
@@ -119,12 +119,20 @@ async fn list_favorites(
                     .one(&state.db)
                     .await?
                 {
-                    out.push(FavoriteItem::Chat {
-                        id: chat.id,
-                        favorite_id: row.id,
-                        title: chat.title,
-                        position: row.position,
-                    });
+                    let has_access = chat_access::Entity::find()
+                        .filter(chat_access::Column::ChatId.eq(&chat.id))
+                        .filter(chat_access::Column::UserId.eq(&auth.user.id))
+                        .one(&state.db)
+                        .await?
+                        .is_some();
+                    if has_access {
+                        out.push(FavoriteItem::Chat {
+                            id: chat.id,
+                            favorite_id: row.id,
+                            title: chat.title,
+                            position: row.position,
+                        });
+                    }
                 }
             }
             TARGET_ISSUE => {
@@ -178,6 +186,7 @@ async fn add_favorite(
     verify_target_exists(
         &state,
         &auth.organization.id,
+        &auth.user.id,
         &target_type,
         &payload.target_id,
     )
@@ -291,16 +300,25 @@ fn normalize_target_type(value: &str) -> Result<String, ApiError> {
 async fn verify_target_exists(
     state: &AppState,
     organization_id: &str,
+    user_id: &str,
     target_type: &str,
     target_id: &str,
 ) -> Result<(), ApiError> {
     match target_type {
         TARGET_CHAT => {
-            chat::Entity::find_by_id(target_id)
+            let chat = chat::Entity::find_by_id(target_id)
                 .filter(chat::Column::OrganizationId.eq(organization_id))
                 .one(&state.db)
                 .await?
                 .ok_or_else(|| ApiError::NotFound("Chat not found".to_owned()))?;
+            let access = chat_access::Entity::find()
+                .filter(chat_access::Column::ChatId.eq(&chat.id))
+                .filter(chat_access::Column::UserId.eq(user_id))
+                .one(&state.db)
+                .await?;
+            if access.is_none() {
+                return Err(ApiError::NotFound("Chat not found".to_owned()));
+            }
         }
         TARGET_ISSUE => {
             issue::Entity::find_by_id(target_id)

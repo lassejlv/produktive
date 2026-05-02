@@ -79,6 +79,7 @@ function AppLayout() {
   const { chats, isLoading: chatsLoading, removeChat } = useChats();
   const { favorites: rawFavorites, isLoading: favoritesLoading, isFavorite, toggleFavorite } = useFavorites();
   const { unreadCount: inboxUnread } = useInbox();
+  const currentUserId = session.data?.user.id ?? null;
   const {
     layout: sidebarLayout,
     toggleFavoritesCollapsed,
@@ -509,6 +510,9 @@ function AppLayout() {
               ) : (
                 recentChats.map((entry) => {
                   const isActive = pathname === `/chat/${entry.id}`;
+                  const isCreator =
+                    currentUserId !== null &&
+                    entry.createdById === currentUserId;
                   return (
                     <div key={entry.id} className="relative">
                       <div
@@ -578,10 +582,14 @@ function AppLayout() {
                           <ChatMenuItem onClick={() => void copyChatLink(entry.id)}>
                             Copy link
                           </ChatMenuItem>
-                          <div className="my-1 h-px bg-border-subtle" />
-                          <ChatMenuItem danger onClick={() => void handleDeleteChat(entry)}>
-                            Delete
-                          </ChatMenuItem>
+                          {isCreator ? (
+                            <>
+                              <div className="my-1 h-px bg-border-subtle" />
+                              <ChatMenuItem danger onClick={() => void handleDeleteChat(entry)}>
+                                Delete
+                              </ChatMenuItem>
+                            </>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
@@ -1417,4 +1425,3 @@ function EyeOffIcon() {
     </svg>
   );
 }
-

@@ -1,5 +1,6 @@
 pub mod auth_token;
 pub mod chat;
+pub mod chat_access;
 pub mod chat_message;
 pub mod discord_link_state;
 pub mod discord_mention_issue;
