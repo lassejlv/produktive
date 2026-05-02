@@ -35,7 +35,6 @@ import {
 } from "@/lib/chat-attachments";
 import { firstName, greetingForNow } from "@/lib/chat-history";
 import { useAiModels } from "@/lib/use-ai-models";
-import { useBillingStatus } from "@/lib/use-billing-status";
 import { useRegisterTab } from "@/lib/use-tabs";
 import { useUserPreferences } from "@/lib/use-user-preferences";
 import { cn } from "@/lib/utils";
@@ -71,7 +70,6 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   const stopRef = useRef(false);
 
   const { models: availableModels, defaultId: defaultModelId } = useAiModels();
-  const { isPro } = useBillingStatus();
   const [selectedModel, setSelectedModel] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     return window.localStorage.getItem(MODEL_STORAGE_KEY);
@@ -82,38 +80,19 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
     const current = selectedModel
       ? availableModels.find((entry) => entry.id === selectedModel)
       : null;
-    const isUsable = current && (!current.requiresPro || isPro);
+    const isUsable = Boolean(current);
     if (isUsable) return;
     setSelectedModel(defaultModelId);
     if (typeof window !== "undefined" && defaultModelId) {
       window.localStorage.setItem(MODEL_STORAGE_KEY, defaultModelId);
     }
-  }, [availableModels, defaultModelId, selectedModel, isPro]);
+  }, [availableModels, defaultModelId, selectedModel]);
 
   const handleModelChange = (modelId: string) => {
-    const next = availableModels.find((entry) => entry.id === modelId);
-    if (next?.requiresPro && !isPro) {
-      handleUpgradeRequired();
-      return;
-    }
     setSelectedModel(modelId);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(MODEL_STORAGE_KEY, modelId);
     }
-  };
-
-  const handleUpgradeRequired = () => {
-    toast.error("Upgrade to Pro to switch models.", {
-      action: {
-        label: "Upgrade",
-        onClick: () => {
-          void navigate({
-            to: "/workspace/settings",
-            search: { section: "billing" },
-          });
-        },
-      },
-    });
   };
 
   // Load existing chat when navigating to a deep link.

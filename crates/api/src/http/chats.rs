@@ -1,7 +1,6 @@
 use crate::{
     agent_tools::{self, registry},
     auth::{require_auth, AuthContext},
-    billing_usage,
     error::ApiError,
     mcp,
     state::AppState,
@@ -16,14 +15,7 @@ use axum::{
     Json, Router,
 };
 use chrono::Utc;
-use produktive_ai::{
-    CompletionResult, Message as AiMessage, Tool as AiTool, ToolCall as AiToolCall,
-    Usage as AiUsage,
-};
-use produktive_billing::{
-    calculate_chat_turn_usage, BillableMessage, BillableTool, ChatTurnUsageInput, ProviderUsage,
-    UsageRound,
-};
+use produktive_ai::{CompletionResult, Message as AiMessage, ToolCall as AiToolCall};
 use produktive_entity::{chat, chat_message};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, PaginatorTrait,
@@ -302,7 +294,7 @@ struct PostMessageRequest {
 
 async fn resolve_model(
     state: &AppState,
-    auth: &AuthContext,
+    _auth: &AuthContext,
     requested: Option<String>,
 ) -> Result<String, ApiError> {
     use crate::ai_models::AI_MODELS;
@@ -317,16 +309,7 @@ async fn resolve_model(
     let Some(info) = AI_MODELS.iter().find(|model| model.id == value) else {
         return Ok(state.config.ai_model.clone());
     };
-    if info.requires_pro {
-        super::billing::require_pro(state, auth)
-            .await
-            .map_err(|err| match err {
-                ApiError::Forbidden(_) => {
-                    ApiError::Forbidden("Pro plan required for this model".to_owned())
-                }
-                other => other,
-            })?;
-    }
+    let _ = info;
     Ok(value.to_owned())
 }
 
@@ -347,9 +330,7 @@ async fn post_message(
     }
 
     let model_id = resolve_model(&state, &auth, payload.model).await?;
-    super::billing::require_ai_usage_capacity(&state, &auth).await?;
     let user_row = insert_message(&state, &chat_id, "user", user_content, None, None).await?;
-    let user_message_id = user_row.id.clone();
 
     let mut new_rows = vec![user_row];
     new_rows.extend(
@@ -358,7 +339,6 @@ async fn post_message(
             &auth,
             &chat_model,
             &chat_id,
-            &user_message_id,
             user_content,
             &model_id,
         )
@@ -387,7 +367,6 @@ async fn stream_message(
     }
 
     let model_id = resolve_model(&state, &auth, payload.model).await?;
-    super::billing::require_ai_usage_capacity(&state, &auth).await?;
     let user_row = insert_message(&state, &chat_id, "user", &user_content, None, None).await?;
     let user_event = StreamEvent::User {
         message: WireMessage::from(&user_row),
@@ -396,7 +375,7 @@ async fn stream_message(
     let stream = async_stream::stream! {
         yield stream_line(&user_event);
 
-        match finish_assistant_turn(&state, &auth, &chat_model, &chat_id, &user_row.id, &user_content, &model_id).await {
+        match finish_assistant_turn(&state, &auth, &chat_model, &chat_id, &user_content, &model_id).await {
             Ok(rows) => {
                 if let Some(assistant) = rows.iter().rev().find(|m| m.role == "assistant" && !m.content.is_empty()) {
                     for chunk in chunk_text(&assistant.content) {
@@ -434,13 +413,10 @@ async fn finish_assistant_turn(
     auth: &AuthContext,
     chat_model: &chat::Model,
     chat_id: &str,
-    user_message_id: &str,
     user_content: &str,
     model_id: &str,
 ) -> Result<Vec<chat_message::Model>, ApiError> {
     let mut new_rows: Vec<chat_message::Model> = Vec::new();
-    let mut usage_rounds: Vec<UsageRound> = Vec::new();
-    let mut tool_result_bytes = 0_u64;
 
     let is_first_user_message = chat_message::Entity::find()
         .filter(chat_message::Column::ChatId.eq(chat_id))
@@ -500,14 +476,7 @@ async fn finish_assistant_turn(
         };
 
         match result {
-            CompletionResult::Text { text, usage } => {
-                usage_rounds.push(UsageRound {
-                    system_prompt: system_prompt.clone(),
-                    history: billable_history(&history),
-                    tools: billable_tools(&tools),
-                    completion: BillableMessage::plain(text.clone()),
-                    provider_usage: usage.map(provider_usage),
-                });
+            CompletionResult::Text { text, .. } => {
                 let assistant_row =
                     insert_message(state, chat_id, "assistant", &text, None, None).await?;
                 new_rows.push(assistant_row);
@@ -516,22 +485,8 @@ async fn finish_assistant_turn(
             CompletionResult::ToolCalls {
                 calls,
                 reasoning_content,
-                usage,
+                ..
             } => {
-                usage_rounds.push(UsageRound {
-                    system_prompt: system_prompt.clone(),
-                    history: billable_history(&history),
-                    tools: billable_tools(&tools),
-                    completion: BillableMessage {
-                        content: String::new(),
-                        reasoning_content: reasoning_content.clone(),
-                        tool_call_arguments: calls
-                            .iter()
-                            .map(|call| call.arguments.clone())
-                            .collect(),
-                    },
-                    provider_usage: usage.map(provider_usage),
-                });
                 let tool_names = calls
                     .iter()
                     .map(|call| call.name.as_str())
@@ -561,7 +516,6 @@ async fn finish_assistant_turn(
                     }
                     let result_str =
                         serde_json::to_string(&result_value).unwrap_or_else(|_| "{}".to_owned());
-                    tool_result_bytes = tool_result_bytes.saturating_add(result_str.len() as u64);
                     let tool_row = insert_message(
                         state,
                         chat_id,
@@ -637,26 +591,6 @@ async fn finish_assistant_turn(
     }
     active.updated_at = Set(now);
     active.update(&state.db).await?;
-
-    if !usage_rounds.is_empty() {
-        let usage = calculate_chat_turn_usage(ChatTurnUsageInput {
-            organization_id: auth.organization.id.clone(),
-            chat_id: chat_id.to_owned(),
-            user_message_id: user_message_id.to_owned(),
-            model: model_id.to_owned(),
-            rounds: usage_rounds,
-            tool_result_bytes,
-        });
-
-        if let Err(error) = billing_usage::enqueue_chat_turn_usage(state, usage).await {
-            tracing::warn!(
-                %chat_id,
-                %user_message_id,
-                %error,
-                "failed to enqueue billing usage event"
-            );
-        }
-    }
 
     Ok(new_rows)
 }
@@ -747,41 +681,6 @@ fn row_to_ai_message(row: chat_message::Model) -> AiMessage {
         }
         "tool" => AiMessage::tool_result(row.tool_call_id.unwrap_or_default(), row.content),
         _ => AiMessage::user(row.content),
-    }
-}
-
-fn billable_history(messages: &[AiMessage]) -> Vec<BillableMessage> {
-    messages.iter().map(billable_message).collect()
-}
-
-fn billable_message(message: &AiMessage) -> BillableMessage {
-    BillableMessage {
-        content: message.content.clone(),
-        reasoning_content: message.reasoning_content.clone(),
-        tool_call_arguments: message
-            .tool_calls
-            .iter()
-            .map(|call| call.arguments.clone())
-            .collect(),
-    }
-}
-
-fn billable_tools(tools: &[AiTool]) -> Vec<BillableTool> {
-    tools
-        .iter()
-        .map(|tool| BillableTool {
-            name: tool.name.clone(),
-            description: tool.description.clone(),
-            parameters: tool.parameters.clone(),
-        })
-        .collect()
-}
-
-fn provider_usage(usage: AiUsage) -> ProviderUsage {
-    ProviderUsage {
-        prompt_tokens: usage.prompt_tokens,
-        completion_tokens: usage.completion_tokens,
-        total_tokens: usage.total_tokens,
     }
 }
 

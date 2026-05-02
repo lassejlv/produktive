@@ -13,8 +13,6 @@ type Props = {
   models: AiModel[];
   onChange: (modelId: string) => void;
   disabled?: boolean;
-  isPro?: boolean;
-  onUpgradeRequired?: () => void;
 };
 
 export function ModelPicker({
@@ -22,8 +20,6 @@ export function ModelPicker({
   models,
   onChange,
   disabled,
-  isPro = false,
-  onUpgradeRequired,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{
@@ -118,17 +114,11 @@ export function ModelPicker({
               <div className="flex flex-col py-1">
                 {models.map((model) => {
                   const selected = model.id === value;
-                  const locked = model.requiresPro && !isPro;
                   return (
                     <button
                       key={model.id}
                       type="button"
                       onClick={() => {
-                        if (locked) {
-                          onUpgradeRequired?.();
-                          setOpen(false);
-                          return;
-                        }
                         onChange(model.id);
                         setOpen(false);
                       }}
@@ -141,21 +131,11 @@ export function ModelPicker({
                       )}
                     >
                       <span
-                        className={cn(
-                          "block min-w-0 flex-1 truncate",
-                          locked ? "text-fg-muted" : "text-fg",
-                        )}
+                        className="block min-w-0 flex-1 truncate text-fg"
                       >
                         {model.name}
                       </span>
-                      {locked ? (
-                        <span
-                          style={{ fontSize: 10 }}
-                          className="shrink-0 rounded-full bg-accent/15 px-1.5 py-0.5 uppercase tracking-[0.08em] text-accent"
-                        >
-                          Pro
-                        </span>
-                      ) : model.isDefault ? (
+                      {model.isDefault ? (
                         <span
                           style={{ fontSize: 10 }}
                           className="shrink-0 rounded-full bg-surface-3 px-1.5 py-0.5 uppercase tracking-[0.08em] text-fg-faint"
@@ -172,14 +152,6 @@ export function ModelPicker({
                   );
                 })}
               </div>
-              {!isPro && models.some((m) => m.requiresPro) ? (
-                <div
-                  style={{ fontSize: 11 }}
-                  className="border-t border-border-subtle px-3 py-2 text-fg-faint"
-                >
-                  Upgrade to Pro to switch models.
-                </div>
-              ) : null}
             </div>,
             document.body,
           )

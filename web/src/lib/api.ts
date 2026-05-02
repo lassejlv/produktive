@@ -296,90 +296,6 @@ export const markOnboarding = (patch: OnboardingPatch) =>
     body: JSON.stringify(patch),
   });
 
-export type BillingSubscription = {
-  id: string;
-  planId: string;
-  status: string;
-  currentPeriodEnd: number | null;
-  trialEndsAt: number | null;
-  canceledAt: number | null;
-};
-
-export type BillingStatus = {
-  customerId: string;
-  proPlanId: string;
-  teamPlanId: string | null;
-  isPro: boolean;
-  canManage: boolean;
-  subscriptions: BillingSubscription[];
-};
-
-export type BillingUsage = {
-  periodStart: number;
-  periodEnd: number;
-  planName: string;
-  includedCredits: number;
-  usedCredits: number;
-  remainingCredits: number;
-  overageCredits: number;
-  pendingEvents: number;
-  sentEvents: number;
-  failedEvents: number;
-  daily: BillingUsageDaily[];
-  recent: BillingUsageEvent[];
-};
-
-export type BillingUsageDaily = {
-  date: string;
-  credits: number;
-};
-
-export type BillingUsageEvent = {
-  id: string;
-  createdAt: number;
-  model: string;
-  credits: number;
-  totalTokens: number;
-  usageSource: string;
-  status: string;
-};
-
-export type PricingPlan = {
-  name: string;
-  priceAmount: number;
-  currency: string;
-  recurringInterval: string | null;
-};
-
-export const getPricingPlans = () => request<{ plans: PricingPlan[] }>("/api/billing/plans");
-
-export const getBillingStatus = () => request<BillingStatus>("/api/billing/status");
-
-export const getBillingUsage = () => request<BillingUsage>("/api/billing/usage");
-
-export type BillingPlan = "pro" | "team";
-
-export const startBillingCheckout = (plan: BillingPlan = "pro") =>
-  request<{ url: string }>("/api/billing/checkout", {
-    method: "POST",
-    body: JSON.stringify({ plan }),
-  });
-
-export const changeBillingPlan = (plan: BillingPlan) =>
-  request<BillingStatus>("/api/billing/change-plan", {
-    method: "POST",
-    body: JSON.stringify({ plan }),
-  });
-
-export const openBillingPortal = () =>
-  request<{ url: string }>("/api/billing/portal", { method: "POST" });
-
-export const cancelSubscription = () =>
-  request<BillingStatus>("/api/billing/cancel", { method: "POST" });
-
-export const resumeSubscription = () =>
-  request<BillingStatus>("/api/billing/resume", { method: "POST" });
-
 export type OAuthAuthorizePreview = {
   clientName: string;
   scope: string;
@@ -450,7 +366,6 @@ export type AiModel = {
   id: string;
   name: string;
   isDefault: boolean;
-  requiresPro: boolean;
 };
 
 export type AiModelsResponse = {

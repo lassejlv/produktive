@@ -10,9 +10,9 @@ This is a practical privacy-policy draft and should be reviewed by counsel befor
 
 ## 1. Scope
 
-This Policy applies to Produktive's website, web application, API, authentication flows, workspace features, billing flows, AI features, uploaded attachments, and connected integrations.
+This Policy applies to Produktive's website, web application, API, authentication flows, workspace features, AI features, uploaded attachments, and connected integrations.
 
-This Policy does not cover third-party services that you access separately or connect to Produktive, such as remote MCP servers, payment providers, AI providers, or other external tools. Their own privacy policies apply to their processing.
+This Policy does not cover third-party services that you access separately or connect to Produktive, such as remote MCP servers, AI providers, or other external tools. Their own privacy policies apply to their processing.
 
 ## 2. Controller
 
@@ -36,7 +36,6 @@ We collect the following categories of personal data, depending on how you use P
 - Chat and AI content: chat titles, chat messages, prompts, responses, tool-call arguments and results, AI model selection, referenced issues or chats, and remote MCP tool context.
 - Attachments: uploaded file names, content types, sizes, object keys, URLs, and file contents stored in object storage.
 - Integration data: MCP server names, URLs, slugs, connection status, cached tool metadata, OAuth state, access token ciphertext, refresh token ciphertext, client registration data, scopes, and expiry timestamps.
-- Billing data: workspace subscription ID, customer ID, product/plan ID, subscription status, current period end, cancellation state, and checkout/customer-portal metadata. Payment card data is handled by Polar and its payment partners, not stored directly by Produktive.
 - Email data: email addresses, names, invitation emails, verification emails, password reset emails, and notification email content sent through Resend.
 - Device and request data: IP address, browser and device metadata, request metadata, server logs, error/debug information, and security events that may be processed by our deployment and infrastructure providers.
 - Local browser data: session cookies and local storage preferences such as theme, selected AI model, issue view preferences, collapsed UI groups, dismissed prompts, and similar settings.
@@ -49,7 +48,7 @@ We collect personal data from:
 
 - you, when you create an account, use the Service, upload files, write prompts, create workspace content, configure integrations, or contact us;
 - workspace owners or members, when they invite you, assign work to you, mention you, or add you to a workspace;
-- third-party providers, such as Polar billing events, Resend email delivery events if enabled, AI providers, and connected MCP servers;
+- third-party providers, such as Resend email delivery events if enabled, AI providers, and connected MCP servers;
 - automatic technical sources, such as cookies, local storage, logs, request metadata, and infrastructure events.
 
 ## 5. How We Use Personal Data
@@ -62,8 +61,7 @@ We use personal data to:
 - provide AI-assisted chat and workflow features;
 - connect and operate MCP integrations at the direction of workspace owners;
 - send transactional emails, such as verification, reset, invitation, assignment, and comment notifications;
-- process subscriptions, checkout, billing status, cancellations, customer portal sessions, and refunds;
-- enforce plan limits and workspace permissions;
+- enforce workspace permissions;
 - troubleshoot, debug, prevent abuse, detect security incidents, and protect the Service;
 - comply with legal obligations and enforce our Terms;
 - communicate with you about support, service notices, and policy updates.
@@ -72,7 +70,7 @@ We use personal data to:
 
 Where GDPR or similar law applies, our legal bases include:
 
-- Contract: to provide the Service, accounts, workspaces, subscriptions, support, and requested features.
+- Contract: to provide the Service, accounts, workspaces, support, and requested features.
 - Legitimate interests: to secure the Service, prevent abuse, debug issues, improve reliability, communicate with users, and maintain business records.
 - Consent: where you choose optional features, connect integrations, enable browser preferences, or where consent is legally required.
 - Legal obligation: to maintain tax, accounting, fraud-prevention, legal, and compliance records.
@@ -103,11 +101,10 @@ We use third-party providers to operate Produktive. These providers may process 
 
 Current providers include:
 
-- Unkey: deployment, API platform infrastructure, traffic, usage, and operational observability.
+- Unkey: API key infrastructure and operational observability.
 - PlanetScale: hosted production database for application data.
 - Cloudflare R2: object storage and delivery for uploaded issue and chat attachments.
 - Resend: transactional email delivery for verification, reset, invitation, assignment, and comment emails.
-- Polar: billing, checkout, customer portal, subscription state, invoices, tax/payment-related processing, and billing webhooks.
 - OpenCode Go and its model providers: AI model access for prompts, responses, and tool-call context.
 - Connected MCP servers: external tools that workspace owners connect, such as Context7, Notra, PlanetScale MCP, or any custom MCP server.
 
@@ -116,7 +113,6 @@ Provider notes from current official documentation:
 - PlanetScale states that database connections use TLS and that data locality depends on the database region and any replicas selected.
 - Cloudflare R2 is object storage for unstructured data and supports public buckets, bucket-scoped tokens, and location controls.
 - Resend's documentation describes email sending that includes recipient addresses, sender, subject, HTML/text body, and related email metadata.
-- Polar documentation describes checkout, subscriptions, customer records, webhooks, payment processing, and service-provider processing under its DPA.
 - OpenCode Go documentation states that models may be hosted in the US, EU, and Singapore and that providers follow zero-retention/no-training policies.
 
 ## 10. International Transfers
@@ -138,8 +134,6 @@ Application data is generally retained while your account or workspace remains a
 - Pending invitation records expire after 7 days in the application logic, though the record may remain with accepted, revoked, or expired status until cleanup or workspace deletion.
 - Auth tokens for email verification expire after 24 hours; password reset tokens expire after 1 hour.
 - Session cookies and server sessions default to 30 days unless revoked or changed in configuration.
-- Billing records may be retained as needed for tax, accounting, payment, fraud-prevention, chargeback, and legal purposes.
-
 ## 12. Deletion and Export
 
 You can delete your account from personal account settings. Workspace owners can delete workspaces from workspace settings. Users can delete chats, issues, projects, labels, MCP server records, and other items where the product provides deletion controls.
@@ -173,10 +167,10 @@ We use reasonable technical and organizational measures to protect personal data
 - hashed verification and password reset tokens;
 - HTTP-only session cookies;
 - JWT-backed session validation;
-- owner-only controls for billing and MCP settings;
+- owner-only controls for MCP settings;
 - encrypted storage of MCP OAuth access and refresh tokens;
 - access checks scoped to the active workspace;
-- provider security controls for database, object storage, email, billing, deployment, and AI services.
+- provider security controls for database, object storage, email, deployment, and AI services.
 
 No system is perfectly secure. You are responsible for using strong credentials, limiting workspace access, and connecting only trusted MCP servers and tools.
 

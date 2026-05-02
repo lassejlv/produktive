@@ -1,7 +1,6 @@
 mod ai;
 mod ai_mcp;
 mod auth;
-pub(crate) mod billing;
 mod chats;
 mod cors;
 mod dev;
@@ -26,7 +25,6 @@ mod waitlist;
 pub use ai::routes as ai_routes;
 pub use ai_mcp::routes as ai_mcp_routes;
 pub use auth::routes as auth_routes;
-pub use billing::routes as billing_routes;
 pub use chats::routes as chat_routes;
 pub use cors::cors_layer;
 pub use dev::routes as dev_routes;

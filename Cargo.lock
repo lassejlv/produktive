@@ -2173,21 +2173,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
-name = "polar-rs"
-version = "0.1.0"
-dependencies = [
- "base64",
- "hmac",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "polyval"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2320,9 +2305,7 @@ dependencies = [
  "hex",
  "hmac",
  "jsonwebtoken 9.3.1",
- "polar-rs",
  "produktive-ai",
- "produktive-billing",
  "produktive-entity",
  "produktive-migration",
  "rand_core 0.6.4",
@@ -2341,14 +2324,6 @@ dependencies = [
  "tracing-subscriber",
  "unkey-rs",
  "uuid",
-]
-
-[[package]]
-name = "produktive-billing"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]

@@ -1,7 +1,6 @@
 use crate::{
     auth::AuthContext,
     error::ApiError,
-    http::billing,
     issue_helpers::{
         non_empty_optional, normalize_assignee, optional_string, required_string, validate_assignee,
     },
@@ -121,14 +120,6 @@ pub fn registry() -> Vec<Tool> {
             }),
         },
         Tool {
-            name: "get_usage".to_owned(),
-            description: "Get the current workspace's AI credit usage, included credits, remaining credits, overage, billing period, and recent usage events. Use this when the user asks about usage, credits, quota, billing usage, or remaining AI capacity.".to_owned(),
-            parameters: json!({
-                "type": "object",
-                "properties": {}
-            }),
-        },
-        Tool {
             name: "ask_user".to_owned(),
             description: "Ask the user a clarifying question when you genuinely need more information to proceed. After calling this tool, STOP — do not call other tools and do not generate any further text. The user will respond and you'll continue on the next turn.".to_owned(),
             parameters: json!({
@@ -180,7 +171,6 @@ pub async fn dispatch(
         "list_members" => list_members(state, auth).await,
         "list_chats" => list_chats(parsed_args, state, auth).await,
         "get_chat" => get_chat(parsed_args, state, auth).await,
-        "get_usage" => get_usage(state, auth).await,
         "ask_user" => ask_user(parsed_args).await,
         other => return Ok(json!({ "error": format!("Unknown tool: {other}") })),
     };
@@ -448,10 +438,6 @@ async fn ask_user(args: Value) -> Result<Value, ApiError> {
         "question": question,
         "options": args.options.unwrap_or_default(),
     }))
-}
-
-async fn get_usage(state: &AppState, auth: &AuthContext) -> Result<Value, ApiError> {
-    billing::usage_snapshot(state, auth).await
 }
 
 #[derive(Deserialize, Default)]

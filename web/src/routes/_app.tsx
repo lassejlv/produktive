@@ -24,7 +24,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar";
 import { LoadingTip } from "@/components/ui/loading-tip";
-import { deleteChat, getChat, startBillingCheckout, type Chat } from "@/lib/api";
+import { deleteChat, getChat, type Chat } from "@/lib/api";
 import { signOut, useSession } from "@/lib/auth-client";
 import { parseMessageWithAttachments } from "@/lib/chat-attachments";
 import { ProjectIcon } from "@/components/project/project-icon";
@@ -32,10 +32,8 @@ import { ISSUE_DRAG_MIME } from "@/components/issue/issue-list";
 import { NewLabelDialog } from "@/components/label/new-label-dialog";
 import { NewProjectDialog } from "@/components/project/new-project-dialog";
 import { updateIssue } from "@/lib/api";
-import { openPolarCheckout } from "@/lib/polar-checkout";
 import { TabBar } from "@/components/workspace/tab-bar";
 import { findStaticPage } from "@/lib/tab-pages";
-import { useBillingStatus } from "@/lib/use-billing-status";
 import { useChats } from "@/lib/use-chats";
 import { useFavorites } from "@/lib/use-favorites";
 import { useInbox } from "@/lib/use-inbox";
@@ -55,7 +53,6 @@ export const Route = createFileRoute("/_app")({
 function AppLayout() {
   const navigate = useNavigate();
   const session = useSession();
-  const { billing, isPro: isPaidPlan, isLoading: billingLoading } = useBillingStatus();
   const { tabsEnabled } = useUserPreferences();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
@@ -152,7 +149,6 @@ function AppLayout() {
 
   const isIssuesActive = pathname === "/issues" || pathname.startsWith("/issues/");
   const recentChats = chats.slice(0, 8);
-  const showUpgradeButton = !billingLoading && !isPaidPlan;
 
   const openChat = async (id: string) => {
     setChatMenuOpenId(null);
@@ -552,23 +548,12 @@ function AppLayout() {
         </SidebarContent>
 
         <SidebarFooter className="relative">
-          <SidebarUpgradeButton
-            billingLoading={billingLoading}
-            canManage={billing?.canManage ?? false}
-            isPaidPlan={isPaidPlan}
-            onBillingSettings={() =>
-              void navigate({
-                to: "/workspace/settings",
-                search: { section: "billing" },
-              })
-            }
-          />
           <div ref={accountMenuRef}>
             {accountMenuOpen ? (
               <div
                 className={cn(
                   "absolute left-4 right-4 overflow-hidden rounded-[9px] border border-border bg-surface animate-fade-up",
-                  showUpgradeButton ? "bottom-[8.25rem]" : "bottom-18.5",
+                  "bottom-18.5",
                 )}
               >
                 <div className="border-b border-border-subtle px-3 py-2.5">
@@ -675,73 +660,6 @@ function ChatMenuItem({
   );
 }
 
-function SidebarUpgradeButton({
-  billingLoading,
-  canManage,
-  isPaidPlan,
-  onBillingSettings,
-}: {
-  billingLoading: boolean;
-  canManage: boolean;
-  isPaidPlan: boolean;
-  onBillingSettings: () => void;
-}) {
-  const [opening, setOpening] = useState(false);
-
-  if (billingLoading || isPaidPlan) {
-    return null;
-  }
-
-  const handleUpgrade = async () => {
-    if (!canManage) {
-      onBillingSettings();
-      return;
-    }
-
-    setOpening(true);
-    try {
-      const response = await startBillingCheckout();
-      await openPolarCheckout(response.url, {
-        onClose: () => setOpening(false),
-        onSuccess: () => setOpening(false),
-      });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to open billing");
-      setOpening(false);
-    }
-  };
-
-  return (
-    <button
-      type="button"
-      disabled={opening}
-      onClick={() => void handleUpgrade()}
-      className={cn(
-        "group mb-2 w-full overflow-hidden rounded-[10px] border border-border bg-surface/70 px-3 py-2.5 text-left transition-colors",
-        "hover:border-fg/20 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
-        opening && "cursor-wait opacity-75",
-      )}
-    >
-      <div className="flex items-center gap-2.5">
-        <span className="grid size-7 shrink-0 place-items-center rounded-[7px] border border-border-subtle bg-bg text-fg transition-colors group-hover:border-fg/20">
-          <SparkleIcon size={12} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-medium text-fg">
-            {opening ? "Opening checkout..." : "Upgrade workspace"}
-          </span>
-          <span className="mt-0.5 block truncate text-[11px] text-fg-muted">
-            {canManage ? "Unlock paid models and overage" : "View billing access"}
-          </span>
-        </span>
-        <span className="text-fg-faint transition-transform group-hover:translate-x-0.5 group-hover:text-fg-muted">
-          <UpgradeArrowIcon />
-        </span>
-      </div>
-    </button>
-  );
-}
-
 function displayChatTitle(chat: Chat) {
   return parseMessageWithAttachments(chat.title).text.trim() || "Attached files";
 }
@@ -776,21 +694,6 @@ function SignOutIcon() {
       <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
       <polyline points="16 17 21 12 16 7" />
       <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
-  );
-}
-
-function UpgradeArrowIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path d="M3 7h7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path
-        d="M7.5 4 10.5 7l-3 3"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
     </svg>
   );
 }

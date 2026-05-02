@@ -18,7 +18,7 @@ If you use Produktive for an organization or workspace, you represent that you h
 
 You may need an account to use Produktive. You agree to provide accurate account information, keep your login credentials secure, and promptly notify us if you believe your account has been compromised.
 
-Produktive uses email/password authentication, email verification, password reset links, and browser session cookies. Workspaces may have owners and members. Workspace owners can invite members, manage billing, manage connected MCP servers, and delete the workspace.
+Produktive uses email/password authentication, email verification, password reset links, and browser session cookies. Workspaces may have owners and members. Workspace owners can invite members, manage connected MCP servers, and delete the workspace.
 
 We may suspend or restrict accounts or workspaces if we reasonably believe they violate these Terms, create security risk, infringe third-party rights, abuse the Service, or expose us or others to legal or operational risk.
 
@@ -31,8 +31,7 @@ Produktive provides tools to create and manage:
 - chat messages and AI-assisted responses;
 - uploaded issue and chat attachments;
 - notification preferences and in-app notifications;
-- connected remote MCP servers and OAuth/API tokens where enabled;
-- subscriptions and billing for workspace plans.
+- connected remote MCP servers and OAuth/API tokens where enabled.
 
 We may modify, add, remove, or discontinue features. We will try to avoid disrupting active users, but we do not guarantee that every feature will remain available forever.
 
@@ -60,7 +59,6 @@ Produktive uses and may integrate with third-party services, including:
 - PlanetScale for database hosting;
 - Cloudflare R2 for object storage and attachment delivery;
 - Resend for transactional email;
-- Polar for subscriptions, checkout, customer portal, and billing events;
 - OpenCode Go and model providers for AI functionality;
 - remote MCP servers that workspace owners connect.
 
@@ -74,52 +72,42 @@ You agree not to:
 - upload malware, exploit code, or content intended to compromise systems;
 - attempt to access accounts, workspaces, data, systems, or networks without authorization;
 - interfere with, overload, scrape, or disrupt the Service;
-- bypass limits, billing, authentication, rate limits, or security controls;
+- bypass limits, authentication, rate limits, or security controls;
 - use the Service to infringe intellectual property, privacy, or other rights;
 - submit sensitive personal data, health data, payment card data, government IDs, or regulated data unless you have confirmed the Service is appropriate for that use;
 - use AI features or connected tools to create harmful, illegal, or rights-infringing output.
 
 We may remove content or restrict access where reasonably necessary to protect the Service, users, third parties, or legal compliance.
 
-## 8. Plans, Billing, and Refunds
-
-Produktive may offer free and paid workspace plans. Paid plans are billed through Polar. Pricing, plan features, and billing intervals are shown on the pricing page, checkout, or billing portal at the time of purchase.
-
-Paid subscriptions renew automatically unless canceled. Workspace owners can manage billing from workspace settings or the billing portal. Cancellation normally takes effect at the end of the current billing period unless otherwise stated at checkout or required by law.
-
-Refund policy: you may request a refund within 14 days of the relevant purchase or renewal by contacting support@produktive.app. We may require enough information to identify the workspace and payment. This refund policy does not limit mandatory rights you may have under applicable consumer law.
-
-Taxes, currency conversion, invoices, payment methods, failed payments, chargebacks, and payment processing may be handled by Polar and its payment partners.
-
-## 9. Deletion and Termination
+## 8. Deletion and Termination
 
 You may stop using Produktive at any time. Account deletion is available in the personal account settings. Workspace deletion is available to workspace owners, subject to in-product confirmation and guardrails.
 
 Deleting an account removes the account and related sessions, memberships, notification preferences, and pinned items from the application database. Content created inside a shared workspace may remain if the workspace continues to exist, with authorship references removed or set to null where supported by the database.
 
-Deleting a workspace removes the workspace and related database records such as members, sessions for that workspace, issues, projects, labels, chats, messages, notifications, subscriptions, MCP server records, and related rows where database cascades apply.
+Deleting a workspace removes the workspace and related database records such as members, sessions for that workspace, issues, projects, labels, chats, messages, notifications, MCP server records, and related rows where database cascades apply.
 
-We may terminate or suspend access if you materially breach these Terms, create security or legal risk, fail to pay fees, or misuse the Service. Sections that by their nature should survive termination will survive, including ownership, payment obligations, disclaimers, liability limits, and dispute provisions.
+We may terminate or suspend access if you materially breach these Terms, create security or legal risk, or misuse the Service. Sections that by their nature should survive termination will survive, including ownership, disclaimers, liability limits, and dispute provisions.
 
-## 10. Intellectual Property
+## 9. Intellectual Property
 
 Produktive and its software, design, branding, and documentation are owned by us or our licensors. These Terms do not transfer ownership of Produktive to you.
 
 You may give feedback or suggestions. If you do, you grant us permission to use that feedback without restriction or compensation.
 
-## 11. Security
+## 10. Security
 
 We use reasonable technical and organizational measures to protect the Service, including hashed passwords, HTTP-only session cookies, encrypted MCP token storage, and provider security controls. No online service can be guaranteed to be completely secure.
 
 You are responsible for maintaining secure account credentials, limiting workspace access to trusted members, and configuring connected MCP servers and integrations safely.
 
-## 12. Availability and Support
+## 11. Availability and Support
 
 Produktive is provided on an "as available" basis. We aim to keep the Service reliable, but we do not promise uninterrupted availability, error-free operation, or any specific uptime unless a separate written agreement says otherwise.
 
 Support is available at support@produktive.app.
 
-## 13. Disclaimers
+## 12. Disclaimers
 
 To the maximum extent allowed by law, Produktive is provided "as is" and "as available" without warranties of any kind, whether express, implied, or statutory, including implied warranties of merchantability, fitness for a particular purpose, title, and non-infringement.
 
@@ -127,7 +115,7 @@ We do not warrant that the Service, AI output, third-party integrations, or conn
 
 Some jurisdictions do not allow certain disclaimers, so parts of this section may not apply to you.
 
-## 14. Limitation of Liability
+## 13. Limitation of Liability
 
 To the maximum extent allowed by law, we will not be liable for indirect, incidental, special, consequential, exemplary, or punitive damages, or for lost profits, revenue, goodwill, data, or business interruption arising from or related to the Service.
 
@@ -135,19 +123,19 @@ To the maximum extent allowed by law, our total liability for all claims relatin
 
 This limitation does not limit liability that cannot legally be limited.
 
-## 15. Indemnity
+## 14. Indemnity
 
 If you use Produktive on behalf of a business or organization, you agree to defend, indemnify, and hold us harmless from claims, damages, liabilities, losses, and expenses arising from Your Content, your workspace's use of the Service, your connected integrations, or your violation of these Terms or applicable law.
 
-## 16. Changes to These Terms
+## 15. Changes to These Terms
 
 We may update these Terms from time to time. If changes are material, we will provide reasonable notice, such as by posting in the Service or sending an email. Your continued use of Produktive after changes take effect means you accept the updated Terms.
 
-## 17. Governing Law and Disputes
+## 16. Governing Law and Disputes
 
 Nothing in these Terms limits mandatory consumer rights that apply in your country of residence.
 
-## 18. Contact
+## 17. Contact
 
 Questions about these Terms can be sent to:
 

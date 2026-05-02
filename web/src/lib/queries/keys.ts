@@ -25,11 +25,6 @@ export const queryKeys = {
     keys: ["mcp", "keys"] as const,
     servers: ["mcp", "servers"] as const,
   },
-  billing: {
-    status: ["billing", "status"] as const,
-    plans: ["billing", "plans"] as const,
-    usage: ["billing", "usage"] as const,
-  },
   ai: {
     models: ["ai", "models"] as const,
   },

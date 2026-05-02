@@ -1,7 +1,6 @@
 mod agent_tools;
 mod ai_models;
 mod auth;
-mod billing_usage;
 mod config;
 mod digest;
 mod email;
@@ -26,13 +25,12 @@ use axum::{
 };
 use config::{Config, DatabaseConfig};
 use http::{
-    ai_mcp_routes, ai_routes, auth_routes, billing_routes, chat_routes, cors_layer, dev_routes,
-    favorite_routes, github_routes, inbox_routes, invitation_routes, issue_routes, label_routes,
-    mcp_key_routes, member_routes, oauth_metadata_routes, oauth_routes, onboarding_routes,
-    org_invitation_routes, preferences_routes, project_routes, public_api_routes, realtime_routes,
+    ai_mcp_routes, ai_routes, auth_routes, chat_routes, cors_layer, dev_routes, favorite_routes,
+    github_routes, inbox_routes, invitation_routes, issue_routes, label_routes, mcp_key_routes,
+    member_routes, oauth_metadata_routes, oauth_routes, onboarding_routes, org_invitation_routes,
+    preferences_routes, project_routes, public_api_routes, realtime_routes,
     spawn_github_auto_importer, tabs_routes, unsubscribe_routes, waitlist_routes,
 };
-use polar_rs::{Polar, PolarConfig};
 use produktive_ai::AiClient;
 use sea_orm::Database;
 use sea_orm_migration::MigratorTrait;
@@ -73,22 +71,15 @@ async fn main() -> anyhow::Result<()> {
 
     let ai = AiClient::new(&config.ai_api_key, &config.ai_base_url)
         .map_err(|e| anyhow::anyhow!("failed to build AI client: {e}"))?;
-    let mut polar_config = PolarConfig::new(config.polar_access_token.clone());
-    if let Some(base_url) = &config.polar_base_url {
-        polar_config = polar_config.base_url(base_url);
-    }
-    let polar = Polar::with_config(polar_config)
-        .map_err(|e| anyhow::anyhow!("failed to build Polar client: {e}"))?;
     let mut unkey_config = UnkeyConfig::new(config.unkey_root_key.clone());
     if let Some(base_url) = &config.unkey_base_url {
         unkey_config = unkey_config.base_url(base_url);
     }
     let unkey = Unkey::with_config(unkey_config)
         .map_err(|e| anyhow::anyhow!("failed to build Unkey client: {e}"))?;
-    let state = AppState::new(db, config.clone(), ai, polar, unkey);
+    let state = AppState::new(db, config.clone(), ai, unkey);
     spawn_github_auto_importer(state.clone());
     digest::spawn_progress_digest_scheduler(state.clone());
-    billing_usage::spawn_billing_usage_worker(state.clone());
     let asset_service = ServeDir::new(format!("{}/assets", config.web_dist_dir));
     let spa_service = ServeDir::new(&config.web_dist_dir).fallback(ServeFile::new(format!(
         "{}/index.html",
@@ -101,7 +92,6 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/v1", public_api_routes())
         .nest("/api/ai", ai_routes())
         .nest("/api/ai/mcp", ai_mcp_routes())
-        .nest("/api/billing", billing_routes())
         .nest("/api/issues", issue_routes())
         .nest("/api/waitlist", waitlist_routes())
         .nest("/api/chats", chat_routes())

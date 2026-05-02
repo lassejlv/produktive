@@ -11,7 +11,6 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
-import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LegalRouteImport } from './routes/legal'
 import { Route as AppRouteImport } from './routes/_app'
@@ -40,11 +39,6 @@ const VerifyEmailRoute = VerifyEmailRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PricingRoute = PricingRouteImport.update({
-  id: '/pricing',
-  path: '/pricing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -146,7 +140,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/legal': typeof LegalRouteWithChildren
   '/login': typeof LoginRoute
-  '/pricing': typeof PricingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/verify-email': typeof VerifyEmailRoute
   '/account': typeof AppAccountRoute
@@ -169,7 +162,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/legal': typeof LegalRouteWithChildren
   '/login': typeof LoginRoute
-  '/pricing': typeof PricingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/verify-email': typeof VerifyEmailRoute
   '/account': typeof AppAccountRoute
@@ -194,7 +186,6 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/legal': typeof LegalRouteWithChildren
   '/login': typeof LoginRoute
-  '/pricing': typeof PricingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/verify-email': typeof VerifyEmailRoute
   '/_app/account': typeof AppAccountRoute
@@ -219,7 +210,6 @@ export interface FileRouteTypes {
     | '/'
     | '/legal'
     | '/login'
-    | '/pricing'
     | '/reset-password'
     | '/verify-email'
     | '/account'
@@ -242,7 +232,6 @@ export interface FileRouteTypes {
     | '/'
     | '/legal'
     | '/login'
-    | '/pricing'
     | '/reset-password'
     | '/verify-email'
     | '/account'
@@ -266,7 +255,6 @@ export interface FileRouteTypes {
     | '/_app'
     | '/legal'
     | '/login'
-    | '/pricing'
     | '/reset-password'
     | '/verify-email'
     | '/_app/account'
@@ -291,7 +279,6 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   LegalRoute: typeof LegalRouteWithChildren
   LoginRoute: typeof LoginRoute
-  PricingRoute: typeof PricingRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   VerifyEmailRoute: typeof VerifyEmailRoute
   InviteTokenRoute: typeof InviteTokenRoute
@@ -312,13 +299,6 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof ResetPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pricing': {
-      id: '/pricing'
-      path: '/pricing'
-      fullPath: '/pricing'
-      preLoaderRoute: typeof PricingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -543,7 +523,6 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   LegalRoute: LegalRouteWithChildren,
   LoginRoute: LoginRoute,
-  PricingRoute: PricingRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   VerifyEmailRoute: VerifyEmailRoute,
   InviteTokenRoute: InviteTokenRoute,

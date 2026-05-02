@@ -47,12 +47,6 @@ function LandingPage() {
           </div>
           <div className="flex items-center gap-1">
             <Link
-              to="/pricing"
-              className="rounded-full px-3 py-1 text-[12.5px] text-fg/70 transition-colors hover:text-fg"
-            >
-              Pricing
-            </Link>
-            <Link
               to={isLoggedIn ? "/issues" : "/login"}
               className="rounded-full px-3 py-1 text-[12.5px] text-fg/70 transition-colors hover:text-fg"
             >
@@ -100,24 +94,13 @@ function LandingPage() {
               {isLoggedIn ? "Open app" : "Get started"}
               <span aria-hidden>↗</span>
             </Link>
-            {!isLoggedIn ? (
-              <Link
-                to="/pricing"
-                className={cn(
-                  "inline-flex h-11 items-center rounded-[10px] border border-white/10 bg-bg/30 px-5 text-[13px] font-medium text-fg/85 backdrop-blur-xl transition-colors",
-                  "hover:border-white/20 hover:text-fg",
-                )}
-              >
-                See pricing
-              </Link>
-            ) : null}
           </div>
 
           <p
             className="animate-fade-up mt-4 text-[12px] text-fg/55"
             style={{ animationDelay: "400ms" }}
           >
-            Free to start. No card required.
+            Built for focused teams.
           </p>
         </div>
       </section>

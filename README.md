@@ -1,12 +1,12 @@
 # Produktive
 
 Produktive is a workspace for issues, projects, team chat, AI-assisted work,
-workspace integrations, and billing. The app is built as a Rust backend with a
-Bun/Vite React frontend.
+and workspace integrations. The app is built as a Rust backend with a Bun/Vite
+React frontend.
 
 ## Stack
 
-- Rust API: Axum, SeaORM, Postgres, Resend, Polar, S3-compatible storage
+- Rust API: Axum, SeaORM, Postgres, Resend, S3-compatible storage
 - Web app: Bun, Vite, React, TanStack Router, TanStack Query, Tailwind CSS v4
 - MCP: a standalone Produktive MCP server plus in-app remote MCP server support
 - Deployment: Dockerfile-based images for the app and MCP server
@@ -14,12 +14,11 @@ Bun/Vite React frontend.
 ## Repository Layout
 
 ```txt
-crates/api        HTTP API, auth, billing, AI chat, GitHub import, storage
+crates/api        HTTP API, auth, AI chat, GitHub import, storage
 crates/entity     SeaORM entities
 crates/migration  SeaORM migrations
 crates/mcp        Standalone MCP server for Produktive workspaces
 crates/ai         AI client helpers
-crates/polar      Polar API client
 crates/unkey      Unkey API client
 web               Vite React app
 ```
@@ -34,11 +33,10 @@ web               Vite React app
   workspace API keys
 - Team chat with streaming AI responses, file attachments, and workspace-aware
   tool calls
-- Workspace settings for members, billing, AI/MCP configuration, GitHub import,
+- Workspace settings for members, AI/MCP configuration, GitHub import,
   and dangerous workspace actions
 - GitHub issue import with saved repositories, labels, previews, manual import,
   and scheduled auto-import locks
-- Workspace-level billing through Polar
 - S3-compatible attachment storage
 - Standalone MCP server with workspace, member, label, project, issue, and
   comment tools
@@ -68,7 +66,6 @@ The API reads `.env` values such as:
 - `APP_URL`
 - `RESEND_API_KEY`
 - `AI_API_KEY`, `AI_BASE_URL`, and `AI_MODEL`
-- `POLAR_ACCESS_TOKEN`, `POLAR_PRO_PRODUCT_ID`, and `POLAR_WEBHOOK_SECRET`
 - `UNKEY_ROOT_KEY` and `UNKEY_API_ID` for workspace API/MCP key creation and verification
 - `MCP_TOKEN_ENCRYPTION_KEY`
 - `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET`

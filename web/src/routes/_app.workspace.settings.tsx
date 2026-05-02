@@ -6,12 +6,10 @@ import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { LoadingTip } from "@/components/ui/loading-tip";
 import { AiSettings, McpTemplatesSettings } from "@/components/workspace/ai-settings";
-import { BillingSettings } from "@/components/workspace/billing-settings";
 import { DangerSettings } from "@/components/workspace/danger-settings";
 import { GithubRepoPicker } from "@/components/workspace/github-repo-picker";
 import { MembersSettings } from "@/components/workspace/members-settings";
 import { SettingRow, SettingsSkeleton } from "@/components/workspace/setting-row";
-import { UsageSettings } from "@/components/workspace/usage-settings";
 import {
   type Invitation,
   type GithubImportPreview,
@@ -50,8 +48,6 @@ export const Route = createFileRoute("/_app/workspace/settings")({
 type SettingsSectionId =
   | "general"
   | "members"
-  | "billing"
-  | "usage"
   | "github"
   | "mcp"
   | "ai"
@@ -76,18 +72,6 @@ const settingsSections: SettingsSection[] = [
     id: "members",
     label: "Members",
     description: "Invite and manage teammates",
-    group: "main",
-  },
-  {
-    id: "billing",
-    label: "Billing",
-    description: "Plan, payment, and invoices",
-    group: "main",
-  },
-  {
-    id: "usage",
-    label: "Usage",
-    description: "AI credits and Polar ingestion",
     group: "main",
   },
   {
@@ -264,8 +248,6 @@ function WorkspaceSettingsPage() {
               setInvitations={setInvitations}
             />
           ) : null}
-          {activeSection === "billing" ? <BillingSettings /> : null}
-          {activeSection === "usage" ? <UsageSettings /> : null}
           {activeSection === "github" ? <GithubSettings canEdit={canEditWorkspace} /> : null}
           {activeSection === "mcp" ? <McpKeySettings /> : null}
           {activeSection === "ai" ? <AiSettings /> : null}

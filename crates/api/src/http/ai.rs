@@ -12,7 +12,6 @@ struct ModelEntry {
     id: &'static str,
     name: &'static str,
     is_default: bool,
-    requires_pro: bool,
 }
 
 #[derive(Serialize)]
@@ -35,7 +34,6 @@ async fn list_models(
             id: model.id,
             name: model.name,
             is_default: model.id == default_id,
-            requires_pro: model.requires_pro,
         })
         .collect();
 

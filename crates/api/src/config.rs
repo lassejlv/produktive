@@ -24,12 +24,6 @@ pub struct Config {
     pub ai_api_key: String,
     pub ai_base_url: String,
     pub ai_model: String,
-    pub polar_access_token: String,
-    pub polar_base_url: Option<String>,
-    pub polar_pro_product_id: String,
-    pub polar_team_product_id: Option<String>,
-    pub polar_ai_messages_meter_id: String,
-    pub polar_webhook_secret: String,
     pub unkey_root_key: String,
     pub unkey_api_id: String,
     pub unkey_base_url: Option<String>,
@@ -112,16 +106,6 @@ impl Config {
             ai_api_key: required_env("AI_API_KEY").context("AI_API_KEY is required")?,
             ai_base_url: env_or_default("AI_BASE_URL", "https://ollama.com/v1"),
             ai_model: env_or_default("AI_MODEL", "glm-5.1"),
-            polar_access_token: required_env("POLAR_ACCESS_TOKEN")
-                .context("POLAR_ACCESS_TOKEN is required")?,
-            polar_base_url: optional_env("POLAR_BASE_URL"),
-            polar_pro_product_id: required_env("POLAR_PRO_PRODUCT_ID")
-                .context("POLAR_PRO_PRODUCT_ID is required")?,
-            polar_team_product_id: optional_env("POLAR_TEAM_PRODUCT_ID"),
-            polar_ai_messages_meter_id: required_env("POLAR_AI_MESSAGES_METER_ID")
-                .context("POLAR_AI_MESSAGES_METER_ID is required")?,
-            polar_webhook_secret: required_env("POLAR_WEBHOOK_SECRET")
-                .context("POLAR_WEBHOOK_SECRET is required")?,
             unkey_root_key: required_env("UNKEY_ROOT_KEY").context("UNKEY_ROOT_KEY is required")?,
             unkey_api_id: required_env("UNKEY_API_ID").context("UNKEY_API_ID is required")?,
             unkey_base_url: optional_env("UNKEY_BASE_URL"),

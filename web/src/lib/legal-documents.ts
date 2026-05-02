@@ -18,7 +18,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
     title: "Terms of Service",
     shortTitle: "Terms",
     description:
-      "The rules for using Produktive, including accounts, workspaces, AI features, billing, refunds, and acceptable use.",
+      "The rules for using Produktive, including accounts, workspaces, AI features, integrations, and acceptable use.",
     effectiveDate: "April 29, 2026",
     markdown: termsMarkdown,
   },
@@ -27,7 +27,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
     title: "Privacy Policy",
     shortTitle: "Privacy",
     description:
-      "How Produktive collects, uses, stores, and shares personal data across the app, API, billing, email, AI, and integrations.",
+      "How Produktive collects, uses, stores, and shares personal data across the app, API, email, AI, and integrations.",
     effectiveDate: "April 29, 2026",
     markdown: privacyMarkdown,
   },

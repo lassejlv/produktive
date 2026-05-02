@@ -4,11 +4,11 @@
 
 Produktive is a Rust workspace with a Bun/Vite React frontend:
 
-- `crates/api`: Axum HTTP API, auth, billing, AI chat, integrations.
+- `crates/api`: Axum HTTP API, auth, AI chat, integrations.
 - `crates/mcp`: standalone Produktive MCP server.
 - `crates/entity`: shared SeaORM entities.
 - `crates/migration`: SeaORM migrations. Do not hand-write ad hoc SQL.
-- `crates/ai`, `crates/polar`: service/client helpers.
+- `crates/ai`: AI client helpers.
 - `web/src`: React routes, components, hooks, queries, mutations.
 - `web/public` and `web/index.html`: browser assets and HTML shell.
 - `docs`: contributor and product/API docs.
@@ -48,4 +48,4 @@ Pull requests should include a summary, validation commands, linked issues, and 
 
 ## Security & Configuration Tips
 
-Copy `.env.example` and `web/.env.example` for local setup. Never commit `.env` secrets. Keep API keys, OAuth credentials, JWT secrets, S3 credentials, and billing tokens in environment variables. Public API and MCP key changes must preserve workspace isolation and revocation.
+Copy `.env.example` and `web/.env.example` for local setup. Never commit `.env` secrets. Keep API keys, OAuth credentials, JWT secrets, and S3 credentials in environment variables. Public API and MCP key changes must preserve workspace isolation and revocation.
