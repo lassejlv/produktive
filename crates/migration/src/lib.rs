@@ -74,6 +74,8 @@ mod m20260502_000035_create_organization_roles;
 mod m20260502_000036_add_organization_image;
 #[path = "../migrations/m20260502_000037_create_issue_statuses.rs"]
 mod m20260502_000037_create_issue_statuses;
+#[path = "../migrations/m20260502_000038_add_sidebar_layout.rs"]
+mod m20260502_000038_add_sidebar_layout;
 
 pub struct Migrator;
 
@@ -118,6 +120,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260502_000035_create_organization_roles::Migration),
             Box::new(m20260502_000036_add_organization_image::Migration),
             Box::new(m20260502_000037_create_issue_statuses::Migration),
+            Box::new(m20260502_000038_add_sidebar_layout::Migration),
         ]
     }
 }

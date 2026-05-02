@@ -14,6 +14,8 @@ pub struct Model {
     pub next_progress_email_at: Option<DateTimeWithTimeZone>,
     pub last_progress_email_at: Option<DateTimeWithTimeZone>,
     pub tabs_enabled: bool,
+    #[sea_orm(column_type = "JsonBinary", nullable)]
+    pub sidebar_layout: Option<Json>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }

@@ -287,12 +287,18 @@ export const markNotificationRead = (id: string) =>
 export const markAllNotificationsRead = () =>
   request<InboxResponse>("/api/inbox/read-all", { method: "POST" });
 
+export type SidebarLayoutItem = {
+  id: string;
+  hidden?: boolean;
+};
+
 export type NotificationPreferences = {
   emailPaused: boolean;
   emailAssignments: boolean;
   emailComments: boolean;
   emailProgress: boolean;
   tabsEnabled: boolean;
+  sidebarLayout: SidebarLayoutItem[] | null;
 };
 
 export const getMyPreferences = () => request<NotificationPreferences>("/api/me/preferences");

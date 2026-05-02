@@ -39,8 +39,14 @@ import { useFavorites } from "@/lib/use-favorites";
 import { useInbox } from "@/lib/use-inbox";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { useProjects } from "@/lib/use-projects";
+import {
+  type SidebarItemId,
+  defaultSidebarLayout,
+  useSidebarLayout,
+} from "@/lib/use-sidebar-layout";
 import { tabsQueryOptions, useRegisterTab } from "@/lib/use-tabs";
 import { userPreferencesQueryOptions, useUserPreferences } from "@/lib/use-user-preferences";
+import type { SidebarLayoutItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app")({
@@ -71,6 +77,7 @@ function AppLayout() {
   const { unreadCount: inboxUnread } = useInbox();
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [chatMenuOpenId, setChatMenuOpenId] = useState<string | null>(null);
+  const [editingLayout, setEditingLayout] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const onboarding = useOnboarding();
 
@@ -230,39 +237,12 @@ function AppLayout() {
         </SidebarHeader>
 
         <SidebarContent className="flex flex-col gap-5 px-4 pt-0 pb-3">
-          <div className="flex flex-col gap-px">
-            <button
-              type="button"
-              onClick={() => void navigate({ to: "/inbox" })}
-              className={cn(
-                "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
-                pathname === "/inbox"
-                  ? "bg-surface-2 text-fg [&_svg]:text-fg"
-                  : "text-fg-muted hover:bg-surface hover:text-fg",
-              )}
-            >
-              <InboxIcon />
-              <span className="flex-1 truncate">Inbox</span>
-              {inboxUnread > 0 ? (
-                <span className="ml-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-medium text-white">
-                  {inboxUnread > 99 ? "99+" : inboxUnread}
-                </span>
-              ) : null}
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                void navigate({
-                  to: "/issues",
-                  search: { mine: true },
-                })
-              }
-              className="flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] text-fg-muted transition-colors hover:bg-surface hover:text-fg [&_svg]:text-fg-faint"
-            >
-              <MyIssuesIcon />
-              <span className="flex-1 truncate">My issues</span>
-            </button>
-          </div>
+          <SidebarNav
+            pathname={pathname}
+            inboxUnread={inboxUnread}
+            isEditing={editingLayout}
+            onExitEditing={() => setEditingLayout(false)}
+          />
 
           {favoritesLoading || favorites.length > 0 ? (
             <div>
@@ -363,69 +343,6 @@ function AppLayout() {
               </div>
             </div>
           ) : null}
-
-          <div>
-            <div className="px-2 pb-1.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
-              Workspace
-            </div>
-            <div className="flex flex-col gap-px">
-              <button
-                type="button"
-                onClick={() => void navigate({ to: "/workspace" })}
-                className={cn(
-                  "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
-                  pathname === "/workspace"
-                    ? "bg-surface-2 text-fg [&_svg]:text-fg"
-                    : "text-fg-muted hover:bg-surface hover:text-fg",
-                )}
-              >
-                <OverviewIcon />
-                <span className="flex-1 truncate">Overview</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => void navigate({ to: "/issues" })}
-                className={cn(
-                  "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors",
-                  isIssuesActive
-                    ? "bg-surface-2 text-fg [&_svg]:text-fg"
-                    : "text-fg-muted hover:bg-surface hover:text-fg [&_svg]:text-fg-faint",
-                )}
-              >
-                <IssuesIcon />
-                <span className="flex-1 truncate">Issues</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => void navigate({ to: "/projects" })}
-                className={cn(
-                  "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
-                  pathname === "/projects" || pathname.startsWith("/projects/")
-                    ? "bg-surface-2 text-fg [&_svg]:text-fg"
-                    : "text-fg-muted hover:bg-surface hover:text-fg",
-                )}
-              >
-                <ProjectsIcon />
-                <span className="flex-1 truncate">Projects</span>
-              </button>
-              <SidebarRecentProjects pathname={pathname} />
-              <button
-                type="button"
-                onClick={() => void navigate({ to: "/labels" })}
-                className={cn(
-                  "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
-                  pathname === "/labels"
-                    ? "bg-surface-2 text-fg [&_svg]:text-fg"
-                    : "text-fg-muted hover:bg-surface hover:text-fg",
-                )}
-              >
-                <SidebarLabelsIcon />
-                <span className="flex-1 truncate">Labels</span>
-              </button>
-            </div>
-          </div>
 
           <div>
             <div className="flex items-center justify-between pb-1.5 pl-2 pr-1">
@@ -559,6 +476,16 @@ function AppLayout() {
                   }}
                 >
                   <span>Account settings</span>
+                </button>
+                <button
+                  type="button"
+                  className="flex h-9 w-full items-center justify-between px-3 text-left text-[13px] text-fg transition-colors hover:bg-surface-2"
+                  onClick={() => {
+                    setAccountMenuOpen(false);
+                    setEditingLayout(true);
+                  }}
+                >
+                  <span>Customize sidebar</span>
                 </button>
                 <div className="h-px bg-border-subtle" />
                 <button
@@ -818,6 +745,337 @@ function SidebarLabelsIcon() {
         strokeLinejoin="round"
       />
       <circle cx="9.5" cy="4.5" r="0.9" fill="currentColor" />
+    </svg>
+  );
+}
+
+type NavItemSpec = {
+  id: SidebarItemId;
+  label: string;
+  icon: React.ReactNode;
+  isActive: (pathname: string) => boolean;
+  onNavigate: (navigate: ReturnType<typeof useNavigate>) => void;
+};
+
+const NAV_ITEM_SPECS: Record<SidebarItemId, NavItemSpec> = {
+  inbox: {
+    id: "inbox",
+    label: "Inbox",
+    icon: <InboxIcon />,
+    isActive: (p) => p === "/inbox",
+    onNavigate: (n) => void n({ to: "/inbox" }),
+  },
+  "my-issues": {
+    id: "my-issues",
+    label: "My issues",
+    icon: <MyIssuesIcon />,
+    isActive: () => false,
+    onNavigate: (n) => void n({ to: "/issues", search: { mine: true } }),
+  },
+  overview: {
+    id: "overview",
+    label: "Overview",
+    icon: <OverviewIcon />,
+    isActive: (p) => p === "/workspace",
+    onNavigate: (n) => void n({ to: "/workspace" }),
+  },
+  issues: {
+    id: "issues",
+    label: "Issues",
+    icon: <IssuesIcon />,
+    isActive: (p) => p === "/issues" || p.startsWith("/issues/"),
+    onNavigate: (n) => void n({ to: "/issues" }),
+  },
+  projects: {
+    id: "projects",
+    label: "Projects",
+    icon: <ProjectsIcon />,
+    isActive: (p) => p === "/projects" || p.startsWith("/projects/"),
+    onNavigate: (n) => void n({ to: "/projects" }),
+  },
+  labels: {
+    id: "labels",
+    label: "Labels",
+    icon: <SidebarLabelsIcon />,
+    isActive: (p) => p === "/labels",
+    onNavigate: (n) => void n({ to: "/labels" }),
+  },
+};
+
+function SidebarNav({
+  pathname,
+  inboxUnread,
+  isEditing,
+  onExitEditing,
+}: {
+  pathname: string;
+  inboxUnread: number;
+  isEditing: boolean;
+  onExitEditing: () => void;
+}) {
+  const navigate = useNavigate();
+  const { layout: savedLayout, save, reset, isSaving } = useSidebarLayout();
+  const [draft, setDraft] = useState<SidebarLayoutItem[]>(savedLayout);
+  const [dragId, setDragId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isEditing) setDraft(savedLayout);
+  }, [isEditing, savedLayout]);
+
+  const items = isEditing ? draft : savedLayout;
+
+  const moveBefore = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+    setDraft((current) => {
+      const next = current.filter((item) => item.id !== sourceId);
+      const sourceItem = current.find((item) => item.id === sourceId);
+      if (!sourceItem) return current;
+      const targetIdx = next.findIndex((item) => item.id === targetId);
+      if (targetIdx < 0) return current;
+      next.splice(targetIdx, 0, sourceItem);
+      return next;
+    });
+  };
+
+  const toggleHidden = (id: string) => {
+    setDraft((current) =>
+      current.map((item) =>
+        item.id === id ? { ...item, hidden: !item.hidden } : item,
+      ),
+    );
+  };
+
+  const onDone = () => {
+    save(draft);
+    onExitEditing();
+  };
+
+  const onCancel = () => {
+    setDraft(savedLayout);
+    onExitEditing();
+  };
+
+  const onReset = () => {
+    setDraft(defaultSidebarLayout);
+  };
+
+  return (
+    <div className="flex flex-col gap-px">
+      {items.map((entry) => {
+        const spec = NAV_ITEM_SPECS[entry.id as SidebarItemId];
+        if (!spec) return null;
+        const hidden = entry.hidden === true;
+        if (!isEditing && hidden) return null;
+        const active = spec.isActive(pathname);
+        const showRecent =
+          !isEditing && spec.id === "projects" && !hidden;
+        return (
+          <div key={entry.id}>
+            <SidebarNavRow
+              spec={spec}
+              isEditing={isEditing}
+              hidden={hidden}
+              active={active}
+              isDragging={dragId === entry.id}
+              onClick={() => spec.onNavigate(navigate)}
+              onToggleHidden={() => toggleHidden(entry.id)}
+              onDragStart={() => setDragId(entry.id)}
+              onDragEnd={() => setDragId(null)}
+              onDropOnto={(sourceId) => moveBefore(sourceId, entry.id)}
+              trailing={
+                spec.id === "inbox" && inboxUnread > 0 ? (
+                  <span className="ml-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-accent px-1 text-[10px] font-medium text-white">
+                    {inboxUnread > 99 ? "99+" : inboxUnread}
+                  </span>
+                ) : null
+              }
+            />
+            {showRecent ? <SidebarRecentProjects pathname={pathname} /> : null}
+          </div>
+        );
+      })}
+      {isEditing ? (
+        <div className="mt-3 flex items-center justify-between gap-2 rounded-[8px] border border-border-subtle bg-surface/40 px-2.5 py-2 text-[11.5px]">
+          <button
+            type="button"
+            onClick={onReset}
+            className="text-fg-muted transition-colors hover:text-fg"
+          >
+            Reset
+          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-md px-2 py-0.5 text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onDone}
+              disabled={isSaving}
+              className="rounded-md bg-fg px-2 py-0.5 font-medium text-bg transition-colors hover:bg-white disabled:opacity-60"
+            >
+              {isSaving ? "Saving…" : "Done"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const NAV_DRAG_MIME = "application/x-produktive-sidebar-item";
+
+function SidebarNavRow({
+  spec,
+  isEditing,
+  hidden,
+  active,
+  isDragging,
+  trailing,
+  onClick,
+  onToggleHidden,
+  onDragStart,
+  onDragEnd,
+  onDropOnto,
+}: {
+  spec: NavItemSpec;
+  isEditing: boolean;
+  hidden: boolean;
+  active: boolean;
+  isDragging: boolean;
+  trailing?: React.ReactNode;
+  onClick: () => void;
+  onToggleHidden: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  onDropOnto: (sourceId: string) => void;
+}) {
+  const [dropping, setDropping] = useState(false);
+
+  if (isEditing) {
+    return (
+      <div
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData(NAV_DRAG_MIME, spec.id);
+          event.dataTransfer.effectAllowed = "move";
+          onDragStart();
+        }}
+        onDragEnd={() => {
+          setDropping(false);
+          onDragEnd();
+        }}
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes(NAV_DRAG_MIME)) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          if (!dropping) setDropping(true);
+        }}
+        onDragLeave={(event) => {
+          if (
+            event.currentTarget.contains(event.relatedTarget as Node | null)
+          )
+            return;
+          setDropping(false);
+        }}
+        onDrop={(event) => {
+          const sourceId = event.dataTransfer.getData(NAV_DRAG_MIME);
+          setDropping(false);
+          if (!sourceId) return;
+          event.preventDefault();
+          onDropOnto(sourceId);
+        }}
+        className={cn(
+          "group flex h-8 w-full select-none items-center gap-1.5 rounded-[7px] border border-transparent pl-1 pr-1.5 text-[13px] transition-colors",
+          dropping
+            ? "border-accent/40 bg-accent/10"
+            : "border-border-subtle/60 bg-surface/30",
+          isDragging && "opacity-60",
+          hidden && !dropping && "text-fg-faint",
+        )}
+      >
+        <span
+          aria-hidden
+          className="cursor-grab text-fg-faint hover:text-fg active:cursor-grabbing"
+          title="Drag to reorder"
+        >
+          <DragHandleIcon />
+        </span>
+        <span className={cn("shrink-0", hidden ? "text-fg-faint" : "text-fg-muted")}>
+          {spec.icon}
+        </span>
+        <span className="flex-1 truncate">{spec.label}</span>
+        <button
+          type="button"
+          onClick={onToggleHidden}
+          aria-label={hidden ? `Show ${spec.label}` : `Hide ${spec.label}`}
+          title={hidden ? "Show" : "Hide"}
+          className="grid size-5 place-items-center rounded-[4px] text-fg-faint transition-colors hover:bg-surface hover:text-fg"
+        >
+          {hidden ? <EyeOffIcon /> : <EyeIcon />}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
+        active
+          ? "bg-surface-2 text-fg [&_svg]:text-fg"
+          : "text-fg-muted hover:bg-surface hover:text-fg",
+      )}
+    >
+      {spec.icon}
+      <span className="flex-1 truncate">{spec.label}</span>
+      {trailing}
+    </button>
+  );
+}
+
+function DragHandleIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden>
+      <circle cx="4" cy="3" r="0.9" fill="currentColor" />
+      <circle cx="8" cy="3" r="0.9" fill="currentColor" />
+      <circle cx="4" cy="6" r="0.9" fill="currentColor" />
+      <circle cx="8" cy="6" r="0.9" fill="currentColor" />
+      <circle cx="4" cy="9" r="0.9" fill="currentColor" />
+      <circle cx="8" cy="9" r="0.9" fill="currentColor" />
+    </svg>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <path
+        d="M1 7s2-4 6-4 6 4 6 4-2 4-6 4-6-4-6-4z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <circle cx="7" cy="7" r="1.6" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <path
+        d="M1 7s2-4 6-4c1 0 1.9.2 2.7.6M13 7s-2 4-6 4c-1 0-1.9-.2-2.7-.6M2 12L12 2"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

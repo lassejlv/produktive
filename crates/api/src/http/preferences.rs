@@ -4,6 +4,7 @@ use chrono::Utc;
 use produktive_entity::notification_preference;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, Set};
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 pub fn routes() -> Router<AppState> {
@@ -18,6 +19,7 @@ pub struct PreferencesResponse {
     pub email_comments: bool,
     pub email_progress: bool,
     pub tabs_enabled: bool,
+    pub sidebar_layout: Option<JsonValue>,
 }
 
 impl From<notification_preference::Model> for PreferencesResponse {
@@ -28,6 +30,7 @@ impl From<notification_preference::Model> for PreferencesResponse {
             email_comments: model.email_comments,
             email_progress: model.email_progress,
             tabs_enabled: model.tabs_enabled,
+            sidebar_layout: model.sidebar_layout,
         }
     }
 }
@@ -40,6 +43,17 @@ pub struct PreferencesPatch {
     pub email_comments: Option<bool>,
     pub email_progress: Option<bool>,
     pub tabs_enabled: Option<bool>,
+    #[serde(default, deserialize_with = "deserialize_optional_field")]
+    pub sidebar_layout: Option<Option<JsonValue>>,
+}
+
+fn deserialize_optional_field<'de, D>(
+    deserializer: D,
+) -> Result<Option<Option<JsonValue>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Some(Option::<JsonValue>::deserialize(deserializer)?))
 }
 
 pub async fn for_user(
@@ -65,6 +79,7 @@ pub async fn for_user(
         next_progress_email_at: Set(None),
         last_progress_email_at: Set(None),
         tabs_enabled: Set(false),
+        sidebar_layout: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     }
@@ -108,6 +123,9 @@ async fn patch_preferences(
     }
     if let Some(value) = payload.tabs_enabled {
         active.tabs_enabled = Set(value);
+    }
+    if let Some(value) = payload.sidebar_layout {
+        active.sidebar_layout = Set(value);
     }
     active.updated_at = Set(Utc::now().fixed_offset());
     let updated = active.update(&state.db).await?;
