@@ -1,3 +1,4 @@
+use super::auth as auth_http;
 use crate::{
     auth::{require_auth, AuthContext},
     error::ApiError,
@@ -10,7 +11,7 @@ use crate::{
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    response::Redirect,
+    response::{IntoResponse, Redirect, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -334,12 +335,25 @@ async fn start_oauth(
 async fn oauth_callback(
     State(state): State<AppState>,
     Query(query): Query<OAuthCallbackQuery>,
-) -> Result<Redirect, ApiError> {
+) -> Result<Response, ApiError> {
+    if auth_http::is_github_auth_state(&query.state) {
+        return auth_http::complete_github_auth_callback(
+            state,
+            auth_http::GithubOAuthCallbackQuery {
+                state: query.state,
+                code: query.code,
+                error: query.error,
+            },
+        )
+        .await;
+    }
+
     let redirect_base = "/workspace/settings?section=integrations";
     if let Some(error) = query.error {
         return Ok(Redirect::to(&format!(
             "{redirect_base}&github=oauth_error&message={error}"
-        )));
+        ))
+        .into_response());
     }
     let code = query
         .code
@@ -361,9 +375,7 @@ async fn oauth_callback(
     store_connection(&state, &oauth_state, &token, &user).await?;
     let _ = oauth_state.delete(&state.db).await;
 
-    Ok(Redirect::to(&format!(
-        "{redirect_base}&github=oauth_connected"
-    )))
+    Ok(Redirect::to(&format!("{redirect_base}&github=oauth_connected")).into_response())
 }
 
 async fn list_repositories(

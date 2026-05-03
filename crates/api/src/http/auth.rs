@@ -100,10 +100,10 @@ struct GithubOAuthStartQuery {
 }
 
 #[derive(Deserialize)]
-struct GithubOAuthCallbackQuery {
-    state: String,
-    code: Option<String>,
-    error: Option<String>,
+pub(super) struct GithubOAuthCallbackQuery {
+    pub(super) state: String,
+    pub(super) code: Option<String>,
+    pub(super) error: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -263,6 +263,13 @@ async fn github_oauth_callback(
     State(state): State<AppState>,
     Query(query): Query<GithubOAuthCallbackQuery>,
 ) -> Result<Response, ApiError> {
+    complete_github_auth_callback(state, query).await
+}
+
+pub(super) async fn complete_github_auth_callback(
+    state: AppState,
+    query: GithubOAuthCallbackQuery,
+) -> Result<Response, ApiError> {
     if query.error.is_some() {
         return Ok(Redirect::to("/login?github=oauth_error").into_response());
     }
@@ -287,6 +294,10 @@ async fn github_oauth_callback(
     let target = github_auth_success_redirect(&claims);
 
     Ok(([(header::SET_COOKIE, cookie)], Redirect::to(&target)).into_response())
+}
+
+pub(super) fn is_github_auth_state(token: &str) -> bool {
+    token.matches('.').count() == 2
 }
 
 async fn verify_email(
@@ -1079,7 +1090,7 @@ fn github_client_secret() -> Result<String, ApiError> {
 }
 
 fn github_auth_redirect_uri(state: &AppState) -> String {
-    format!("{}/api/auth/github/callback", state.config.app_url)
+    format!("{}/api/github/oauth/callback", state.config.app_url)
 }
 
 #[derive(Deserialize)]
