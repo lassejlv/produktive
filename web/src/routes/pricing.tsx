@@ -131,44 +131,27 @@ function PricingCard({ plan }: { plan: PricingPlan }) {
       className={cn(
         "flex min-h-[300px] flex-col rounded-[10px] border border-white/10 bg-bg/55 p-5 text-fg backdrop-blur-xl",
         "shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
-        plan.featured && "border-fg/20 bg-fg text-bg",
+        plan.featured && "border-white/25 bg-bg/70",
       )}
     >
       <div>
-        <p className={cn("text-[13px] font-medium", plan.featured ? "text-bg/65" : "text-fg/60")}>
-          {plan.name}
-        </p>
+        <p className="text-[13px] font-medium text-fg/60">{plan.name}</p>
         <div className="mt-4 flex items-end gap-2">
           <span className="text-[46px] font-semibold leading-none tracking-[-0.04em]">
             {plan.price}
           </span>
-          <span className={cn("pb-1 text-[13px]", plan.featured ? "text-bg/60" : "text-fg/55")}>
-            {plan.cadence}
-          </span>
+          <span className="pb-1 text-[13px] text-fg/55">{plan.cadence}</span>
         </div>
       </div>
 
-      <p className={cn("mt-4 text-[14px] leading-6", plan.featured ? "text-bg/70" : "text-fg/70")}>
-        {plan.description}
-      </p>
+      <p className="mt-4 text-[14px] leading-6 text-fg/70">{plan.description}</p>
 
-      <div className={cn("my-6 h-px", plan.featured ? "bg-bg/15" : "bg-white/10")} />
+      <div className="my-6 h-px bg-white/10" />
 
       <ul className="space-y-3">
         {plan.features.map((feature) => (
-          <li
-            key={feature}
-            className={cn(
-              "flex items-start gap-3 text-[13px]",
-              plan.featured ? "text-bg/80" : "text-fg/75",
-            )}
-          >
-            <span
-              className={cn(
-                "mt-2 block h-px w-4 shrink-0",
-                plan.featured ? "bg-bg/35" : "bg-fg/35",
-              )}
-            />
+          <li key={feature} className="flex items-start gap-3 text-[13px] text-fg/75">
+            <span className="mt-2 block h-px w-4 shrink-0 bg-fg/35" />
             <span>{feature}</span>
           </li>
         ))}
@@ -180,7 +163,7 @@ function PricingCard({ plan }: { plan: PricingPlan }) {
           className={cn(
             "inline-flex h-10 w-full items-center justify-center rounded-[10px] border px-4 text-[13px] font-medium transition-colors",
             plan.featured
-              ? "border-bg bg-bg text-fg hover:bg-bg/90"
+              ? "border-fg bg-fg text-bg hover:bg-white"
               : "border-white/10 bg-fg text-bg hover:bg-white",
           )}
         >
