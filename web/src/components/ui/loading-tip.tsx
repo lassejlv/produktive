@@ -34,7 +34,7 @@ export function LoadingTip({ compact = false, className }: LoadingTipProps) {
     return (
       <div
         className={cn(
-          "flex min-w-0 items-center gap-2 text-[12px] text-fg-faint",
+          "flex min-w-0 items-center gap-2 text-xs text-fg-faint",
           className,
         )}
       >
@@ -45,16 +45,18 @@ export function LoadingTip({ compact = false, className }: LoadingTipProps) {
   }
 
   return (
-    <div className={cn("flex w-full max-w-[420px] flex-col items-center", className)}>
-      <div className="relative mb-5 grid size-12 place-items-center rounded-[14px] border border-border bg-surface">
-        <span className="absolute inset-[-1px] animate-pulse rounded-[15px] border border-fg/10" />
-        <span className="inline-block size-4 animate-spin rounded-full border-2 border-border border-t-fg" />
-      </div>
-      <div className="text-[14px] font-medium tracking-[-0.01em] text-fg">
-        Loading Produktive
-      </div>
-      <div className="mt-2 min-h-5 text-center text-[13px] leading-5 text-fg-muted transition-opacity">
-        {LOADING_TIPS[tipIndex]}
+    <div
+      className={cn(
+        "flex w-full max-w-sm flex-col items-center gap-3 text-center",
+        className,
+      )}
+    >
+      <span className="inline-block size-5 animate-spin rounded-full border-2 border-border border-t-fg-muted" />
+      <div className="space-y-1">
+        <p className="text-sm text-fg-muted">Loading Produktive</p>
+        <p className="text-xs leading-relaxed text-fg-faint">
+          {LOADING_TIPS[tipIndex]}
+        </p>
       </div>
     </div>
   );

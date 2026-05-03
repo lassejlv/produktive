@@ -10,17 +10,18 @@ import { MemberPicker } from "@/components/issue/member-picker";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { ProjectStatusIcon } from "@/components/project/project-status-icon";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import type { UpdateProjectInput } from "@/lib/api";
+import { AiBriefPanel } from "@/components/workspace/ai-brief-panel";
+import { generateProjectHealth, type AiBrief, type UpdateProjectInput } from "@/lib/api";
 import { sortedStatuses, statusName } from "@/lib/issue-constants";
 import { defaultDisplayOptions } from "@/lib/issue-display";
 import { projectColorHex, projectStatusLabel, projectStatusOptions } from "@/lib/project-constants";
+import { useCreateIssue, useUpdateIssue } from "@/lib/mutations/issues";
+import { useDeleteProject, useUpdateProject } from "@/lib/mutations/projects";
 import { useProjectDetailQuery } from "@/lib/queries/projects";
 import { useIssues } from "@/lib/use-issues";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { useRegisterTab } from "@/lib/use-tabs";
 import { useUserPreferences } from "@/lib/use-user-preferences";
-import { useCreateIssue, useUpdateIssue } from "@/lib/mutations/issues";
-import { useDeleteProject, useUpdateProject } from "@/lib/mutations/projects";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/projects/$projectId")({
@@ -40,6 +41,9 @@ function ProjectDetailPage() {
   const createIssueMutation = useCreateIssue();
   const updateIssueMutation = useUpdateIssue();
   const { confirm, dialog } = useConfirmDialog();
+  const [health, setHealth] = useState<AiBrief | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState<string | null>(null);
 
   const projectIssues = useMemo(
     () => issues.filter((issue) => issue.projectId === projectId),
@@ -129,10 +133,25 @@ function ProjectDetailPage() {
     }
   };
 
+  const handleGenerateHealth = async () => {
+    setHealthLoading(true);
+    setHealthError(null);
+    try {
+      const result = await generateProjectHealth(projectId);
+      setHealth(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to generate project health";
+      setHealthError(message);
+      toast.error(message);
+    } finally {
+      setHealthLoading(false);
+    }
+  };
+
   if (projectQuery.isPending || !project) {
     return (
-      <main className="min-h-full bg-bg p-6">
-        <p className="text-[13px] text-fg-faint">Loading project…</p>
+      <main className="min-h-full bg-bg px-4 py-6">
+        <p className="text-sm text-fg-faint">Loading project…</p>
       </main>
     );
   }
@@ -142,12 +161,12 @@ function ProjectDetailPage() {
   return (
     <main className="min-h-full bg-bg">
       {dialog}
-      <header className="flex items-center justify-between gap-3 px-6 pt-5">
+      <header className="flex items-center justify-between gap-3 px-4 pt-4">
         <Link
           to="/projects"
-          className="inline-flex items-center gap-1.5 text-[12px] text-fg-faint transition-colors hover:text-fg-muted"
+          className="inline-flex items-center gap-1 text-xs text-fg-muted transition-colors hover:text-fg"
         >
-          <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
+          <svg width="10" height="10" viewBox="0 0 14 14" fill="none" aria-hidden>
             <path
               d="M9 3l-4 4 4 4"
               stroke="currentColor"
@@ -162,21 +181,26 @@ function ProjectDetailPage() {
           <button
             type="button"
             onClick={() => setMenuOpen((value) => !value)}
-            className="grid size-7 place-items-center rounded-[6px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            className="grid size-7 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
           >
             ⋯
           </button>
           {menuOpen ? (
-            <div className="absolute right-0 top-8 z-30 w-44 overflow-hidden rounded-[8px] border border-border bg-surface py-1 shadow-[0_18px_40px_rgba(0,0,0,0.45)]">
+            <div
+              className="absolute right-0 top-8 z-30 w-40 overflow-hidden rounded-md border border-border bg-surface py-0.5 shadow-sm"
+              role="menu"
+            >
               <MenuItem
                 onClick={() => {
                   setMenuOpen(false);
                   void handleArchiveToggle();
                 }}
               >
-                {project.archivedAt === null ? "Archive project" : "Restore project"}
+                {project.archivedAt === null ? "Archive" : "Restore"}
               </MenuItem>
-              <div className="my-1 h-px bg-border-subtle" />
+              <div className="my-0.5 h-px bg-border-subtle" />
               <MenuItem
                 danger
                 onClick={() => {
@@ -184,23 +208,23 @@ function ProjectDetailPage() {
                   handleDelete();
                 }}
               >
-                Delete project
+                Delete
               </MenuItem>
             </div>
           ) : null}
         </div>
       </header>
 
-      <article className="mx-auto w-full max-w-[760px] px-6 pb-24 pt-10">
+      <article className="mx-auto w-full max-w-2xl px-4 pb-20 pt-8">
         <div className="flex items-center gap-3">
           <ProjectIcon color={project.color} icon={project.icon} name={project.name} size="lg" />
           {project.archivedAt !== null ? (
-            <span className="rounded-full border border-border-subtle bg-surface/40 px-2 py-0.5 text-[10.5px] uppercase tracking-[0.06em] text-fg-muted">
+            <span className="rounded bg-surface px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-fg-faint">
               Archived
             </span>
           ) : null}
         </div>
-        <div className="mt-4">
+        <div className="mt-3">
           <EditableTitle
             value={project.name}
             onSave={async (next) => {
@@ -209,7 +233,7 @@ function ProjectDetailPage() {
           />
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-x-1 gap-y-1.5 text-[13px] text-fg-muted">
+        <div className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-fg-muted">
           <InlineStatusSelect status={project.status} progress={progress} onChange={handleStatus} />
           <Sep />
           <MemberPicker
@@ -219,7 +243,7 @@ function ProjectDetailPage() {
               <button
                 type="button"
                 onClick={onClick}
-                className="inline-flex h-6 items-center gap-1.5 rounded-[5px] px-1 transition-colors hover:bg-surface/60 hover:text-fg"
+                className="inline-flex h-6 items-center gap-1.5 rounded-md px-1 transition-colors hover:bg-surface/60 hover:text-fg"
               >
                 {project.lead ? (
                   <>
@@ -235,7 +259,7 @@ function ProjectDetailPage() {
           {project.targetDate ? (
             <>
               <Sep />
-              <span className="font-mono text-[12px]">
+              <span className="tabular-nums">
                 {new Date(project.targetDate).toLocaleDateString("en", {
                   month: "short",
                   day: "numeric",
@@ -246,7 +270,7 @@ function ProjectDetailPage() {
           ) : null}
         </div>
 
-        <div className="mt-10">
+        <div className="mt-8">
           <EditableDescription
             value={project.description}
             onSave={async (next) => {
@@ -255,19 +279,14 @@ function ProjectDetailPage() {
           />
         </div>
 
-        <section className="mt-12">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
-              Progress
-            </h2>
-            <Link
-              to="/issues"
-              className="text-[11px] text-fg-muted transition-colors hover:text-fg"
-            >
-              Open in Issues →
+        <section className="mt-10">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="text-xs font-medium text-fg-muted">Progress</h2>
+            <Link to="/issues" className="text-xs text-fg-faint transition-colors hover:text-fg-muted">
+              All issues
             </Link>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-surface/60">
+          <div className="h-1.5 overflow-hidden rounded-full bg-surface">
             <div
               className="h-full transition-all"
               style={{
@@ -276,21 +295,29 @@ function ProjectDetailPage() {
               }}
             />
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-fg-muted">
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-fg-muted">
             {statusBreakdown.map((item) => (
               <BreakdownPill key={item.key} label={item.name} count={item.count} />
             ))}
           </div>
         </section>
 
+        <AiBriefPanel
+          className="mt-10"
+          title="Health"
+          actionLabel="Generate summary"
+          refreshLabel="Refresh"
+          brief={health}
+          loading={healthLoading}
+          error={healthError}
+          onGenerate={() => void handleGenerateHealth()}
+          emptyDescription="AI summary from this project's issues and recent activity."
+        />
+
         <section className="mt-10">
-          <h2 className="mb-3 text-[10.5px] font-medium uppercase tracking-[0.08em] text-fg-faint">
-            Issues
-          </h2>
+          <h2 className="mb-2 text-xs font-medium text-fg-muted">Issues</h2>
           {projectIssues.length === 0 ? (
-            <p className="text-[13px] text-fg-faint">
-              No issues yet. Add the first one from a status group.
-            </p>
+            <p className="text-sm text-fg-faint">No issues yet. Add one from a status group.</p>
           ) : null}
           <IssueList
             issues={projectIssues}
@@ -325,7 +352,7 @@ function InlineStatusSelect({
     <Select value={status} onValueChange={onChange}>
       <SelectTrigger
         aria-label="Status"
-        className="h-6 w-auto justify-start gap-1.5 rounded-[5px] border-0 bg-transparent px-1 capitalize hover:border-transparent hover:bg-surface/60 hover:text-fg [&>svg]:hidden"
+        className="h-6 w-auto justify-start gap-1 rounded-md border-0 bg-transparent px-1 capitalize hover:bg-surface/60 hover:text-fg [&>svg]:hidden"
       >
         <ProjectStatusIcon status={status} progress={progress} size="sm" />
         <span>{projectStatusLabel[status] ?? status}</span>
@@ -351,7 +378,7 @@ function BreakdownPill({ label, count }: { label: string; count: number }) {
 }
 
 function Sep() {
-  return <span className="select-none px-0.5 text-fg-faint/60">·</span>;
+  return <span className="select-none px-0.5 text-fg-faint/50">·</span>;
 }
 
 function MenuItem({
@@ -368,7 +395,7 @@ function MenuItem({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex h-8 w-full items-center px-2.5 text-left text-[12.5px] transition-colors hover:bg-surface-2",
+        "flex h-8 w-full items-center px-2.5 text-left text-xs transition-colors hover:bg-surface-2",
         danger ? "text-danger" : "text-fg",
       )}
     >

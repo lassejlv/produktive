@@ -1,9 +1,11 @@
 import { useNavigate } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProjectIcon } from "@/components/project/project-icon";
-import { listIssues, listProjects, type Issue, type Project } from "@/lib/api";
 import { signOut } from "@/lib/auth-client";
+import { issuesQueryOptions } from "@/lib/queries/issues";
+import { projectsQueryOptions } from "@/lib/queries/projects";
 import { applyTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -28,10 +30,13 @@ type CommandResult =
 
 export function CommandPalette() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [issues, setIssues] = useState<Issue[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const issuesQuery = useQuery(issuesQueryOptions());
+  const projectsQuery = useQuery(projectsQueryOptions(false));
+  const issues = issuesQuery.data ?? [];
+  const projects = projectsQuery.data ?? [];
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -62,21 +67,15 @@ export function CommandPalette() {
       );
   }, []);
 
-  // Reset state on open + focus input + load issues
+  // Reset state on open + focus input + warm cache
   useEffect(() => {
     if (!open) return;
     setQuery("");
     setActiveIndex(0);
     requestAnimationFrame(() => inputRef.current?.focus());
-    void Promise.all([listIssues(), listProjects(false)])
-      .then(([issuesResponse, projectsResponse]) => {
-        setIssues(issuesResponse.issues);
-        setProjects(projectsResponse.projects);
-      })
-      .catch(() => {
-        /* ignore */
-      });
-  }, [open]);
+    void qc.prefetchQuery(issuesQueryOptions());
+    void qc.prefetchQuery(projectsQueryOptions(false));
+  }, [open, qc]);
 
   const results = useMemo<CommandResult[]>(() => {
     const q = query.trim().toLowerCase();

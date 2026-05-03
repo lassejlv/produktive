@@ -183,8 +183,7 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
 
 export const listIssues = () => request<{ issues: Issue[] }>("/api/issues");
 
-export const listIssueStatuses = () =>
-  request<{ statuses: IssueStatus[] }>("/api/issue-statuses");
+export const listIssueStatuses = () => request<{ statuses: IssueStatus[] }>("/api/issue-statuses");
 
 export const createIssueStatus = (input: {
   name: string;
@@ -211,9 +210,7 @@ export const deleteIssueStatus = (id: string, replacementStatus?: string) =>
     body: JSON.stringify({ replacementStatus }),
   });
 
-export const reorderIssueStatuses = (
-  statuses: { id: string; sortOrder: number }[],
-) =>
+export const reorderIssueStatuses = (statuses: { id: string; sortOrder: number }[]) =>
   request<{ statuses: IssueStatus[] }>("/api/issue-statuses/reorder", {
     method: "POST",
     body: JSON.stringify({ statuses }),
@@ -431,6 +428,37 @@ export type AiModelsResponse = {
 };
 
 export const listAiModels = () => request<AiModelsResponse>("/api/ai/models");
+
+export type AiBrief = {
+  summary: string;
+  risks: string[];
+  nextActions: string[];
+  statusUpdate?: string;
+  generatedAt: string;
+};
+
+export const generateWorkspaceBrief = () =>
+  request<AiBrief>("/api/ai/workspace-brief", {
+    method: "POST",
+  });
+
+export const generateProjectHealth = (projectId: string) =>
+  request<AiBrief>(`/api/ai/projects/${projectId}/health`, {
+    method: "POST",
+  });
+
+export type IssueDraft = {
+  title: string;
+  description: string;
+  status?: string | null;
+  priority?: string | null;
+};
+
+export const generateIssueDraft = (input: { title: string; description?: string }) =>
+  request<IssueDraft>("/api/ai/issue-draft", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 
 export const createMcpServer = (input: { name?: string; url: string; accessToken?: string }) =>
   request<McpServerEnvelope>("/api/ai/mcp/servers", {

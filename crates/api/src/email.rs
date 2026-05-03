@@ -1,5 +1,5 @@
 use crate::{error::ApiError, state::AppState};
-use resend_rs::{types::CreateEmailBaseOptions, Resend};
+use flaremail_rs::{Email, SendEmail};
 
 pub async fn send_verification_email(
     state: &AppState,
@@ -155,20 +155,13 @@ pub async fn send_progress_digest_email(
         issue_word = plural(digest.issues_touched, "issue", "issues"),
     );
 
-    let resend = Resend::new(&state.config.resend_api_key);
-    let email = CreateEmailBaseOptions::new(&state.config.resend_from_email, [to], &subject)
-        .with_html(&html)
-        .with_text(&text)
-        .with_header("List-Unsubscribe", &format!("<{}>", unsubscribe_url))
-        .with_header("List-Unsubscribe-Post", "List-Unsubscribe=One-Click");
+    let list_unsubscribe = format!("<{}>", unsubscribe_url);
+    let headers = [
+        ("List-Unsubscribe", list_unsubscribe.as_str()),
+        ("List-Unsubscribe-Post", "List-Unsubscribe=One-Click"),
+    ];
 
-    resend
-        .emails
-        .send(email)
-        .await
-        .map_err(|error| ApiError::Internal(anyhow::anyhow!(error.to_string())))?;
-
-    Ok(())
+    send_email_with_headers(state, to, &subject, html, text, &headers).await
 }
 
 fn render_section_html(count: usize, titles: &[String], heading: &str, empty_text: &str) -> String {
@@ -234,16 +227,40 @@ async fn send_email(
     html: String,
     text: String,
 ) -> Result<(), ApiError> {
-    let resend = Resend::new(&state.config.resend_api_key);
-    let email = CreateEmailBaseOptions::new(&state.config.resend_from_email, [to], subject)
-        .with_html(&html)
-        .with_text(&text);
+    send_email_with_headers(state, to, subject, html, text, &[]).await
+}
 
-    resend
-        .emails
+async fn send_email_with_headers(
+    state: &AppState,
+    to: &str,
+    subject: &str,
+    html: String,
+    text: String,
+    headers: &[(&str, &str)],
+) -> Result<(), ApiError> {
+    let mut email = SendEmail::new(state.config.email_from.as_str(), to, subject)
+        .html(html)
+        .text(text);
+
+    for (name, value) in headers {
+        email = email.header(*name, *value);
+    }
+
+    email_client(state)
+        .emails()
         .send(email)
         .await
         .map_err(|error| ApiError::Internal(anyhow::anyhow!(error.to_string())))?;
 
     Ok(())
+}
+
+fn email_client(state: &AppState) -> Email {
+    let email = Email::new(&state.config.email_api_token);
+
+    if let Some(account_id) = &state.config.email_account_id {
+        email.with_account_id(account_id)
+    } else {
+        email
+    }
 }

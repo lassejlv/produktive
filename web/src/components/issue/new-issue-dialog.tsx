@@ -1,6 +1,6 @@
 import { type FormEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AttachIcon } from "@/components/chat/icons";
+import { AttachIcon, SparkleIcon } from "@/components/chat/icons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,6 +23,7 @@ import {
   type Member,
   type Project,
   createIssue,
+  generateIssueDraft,
   listLabels,
   listMembers,
   listProjects,
@@ -34,11 +35,7 @@ import {
   prepareChatAttachments,
 } from "@/lib/chat-attachments";
 import { parseNaturalIssueInput } from "@/lib/issue-natural-input";
-import {
-  firstStatusForCategory,
-  priorityOptions,
-  sortedStatuses,
-} from "@/lib/issue-constants";
+import { firstStatusForCategory, priorityOptions, sortedStatuses } from "@/lib/issue-constants";
 import { findSimilarIssues } from "@/lib/issue-similarity";
 import { useIssues } from "@/lib/use-issues";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
@@ -69,6 +66,7 @@ export function NewIssueDialog({
   const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isShapingIssue, setIsShapingIssue] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
@@ -89,9 +87,7 @@ export function NewIssueDialog({
     originY: number;
   } | null>(null);
   const [debouncedTitle, setDebouncedTitle] = useState("");
-  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(() => new Set());
   const { issues: existingIssues } = useIssues();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -294,6 +290,41 @@ export function NewIssueDialog({
     setError(null);
   };
 
+  const handleShapeIssue = async () => {
+    const roughTitle = title.trim();
+    const roughDescription = description.trim();
+    if (!roughTitle && !roughDescription) {
+      setError("Add a rough title or description first");
+      return;
+    }
+
+    setIsShapingIssue(true);
+    setError(null);
+    try {
+      const draft = await generateIssueDraft({
+        title: roughTitle,
+        description: roughDescription || undefined,
+      });
+      setTitle(draft.title);
+      setDescription(draft.description);
+      if (draft.status && sortedStatuses(statuses).some((item) => item.key === draft.status)) {
+        setManualFields((current) => ({ ...current, status: true }));
+        setStatus(draft.status);
+      }
+      if (draft.priority && priorityOptions.some((value) => value === draft.priority)) {
+        setManualFields((current) => ({ ...current, priority: true }));
+        setPriority(draft.priority);
+      }
+      toast.success("Issue shaped");
+    } catch (shapeError) {
+      const message = shapeError instanceof Error ? shapeError.message : "Failed to shape issue";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsShapingIssue(false);
+    }
+  };
+
   const startDrag = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     if ((event.target as HTMLElement).closest("button")) return;
@@ -405,13 +436,29 @@ export function NewIssueDialog({
                 </ul>
               </div>
             ) : null}
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Add description…"
-              rows={4}
-              className="w-full resize-y rounded-md border-0 bg-transparent px-0 py-0 text-sm text-fg outline-none placeholder:text-fg-faint focus-visible:ring-0"
-            />
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-fg-faint">
+                  Details
+                </span>
+                <button
+                  type="button"
+                  onClick={handleShapeIssue}
+                  disabled={isShapingIssue || (!title.trim() && !description.trim())}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border-subtle bg-bg px-2 text-[11.5px] text-fg-muted transition-colors hover:border-border hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <SparkleIcon />
+                  {isShapingIssue ? "Shaping…" : "Shape with AI"}
+                </button>
+              </div>
+              <textarea
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Add rough notes, reproduction steps, or paste a messy bug report…"
+                rows={4}
+                className="w-full resize-y rounded-md border-0 bg-transparent px-0 py-0 text-sm text-fg outline-none placeholder:text-fg-faint focus-visible:ring-0"
+              />
+            </div>
 
             <div className="flex flex-wrap items-center gap-2 pt-1">
               <PillSelect

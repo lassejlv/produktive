@@ -64,7 +64,7 @@ The API reads `.env` values such as:
 - `DATABASE_URL` and `DATABASE_DIRECT_URL`
 - `JWT_SECRET`
 - `APP_URL`
-- `RESEND_API_KEY`
+- `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_FROM`
 - `AI_API_KEY`, `AI_BASE_URL`, and `AI_MODEL`
 - `UNKEY_ROOT_KEY` and `UNKEY_API_ID` for workspace API/MCP key creation and verification
 - `MCP_TOKEN_ENCRYPTION_KEY`

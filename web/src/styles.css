@@ -50,8 +50,10 @@
   --color-sidebar-accent-foreground: #ededee;
   --color-sidebar-border: #1f1f22;
 
-  --font-sans: "Geist", -apple-system, system-ui, sans-serif;
-  --font-mono: "Geist Mono", "SF Mono", monospace;
+  --font-geist-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-geist-mono: "Geist Mono", ui-monospace, "SF Mono", SFMono-Regular, monospace;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 @layer base {
@@ -313,10 +315,22 @@
 
 @keyframes text-shimmer {
   from {
-    background-position: 100% 0;
+    background-position: 150% 0;
   }
   to {
-    background-position: -100% 0;
+    background-position: -150% 0;
+  }
+}
+
+@keyframes thinking-dot {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
@@ -337,7 +351,7 @@
 }
 
 .text-shimmer {
-  animation: text-shimmer 1.8s ease-in-out infinite;
+  animation: text-shimmer 3s ease-in-out infinite;
   background: linear-gradient(
     90deg,
     var(--color-fg-faint) 0%,
@@ -346,10 +360,17 @@
     var(--color-fg-muted) 65%,
     var(--color-fg-faint) 100%
   );
-  background-size: 200% 100%;
+  background-size: 300% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  will-change: background-position;
+}
+
+.thinking-dot {
+  animation: thinking-dot 1.6s ease-in-out infinite;
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  will-change: transform, opacity;
 }
 
 @keyframes ken-burns {
