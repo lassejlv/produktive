@@ -159,6 +159,15 @@ export function CommandPalette() {
       },
       {
         type: "action" as const,
+        key: "theme-system",
+        label: "Theme: System",
+        run: () => {
+          applyTheme("system");
+          toast.success("System theme applied");
+        },
+      },
+      {
+        type: "action" as const,
         key: "theme-ember",
         label: "Theme: Ember (warm dark)",
         run: () => {

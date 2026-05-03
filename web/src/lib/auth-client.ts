@@ -252,7 +252,7 @@ export const authClient = {
     email: ({ email, password }: EmailCredentials) =>
       requestAuth("/api/auth/sign-in", { email, password }).then(applySessionResult),
     githubUrl: ({ invite, redirect }: GithubOAuthOptions = {}) => {
-      const url = new URL(apiPath("/api/auth/github/start"));
+      const url = new URL(apiPath("/api/auth/github/start"), window.location.origin);
       if (invite) url.searchParams.set("invite", invite);
       if (redirect) url.searchParams.set("redirect", redirect);
       return url.toString();

@@ -1,10 +1,13 @@
 export type ThemeName =
+  | "system"
   | "ember"
   | "slate"
   | "tokyo-night"
   | "midnight"
   | "vercel"
   | "light";
+
+type AppliedThemeName = Exclude<ThemeName, "system">;
 
 export const THEMES: Array<{
   id: ThemeName;
@@ -13,6 +16,13 @@ export const THEMES: Array<{
   swatchBg: string;
   swatchAccent: string;
 }> = [
+  {
+    id: "system",
+    label: "System",
+    hint: "Follows your device appearance.",
+    swatchBg: "#0d0d0f",
+    swatchAccent: "#faf7f2",
+  },
   {
     id: "slate",
     label: "Slate",
@@ -60,7 +70,7 @@ export const THEMES: Array<{
 export const DEFAULT_THEME: ThemeName = "slate";
 const STORAGE_KEY = "produktive-theme";
 
-const META_BG: Record<ThemeName, string> = {
+const META_BG: Record<AppliedThemeName, string> = {
   ember: "#0b0a0c",
   slate: "#0d0d0f",
   "tokyo-night": "#1a1b26",
@@ -70,6 +80,7 @@ const META_BG: Record<ThemeName, string> = {
 };
 
 const VALID = new Set<ThemeName>([
+  "system",
   "ember",
   "slate",
   "tokyo-night",
@@ -77,6 +88,8 @@ const VALID = new Set<ThemeName>([
   "vercel",
   "light",
 ]);
+
+let systemThemeCleanup: (() => void) | null = null;
 
 export function readStoredTheme(): ThemeName {
   if (typeof window === "undefined") return DEFAULT_THEME;
@@ -89,6 +102,20 @@ export function readStoredTheme(): ThemeName {
 
 export function applyTheme(theme: ThemeName) {
   if (typeof document === "undefined") return;
+  watchSystemTheme(theme);
+  applyResolvedTheme(resolveTheme(theme));
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(STORAGE_KEY, theme);
+  }
+}
+
+function resolveTheme(theme: ThemeName): AppliedThemeName {
+  if (theme !== "system") return theme;
+  if (typeof window === "undefined") return "slate";
+  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "slate";
+}
+
+function applyResolvedTheme(theme: AppliedThemeName) {
   const root = document.documentElement;
   // Drop the old class, if any, from the legacy bootstrap.
   root.classList.remove("theme-light");
@@ -96,7 +123,18 @@ export function applyTheme(theme: ThemeName) {
   document
     .querySelector('meta[name="theme-color"]')
     ?.setAttribute("content", META_BG[theme]);
+}
+
+function watchSystemTheme(theme: ThemeName) {
   if (typeof window !== "undefined") {
-    window.localStorage.setItem(STORAGE_KEY, theme);
+    systemThemeCleanup?.();
+    systemThemeCleanup = null;
+
+    if (theme === "system") {
+      const media = window.matchMedia("(prefers-color-scheme: light)");
+      const update = () => applyResolvedTheme(resolveTheme("system"));
+      media.addEventListener("change", update);
+      systemThemeCleanup = () => media.removeEventListener("change", update);
+    }
   }
 }
