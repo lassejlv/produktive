@@ -14,25 +14,34 @@ use crate::{
     storage,
 };
 use axum::{
-    extract::{DefaultBodyLimit, Multipart, Path, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{header, HeaderMap, StatusCode},
-    response::IntoResponse,
+    response::{IntoResponse, Redirect, Response},
     routing::{delete, get, patch, post},
     Json, Router,
 };
 use chrono::Utc;
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header as JwtHeader, Validation};
 use produktive_entity::{member, organization, session as session_entity, user};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, Set,
 };
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 const MAX_ICON_BYTES: usize = 2 * 1024 * 1024;
+const GITHUB_AUTH_URL: &str = "https://github.com/login/oauth/authorize";
+const GITHUB_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
+const GITHUB_API_BASE: &str = "https://api.github.com";
+const GITHUB_API_VERSION: &str = "2026-03-10";
+const GITHUB_AUTH_SCOPE: &str = "read:user user:email";
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/sign-up", post(sign_up))
         .route("/sign-in", post(sign_in))
+        .route("/github/start", get(start_github_oauth))
+        .route("/github/callback", get(github_oauth_callback))
         .route("/sign-out", post(sign_out))
         .route("/session", get(session))
         .route(
@@ -81,6 +90,51 @@ struct SignUpRequest {
 struct SignInRequest {
     email: String,
     password: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GithubOAuthStartQuery {
+    invite: Option<String>,
+    redirect: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct GithubOAuthCallbackQuery {
+    state: String,
+    code: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct GithubAuthStateClaims {
+    nonce: String,
+    invite: Option<String>,
+    redirect: Option<String>,
+    iat: usize,
+    exp: usize,
+}
+
+#[derive(Deserialize)]
+struct GithubAuthTokenResponse {
+    access_token: Option<String>,
+    error: Option<String>,
+    error_description: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct GithubAuthUserResponse {
+    id: i64,
+    login: String,
+    name: Option<String>,
+    avatar_url: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct GithubAuthEmailResponse {
+    email: String,
+    primary: bool,
+    verified: bool,
 }
 
 #[derive(Deserialize)]
@@ -180,6 +234,59 @@ async fn sign_in(
             organization: organization.into(),
         }),
     ))
+}
+
+async fn start_github_oauth(
+    State(state): State<AppState>,
+    Query(query): Query<GithubOAuthStartQuery>,
+) -> Result<Redirect, ApiError> {
+    let client_id = github_client_id()?;
+    let redirect_uri = github_auth_redirect_uri(&state);
+    let state_token = sign_github_auth_state(
+        &state,
+        sanitize_invite(query.invite.as_deref()),
+        safe_redirect(query.redirect.as_deref()),
+    )?;
+    let mut url = reqwest::Url::parse(GITHUB_AUTH_URL)
+        .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?;
+    url.query_pairs_mut()
+        .append_pair("client_id", &client_id)
+        .append_pair("redirect_uri", &redirect_uri)
+        .append_pair("scope", GITHUB_AUTH_SCOPE)
+        .append_pair("state", &state_token)
+        .append_pair("allow_signup", "true");
+
+    Ok(Redirect::to(url.as_str()))
+}
+
+async fn github_oauth_callback(
+    State(state): State<AppState>,
+    Query(query): Query<GithubOAuthCallbackQuery>,
+) -> Result<Response, ApiError> {
+    if query.error.is_some() {
+        return Ok(Redirect::to("/login?github=oauth_error").into_response());
+    }
+
+    let claims = verify_github_auth_state(&state, &query.state)?;
+    let code = query
+        .code
+        .ok_or_else(|| ApiError::BadRequest("GitHub did not return an OAuth code".to_owned()))?;
+    let token = exchange_github_auth_code(&state, &code).await?;
+    let access_token = token
+        .access_token
+        .as_deref()
+        .ok_or_else(|| ApiError::BadRequest("GitHub token response was empty".to_owned()))?;
+    let github_user = fetch_github_auth_user(access_token).await?;
+    let github_emails = fetch_github_auth_emails(access_token).await?;
+    let email = select_verified_github_email(&github_emails)?;
+    let user = find_or_create_github_user(&state, email, &github_user).await?;
+    let organization = first_or_create_organization(&state.db, &user).await?;
+    let (_, session_token) =
+        create_user_session(&state.db, &state, &user.id, &organization.id).await?;
+    let cookie = auth_cookie(&state, &session_token)?;
+    let target = github_auth_success_redirect(&claims);
+
+    Ok(([(header::SET_COOKIE, cookie)], Redirect::to(&target)).into_response())
 }
 
 async fn verify_email(
@@ -747,6 +854,232 @@ async fn create_organization(
             organization: organization.into(),
         }),
     ))
+}
+
+fn sign_github_auth_state(
+    state: &AppState,
+    invite: Option<String>,
+    redirect: Option<String>,
+) -> Result<String, ApiError> {
+    let now = Utc::now();
+    let claims = GithubAuthStateClaims {
+        nonce: Uuid::new_v4().to_string(),
+        invite,
+        redirect,
+        iat: now.timestamp() as usize,
+        exp: (now + chrono::Duration::minutes(10)).timestamp() as usize,
+    };
+
+    encode(
+        &JwtHeader::default(),
+        &claims,
+        &EncodingKey::from_secret(state.config.jwt_secret.as_bytes()),
+    )
+    .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))
+}
+
+fn verify_github_auth_state(
+    state: &AppState,
+    token: &str,
+) -> Result<GithubAuthStateClaims, ApiError> {
+    decode::<GithubAuthStateClaims>(
+        token,
+        &DecodingKey::from_secret(state.config.jwt_secret.as_bytes()),
+        &Validation::default(),
+    )
+    .map(|data| data.claims)
+    .map_err(|_| ApiError::BadRequest("Invalid GitHub OAuth state".to_owned()))
+}
+
+async fn exchange_github_auth_code(
+    state: &AppState,
+    code: &str,
+) -> Result<GithubAuthTokenResponse, ApiError> {
+    let response = reqwest::Client::new()
+        .post(GITHUB_TOKEN_URL)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .form(&[
+            ("client_id", github_client_id()?),
+            ("client_secret", github_client_secret()?),
+            ("code", code.to_owned()),
+            ("redirect_uri", github_auth_redirect_uri(state)),
+        ])
+        .send()
+        .await
+        .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?;
+    let status = response.status();
+    let token = response
+        .json::<GithubAuthTokenResponse>()
+        .await
+        .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?;
+
+    if !status.is_success() || token.access_token.is_none() {
+        let message = token
+            .error_description
+            .or(token.error)
+            .unwrap_or_else(|| "GitHub OAuth token exchange failed".to_owned());
+        return Err(ApiError::BadRequest(message));
+    }
+
+    Ok(token)
+}
+
+async fn fetch_github_auth_user(token: &str) -> Result<GithubAuthUserResponse, ApiError> {
+    github_auth_request(token, "/user")
+        .send()
+        .await
+        .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?
+        .error_for_status()
+        .map_err(|error| ApiError::BadRequest(error.to_string()))?
+        .json::<GithubAuthUserResponse>()
+        .await
+        .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))
+}
+
+async fn fetch_github_auth_emails(token: &str) -> Result<Vec<GithubAuthEmailResponse>, ApiError> {
+    github_auth_request(token, "/user/emails")
+        .send()
+        .await
+        .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?
+        .error_for_status()
+        .map_err(|error| ApiError::BadRequest(error.to_string()))?
+        .json::<Vec<GithubAuthEmailResponse>>()
+        .await
+        .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))
+}
+
+fn github_auth_request(token: &str, path: &str) -> reqwest::RequestBuilder {
+    reqwest::Client::new()
+        .get(format!("{GITHUB_API_BASE}{path}"))
+        .bearer_auth(token)
+        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+        .header(reqwest::header::USER_AGENT, "Produktive")
+        .header("X-GitHub-Api-Version", GITHUB_API_VERSION)
+}
+
+fn select_verified_github_email(emails: &[GithubAuthEmailResponse]) -> Result<String, ApiError> {
+    let selected = emails
+        .iter()
+        .find(|email| email.primary && email.verified)
+        .or_else(|| emails.iter().find(|email| email.verified))
+        .ok_or_else(|| {
+            ApiError::BadRequest("GitHub account has no verified email address".to_owned())
+        })?;
+
+    validate_email(&selected.email)
+}
+
+async fn find_or_create_github_user(
+    state: &AppState,
+    email: String,
+    github_user: &GithubAuthUserResponse,
+) -> Result<user::Model, ApiError> {
+    if let Some(existing) = user::Entity::find()
+        .filter(user::Column::Email.eq(&email))
+        .one(&state.db)
+        .await?
+    {
+        let mut active = existing.clone().into_active_model();
+        let mut changed = false;
+
+        if !existing.email_verified {
+            active.email_verified = Set(true);
+            changed = true;
+        }
+        if existing.image.is_none() && github_user.avatar_url.is_some() {
+            active.image = Set(github_user.avatar_url.clone());
+            changed = true;
+        }
+
+        if changed {
+            active.updated_at = Set(Utc::now().fixed_offset());
+            return Ok(active.update(&state.db).await?);
+        }
+
+        return Ok(existing);
+    }
+
+    let name = github_user
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or(&github_user.login)
+        .to_owned();
+    let random_password = format!("github-oauth-{}-{}", github_user.id, Uuid::new_v4());
+    let (created, _) = create_signup_records(state, name, email, random_password).await?;
+    let mut created = verify_user_email(&state.db, &created.id).await?;
+
+    if github_user.avatar_url.is_some() {
+        let mut active = created.clone().into_active_model();
+        active.image = Set(github_user.avatar_url.clone());
+        active.updated_at = Set(Utc::now().fixed_offset());
+        created = active.update(&state.db).await?;
+    }
+
+    Ok(created)
+}
+
+fn github_auth_success_redirect(claims: &GithubAuthStateClaims) -> String {
+    if let Some(invite) = claims
+        .invite
+        .as_deref()
+        .and_then(|value| sanitize_invite(Some(value)))
+    {
+        return format!("/invite/{invite}");
+    }
+
+    claims
+        .redirect
+        .clone()
+        .unwrap_or_else(|| "/chat".to_owned())
+}
+
+fn safe_redirect(value: Option<&str>) -> Option<String> {
+    let value = value?.trim();
+    if value.starts_with('/')
+        && !value.starts_with("//")
+        && !value.contains('\n')
+        && !value.contains('\r')
+    {
+        Some(value.to_owned())
+    } else {
+        None
+    }
+}
+
+fn sanitize_invite(value: Option<&str>) -> Option<String> {
+    let value = value?.trim();
+    if !value.is_empty()
+        && value.len() <= 128
+        && value
+            .chars()
+            .all(|char| char.is_ascii_alphanumeric() || char == '-' || char == '_')
+    {
+        Some(value.to_owned())
+    } else {
+        None
+    }
+}
+
+fn github_client_id() -> Result<String, ApiError> {
+    std::env::var("GITHUB_OAUTH_CLIENT_ID")
+        .map(|value| value.trim().to_owned())
+        .ok()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ApiError::BadRequest("GitHub OAuth is not configured".to_owned()))
+}
+
+fn github_client_secret() -> Result<String, ApiError> {
+    std::env::var("GITHUB_OAUTH_CLIENT_SECRET")
+        .map(|value| value.trim().to_owned())
+        .ok()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ApiError::BadRequest("GitHub OAuth is not configured".to_owned()))
+}
+
+fn github_auth_redirect_uri(state: &AppState) -> String {
+    format!("{}/api/auth/github/callback", state.config.app_url)
 }
 
 #[derive(Deserialize)]

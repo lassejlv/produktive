@@ -47,6 +47,11 @@ type EmailCredentials = {
   name?: string;
 };
 
+type GithubOAuthOptions = {
+  invite?: string | null;
+  redirect?: string | null;
+};
+
 type SessionState = {
   data: AuthSession | null;
   error: Error | null;
@@ -246,6 +251,12 @@ export const authClient = {
   signIn: {
     email: ({ email, password }: EmailCredentials) =>
       requestAuth("/api/auth/sign-in", { email, password }).then(applySessionResult),
+    githubUrl: ({ invite, redirect }: GithubOAuthOptions = {}) => {
+      const url = new URL(apiPath("/api/auth/github/start"));
+      if (invite) url.searchParams.set("invite", invite);
+      if (redirect) url.searchParams.set("redirect", redirect);
+      return url.toString();
+    },
   },
   signUp: {
     email: ({ email, password, name }: EmailCredentials) =>

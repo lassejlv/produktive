@@ -10,6 +10,7 @@ type LoginSearch = {
   email?: string;
   mode?: "signin" | "signup";
   redirect?: string;
+  github?: "oauth_error";
 };
 
 export const Route = createFileRoute("/login")({
@@ -19,6 +20,7 @@ export const Route = createFileRoute("/login")({
     email: typeof search.email === "string" ? search.email : undefined,
     mode: search.mode === "signin" || search.mode === "signup" ? search.mode : undefined,
     redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+    github: search.github === "oauth_error" ? search.github : undefined,
   }),
 });
 
@@ -34,9 +36,28 @@ function LoginPage() {
   const [email, setEmail] = useState(search.email ?? "");
   const [password, setPassword] = useState("");
   const [acceptedLegal, setAcceptedLegal] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    search.github === "oauth_error" ? "Could not sign in with GitHub." : null,
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const startGithubAuth = () => {
+    setError(null);
+    setMessage(null);
+
+    if (mode === "signup" && !acceptedLegal) {
+      setError("Accept the terms to continue.");
+      return;
+    }
+
+    window.location.assign(
+      authClient.signIn.githubUrl({
+        invite: inviteToken,
+        redirect: search.redirect,
+      }),
+    );
+  };
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -228,6 +249,16 @@ function LoginPage() {
           {error ? <LoginNotice variant="error" message={error} /> : null}
           {message ? <LoginNotice variant="info" message={message} /> : null}
 
+          <button
+            type="button"
+            onClick={startGithubAuth}
+            disabled={isSubmitting}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-subtle bg-transparent px-4 text-[13px] font-medium text-fg transition-colors hover:border-border hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <GitHubIcon />
+            Continue with GitHub
+          </button>
+
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? (
               <span className="flex items-center gap-2">
@@ -275,6 +306,14 @@ function LoginPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+function GitHubIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <path d="M8 0C3.58 0 0 3.67 0 8.2c0 3.62 2.29 6.7 5.47 7.79.4.08.55-.18.55-.4 0-.2-.01-.86-.01-1.56-2.01.38-2.53-.5-2.69-.96-.09-.23-.48-.96-.82-1.15-.28-.16-.68-.55-.01-.56.63-.01 1.08.59 1.23.83.72 1.24 1.87.89 2.33.68.07-.53.28-.89.51-1.1-1.78-.21-3.64-.91-3.64-4.04 0-.89.31-1.62.82-2.2-.08-.2-.36-1.04.08-2.16 0 0 .67-.22 2.2.84A7.43 7.43 0 0 1 8 3.94c.68 0 1.36.09 2 .27 1.53-1.06 2.2-.84 2.2-.84.44 1.12.16 1.96.08 2.16.51.58.82 1.31.82 2.2 0 3.14-1.87 3.83-3.65 4.04.29.26.54.75.54 1.52 0 1.1-.01 1.98-.01 2.25 0 .22.15.48.55.4A8.12 8.12 0 0 0 16 8.2C16 3.67 12.42 0 8 0Z" />
+    </svg>
   );
 }
 
