@@ -78,6 +78,8 @@ mod m20260502_000037_create_issue_statuses;
 mod m20260502_000038_add_sidebar_layout;
 #[path = "../migrations/m20260503_000039_create_chat_access.rs"]
 mod m20260503_000039_create_chat_access;
+#[path = "../migrations/m20260503_000040_create_slack_integration.rs"]
+mod m20260503_000040_create_slack_integration;
 
 pub struct Migrator;
 
@@ -124,6 +126,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260502_000037_create_issue_statuses::Migration),
             Box::new(m20260502_000038_add_sidebar_layout::Migration),
             Box::new(m20260503_000039_create_chat_access::Migration),
+            Box::new(m20260503_000040_create_slack_integration::Migration),
         ]
     }
 }

@@ -38,6 +38,7 @@ import {
 } from "@/lib/api";
 import { useGithubConnectionQuery, useGithubRepositoriesQuery } from "@/lib/queries/github";
 import { useMcpKeysQuery } from "@/lib/queries/mcp";
+import { useSlackConnectionQuery } from "@/lib/queries/slack";
 import {
   useCreateGithubRepository,
   useDeleteGithubRepository,
@@ -48,6 +49,11 @@ import {
   useUpdateGithubRepository,
 } from "@/lib/mutations/github";
 import { useCreateMcpApiKey, useDeleteMcpApiKey, useRevokeMcpApiKey } from "@/lib/mutations/mcp";
+import {
+  useDisconnectSlack,
+  useStartSlackOAuth,
+  useUpdateSlackConnection,
+} from "@/lib/mutations/slack";
 import {
   refreshSession,
   updateActiveOrganization,
@@ -314,7 +320,10 @@ function WorkspaceSettingsPage() {
             <StatusSettings canEdit={hasPermission("issue_statuses.manage")} />
           ) : null}
           {activeSection === "integrations" ? (
-            <IntegrationsSettings canEditGithub={hasPermission("integrations.github.manage")} />
+            <IntegrationsSettings
+              canEditGithub={hasPermission("integrations.github.manage")}
+              canEditSlack={hasPermission("integrations.slack.manage")}
+            />
           ) : null}
           {activeSection === "ai" ? <AiSettings /> : null}
           {activeSection === "templates" ? <McpTemplatesSettings /> : null}
@@ -581,10 +590,11 @@ function StatusColor({ color }: { color: string }) {
   return <span className={cn("size-2 rounded-full", colors[color] ?? colors.gray)} aria-hidden />;
 }
 
-type IntegrationSubtabId = "github" | "discord" | "mcp" | "rest";
+type IntegrationSubtabId = "github" | "slack" | "discord" | "mcp" | "rest";
 
 const INTEGRATION_SUBTABS: { id: IntegrationSubtabId; label: string }[] = [
   { id: "github", label: "GitHub" },
+  { id: "slack", label: "Slack" },
   { id: "discord", label: "Discord" },
   { id: "mcp", label: "MCP" },
   { id: "rest", label: "REST API" },
@@ -627,7 +637,13 @@ function IntegrationSubtabBar({
   );
 }
 
-function IntegrationsSettings({ canEditGithub }: { canEditGithub: boolean }) {
+function IntegrationsSettings({
+  canEditGithub,
+  canEditSlack,
+}: {
+  canEditGithub: boolean;
+  canEditSlack: boolean;
+}) {
   const [sub, setSub] = useState<IntegrationSubtabId>("github");
 
   return (
@@ -640,6 +656,7 @@ function IntegrationsSettings({ canEditGithub }: { canEditGithub: boolean }) {
         className="min-w-0 pt-8"
       >
         {sub === "github" ? <GithubSettings canEdit={canEditGithub} /> : null}
+        {sub === "slack" ? <SlackSettings canEdit={canEditSlack} /> : null}
         {sub === "discord" ? <DiscordSettings /> : null}
         {sub === "mcp" ? <HostedMcpSettingsRows /> : null}
         {sub === "rest" ? <McpKeySettings /> : null}
@@ -712,6 +729,134 @@ function DiscordSettings() {
           workspace.
         </span>
       </SettingRow>
+    </div>
+  );
+}
+
+function SlackSettings({ canEdit }: { canEdit: boolean }) {
+  const connectionQuery = useSlackConnectionQuery();
+  const connection = connectionQuery.data ?? null;
+  const startOAuth = useStartSlackOAuth();
+  const updateConnection = useUpdateSlackConnection();
+  const disconnect = useDisconnectSlack();
+  const { confirm, dialog } = useConfirmDialog();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const slack = params.get("slack");
+    const message = params.get("message");
+    if (slack === "oauth_connected") {
+      toast.success("Slack connected");
+    } else if (slack === "oauth_error") {
+      toast.error(message || "Slack connection failed");
+    }
+  }, []);
+
+  const onConnect = async () => {
+    try {
+      const response = await startOAuth.mutateAsync();
+      window.location.href = response.url;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to start Slack OAuth");
+    }
+  };
+
+  const onToggleAgent = async (enabled: boolean) => {
+    try {
+      await updateConnection.mutateAsync({ agentEnabled: enabled });
+      toast.success(enabled ? "Slack agent enabled" : "Slack agent disabled");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update Slack");
+    }
+  };
+
+  const onDisconnect = () => {
+    confirm({
+      title: "Disconnect Slack?",
+      description:
+        "Slack commands and mentions will stop working for this workspace until Slack is installed again.",
+      confirmLabel: "Disconnect",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await disconnect.mutateAsync();
+          toast.success("Slack disconnected");
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Failed to disconnect Slack");
+        }
+      },
+    });
+  };
+
+  const busy = startOAuth.isPending || updateConnection.isPending || disconnect.isPending;
+
+  return (
+    <div>
+      {dialog}
+      <SettingRow label="Workspace">
+        {connectionQuery.isLoading ? (
+          <span className="text-[13px] text-fg-muted">Loading Slack connection...</span>
+        ) : connection?.connected ? (
+          <div className="grid gap-1">
+            <span className="text-[13px] text-fg">
+              {connection.teamName ?? "Connected Slack workspace"}
+            </span>
+            <span className="font-mono text-[11px] text-fg-faint">{connection.teamId}</span>
+          </div>
+        ) : (
+          <span className="text-[13px] text-fg-muted">Slack is not connected.</span>
+        )}
+      </SettingRow>
+      <SettingRow label="Install app">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" onClick={onConnect} disabled={!canEdit || busy}>
+            {connection?.connected ? "Reconnect Slack" : "Add to Slack"}
+          </Button>
+          <span className="text-[12px] text-fg-muted">
+            Installs the Produktive bot with slash commands and app mentions.
+          </span>
+        </div>
+      </SettingRow>
+      <SettingRow label="User login">
+        <span className="text-fg-muted">
+          Run <span className="font-mono text-fg">/produktive login</span> in Slack before creating
+          or updating issues.
+        </span>
+      </SettingRow>
+      {connection?.connected ? (
+        <>
+          <SettingRow label="Agent">
+            <label className="inline-flex items-center gap-2 text-[13px] text-fg-muted">
+              <input
+                type="checkbox"
+                checked={connection.agentEnabled}
+                disabled={!canEdit || busy}
+                onChange={(event) => void onToggleAgent(event.target.checked)}
+                className="h-3.5 w-3.5 accent-fg"
+              />
+              Allow <span className="font-mono text-fg">/agent ask</span> and non-issue mentions.
+            </label>
+          </SettingRow>
+          <SettingRow label="Commands">
+            <span className="text-fg-muted">
+              Use <span className="font-mono text-fg">/issue create</span>,{" "}
+              <span className="font-mono text-fg">/issue list</span>, and{" "}
+              <span className="font-mono text-fg">/agent ask</span>.
+            </span>
+          </SettingRow>
+          <SettingRow label="Disconnect">
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              disabled={!canEdit || busy}
+              onClick={() => void onDisconnect()}
+            >
+              Disconnect Slack
+            </Button>
+          </SettingRow>
+        </>
+      ) : null}
     </div>
   );
 }

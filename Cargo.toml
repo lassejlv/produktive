@@ -44,4 +44,5 @@ tokio = { version = "1.49", features = ["macros", "net", "rt-multi-thread", "sig
 tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url = "2.5"
 uuid = { version = "1.11", features = ["v4"] }

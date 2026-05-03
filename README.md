@@ -69,6 +69,7 @@ The API reads `.env` values such as:
 - `UNKEY_ROOT_KEY` and `UNKEY_API_ID` for workspace API/MCP key creation and verification
 - `MCP_TOKEN_ENCRYPTION_KEY`
 - `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET`
+- `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, and `SLACK_SIGNING_SECRET`
 - S3-compatible storage settings
 
 The web app uses the Vite `/api` proxy by default. Set

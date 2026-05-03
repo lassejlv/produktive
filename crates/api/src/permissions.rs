@@ -27,6 +27,7 @@ pub const LABELS_UPDATE: &str = "labels.update";
 pub const LABELS_DELETE: &str = "labels.delete";
 pub const GITHUB_MANAGE: &str = "integrations.github.manage";
 pub const DISCORD_MANAGE: &str = "integrations.discord.manage";
+pub const SLACK_MANAGE: &str = "integrations.slack.manage";
 pub const AI_MANAGE: &str = "ai.manage";
 pub const API_KEYS_MANAGE: &str = "api_keys.manage";
 pub const BILLING_MANAGE: &str = "billing.manage";
@@ -71,6 +72,7 @@ pub fn permission_catalog() -> Vec<PermissionInfo> {
         permission(LABELS_DELETE, "Delete labels", "Labels"),
         permission(GITHUB_MANAGE, "Manage GitHub", "Integrations"),
         permission(DISCORD_MANAGE, "Manage Discord", "Integrations"),
+        permission(SLACK_MANAGE, "Manage Slack", "Integrations"),
         permission(AI_MANAGE, "Manage AI and MCP servers", "AI"),
         permission(API_KEYS_MANAGE, "Manage API keys", "API"),
         permission(BILLING_MANAGE, "Manage billing", "Billing"),

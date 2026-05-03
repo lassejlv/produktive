@@ -2376,6 +2376,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unkey-rs",
+ "url",
  "uuid",
 ]
 

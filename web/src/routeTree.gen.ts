@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as LegalRouteImport } from './routes/legal'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SlackLinkRouteImport } from './routes/slack.link'
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as LegalTypeRouteImport } from './routes/legal.$type'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
@@ -61,6 +62,11 @@ const AppRoute = AppRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SlackLinkRoute = SlackLinkRouteImport.update({
+  id: '/slack/link',
+  path: '/slack/link',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
@@ -173,6 +179,7 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$type': typeof LegalTypeRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
+  '/slack/link': typeof SlackLinkRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/members/$memberId': typeof AppMembersMemberIdRoute
@@ -198,6 +205,7 @@ export interface FileRoutesByTo {
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$type': typeof LegalTypeRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
+  '/slack/link': typeof SlackLinkRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/members/$memberId': typeof AppMembersMemberIdRoute
@@ -225,6 +233,7 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$type': typeof LegalTypeRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
+  '/slack/link': typeof SlackLinkRoute
   '/_app/chat/$chatId': typeof AppChatChatIdRoute
   '/_app/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/_app/members/$memberId': typeof AppMembersMemberIdRoute
@@ -252,6 +261,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/legal/$type'
     | '/oauth/authorize'
+    | '/slack/link'
     | '/chat/$chatId'
     | '/issues/$issueId'
     | '/members/$memberId'
@@ -277,6 +287,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/legal/$type'
     | '/oauth/authorize'
+    | '/slack/link'
     | '/chat/$chatId'
     | '/issues/$issueId'
     | '/members/$memberId'
@@ -303,6 +314,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/legal/$type'
     | '/oauth/authorize'
+    | '/slack/link'
     | '/_app/chat/$chatId'
     | '/_app/issues/$issueId'
     | '/_app/members/$memberId'
@@ -320,6 +332,7 @@ export interface RootRouteChildren {
   DiscordLinkRoute: typeof DiscordLinkRoute
   InviteTokenRoute: typeof InviteTokenRoute
   OauthAuthorizeRoute: typeof OauthAuthorizeRoute
+  SlackLinkRoute: typeof SlackLinkRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -364,6 +377,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/slack/link': {
+      id: '/slack/link'
+      path: '/slack/link'
+      fullPath: '/slack/link'
+      preLoaderRoute: typeof SlackLinkRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/oauth/authorize': {
@@ -590,6 +610,7 @@ const rootRouteChildren: RootRouteChildren = {
   DiscordLinkRoute: DiscordLinkRoute,
   InviteTokenRoute: InviteTokenRoute,
   OauthAuthorizeRoute: OauthAuthorizeRoute,
+  SlackLinkRoute: SlackLinkRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

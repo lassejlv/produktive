@@ -596,6 +596,29 @@ export const importGithubIssues = (input: { owner: string; repo: string }) =>
     body: JSON.stringify(input),
   });
 
+export type SlackConnection = {
+  connected: boolean;
+  teamId: string | null;
+  teamName: string | null;
+  botUserId: string | null;
+  scope: string | null;
+  agentEnabled: boolean;
+  connectedAt: string | null;
+};
+
+export const getSlackConnection = () => request<SlackConnection>("/api/slack/connection");
+
+export const startSlackOAuth = () =>
+  request<{ url: string }>("/api/slack/oauth/start", { method: "POST" });
+
+export const updateSlackConnection = (patch: { agentEnabled?: boolean }) =>
+  request<SlackConnection>("/api/slack/connection", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+
+export const disconnectSlack = () => request<void>("/api/slack/connection", { method: "DELETE" });
+
 export type Invitation = {
   id: string;
   email: string;
@@ -1095,4 +1118,32 @@ export const completeDiscordLink = (state: string, organizationId: string) =>
   request<DiscordLinkResult>(`/api/discord/link/${encodeURIComponent(state)}`, {
     method: "POST",
     body: JSON.stringify({ organizationId }),
+  });
+
+export type SlackLinkPreview = {
+  slackTeamId: string;
+  slackUserId: string;
+  expiresAt: string;
+  linkedOrganization: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+};
+
+export type SlackLinkResult = {
+  ok: boolean;
+  organization: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+};
+
+export const previewSlackLink = (state: string) =>
+  request<SlackLinkPreview>(`/api/slack/link/${encodeURIComponent(state)}`);
+
+export const completeSlackLink = (state: string) =>
+  request<SlackLinkResult>(`/api/slack/link/${encodeURIComponent(state)}`, {
+    method: "POST",
   });
