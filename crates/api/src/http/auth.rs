@@ -34,7 +34,7 @@ const GITHUB_AUTH_URL: &str = "https://github.com/login/oauth/authorize";
 const GITHUB_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 const GITHUB_API_BASE: &str = "https://api.github.com";
 const GITHUB_API_VERSION: &str = "2026-03-10";
-const GITHUB_AUTH_SCOPE: &str = "read:user user:email";
+const GITHUB_AUTH_SCOPE: &str = "user:email";
 
 pub fn routes() -> Router<AppState> {
     Router::new()
