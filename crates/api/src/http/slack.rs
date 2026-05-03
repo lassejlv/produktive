@@ -146,6 +146,7 @@ struct SlackCommandPayload {
     text: String,
     team_id: String,
     user_id: String,
+    response_url: Option<String>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -357,6 +358,21 @@ async fn commands(
 ) -> Result<Response, ApiError> {
     verify_slack_signature(&state, &headers, &body)?;
     let payload = parse_command_payload(&body)?;
+    if should_handle_command_lazily(&payload) {
+        let cloned = state.clone();
+        tokio::spawn(async move {
+            if let Err(error) = handle_lazy_command(cloned, payload).await {
+                tracing::warn!(%error, "lazy Slack command failed");
+            }
+        });
+        return Ok((
+            StatusCode::OK,
+            [("content-type", "text/plain; charset=utf-8")],
+            "Working on it...",
+        )
+            .into_response());
+    }
+
     let text = handle_command(&state, payload).await;
     Ok((
         StatusCode::OK,
@@ -367,6 +383,12 @@ async fn commands(
         },
     )
         .into_response())
+}
+
+fn should_handle_command_lazily(payload: &SlackCommandPayload) -> bool {
+    payload.command.trim_start_matches('/') == "agent"
+        && payload.text.split_whitespace().next() == Some("ask")
+        && payload.response_url.is_some()
 }
 
 async fn preview_link(
@@ -519,6 +541,21 @@ async fn handle_command(
         }
         _ => Ok(help_text()),
     }
+}
+
+async fn handle_lazy_command(
+    state: AppState,
+    payload: SlackCommandPayload,
+) -> Result<(), ApiError> {
+    let Some(response_url) = payload.response_url.clone() else {
+        return Ok(());
+    };
+    let result = handle_command(&state, payload).await;
+    let text = match result {
+        Ok(text) => text,
+        Err(error) => error.to_string(),
+    };
+    post_slack_response_url(&response_url, &text).await
 }
 
 async fn process_event(state: AppState, envelope: SlackEventEnvelope) -> Result<(), ApiError> {
@@ -967,6 +1004,28 @@ async fn post_slack_message(
     }
 }
 
+async fn post_slack_response_url(response_url: &str, text: &str) -> Result<(), ApiError> {
+    let response = reqwest::Client::new()
+        .post(response_url)
+        .header(ACCEPT, "application/json")
+        .header(CONTENT_TYPE, "application/json")
+        .json(&json!({
+            "response_type": "ephemeral",
+            "text": truncate_for_chat(text),
+        }))
+        .send()
+        .await
+        .map_err(|error| ApiError::Internal(error.into()))?;
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        Err(ApiError::BadRequest(format!(
+            "Slack delayed response failed with {}",
+            response.status()
+        )))
+    }
+}
+
 fn verify_slack_signature(
     state: &AppState,
     headers: &HeaderMap,
@@ -1026,6 +1085,7 @@ fn parse_command_payload(body: &[u8]) -> Result<SlackCommandPayload, ApiError> {
             .get("user_id")
             .cloned()
             .ok_or_else(|| ApiError::BadRequest("Missing Slack user".to_owned()))?,
+        response_url: pairs.get("response_url").cloned(),
     })
 }
 
@@ -1184,5 +1244,17 @@ mod tests {
             args.get("title").map(String::as_str),
             Some("Ship Slack bot")
         );
+    }
+
+    #[test]
+    fn detects_lazy_agent_command() {
+        let payload = SlackCommandPayload {
+            command: "/agent".to_owned(),
+            text: "ask what should I do next".to_owned(),
+            team_id: "T1".to_owned(),
+            user_id: "U1".to_owned(),
+            response_url: Some("https://hooks.slack.com/commands/T1/123".to_owned()),
+        };
+        assert!(should_handle_command_lazily(&payload));
     }
 }
