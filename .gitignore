@@ -4,6 +4,7 @@ node_modules/
 
 # build/cache
 dist/
+dist-unminified/
 target/
 .wrangler/
 .cache/
