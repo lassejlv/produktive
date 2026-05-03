@@ -35,19 +35,6 @@ export default defineConfig(({ mode }) => {
     ],
     build: {
       chunkSizeWarningLimit: 800,
-      rolldownOptions: {
-        output: {
-          codeSplitting: {
-            groups: [
-              {
-                name: "initial",
-                tags: ["$initial"],
-                maxSize: 450_000,
-              },
-            ],
-          },
-        },
-      },
     },
   };
 });
