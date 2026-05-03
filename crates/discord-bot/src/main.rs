@@ -1,7 +1,19 @@
+mod agent_thread;
+mod commands;
+mod env;
+mod health;
+mod state;
+
+use agent_thread::{handle_agent_thread_message, respond_ephemeral, start_agent_thread};
 use anyhow::{anyhow, Context as _};
-use axum::{routing::get, Json, Router};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{Duration, Utc};
+use commands::{
+    agent_command, first_subcommand, issue_command, produktive_command, require_manage_guild,
+    string_option,
+};
+use env::{env_or_default, required_env};
+use health::serve_http;
 use produktive_ai::{AiClient, CompletionResult, Message as AiMessage, Tool, ToolCall};
 use produktive_entity::{
     discord_link_state, discord_mention_issue, discord_server_link, discord_user_link, issue,
@@ -9,23 +21,17 @@ use produktive_entity::{
 };
 use rand_core::{OsRng, RngCore};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Database, DatabaseConnection, EntityTrait, IntoActiveModel,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, Database, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder,
+    QuerySelect, Set,
 };
 use serde_json::{json, Value};
 use serenity::{all::*, async_trait};
+use state::BotState;
+use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::net::TcpListener;
+use tokio::sync::RwLock;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use uuid::Uuid;
-
-#[derive(Clone)]
-struct BotState {
-    db: DatabaseConnection,
-    app_url: String,
-    ai: AiClient,
-    ai_model: String,
-}
 
 struct Handler {
     state: Arc<BotState>,
@@ -64,9 +70,11 @@ async fn main() -> anyhow::Result<()> {
         app_url,
         ai,
         ai_model: env_or_default("AI_MODEL", "glm-5.1"),
+        agent_threads: Arc::new(RwLock::new(HashMap::new())),
     });
 
-    let intents = GatewayIntents::GUILDS | GatewayIntents::GUILD_MESSAGES;
+    let intents =
+        GatewayIntents::GUILDS | GatewayIntents::GUILD_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
     let mut client = Client::builder(token, intents)
         .application_id(ApplicationId::new(application_id))
         .event_handler(Handler { state })
@@ -83,21 +91,6 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-async fn serve_http(port: u16) -> anyhow::Result<()> {
-    let app = Router::new().route("/status", get(status));
-    let addr = format!("0.0.0.0:{port}");
-    let listener = TcpListener::bind(&addr)
-        .await
-        .with_context(|| format!("failed to bind {addr}"))?;
-    tracing::info!("Discord bot status server listening on http://{addr}");
-    axum::serve(listener, app).await?;
-    Ok(())
-}
-
-async fn status() -> Json<Value> {
-    Json(json!({ "ok": true }))
 }
 
 #[async_trait]
@@ -118,6 +111,14 @@ impl EventHandler for Handler {
         let Interaction::Command(command) = interaction else {
             return;
         };
+
+        if command.data.name == "agent" {
+            if let Err(error) = start_agent_thread(self.state.clone(), &ctx, &command).await {
+                tracing::warn!(%error, "Discord agent command failed");
+                respond_ephemeral(&ctx, &command, error.to_string()).await;
+            }
+            return;
+        }
 
         let result = handle_command(&self.state, &ctx, &command).await;
         let content = match result {
@@ -146,6 +147,11 @@ impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
         if msg.author.bot || msg.guild_id.is_none() {
             return;
+        }
+        match handle_agent_thread_message(self.state.clone(), &ctx, &msg).await {
+            Ok(true) => return,
+            Ok(false) => {}
+            Err(error) => tracing::warn!(%error, "failed to handle Discord agent thread message"),
         }
         let bot_id = ctx.cache.current_user().id;
         if !msg.mentions.iter().any(|user| user.id == bot_id) {
@@ -190,199 +196,39 @@ async fn handle_command(
         .ok_or_else(|| anyhow!("Use this command in a server."))?
         .to_string();
     let discord_user_id = command.user.id.to_string();
-    let sub = first_subcommand(command)?;
 
     match command.data.name.as_str() {
-        "produktive" => match sub.name.as_str() {
+        "produktive" => match first_subcommand(command)?.name.as_str() {
             "login" => create_login_link(state, &guild_id, &discord_user_id).await,
             "workspace" => {
                 require_manage_guild(command)?;
                 create_login_link(state, &guild_id, &discord_user_id).await
             }
             "status" => status_message(state, &guild_id, &discord_user_id).await,
+            "agent-enable" => {
+                require_manage_guild(command)?;
+                set_agent_enabled(state, &guild_id, &discord_user_id, true).await
+            }
+            "agent-disable" => {
+                require_manage_guild(command)?;
+                set_agent_enabled(state, &guild_id, &discord_user_id, false).await
+            }
             "unlink" => {
                 require_manage_guild(command)?;
                 unlink_server(state, &guild_id).await
             }
             _ => Ok("Unknown Produktive command.".to_owned()),
         },
-        "issue" => match sub.name.as_str() {
-            "list" => list_issues(state, &guild_id, &discord_user_id, sub).await,
-            "create" => create_issue_command(state, &guild_id, &discord_user_id, sub).await,
-            "update" => update_issue_command(state, &guild_id, &discord_user_id, sub).await,
-            _ => Ok("Unknown issue command.".to_owned()),
-        },
-        "agent" => match sub.name.as_str() {
-            "enable" => {
-                require_manage_guild(command)?;
-                set_agent_enabled(state, &guild_id, &discord_user_id, true).await
+        "issue" => {
+            let sub = first_subcommand(command)?;
+            match sub.name.as_str() {
+                "list" => list_issues(state, &guild_id, &discord_user_id, sub).await,
+                "create" => create_issue_command(state, &guild_id, &discord_user_id, sub).await,
+                "update" => update_issue_command(state, &guild_id, &discord_user_id, sub).await,
+                _ => Ok("Unknown issue command.".to_owned()),
             }
-            "disable" => {
-                require_manage_guild(command)?;
-                set_agent_enabled(state, &guild_id, &discord_user_id, false).await
-            }
-            "ask" => agent_ask(state, &guild_id, &discord_user_id, sub).await,
-            _ => Ok("Unknown agent command.".to_owned()),
-        },
-        _ => Ok("Unknown command.".to_owned()),
-    }
-}
-
-fn produktive_command() -> CreateCommand {
-    CreateCommand::new("produktive")
-        .description("Link and manage this Discord server")
-        .add_option(CreateCommandOption::new(
-            CommandOptionType::SubCommand,
-            "login",
-            "Link your Produktive account and select a workspace",
-        ))
-        .add_option(CreateCommandOption::new(
-            CommandOptionType::SubCommand,
-            "workspace",
-            "Select or change the Produktive workspace for this server",
-        ))
-        .add_option(CreateCommandOption::new(
-            CommandOptionType::SubCommand,
-            "status",
-            "Show the current Discord link status",
-        ))
-        .add_option(CreateCommandOption::new(
-            CommandOptionType::SubCommand,
-            "unlink",
-            "Unlink this Discord server from Produktive",
-        ))
-}
-
-fn issue_command() -> CreateCommand {
-    CreateCommand::new("issue")
-        .description("Work with Produktive issues")
-        .add_option(
-            CreateCommandOption::new(
-                CommandOptionType::SubCommand,
-                "list",
-                "List workspace issues",
-            )
-            .add_sub_option(CreateCommandOption::new(
-                CommandOptionType::String,
-                "status",
-                "backlog, todo, in-progress, or done",
-            ))
-            .add_sub_option(CreateCommandOption::new(
-                CommandOptionType::String,
-                "priority",
-                "low, medium, high, or urgent",
-            )),
-        )
-        .add_option(
-            CreateCommandOption::new(CommandOptionType::SubCommand, "create", "Create an issue")
-                .add_sub_option(
-                    CreateCommandOption::new(CommandOptionType::String, "title", "Issue title")
-                        .required(true),
-                )
-                .add_sub_option(CreateCommandOption::new(
-                    CommandOptionType::String,
-                    "description",
-                    "Issue description",
-                ))
-                .add_sub_option(CreateCommandOption::new(
-                    CommandOptionType::String,
-                    "priority",
-                    "low, medium, high, or urgent",
-                ))
-                .add_sub_option(CreateCommandOption::new(
-                    CommandOptionType::String,
-                    "status",
-                    "backlog, todo, in-progress, or done",
-                )),
-        )
-        .add_option(
-            CreateCommandOption::new(CommandOptionType::SubCommand, "update", "Update an issue")
-                .add_sub_option(
-                    CreateCommandOption::new(CommandOptionType::String, "id", "Issue id")
-                        .required(true),
-                )
-                .add_sub_option(CreateCommandOption::new(
-                    CommandOptionType::String,
-                    "title",
-                    "New title",
-                ))
-                .add_sub_option(CreateCommandOption::new(
-                    CommandOptionType::String,
-                    "priority",
-                    "low, medium, high, or urgent",
-                ))
-                .add_sub_option(CreateCommandOption::new(
-                    CommandOptionType::String,
-                    "status",
-                    "backlog, todo, in-progress, or done",
-                )),
-        )
-}
-
-fn agent_command() -> CreateCommand {
-    CreateCommand::new("agent")
-        .description("Use the Produktive agent")
-        .add_option(CreateCommandOption::new(
-            CommandOptionType::SubCommand,
-            "enable",
-            "Enable the agent in this server",
-        ))
-        .add_option(CreateCommandOption::new(
-            CommandOptionType::SubCommand,
-            "disable",
-            "Disable the agent in this server",
-        ))
-        .add_option(
-            CreateCommandOption::new(
-                CommandOptionType::SubCommand,
-                "ask",
-                "Ask the Produktive agent",
-            )
-            .add_sub_option(
-                CreateCommandOption::new(CommandOptionType::String, "prompt", "Agent prompt")
-                    .required(true),
-            ),
-        )
-}
-
-fn first_subcommand(command: &CommandInteraction) -> anyhow::Result<&CommandDataOption> {
-    command
-        .data
-        .options
-        .first()
-        .ok_or_else(|| anyhow!("Choose a subcommand."))
-}
-
-fn sub_options(sub: &CommandDataOption) -> &[CommandDataOption] {
-    match &sub.value {
-        CommandDataOptionValue::SubCommand(options) => options,
-        _ => &[],
-    }
-}
-
-fn string_option(sub: &CommandDataOption, name: &str) -> Option<String> {
-    sub_options(sub).iter().find_map(|option| {
-        if option.name == name {
-            option.value.as_str().map(ToOwned::to_owned)
-        } else {
-            None
         }
-    })
-}
-
-fn require_manage_guild(command: &CommandInteraction) -> anyhow::Result<()> {
-    let allowed = command
-        .member
-        .as_ref()
-        .and_then(|member| member.permissions)
-        .map(|permissions| permissions.administrator() || permissions.manage_guild())
-        .unwrap_or(false);
-    if allowed {
-        Ok(())
-    } else {
-        Err(anyhow!(
-            "You need Manage Server permission for this command."
-        ))
+        _ => Ok("Unknown command.".to_owned()),
     }
 }
 
@@ -457,7 +303,7 @@ async fn unlink_server(state: &BotState, guild_id: &str) -> anyhow::Result<Strin
     Ok("Discord server unlinked from Produktive.".to_owned())
 }
 
-async fn linked_context(
+pub(crate) async fn linked_context(
     state: &BotState,
     guild_id: &str,
     discord_user_id: &str,
@@ -660,17 +506,17 @@ async fn set_agent_enabled(
     ))
 }
 
-async fn agent_ask(
+pub(crate) async fn agent_respond(
     state: &BotState,
     guild_id: &str,
     discord_user_id: &str,
-    sub: &CommandDataOption,
+    prompt: String,
+    history: &mut Vec<AiMessage>,
 ) -> anyhow::Result<String> {
     let (server, actor, _) = linked_context(state, guild_id, discord_user_id).await?;
     if !server.agent_enabled {
         return Err(anyhow!("The agent is disabled in this server."));
     }
-    let prompt = string_option(sub, "prompt").ok_or_else(|| anyhow!("Prompt is required."))?;
     let org = organization::Entity::find_by_id(&server.organization_id)
         .one(&state.db)
         .await?
@@ -679,7 +525,7 @@ async fn agent_ask(
         "You are Produktive's Discord agent. Workspace: {} ({}). Current user: {} ({}). Be concise and practical.",
         org.name, org.id, actor.name, actor.id
     );
-    let mut history = vec![AiMessage::user(prompt)];
+    history.push(AiMessage::user(prompt));
     let tools = agent_tools();
     for _ in 0..5 {
         let result = state
@@ -688,7 +534,11 @@ async fn agent_ask(
             .await
             .map_err(|error| anyhow!("AI request failed: {error}"))?;
         match result {
-            CompletionResult::Text { text, .. } => return Ok(discord_truncate(&text)),
+            CompletionResult::Text { text, .. } => {
+                let text = discord_truncate(&text);
+                history.push(AiMessage::assistant_text(text.clone()));
+                return Ok(text);
+            }
             CompletionResult::ToolCalls {
                 calls,
                 reasoning_content,
@@ -1058,23 +908,11 @@ fn short_id(id: &str) -> String {
     id.chars().take(8).collect()
 }
 
-fn discord_truncate(text: &str) -> String {
+pub(crate) fn discord_truncate(text: &str) -> String {
     const LIMIT: usize = 1900;
     if text.chars().count() <= LIMIT {
         text.to_owned()
     } else {
         format!("{}...", text.chars().take(LIMIT - 3).collect::<String>())
     }
-}
-
-fn required_env(key: &str) -> anyhow::Result<String> {
-    std::env::var(key)
-        .map(|value| value.trim().to_owned())
-        .ok()
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| anyhow!("{key} is required"))
-}
-
-fn env_or_default(key: &str, default: &str) -> String {
-    std::env::var(key).unwrap_or_else(|_| default.to_owned())
 }
