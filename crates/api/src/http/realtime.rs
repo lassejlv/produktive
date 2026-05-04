@@ -10,7 +10,8 @@ use axum::{
 use produktive_entity::issue;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::Deserialize;
-use std::{convert::Infallible, time::Duration};
+use std::convert::Infallible;
+use tokio::sync::broadcast;
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/", get(realtime))
@@ -19,7 +20,7 @@ pub fn routes() -> Router<AppState> {
 #[derive(Deserialize)]
 struct RealtimeQuery {
     channel: String,
-    id: String,
+    id: Option<String>,
 }
 
 async fn realtime(
@@ -34,46 +35,47 @@ async fn realtime(
         ));
     }
 
-    let issue = issue::Entity::find()
-        .filter(issue::Column::OrganizationId.eq(&auth.organization.id))
-        .filter(issue::Column::Id.eq(&query.id))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| ApiError::NotFound("Issue not found".to_owned()))?;
+    let issue_id = query.id.clone();
+    if let Some(id) = &issue_id {
+        issue::Entity::find()
+            .filter(issue::Column::OrganizationId.eq(&auth.organization.id))
+            .filter(issue::Column::Id.eq(id))
+            .one(&state.db)
+            .await?
+            .ok_or_else(|| ApiError::NotFound("Issue not found".to_owned()))?;
+    }
 
-    let issue_id = issue.id;
     let org_id = auth.organization.id;
-    let db = state.db.clone();
+    let mut receiver = state.realtime.subscribe();
 
     let updates = stream! {
-        let mut last_seen = issue.updated_at.to_rfc3339();
-        yield Ok(Event::default().event("ready").data(last_seen.clone()));
+        yield Ok(Event::default().event("ready").data("subscribed"));
 
         loop {
-            tokio::time::sleep(Duration::from_secs(3)).await;
-            let latest = issue::Entity::find()
-                .filter(issue::Column::OrganizationId.eq(&org_id))
-                .filter(issue::Column::Id.eq(&issue_id))
-                .one(&db)
-                .await;
+            match receiver.recv().await {
+                Ok(event) => {
+                    if event.organization_id != org_id {
+                        continue;
+                    }
+                    if issue_id.as_deref().is_some_and(|id| id != event.issue_id) {
+                        continue;
+                    }
 
-            match latest {
-                Ok(Some(issue)) => {
-                    let updated = issue.updated_at.to_rfc3339();
-                    if updated != last_seen {
-                        last_seen = updated.clone();
-                        yield Ok(Event::default().event("refresh").data(updated));
-                    } else {
-                        yield Ok(Event::default().event("tick").data(updated));
+                    let name = event.sse_event_name();
+                    let data = event.sse_data();
+                    yield Ok(Event::default().event(name).data(data));
+
+                    if name == "deleted" && issue_id.is_some() {
+                        break;
                     }
                 }
-                Ok(None) => {
-                    yield Ok(Event::default().event("deleted").data(issue_id.clone()));
-                    break;
+                Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                    tracing::warn!(skipped, "realtime subscriber lagged");
+                    yield Ok(Event::default().event("refresh").data("lagged"));
                 }
-                Err(error) => {
-                    tracing::warn!(%error, "issue realtime query failed");
-                    yield Ok(Event::default().event("error").data("refresh failed"));
+                Err(broadcast::error::RecvError::Closed) => {
+                    yield Ok(Event::default().event("error").data("realtime closed"));
+                    break;
                 }
             }
         }

@@ -37,24 +37,15 @@ const sortOptions: { value: SortKey; label: string }[] = [
   { value: "alphabetical", label: "A–Z" },
 ];
 
-type Bucket = "pinned" | "today" | "yesterday" | "this-week" | "this-month" | "older";
+type Bucket = "pinned" | "today" | "yesterday" | "earlier";
 
-const bucketOrder: Bucket[] = [
-  "pinned",
-  "today",
-  "yesterday",
-  "this-week",
-  "this-month",
-  "older",
-];
+const bucketOrder: Bucket[] = ["pinned", "today", "yesterday", "earlier"];
 
 const bucketLabels: Record<Bucket, string> = {
   pinned: "Pinned",
   today: "Today",
   yesterday: "Yesterday",
-  "this-week": "Earlier this week",
-  "this-month": "Earlier this month",
-  older: "Older",
+  earlier: "Earlier",
 };
 
 function ChatsPage() {
@@ -177,74 +168,47 @@ function ChatsPage() {
     <main className="min-h-full bg-bg">
       {dialog}
 
-      <header className="border-b border-border-subtle px-8 pb-6 pt-10">
-        <div className="mx-auto flex w-full max-w-[920px] items-end justify-between gap-6">
-          <div>
-            <p className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-fg-faint">
-              Conversations
-            </p>
-            <h1 className="mt-1.5 text-[26px] font-medium leading-none tracking-[-0.02em] text-fg">
-              Chats
-            </h1>
-            <p className="mt-1.5 text-[12.5px] text-fg-muted">
-              <span className="tabular-nums text-fg">{chats.length}</span>{" "}
-              {chats.length === 1 ? "conversation" : "conversations"}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void navigate({ to: "/chat" })}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-[12.5px] font-medium text-bg transition-colors hover:bg-white"
-          >
-            <PlusIcon />
-            New chat
-          </button>
+      <header className="sticky top-0 z-10 flex h-12 items-center justify-between gap-3 border-b border-border-subtle bg-bg/85 px-5 backdrop-blur">
+        <div className="flex items-center gap-2">
+          <SparkleIcon size={13} className="text-fg-muted" />
+          <h1 className="text-sm font-medium text-fg">Chats</h1>
+          <span className="text-xs text-fg-muted tabular-nums">{filtered.length}</span>
         </div>
+        <button
+          type="button"
+          onClick={() => void navigate({ to: "/chat" })}
+          className="inline-flex h-7 items-center gap-1.5 rounded-md bg-fg px-2.5 text-[12px] font-medium text-bg transition-colors hover:bg-white"
+        >
+          <PlusIcon />
+          New chat
+        </button>
       </header>
 
-      <div className="sticky top-0 z-10 border-b border-border-subtle bg-bg/85 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-[920px] items-center gap-3 px-8 py-2.5">
-          <div className="relative flex min-w-0 flex-1 items-center">
-            <span className="pointer-events-none absolute left-2 text-fg-faint">
-              <SearchIcon />
-            </span>
-            <input
-              type="search"
-              placeholder="Search conversations…"
-              value={query}
-              onChange={(event) => {
-                const next = event.target.value;
-                setQuery(next);
-                void navigate({
-                  to: "/chats",
-                  search: next.trim() ? { q: next.trim() } : {},
-                  replace: true,
-                });
-              }}
-              className="h-8 w-full bg-transparent pl-7 pr-2 text-[13px] text-fg outline-none placeholder:text-fg-faint"
-            />
-          </div>
-          <div className="flex items-center gap-0.5 rounded-md border border-border-subtle p-0.5">
-            {sortOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => setSort(option.value)}
-                className={cn(
-                  "inline-flex h-6 items-center rounded-[4px] px-2 text-[11.5px] transition-colors",
-                  sort === option.value
-                    ? "bg-surface text-fg"
-                    : "text-fg-muted hover:text-fg",
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+      <nav className="flex items-center gap-2 border-b border-border-subtle bg-bg px-5 py-2">
+        <div className="relative flex min-w-0 flex-1 items-center">
+          <span className="pointer-events-none absolute left-2 text-fg-faint">
+            <SearchIcon />
+          </span>
+          <input
+            type="search"
+            placeholder="Search conversations…"
+            value={query}
+            onChange={(event) => {
+              const next = event.target.value;
+              setQuery(next);
+              void navigate({
+                to: "/chats",
+                search: next.trim() ? { q: next.trim() } : {},
+                replace: true,
+              });
+            }}
+            className="h-7 w-full bg-transparent pl-7 pr-2 text-[13px] text-fg outline-none placeholder:text-fg-faint"
+          />
         </div>
-      </div>
+        <SortMenu sort={sort} onChange={setSort} />
+      </nav>
 
-      <section className="mx-auto w-full max-w-[920px] px-8 pb-24 pt-2">
+      <section className="mx-auto w-full max-w-[920px] px-5 pb-24 pt-4">
         {isLoading ? (
           <p className="px-2 py-8 text-[13px] text-fg-faint">Loading…</p>
         ) : chats.length === 0 ? (
@@ -277,8 +241,8 @@ function ChatsPage() {
                     </span>
                   </div>
                 ) : null}
-                <ul>
-                  {group.chats.map((chat, idx) => {
+                <ul className="m-0 flex list-none flex-col gap-0 p-0">
+                  {group.chats.map((chat) => {
                     const pinned = isFavorite("chat", chat.id);
                     const isCreator =
                       currentUserId !== null &&
@@ -286,10 +250,7 @@ function ChatsPage() {
                     return (
                       <li
                         key={chat.id}
-                        className={cn(
-                          "group flex items-center gap-4 rounded-md border-b border-border-subtle/60 px-2 py-3 transition-colors hover:bg-surface/50 last:border-b-0",
-                          idx === 0 && "border-t border-border-subtle/60",
-                        )}
+                        className="group flex items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-surface/50"
                       >
                         <button
                           type="button"
@@ -301,19 +262,12 @@ function ChatsPage() {
                           }
                           className="flex min-w-0 flex-1 items-center gap-3 text-left"
                         >
-                          <span
-                            className={cn(
-                              "shrink-0",
-                              pinned ? "text-warning" : "text-fg-faint",
-                            )}
-                          >
-                            {pinned ? (
+                          {pinned ? (
+                            <span className="shrink-0 text-warning">
                               <StarIcon size={11} filled />
-                            ) : (
-                              <SparkleIcon size={11} />
-                            )}
-                          </span>
-                          <span className="min-w-0 flex-1 truncate text-[14px] text-fg">
+                            </span>
+                          ) : null}
+                          <span className="min-w-0 flex-1 truncate text-[13.5px] text-fg">
                             {displayChatTitle(chat)}
                           </span>
                           <span
@@ -469,26 +423,76 @@ function closeAnd(
 
 function ChatsEmptyState({ onNewChat }: { onNewChat: () => void }) {
   return (
-    <div className="flex flex-col items-center px-6 py-24 text-center">
-      <div className="mb-5 grid size-12 place-items-center rounded-[10px] border border-border-subtle bg-surface/40 text-fg-muted">
-        <SparkleIcon size={18} />
-      </div>
-      <h2 className="text-[16px] font-medium tracking-[-0.01em] text-fg">
-        No chats yet
-      </h2>
-      <p className="mt-1.5 max-w-[360px] text-[13px] leading-relaxed text-fg-muted">
+    <div className="px-6 py-20 text-center">
+      <p className="text-[13px] text-fg">No chats yet.</p>
+      <p className="mx-auto mt-1 max-w-[360px] text-[12px] leading-relaxed text-fg-muted">
         Ask Produktive to triage issues, draft a spec, or summarize what's in
         progress.
       </p>
       <button
         type="button"
         onClick={onNewChat}
-        className="mt-5 inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-[12.5px] font-medium text-bg transition-colors hover:bg-white"
+        className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-md bg-fg px-3 text-[12.5px] font-medium text-bg transition-colors hover:bg-white"
       >
         <PlusIcon />
         Start a chat
       </button>
     </div>
+  );
+}
+
+function SortMenu({
+  sort,
+  onChange,
+}: {
+  sort: SortKey;
+  onChange: (next: SortKey) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = sortOptions.find((option) => option.value === sort);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[11.5px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+        >
+          <span>{current?.label}</span>
+          <ChevronDownIcon />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={4}
+        className="w-32 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-xl"
+      >
+        {sortOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => {
+              onChange(option.value);
+              setOpen(false);
+            }}
+            className={cn(
+              "flex h-8 w-full items-center px-2.5 text-left text-[12.5px] transition-colors hover:bg-surface-2",
+              option.value === sort ? "text-fg" : "text-fg-muted",
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg width="9" height="9" viewBox="0 0 10 10" fill="none" aria-hidden>
+      <path d="M2 4l3 3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -556,9 +560,7 @@ function dateBucket(updatedAt: string): Bucket {
   );
   if (dayDiff <= 0) return "today";
   if (dayDiff === 1) return "yesterday";
-  if (dayDiff < 7) return "this-week";
-  if (dayDiff < 30) return "this-month";
-  return "older";
+  return "earlier";
 }
 
 function formatRelative(value: string) {

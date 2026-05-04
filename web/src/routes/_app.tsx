@@ -1,12 +1,7 @@
 import { Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  CaretIcon,
-  DotsIcon,
-  SparkleIcon,
-  StarIcon,
-} from "@/components/chat/icons";
+import { CaretIcon, DotsIcon, SparkleIcon, StarIcon } from "@/components/chat/icons";
 import { CommandPalette } from "@/components/command-palette";
 import { KeyboardHelp } from "@/components/keyboard-help";
 import { ChatsSettingsPopover } from "@/components/app-sidebar/chats-settings-popover";
@@ -39,12 +34,10 @@ import { useChats } from "@/lib/use-chats";
 import { useFavorites } from "@/lib/use-favorites";
 import { useInbox } from "@/lib/use-inbox";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
-import {
-  applyOrder,
-  useSidebarLayout,
-} from "@/lib/use-sidebar-layout";
+import { applyOrder, useSidebarLayout } from "@/lib/use-sidebar-layout";
 import { tabsQueryOptions, useRegisterTab } from "@/lib/use-tabs";
 import { userPreferencesQueryOptions, useUserPreferences } from "@/lib/use-user-preferences";
+import { useWorkspaceRealtime } from "@/lib/use-workspace-realtime";
 import { cn } from "@/lib/utils";
 
 const FAVORITE_DRAG_MIME = "application/x-produktive-favorite";
@@ -73,8 +66,7 @@ function AppLayout() {
   });
   const rawMine = (search as Record<string, unknown>).mine;
   const issuesMine =
-    pathname === "/issues" &&
-    (rawMine === true || rawMine === "1" || rawMine === "true");
+    pathname === "/issues" && (rawMine === true || rawMine === "1" || rawMine === "true");
   const staticPage = findStaticPage(pathname);
   useRegisterTab({
     tabType: "page",
@@ -108,6 +100,7 @@ function AppLayout() {
   const [editingLayout, setEditingLayout] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
   const onboarding = useOnboarding();
+  useWorkspaceRealtime(Boolean(session.data));
 
   useEffect(() => {
     if (!session.isPending && !session.data) {
@@ -825,4 +818,3 @@ function SectionChevron({ collapsed }: { collapsed: boolean }) {
     </svg>
   );
 }
-

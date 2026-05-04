@@ -1,4 +1,4 @@
-use crate::config::Config;
+use crate::{config::Config, realtime::RealtimeBus};
 use produktive_ai::AiClient;
 use sea_orm::DatabaseConnection;
 use unkey_rs::Unkey;
@@ -9,6 +9,7 @@ pub struct AppState {
     pub config: Config,
     pub ai: AiClient,
     pub unkey: Unkey,
+    pub realtime: RealtimeBus,
 }
 
 impl AppState {
@@ -18,6 +19,7 @@ impl AppState {
             config,
             ai,
             unkey,
+            realtime: RealtimeBus::new(),
         }
     }
 }
