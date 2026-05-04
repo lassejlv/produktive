@@ -8,6 +8,7 @@ use crate::{
     },
     issue_history::{record_issue_event, string_change, IssueChange},
     permissions::{require_permission, ISSUES_CREATE, ISSUES_DELETE, ISSUES_UPDATE},
+    realtime::{RealtimeAction, RealtimeEntity},
     state::AppState,
     storage,
 };
@@ -365,17 +366,20 @@ async fn create_issue(
     )
     .await?;
 
+    let response = issue_response(&state, issue).await?;
     state
         .realtime
-        .issue_changed(&state.db, &organization_id, &issue.id)
+        .publish_workspace_event_with_payload(
+            &state.db,
+            &organization_id,
+            RealtimeEntity::Issue,
+            RealtimeAction::Created,
+            &response.id,
+            &response,
+        )
         .await;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(IssueEnvelope {
-            issue: issue_response(&state, issue).await?,
-        }),
-    ))
+    Ok((StatusCode::CREATED, Json(IssueEnvelope { issue: response })))
 }
 
 async fn get_issue(
@@ -522,13 +526,19 @@ async fn update_issue(
         )
         .await;
     }
+    let response = issue_response(&state, issue).await?;
     state
         .realtime
-        .issue_changed(&state.db, &auth.organization.id, &issue.id)
+        .publish_workspace_event_with_payload(
+            &state.db,
+            &auth.organization.id,
+            RealtimeEntity::Issue,
+            RealtimeAction::Updated,
+            &response.id,
+            &response,
+        )
         .await;
-    Ok(Json(IssueEnvelope {
-        issue: issue_response(&state, issue).await?,
-    }))
+    Ok(Json(IssueEnvelope { issue: response }))
 }
 
 async fn delete_issue(
@@ -542,7 +552,13 @@ async fn delete_issue(
     issue.delete(&state.db).await?;
     state
         .realtime
-        .issue_deleted(&state.db, &auth.organization.id, &id)
+        .publish_workspace_event(
+            &state.db,
+            &auth.organization.id,
+            RealtimeEntity::Issue,
+            RealtimeAction::Deleted,
+            &id,
+        )
         .await;
 
     Ok(Json(OkResponse { ok: true }))
@@ -621,10 +637,18 @@ async fn create_comment(
     let issue_id_for_notify = issue.id.clone();
     let mut active = issue.into_active_model();
     active.updated_at = Set(Utc::now().fixed_offset());
-    active.update(&state.db).await?;
+    let issue = active.update(&state.db).await?;
+    let issue_response = issue_response(&state, issue).await?;
     state
         .realtime
-        .issue_changed(&state.db, &auth.organization.id, &issue_id_for_notify)
+        .publish_workspace_event_with_payload(
+            &state.db,
+            &auth.organization.id,
+            RealtimeEntity::Issue,
+            RealtimeAction::Updated,
+            &issue_id_for_notify,
+            &issue_response,
+        )
         .await;
 
     // Notify subscribers (excluding the author)
@@ -750,14 +774,20 @@ async fn upload_attachment(
             .await?;
         }
 
+        let response = issue_response(&state, issue).await?;
         state
             .realtime
-            .issue_changed(&state.db, &auth.organization.id, &issue.id)
+            .publish_workspace_event_with_payload(
+                &state.db,
+                &auth.organization.id,
+                RealtimeEntity::Issue,
+                RealtimeAction::Updated,
+                &response.id,
+                &response,
+            )
             .await;
 
-        return Ok(Json(IssueEnvelope {
-            issue: issue_response(&state, issue).await?,
-        }));
+        return Ok(Json(IssueEnvelope { issue: response }));
     }
 
     Err(ApiError::BadRequest("No file was uploaded".to_owned()))

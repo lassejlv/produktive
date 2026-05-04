@@ -360,14 +360,12 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
   return (
     <div className="flex h-screen min-w-0 flex-1 overflow-hidden bg-bg md:h-full">
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="relative z-10 flex min-h-[58px] items-center gap-3 border-b border-border-subtle bg-bg/86 px-6 py-3 backdrop-blur">
-          <div className="flex min-w-0 flex-1 items-center gap-3 text-[13px] text-fg-muted">
-            <span className="text-fg-muted">Chat</span>
-            <span className="text-fg-muted">/</span>
+        <header className="relative z-10 flex h-12 items-center gap-3 border-b border-border-subtle bg-bg/85 px-5 backdrop-blur">
+          <div className="flex min-w-0 flex-1 items-center">
             {isLoadingChat ? (
               <Skeleton className="h-3.5 w-40" />
             ) : (
-              <span className="truncate font-medium text-fg">{chatTitle}</span>
+              <h1 className="min-w-0 truncate text-sm font-medium text-fg">{chatTitle}</h1>
             )}
           </div>
           {isCreator && chatId ? (
@@ -377,7 +375,7 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
                 <button
                   type="button"
                   aria-label="Share chat"
-                  className="h-7 shrink-0 rounded-md border border-border-subtle px-2.5 text-[12px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
+                  className="h-7 shrink-0 rounded-md px-2 text-[12px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
                 >
                   Share
                 </button>
@@ -498,14 +496,10 @@ function ChatChangesPanel({
           open ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-3 opacity-0",
         )}
       >
-        <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-faint">
-              Changes
-            </span>
-            <span className="font-mono text-[11px] tabular-nums text-fg-faint">
-              {changes.length}
-            </span>
+        <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <h2 className="text-sm font-medium text-fg">Changes</h2>
+            <span className="text-xs text-fg-muted tabular-nums">{changes.length}</span>
           </div>
           <button
             type="button"
@@ -524,38 +518,22 @@ function ChatChangesPanel({
           </button>
         </div>
         {changes.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center px-6 py-16 text-center">
-            <div className="mb-4 grid size-10 place-items-center rounded-[10px] border border-border-subtle bg-surface/40 text-fg-muted">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
-                <path
-                  d="M3 7h8M7 3v8"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-            <p className="max-w-60 text-[13px] leading-relaxed text-fg-muted">
-              No issue changes have been made from this chat yet.
+          <div className="flex flex-1 items-center justify-center px-6 py-16">
+            <p className="max-w-60 text-center text-[12.5px] leading-relaxed text-fg-muted">
+              No issue changes from this chat yet.
             </p>
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto">
-            {changes.map((change, idx) => (
-              <article
-                key={change.id}
-                className={cn(
-                  "border-b border-border-subtle/60",
-                  idx === 0 && "border-t border-border-subtle/60",
-                )}
-              >
-                <div className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-surface/50">
+            {changes.map((change) => (
+              <article key={change.id} className="group">
+                <div className="flex items-center justify-between gap-3 px-4 py-2 transition-colors hover:bg-surface/50">
                   <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                    <span className="shrink-0 text-[11px] capitalize text-fg-faint">
                       {change.action}
                     </span>
                     <p className="min-w-0 truncate text-[13px] text-fg">{change.title}</p>
-                    <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-fg-faint">
+                    <span className="shrink-0 text-[11px] tabular-nums text-fg-faint">
                       {change.fields.length}
                     </span>
                   </div>
@@ -563,7 +541,7 @@ function ChatChangesPanel({
                     <Link
                       to="/issues/$issueId"
                       params={{ issueId: change.issueId }}
-                      className="shrink-0 text-[11px] text-fg-muted transition-colors hover:text-fg"
+                      className="shrink-0 text-[11px] text-fg-muted opacity-0 transition-opacity hover:text-fg group-hover:opacity-100 focus-visible:opacity-100"
                       onClick={onClose}
                     >
                       Open →
@@ -571,7 +549,7 @@ function ChatChangesPanel({
                   ) : null}
                 </div>
                 {change.fields.length > 0 ? (
-                  <div className="grid border-t border-border-subtle/60 bg-surface/20">
+                  <div className="grid bg-surface/20">
                     {change.fields.map((field) => (
                       <ChatChangeField key={field.name} field={field} />
                     ))}

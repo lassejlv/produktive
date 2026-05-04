@@ -2,6 +2,7 @@ use crate::{
     auth::require_auth,
     error::ApiError,
     permissions::{require_permission, LABELS_CREATE, LABELS_DELETE, LABELS_UPDATE},
+    realtime::{RealtimeAction, RealtimeEntity},
     state::AppState,
 };
 use axum::{
@@ -122,13 +123,20 @@ async fn create_label(
     }
     .insert(&state.db)
     .await?;
+    let response = label_response(&state, row).await?;
+    state
+        .realtime
+        .publish_workspace_event_with_payload(
+            &state.db,
+            &auth.organization.id,
+            RealtimeEntity::Label,
+            RealtimeAction::Created,
+            &response.id,
+            &response,
+        )
+        .await;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(LabelEnvelope {
-            label: label_response(&state, row).await?,
-        }),
-    ))
+    Ok((StatusCode::CREATED, Json(LabelEnvelope { label: response })))
 }
 
 async fn get_label(
@@ -193,9 +201,19 @@ async fn patch_label(
     active.updated_at = Set(Utc::now().fixed_offset());
 
     let updated = active.update(&state.db).await?;
-    Ok(Json(LabelEnvelope {
-        label: label_response(&state, updated).await?,
-    }))
+    let response = label_response(&state, updated).await?;
+    state
+        .realtime
+        .publish_workspace_event_with_payload(
+            &state.db,
+            &auth.organization.id,
+            RealtimeEntity::Label,
+            RealtimeAction::Updated,
+            &response.id,
+            &response,
+        )
+        .await;
+    Ok(Json(LabelEnvelope { label: response }))
 }
 
 async fn delete_label(
@@ -207,6 +225,16 @@ async fn delete_label(
     require_permission(&state, &auth, LABELS_DELETE).await?;
     let row = find_label(&state, &auth.organization.id, &id).await?;
     row.delete(&state.db).await?;
+    state
+        .realtime
+        .publish_workspace_event(
+            &state.db,
+            &auth.organization.id,
+            RealtimeEntity::Label,
+            RealtimeAction::Deleted,
+            &id,
+        )
+        .await;
     Ok(StatusCode::NO_CONTENT)
 }
 

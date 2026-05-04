@@ -1,6 +1,10 @@
 use crate::{
-    auth::require_auth, email, error::ApiError,
-    http::preferences::for_user as preferences_for_user, state::AppState,
+    auth::require_auth,
+    email,
+    error::ApiError,
+    http::preferences::for_user as preferences_for_user,
+    realtime::{RealtimeAction, RealtimeEntity},
+    state::AppState,
 };
 use axum::{
     extract::{Path, State},
@@ -70,28 +74,7 @@ async fn list_inbox(
         if row.read_at.is_none() {
             unread_count += 1;
         }
-        let actor = match &row.actor_id {
-            Some(id) => user::Entity::find_by_id(id)
-                .one(&state.db)
-                .await?
-                .map(|user| ActorResponse {
-                    id: user.id,
-                    name: user.name,
-                    image: user.image,
-                }),
-            None => None,
-        };
-        response.push(NotificationResponse {
-            id: row.id,
-            kind: row.kind,
-            target_type: row.target_type,
-            target_id: row.target_id,
-            title: row.title,
-            snippet: row.snippet,
-            created_at: row.created_at.to_rfc3339(),
-            read_at: row.read_at.map(|value| value.to_rfc3339()),
-            actor,
-        });
+        response.push(notification_response(&state, row).await?);
     }
 
     Ok(Json(InboxResponse {
@@ -155,7 +138,7 @@ pub async fn enqueue_notification(
     title: &str,
     snippet: Option<String>,
 ) -> Result<(), ApiError> {
-    notification::ActiveModel {
+    let row = notification::ActiveModel {
         id: Set(uuid::Uuid::new_v4().to_string()),
         organization_id: Set(organization_id.to_owned()),
         user_id: Set(user_id.to_owned()),
@@ -170,8 +153,50 @@ pub async fn enqueue_notification(
     }
     .insert(&state.db)
     .await?;
+    let response = notification_response(state, row).await?;
+    state
+        .realtime
+        .publish_user_event_with_payload(
+            &state.db,
+            organization_id,
+            user_id,
+            RealtimeEntity::Notification,
+            RealtimeAction::Created,
+            &response.id,
+            &response,
+        )
+        .await;
 
     Ok(())
+}
+
+async fn notification_response(
+    state: &AppState,
+    row: notification::Model,
+) -> Result<NotificationResponse, ApiError> {
+    let actor = match &row.actor_id {
+        Some(id) => user::Entity::find_by_id(id)
+            .one(&state.db)
+            .await?
+            .map(|user| ActorResponse {
+                id: user.id,
+                name: user.name,
+                image: user.image,
+            }),
+        None => None,
+    };
+
+    Ok(NotificationResponse {
+        id: row.id,
+        kind: row.kind,
+        target_type: row.target_type,
+        target_id: row.target_id,
+        title: row.title,
+        snippet: row.snippet,
+        created_at: row.created_at.to_rfc3339(),
+        read_at: row.read_at.map(|value| value.to_rfc3339()),
+        actor,
+    })
 }
 
 /// Enqueue an in-app notification AND send an email if the user's preferences allow it.

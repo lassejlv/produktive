@@ -11,7 +11,6 @@ import { EditableTitle } from "@/components/issue/editable-title";
 import { IssueProperties } from "@/components/issue/issue-properties";
 import { StatusIcon } from "@/components/issue/status-icon";
 import {
-  apiPath,
   type Issue,
   type IssueAttachment,
   type IssueComment,
@@ -188,21 +187,15 @@ export function IssueDetail({
   };
 
   useEffect(() => {
-    const source = new EventSource(
-      apiPath(`/api/realtime?channel=issueSystem&id=${encodeURIComponent(issueId)}`),
-      { withCredentials: true },
-    );
-
-    source.addEventListener("refresh", () => {
-      void reloadAfterChange();
-    });
-    source.addEventListener("deleted", () => {
+    const handleIssueDeleted = (event: Event) => {
+      const issueDeleted = event as CustomEvent<{ issueId?: string }>;
+      if (issueDeleted.detail?.issueId !== issueId) return;
       toast.message("Issue was deleted");
       void navigate({ to: "/issues" });
-    });
+    };
 
-    return () => source.close();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    window.addEventListener("produktive:issue-deleted", handleIssueDeleted);
+    return () => window.removeEventListener("produktive:issue-deleted", handleIssueDeleted);
   }, [issueId, navigate]);
 
   const timeline = useMemo(() => buildTimeline(history, comments), [history, comments]);
