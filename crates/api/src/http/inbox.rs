@@ -99,7 +99,20 @@ async fn mark_read(
         if row.read_at.is_none() {
             let mut active = row.into_active_model();
             active.read_at = Set(Some(Utc::now().fixed_offset()));
-            active.update(&state.db).await?;
+            let updated = active.update(&state.db).await?;
+            let response = notification_response(&state, updated).await?;
+            state
+                .realtime
+                .publish_user_event_with_payload(
+                    &state.db,
+                    &auth.organization.id,
+                    &auth.user.id,
+                    RealtimeEntity::Notification,
+                    RealtimeAction::Updated,
+                    &response.id,
+                    &response,
+                )
+                .await;
         }
     }
 
@@ -123,6 +136,19 @@ async fn mark_all_read(
         .filter(notification::Column::ReadAt.is_null())
         .exec(&state.db)
         .await?;
+    let payload = serde_json::json!({ "sync": "inbox" });
+    state
+        .realtime
+        .publish_user_event_with_payload(
+            &state.db,
+            &auth.organization.id,
+            &auth.user.id,
+            RealtimeEntity::Notification,
+            RealtimeAction::Updated,
+            "all",
+            &payload,
+        )
+        .await;
 
     list_inbox(State(state), headers).await
 }

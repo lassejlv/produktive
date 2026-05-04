@@ -19,8 +19,9 @@ use rust_mcp_sdk::{
     McpServer,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Database, DatabaseConnection, EntityTrait, IntoActiveModel,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection,
+    EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    Statement,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -31,6 +32,8 @@ use std::{
     time::{Duration as StdDuration, SystemTime, UNIX_EPOCH},
 };
 use uuid::Uuid;
+
+const REALTIME_POSTGRES_CHANNEL: &str = "produktive_realtime";
 
 #[derive(Clone)]
 struct AppState {
@@ -610,8 +613,10 @@ async fn create_label(
     .insert(&state.db)
     .await
     .map_err(db_tool_error)?;
+    let label = label_json(state, row).await?;
+    publish_workspace_event(state, organization_id, "label", "created", &label).await;
 
-    Ok(json!({ "label": label_json(state, row).await? }))
+    Ok(json!({ "label": label }))
 }
 
 async fn update_label(
@@ -649,7 +654,9 @@ async fn update_label(
     active.updated_at = Set(Utc::now().fixed_offset());
 
     let updated = active.update(&state.db).await.map_err(db_tool_error)?;
-    Ok(json!({ "label": label_json(state, updated).await? }))
+    let label = label_json(state, updated).await?;
+    publish_workspace_event(state, organization_id, "label", "updated", &label).await;
+    Ok(json!({ "label": label }))
 }
 
 async fn list_projects(
@@ -718,8 +725,10 @@ async fn create_project(
     .insert(&state.db)
     .await
     .map_err(db_tool_error)?;
+    let project = project_json(state, row).await?;
+    publish_workspace_event(state, organization_id, "project", "created", &project).await;
 
-    Ok(json!({ "project": project_json(state, row).await? }))
+    Ok(json!({ "project": project }))
 }
 
 async fn update_project(
@@ -767,7 +776,9 @@ async fn update_project(
     active.updated_at = Set(Utc::now().fixed_offset());
 
     let updated = active.update(&state.db).await.map_err(db_tool_error)?;
-    Ok(json!({ "project": project_json(state, updated).await? }))
+    let project = project_json(state, updated).await?;
+    publish_workspace_event(state, organization_id, "project", "updated", &project).await;
+    Ok(json!({ "project": project }))
 }
 
 async fn list_issues(
@@ -890,8 +901,10 @@ async fn create_issue(
         ]),
     )
     .await?;
+    let issue = issue_json(state, &row, true).await?;
+    publish_workspace_event(state, organization_id, "issue", "created", &issue).await;
 
-    Ok(json!({ "issue": issue_json(state, &row, true).await? }))
+    Ok(json!({ "issue": issue }))
 }
 
 async fn update_issue(
@@ -993,9 +1006,11 @@ async fn update_issue(
         )
         .await?;
     }
+    let issue = issue_json(state, &updated, true).await?;
+    publish_workspace_event(state, organization_id, "issue", "updated", &issue).await;
 
     Ok(json!({
-        "issue": issue_json(state, &updated, true).await?,
+        "issue": issue,
         "changes": changes,
     }))
 }
@@ -1046,7 +1061,9 @@ async fn create_issue_comment(
 
     let mut active = found.into_active_model();
     active.updated_at = Set(Utc::now().fixed_offset());
-    active.update(&state.db).await.map_err(db_tool_error)?;
+    let updated = active.update(&state.db).await.map_err(db_tool_error)?;
+    let issue = issue_json(state, &updated, true).await?;
+    publish_workspace_event(state, organization_id, "issue", "updated", &issue).await;
 
     Ok(json!({ "comment": comment_json(state, row).await? }))
 }
@@ -1478,6 +1495,72 @@ async fn record_event(
     .await
     .map_err(db_tool_error)?;
     Ok(())
+}
+
+async fn publish_workspace_event(
+    state: &AppState,
+    organization_id: &str,
+    entity: &str,
+    action: &str,
+    payload: &Value,
+) {
+    let Some(entity_id) = payload.get("id").and_then(Value::as_str) else {
+        tracing::warn!(entity, action, "skipping realtime event without payload id");
+        return;
+    };
+    let event = json!({
+        "originId": format!("mcp-{}", Uuid::new_v4()),
+        "organizationId": organization_id,
+        "entity": entity,
+        "action": action,
+        "entityId": entity_id,
+        "payload": camelize_realtime_payload(payload.clone()),
+        "emittedAt": Utc::now().fixed_offset().to_rfc3339(),
+    });
+    let payload = event.to_string();
+
+    if let Err(error) = state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT pg_notify($1, $2)",
+            [REALTIME_POSTGRES_CHANNEL.into(), payload.into()],
+        ))
+        .await
+    {
+        tracing::warn!(%error, entity, action, entity_id, "failed to publish realtime event");
+    }
+}
+
+fn camelize_realtime_payload(value: Value) -> Value {
+    match value {
+        Value::Array(items) => {
+            Value::Array(items.into_iter().map(camelize_realtime_payload).collect())
+        }
+        Value::Object(object) => Value::Object(
+            object
+                .into_iter()
+                .map(|(key, value)| (snake_to_camel(&key), camelize_realtime_payload(value)))
+                .collect(),
+        ),
+        value => value,
+    }
+}
+
+fn snake_to_camel(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut uppercase_next = false;
+    for ch in value.chars() {
+        if ch == '_' {
+            uppercase_next = true;
+        } else if uppercase_next {
+            out.extend(ch.to_uppercase());
+            uppercase_next = false;
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 fn parse_args<T: DeserializeOwned>(params: &CallToolRequestParams) -> Result<T, CallToolError> {
