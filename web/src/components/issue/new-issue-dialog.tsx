@@ -1,6 +1,6 @@
-import { type FormEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AttachIcon, SparkleIcon } from "@/components/chat/icons";
+import { AttachIcon } from "@/components/chat/icons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,7 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { PillSelect } from "@/components/issue/pill-select";
 import { PriorityIcon } from "@/components/issue/priority-icon";
 import { StatusIcon } from "@/components/issue/status-icon";
@@ -23,7 +22,6 @@ import {
   type Member,
   type Project,
   createIssue,
-  generateIssueDraft,
   listLabels,
   listMembers,
   listProjects,
@@ -39,6 +37,12 @@ import { firstStatusForCategory, priorityOptions, sortedStatuses } from "@/lib/i
 import { findSimilarIssues } from "@/lib/issue-similarity";
 import { useIssues } from "@/lib/use-issues";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
+
+const META_CHIP =
+  "inline-flex h-7 max-w-full min-w-0 shrink-0 items-center gap-1.5 rounded-md border border-border-subtle bg-surface-2 px-2 text-[11px] font-medium text-fg-muted transition-colors duration-150 hover:border-border hover:bg-surface hover:text-fg";
+
+const ROUTING_SELECT =
+  "h-7 rounded-md border-border-subtle bg-surface-2 px-2 text-[11px] font-medium transition-colors duration-150 hover:border-border [&>svg]:mx-0 [&>svg]:text-fg-faint";
 
 export function NewIssueDialog({
   triggerLabel = "New issue",
@@ -66,7 +70,6 @@ export function NewIssueDialog({
   const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isShapingIssue, setIsShapingIssue] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
@@ -90,11 +93,13 @@ export function NewIssueDialog({
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(() => new Set());
   const { issues: existingIssues } = useIssues();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const [footerShortcutHint, setFooterShortcutHint] = useState("");
 
   useEffect(() => {
     if (!shortcutEnabled) return;
 
-    const onKey = (event: KeyboardEvent) => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (
         target &&
@@ -146,6 +151,18 @@ export function NewIssueDialog({
       setPosition({ x: 0, y: 0 });
       setDismissedSuggestions(new Set());
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      setFooterShortcutHint("");
+      return;
+    }
+
+    const isApple =
+      typeof navigator !== "undefined" &&
+      (/^(Mac|iPhone|iPad|iPod)/u.test(navigator.platform) || /\bMac OS X\b/u.test(navigator.userAgent));
+    setFooterShortcutHint(isApple ? "\u2318 Enter submit · Esc close" : "Ctrl+Enter submit · Esc close");
   }, [open]);
 
   useEffect(() => {
@@ -290,41 +307,6 @@ export function NewIssueDialog({
     setError(null);
   };
 
-  const handleShapeIssue = async () => {
-    const roughTitle = title.trim();
-    const roughDescription = description.trim();
-    if (!roughTitle && !roughDescription) {
-      setError("Add a rough title or description first");
-      return;
-    }
-
-    setIsShapingIssue(true);
-    setError(null);
-    try {
-      const draft = await generateIssueDraft({
-        title: roughTitle,
-        description: roughDescription || undefined,
-      });
-      setTitle(draft.title);
-      setDescription(draft.description);
-      if (draft.status && sortedStatuses(statuses).some((item) => item.key === draft.status)) {
-        setManualFields((current) => ({ ...current, status: true }));
-        setStatus(draft.status);
-      }
-      if (draft.priority && priorityOptions.some((value) => value === draft.priority)) {
-        setManualFields((current) => ({ ...current, priority: true }));
-        setPriority(draft.priority);
-      }
-      toast.success("Issue shaped");
-    } catch (shapeError) {
-      const message = shapeError instanceof Error ? shapeError.message : "Failed to shape issue";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setIsShapingIssue(false);
-    }
-  };
-
   const startDrag = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     if ((event.target as HTMLElement).closest("button")) return;
@@ -353,251 +335,228 @@ export function NewIssueDialog({
       <Dialog
         open={open}
         onClose={close}
-        className="max-w-2xl"
+        className="max-w-[min(560px,calc(100vw-28px))] overflow-hidden rounded-lg border border-border bg-surface shadow-2xl"
         style={{ transform: `translate3d(${position.x}px, ${position.y}px, 0)` }}
       >
-        <form onSubmit={handleSubmit}>
-          <DialogHeader className="cursor-move select-none" onPointerDown={startDrag}>
-            <DialogTitle>New issue</DialogTitle>
+        <form
+          ref={formRef}
+          onSubmit={handleSubmit}
+          onKeyDown={(event: ReactKeyboardEvent<HTMLFormElement>) => {
+            if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
+            event.preventDefault();
+            if (isSaving || !submitTitle) return;
+            formRef.current?.requestSubmit();
+          }}
+          className="flex max-h-[min(85vh,720px)] flex-col"
+        >
+          <DialogHeader
+            className="cursor-move select-none border-b border-border-subtle px-4 py-2.5 sm:px-5"
+            onPointerDown={startDrag}
+          >
+            <DialogTitle className="text-[13px] font-medium text-fg-muted">New issue</DialogTitle>
             <DialogClose onClose={close} />
           </DialogHeader>
 
-          <DialogContent className="space-y-4 p-5">
-            <Input
-              autoFocus
-              required
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Issue title"
-              className="h-10 border-0 bg-transparent px-0 text-base focus-visible:ring-0"
-            />
-            {title.trim() &&
-            (parsedIssue.chips.length > 0 || parsedIssue.title !== title.trim()) ? (
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-y border-border-subtle py-2 text-[11px] text-fg-muted">
-                {parsedIssue.title && parsedIssue.title !== title.trim() ? (
-                  <span className="min-w-0 truncate">
-                    <span className="font-mono uppercase tracking-[0.12em] text-fg-faint">
-                      title
-                    </span>{" "}
-                    <span className="text-fg">{parsedIssue.title}</span>
-                  </span>
-                ) : null}
-                {parsedIssue.chips.map((chip) => (
-                  <span
-                    key={`${chip.kind}:${chip.label}`}
-                    className="inline-flex items-baseline gap-1.5"
-                  >
-                    <span className="font-mono uppercase tracking-[0.12em] text-fg-faint">
-                      {chip.kind}
-                    </span>
-                    <span className="text-fg-muted">{chip.label}</span>
-                  </span>
-                ))}
+          <DialogContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="px-4 pt-4 pb-1 sm:px-5">
+                <input
+                  id="new-issue-title"
+                  autoFocus
+                  required
+                  aria-label="Issue title"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="Issue title"
+                  className="w-full bg-transparent py-0 text-[15px] font-semibold leading-snug tracking-[-0.02em] text-fg outline-none placeholder:text-fg-faint focus-visible:ring-1 focus-visible:ring-ring/45"
+                />
               </div>
-            ) : null}
-            {visibleSuggestions.length > 0 ? (
-              <div>
-                <div className="mb-1.5 flex items-baseline gap-2">
-                  <span className="font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg-faint">
-                    Similar
-                  </span>
-                  <span className="font-mono text-[10.5px] tabular-nums text-fg-faint">
-                    {visibleSuggestions.length}
-                  </span>
+
+              {parsedIssue.title && parsedIssue.title !== title.trim() ? (
+                <p className="mt-1 truncate px-4 text-[11px] text-fg-faint sm:px-5">
+                  Saves as <span className="text-fg-muted">{parsedIssue.title}</span>
+                </p>
+              ) : null}
+
+               <div className="mt-3 border-border-subtle border-t px-4 pb-3 pt-3 sm:mt-4 sm:px-5">
+                <textarea
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  placeholder="Add description…"
+                  rows={4}
+                   className="max-h-[40vh] min-h-[112px] w-full resize-y border-0 bg-transparent text-[13px] leading-relaxed text-fg outline-none placeholder:text-fg-faint focus-visible:ring-1 focus-visible:ring-ring/35"
+                />
+              </div>
+
+               {visibleSuggestions.length > 0 ? (
+                 <div className="border-border-subtle border-t px-4 py-3 sm:px-5">
+                  <p className="mb-2 text-[11px] font-medium text-fg-muted">Similar issues</p>
+                  <ul className="m-0 flex list-none flex-col gap-0 p-0">
+                    {visibleSuggestions.map(({ issue }) => (
+                      <li
+                        key={issue.id}
+                        className="group flex items-center gap-3 rounded-md px-1 py-2 transition-colors hover:bg-surface-2"
+                      >
+                        <StatusIcon status={issue.status} statuses={statuses} />
+                        <p className="m-0 min-w-0 flex-1 truncate text-[13px] leading-tight text-fg">{issue.title}</p>
+                        <a
+                          href={`/issues/${issue.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="shrink-0 text-[11px] text-accent opacity-0 transition-opacity group-hover:opacity-100 hover:underline focus-visible:opacity-100"
+                        >
+                          Open
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => dismissSuggestion(issue.id)}
+                          aria-label={`Dismiss ${issue.title}`}
+                          className="grid size-7 shrink-0 place-items-center rounded-md text-[15px] leading-none text-fg-muted opacity-0 hover:bg-bg focus-visible:bg-bg group-hover:opacity-100 focus-visible:opacity-100"
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <ul className="flex flex-col">
-                  {visibleSuggestions.map(({ issue }) => (
-                    <li
-                      key={issue.id}
-                      className="group flex items-center gap-3 border-b border-border-subtle/60 px-2 py-1.5 last:border-b-0 hover:bg-surface/50"
-                    >
-                      <StatusIcon status={issue.status} statuses={statuses} />
-                      <p className="m-0 min-w-0 flex-1 truncate text-[13px] text-fg">
-                        {issue.title}
-                      </p>
-                      <a
-                        href={`/issues/${issue.id}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[11px] text-fg-muted opacity-0 transition-colors hover:text-fg group-hover:opacity-100 focus-visible:opacity-100"
-                      >
-                        Open
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => dismissSuggestion(issue.id)}
-                        aria-label={`Dismiss ${issue.title}`}
-                        className="text-[14px] leading-none text-fg-faint opacity-0 transition-colors hover:text-fg group-hover:opacity-100 focus-visible:opacity-100"
-                      >
-                        ×
+              ) : null}
+
+               <div className="border-border-subtle border-t px-4 pb-5 pt-3 sm:px-5">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => {
+                    handleAttachmentChange(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+                <div className="flex flex-wrap items-start gap-x-2 gap-y-2">
+                  <PillSelect
+                    ariaLabel="Status"
+                    value={status}
+                    onChange={(value) => {
+                      setManualFields((current) => ({ ...current, status: true }));
+                      setStatus(value);
+                    }}
+                    options={sortedStatuses(statuses).map((status) => status.key)}
+                    icon={<StatusIcon status={status} statuses={statuses} />}
+                    className={`${ROUTING_SELECT} w-auto`}
+                  />
+                  <PillSelect
+                    ariaLabel="Priority"
+                    value={priority}
+                    onChange={(value) => {
+                      setManualFields((current) => ({ ...current, priority: true }));
+                      setPriority(value);
+                    }}
+                    options={priorityOptions}
+                    icon={<PriorityIcon priority={priority} />}
+                    className={`${ROUTING_SELECT} w-auto`}
+                  />
+                  <MemberPicker
+                    selectedId={assignedToId}
+                    onSelect={(value) => {
+                      setManualFields((current) => ({ ...current, assignee: true }));
+                      setAssignedToId(value);
+                    }}
+                    trigger={({ onClick }) => (
+                      <button type="button" onClick={onClick} className={`${META_CHIP}`}>
+                        <span className="min-w-0 truncate">{selectedMember ? `@${selectedMember.name}` : "Assignee"}</span>
                       </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            <div>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-fg-faint">
-                  Details
-                </span>
-                <button
-                  type="button"
-                  onClick={handleShapeIssue}
-                  disabled={isShapingIssue || (!title.trim() && !description.trim())}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border-subtle bg-bg px-2 text-[11.5px] text-fg-muted transition-colors hover:border-border hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <SparkleIcon />
-                  {isShapingIssue ? "Shaping…" : "Shape with AI"}
-                </button>
-              </div>
-              <textarea
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Add rough notes, reproduction steps, or paste a messy bug report…"
-                rows={4}
-                className="w-full resize-y rounded-md border-0 bg-transparent px-0 py-0 text-sm text-fg outline-none placeholder:text-fg-faint focus-visible:ring-0"
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              <PillSelect
-                ariaLabel="Status"
-                value={status}
-                onChange={(value) => {
-                  setManualFields((current) => ({ ...current, status: true }));
-                  setStatus(value);
-                }}
-                options={sortedStatuses(statuses).map((status) => status.key)}
-                icon={<StatusIcon status={status} statuses={statuses} />}
-              />
-              <PillSelect
-                ariaLabel="Priority"
-                value={priority}
-                onChange={(value) => {
-                  setManualFields((current) => ({ ...current, priority: true }));
-                  setPriority(value);
-                }}
-                options={priorityOptions}
-                icon={<PriorityIcon priority={priority} />}
-              />
-              <MemberPicker
-                selectedId={assignedToId}
-                onSelect={(value) => {
-                  setManualFields((current) => ({ ...current, assignee: true }));
-                  setAssignedToId(value);
-                }}
-                trigger={({ onClick }) => (
+                    )}
+                  />
+                  <ProjectPicker
+                    selectedId={projectId}
+                    onSelect={(value) => {
+                      setManualFields((current) => ({ ...current, project: true }));
+                      setProjectId(value);
+                    }}
+                    trigger={({ onClick }) => (
+                      <button type="button" onClick={onClick} className={`${META_CHIP}`}>
+                        <span className="min-w-0 truncate">{selectedProject ? `#${selectedProject.name}` : "Project"}</span>
+                      </button>
+                    )}
+                  />
+                  <NewIssueLabels
+                    selectedIds={labelIds}
+                    onChange={(value) => {
+                      setManualFields((current) => ({ ...current, labels: true }));
+                      setLabelIds(value);
+                    }}
+                  />
                   <button
                     type="button"
-                    onClick={onClick}
-                    className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border-subtle bg-bg px-2 font-mono text-[11px] text-fg-muted transition-colors hover:border-border hover:text-fg"
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`${META_CHIP} border-dashed text-fg-faint`}
+                    title="Attach files"
                   >
-                    {selectedMember ? `@${selectedMember.name}` : "assignee"}
+                    <AttachIcon />
+                    Attach
                   </button>
-                )}
-              />
-              <ProjectPicker
-                selectedId={projectId}
-                onSelect={(value) => {
-                  setManualFields((current) => ({ ...current, project: true }));
-                  setProjectId(value);
-                }}
-                trigger={({ onClick }) => (
-                  <button
-                    type="button"
-                    onClick={onClick}
-                    className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border-subtle bg-bg px-2 font-mono text-[11px] text-fg-muted transition-colors hover:border-border hover:text-fg"
-                  >
-                    {selectedProject ? `#${selectedProject.name}` : "project"}
-                  </button>
-                )}
-              />
-              <NewIssueLabels
-                selectedIds={labelIds}
-                onChange={(value) => {
-                  setManualFields((current) => ({ ...current, labels: true }));
-                  setLabelIds(value);
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <AttachIcon />
-                Attach files
-              </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={(event) => {
-                  handleAttachmentChange(event.target.files);
-                  event.target.value = "";
-                }}
-              />
-            </div>
+                </div>
 
-            {attachments.length > 0 ? (
-              <div className="grid gap-px overflow-hidden rounded-md border border-border-subtle bg-border-subtle">
-                {attachments.map(({ id, file }) => (
-                  <div
-                    key={id}
-                    className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 bg-bg px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-mono text-[11px] text-fg">{file.name}</p>
-                      <p className="mt-1 truncate font-mono text-[10px] text-fg-faint">
-                        {file.type || "application/octet-stream"}
-                      </p>
-                    </div>
-                    <span className="font-mono text-[10px] text-fg-muted">
-                      {formatBytes(file.size)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(id)}
-                      className="grid size-6 place-items-center rounded-md text-fg-faint transition-colors hover:bg-surface-2 hover:text-fg"
-                      aria-label={`Remove ${file.name}`}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
-                        <path
-                          d="M3 3l8 8M11 3l-8 8"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
+                {attachments.length > 0 ? (
+                  <ul className="m-0 mt-2 flex list-none flex-col gap-0 p-0">
+                    {attachments.map(({ id, file }) => (
+                      <li key={id} className="flex items-center gap-3 py-1">
+                        <span className="min-w-0 flex-1 truncate text-[11px] text-fg-muted">{file.name}</span>
+                        <span className="shrink-0 font-mono text-[10px] tabular-nums text-fg-faint">{formatBytes(file.size)}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(id)}
+                          className="grid size-5 shrink-0 place-items-center rounded text-fg-faint transition-colors hover:bg-surface hover:text-fg"
+                          aria-label={`Remove ${file.name}`}
+                        >
+                          <svg width="10" height="10" viewBox="0 0 14 14" fill="none">
+                            <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                {error ? (
+                  <p className="mt-3 text-[12px] leading-relaxed text-danger" role="alert">
+                    {error}
+                  </p>
+                ) : null}
               </div>
-            ) : null}
-
-            {error ? (
-              <p className="text-xs text-danger" role="alert">
-                {error}
-              </p>
-            ) : null}
+            </div>
           </DialogContent>
 
-          <DialogFooter>
-            <Button type="button" variant="ghost" size="sm" onClick={close}>
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" disabled={isSaving || !submitTitle}>
-              {isSaving ? (
-                <span className="flex items-center gap-2">
-                  <span className="inline-block size-3 animate-spin rounded-full border-2 border-bg/30 border-t-bg" />
-                  {attachments.length > 0 ? "Creating and uploading…" : "Creating…"}
-                </span>
-              ) : (
-                "Create issue"
-              )}
-            </Button>
+          <DialogFooter className="flex items-center gap-3 border-border-subtle bg-surface/50 px-4 py-2.5 sm:px-5">
+            <span className="hidden min-w-0 flex-1 truncate text-[11px] text-fg-faint select-none lg:inline">
+              {footerShortcutHint}
+            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 rounded-md px-2 text-[12px] text-fg-muted hover:text-fg"
+                onClick={close}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                className="h-8 rounded-md px-4 text-[12px] font-medium"
+                disabled={isSaving || !submitTitle}
+              >
+                {isSaving ? (
+                  <span className="flex items-center gap-2">
+                    <span className="inline-block size-3 animate-spin rounded-full border-2 border-bg/30 border-t-bg" />
+                    {attachments.length > 0 ? "Creating & uploading…" : "Creating…"}
+                  </span>
+                ) : (
+                  "Create issue"
+                )}
+              </Button>
+            </div>
           </DialogFooter>
         </form>
       </Dialog>
@@ -620,10 +579,14 @@ function NewIssueLabels({
         <button
           type="button"
           onClick={onClick}
-          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border-subtle bg-bg px-2 font-mono text-[11px] text-fg-muted transition-colors hover:border-border hover:text-fg"
+          className={`${META_CHIP} w-max max-w-full min-w-0`}
         >
-          <LabelTagIcon />
-          {selectedIds.length > 0 ? `${selectedIds.length} labels` : "labels"}
+          <span className="inline-flex min-w-0 items-center gap-1.5">
+            <LabelTagIcon />
+            <span className="truncate">
+              {selectedIds.length > 0 ? `${selectedIds.length} labels` : "Labels"}
+            </span>
+          </span>
         </button>
       )}
     />

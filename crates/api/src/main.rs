@@ -11,6 +11,7 @@ mod issue_helpers;
 mod issue_history;
 mod mcp;
 mod permissions;
+mod realtime;
 mod state;
 mod storage;
 
@@ -81,6 +82,7 @@ async fn main() -> anyhow::Result<()> {
     let unkey = Unkey::with_config(unkey_config)
         .map_err(|e| anyhow::anyhow!("failed to build Unkey client: {e}"))?;
     let state = AppState::new(db, config.clone(), ai, unkey);
+    realtime::spawn_postgres_listener(state.clone());
     spawn_github_auto_importer(state.clone());
     digest::spawn_progress_digest_scheduler(state.clone());
     let asset_service = ServeDir::new(format!("{}/assets", config.web_dist_dir));

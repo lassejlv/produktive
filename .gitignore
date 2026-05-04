@@ -12,6 +12,7 @@ target/
 # env
 .env
 .env.production
+env.txt
 **/.env
 **/.env.production
 !.env.example

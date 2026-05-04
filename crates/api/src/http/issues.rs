@@ -365,6 +365,11 @@ async fn create_issue(
     )
     .await?;
 
+    state
+        .realtime
+        .issue_changed(&state.db, &organization_id, &issue.id)
+        .await;
+
     Ok((
         StatusCode::CREATED,
         Json(IssueEnvelope {
@@ -517,6 +522,10 @@ async fn update_issue(
         )
         .await;
     }
+    state
+        .realtime
+        .issue_changed(&state.db, &auth.organization.id, &issue.id)
+        .await;
     Ok(Json(IssueEnvelope {
         issue: issue_response(&state, issue).await?,
     }))
@@ -531,6 +540,10 @@ async fn delete_issue(
     require_permission(&state, &auth, ISSUES_DELETE).await?;
     let issue = find_issue(&state, &auth.organization.id, &id).await?;
     issue.delete(&state.db).await?;
+    state
+        .realtime
+        .issue_deleted(&state.db, &auth.organization.id, &id)
+        .await;
 
     Ok(Json(OkResponse { ok: true }))
 }
@@ -609,6 +622,10 @@ async fn create_comment(
     let mut active = issue.into_active_model();
     active.updated_at = Set(Utc::now().fixed_offset());
     active.update(&state.db).await?;
+    state
+        .realtime
+        .issue_changed(&state.db, &auth.organization.id, &issue_id_for_notify)
+        .await;
 
     // Notify subscribers (excluding the author)
     let subscribers = issue_subscriber::Entity::find()
@@ -732,6 +749,11 @@ async fn upload_attachment(
             )
             .await?;
         }
+
+        state
+            .realtime
+            .issue_changed(&state.db, &auth.organization.id, &issue.id)
+            .await;
 
         return Ok(Json(IssueEnvelope {
             issue: issue_response(&state, issue).await?,

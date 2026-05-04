@@ -1,11 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import {
-  InboxIcon,
-  IssuesIcon,
-  ProjectsIcon,
-} from "@/components/chat/icons";
+import { InboxIcon, IssuesIcon, ProjectsIcon } from "@/components/chat/icons";
 import { ISSUE_DRAG_MIME } from "@/components/issue/issue-list";
 import { ProjectIcon } from "@/components/project/project-icon";
 import type { SidebarLayoutItem } from "@/lib/api";
@@ -45,8 +41,7 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
     <div className="ml-3 mt-0.5 flex flex-col gap-px border-l border-border-subtle/60 pl-2">
       {recent.map((project) => {
         const isActive =
-          pathname === `/projects/${project.id}` ||
-          pathname.startsWith(`/projects/${project.id}`);
+          pathname === `/projects/${project.id}` || pathname.startsWith(`/projects/${project.id}`);
         return (
           <button
             key={project.id}
@@ -77,9 +72,7 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
                   await updateIssue(issueId, { projectId: project.id });
                   toast.success(`Added to ${project.name}`);
                 } catch (error) {
-                  toast.error(
-                    error instanceof Error ? error.message : "Failed to add to project",
-                  );
+                  toast.error(error instanceof Error ? error.message : "Failed to add to project");
                 }
               })();
             }}
@@ -188,6 +181,14 @@ const NAV_ITEM_SPECS: Record<SidebarItemId, NavItemSpec> = {
 };
 
 const NAV_DRAG_MIME = "application/x-produktive-sidebar-item";
+
+function sidebarItemsEqual(a: SidebarLayoutItem[], b: SidebarLayoutItem[]) {
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => {
+    const other = b[index];
+    return Boolean(other) && item.id === other.id && item.hidden === other.hidden;
+  });
+}
 
 function DragHandleIcon() {
   return (
@@ -357,7 +358,9 @@ export function SidebarNav({
   const [dragId, setDragId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isEditing) setDraft(savedItems);
+    if (!isEditing) {
+      setDraft((current) => (sidebarItemsEqual(current, savedItems) ? current : savedItems));
+    }
   }, [isEditing, savedItems]);
 
   const items = isEditing ? draft : savedItems;
