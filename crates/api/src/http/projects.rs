@@ -5,6 +5,7 @@ use crate::{
         self, CATEGORY_ACTIVE, CATEGORY_BACKLOG, CATEGORY_CANCELED, CATEGORY_DONE,
     },
     permissions::{require_permission, PROJECTS_CREATE, PROJECTS_DELETE, PROJECTS_UPDATE},
+    realtime::{RealtimeAction, RealtimeEntity},
     state::AppState,
 };
 use axum::{
@@ -175,12 +176,22 @@ async fn create_project(
     }
     .insert(&state.db)
     .await?;
+    let response = project_response(&state, row).await?;
+    state
+        .realtime
+        .publish_workspace_event_with_payload(
+            &state.db,
+            &auth.organization.id,
+            RealtimeEntity::Project,
+            RealtimeAction::Created,
+            &response.id,
+            &response,
+        )
+        .await;
 
     Ok((
         StatusCode::CREATED,
-        Json(ProjectEnvelope {
-            project: project_response(&state, row).await?,
-        }),
+        Json(ProjectEnvelope { project: response }),
     ))
 }
 
@@ -263,9 +274,19 @@ async fn patch_project(
     active.updated_at = Set(Utc::now().fixed_offset());
 
     let updated = active.update(&state.db).await?;
-    Ok(Json(ProjectEnvelope {
-        project: project_response(&state, updated).await?,
-    }))
+    let response = project_response(&state, updated).await?;
+    state
+        .realtime
+        .publish_workspace_event_with_payload(
+            &state.db,
+            &auth.organization.id,
+            RealtimeEntity::Project,
+            RealtimeAction::Updated,
+            &response.id,
+            &response,
+        )
+        .await;
+    Ok(Json(ProjectEnvelope { project: response }))
 }
 
 async fn delete_project(
@@ -277,6 +298,16 @@ async fn delete_project(
     require_permission(&state, &auth, PROJECTS_DELETE).await?;
     let row = find_project(&state, &auth.organization.id, &id).await?;
     row.delete(&state.db).await?;
+    state
+        .realtime
+        .publish_workspace_event(
+            &state.db,
+            &auth.organization.id,
+            RealtimeEntity::Project,
+            RealtimeAction::Deleted,
+            &id,
+        )
+        .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
