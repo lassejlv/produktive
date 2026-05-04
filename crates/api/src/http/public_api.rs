@@ -7,6 +7,7 @@ use crate::{
     },
     issue_helpers::{non_empty_optional, normalize_assignee, required_string, validate_assignee},
     issue_history::{record_issue_event, string_change, IssueChange},
+    realtime::{RealtimeAction, RealtimeEntity},
     state::AppState,
 };
 use axum::{
@@ -392,13 +393,20 @@ async fn create_issue(
         ],
     )
     .await?;
+    let response = issue_response(&state, row).await?;
+    state
+        .realtime
+        .publish_workspace_event_with_payload(
+            &state.db,
+            &organization_id,
+            RealtimeEntity::Issue,
+            RealtimeAction::Created,
+            &response.id,
+            &response,
+        )
+        .await;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(IssueEnvelope {
-            issue: issue_response(&state, row).await?,
-        }),
-    ))
+    Ok((StatusCode::CREATED, Json(IssueEnvelope { issue: response })))
 }
 
 async fn get_issue(
@@ -529,10 +537,20 @@ async fn update_issue(
         )
         .await?;
     }
+    let response = issue_response(&state, updated).await?;
+    state
+        .realtime
+        .publish_workspace_event_with_payload(
+            &state.db,
+            &organization_id,
+            RealtimeEntity::Issue,
+            RealtimeAction::Updated,
+            &response.id,
+            &response,
+        )
+        .await;
 
-    Ok(Json(IssueEnvelope {
-        issue: issue_response(&state, updated).await?,
-    }))
+    Ok(Json(IssueEnvelope { issue: response }))
 }
 
 async fn delete_issue(
@@ -543,6 +561,16 @@ async fn delete_issue(
     let auth = require_api_key(&headers, &state).await?;
     let row = find_issue(&state, &auth.organization.id, &id).await?;
     row.delete(&state.db).await?;
+    state
+        .realtime
+        .publish_workspace_event(
+            &state.db,
+            &auth.organization.id,
+            RealtimeEntity::Issue,
+            RealtimeAction::Deleted,
+            &id,
+        )
+        .await;
     Ok(Json(OkEnvelope { ok: true }))
 }
 
@@ -585,7 +613,7 @@ async fn create_label(
     let now = Utc::now().fixed_offset();
     let row = label::ActiveModel {
         id: Set(Uuid::new_v4().to_string()),
-        organization_id: Set(organization_id),
+        organization_id: Set(organization_id.clone()),
         name: Set(name),
         description: Set(non_empty(payload.description)),
         color: Set(normalize_color(payload.color.as_deref(), "gray")),
@@ -596,13 +624,20 @@ async fn create_label(
     }
     .insert(&state.db)
     .await?;
+    let response = label_response(&state, row).await?;
+    state
+        .realtime
+        .publish_workspace_event_with_payload(
+            &state.db,
+            &organization_id,
+            RealtimeEntity::Label,
+            RealtimeAction::Created,
+            &response.id,
+            &response,
+        )
+        .await;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(LabelEnvelope {
-            label: label_response(&state, row).await?,
-        }),
-    ))
+    Ok((StatusCode::CREATED, Json(LabelEnvelope { label: response })))
 }
 
 async fn get_label(
@@ -651,9 +686,19 @@ async fn update_label(
     active.updated_at = Set(Utc::now().fixed_offset());
 
     let row = active.update(&state.db).await?;
-    Ok(Json(LabelEnvelope {
-        label: label_response(&state, row).await?,
-    }))
+    let response = label_response(&state, row).await?;
+    state
+        .realtime
+        .publish_workspace_event_with_payload(
+            &state.db,
+            &organization_id,
+            RealtimeEntity::Label,
+            RealtimeAction::Updated,
+            &response.id,
+            &response,
+        )
+        .await;
+    Ok(Json(LabelEnvelope { label: response }))
 }
 
 async fn delete_label(
@@ -664,6 +709,16 @@ async fn delete_label(
     let auth = require_api_key(&headers, &state).await?;
     let row = crate::http::labels::find_label(&state, &auth.organization.id, &id).await?;
     row.delete(&state.db).await?;
+    state
+        .realtime
+        .publish_workspace_event(
+            &state.db,
+            &auth.organization.id,
+            RealtimeEntity::Label,
+            RealtimeAction::Deleted,
+            &id,
+        )
+        .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -706,7 +761,7 @@ async fn create_project(
     let now = Utc::now().fixed_offset();
     let row = project::ActiveModel {
         id: Set(Uuid::new_v4().to_string()),
-        organization_id: Set(organization_id),
+        organization_id: Set(organization_id.clone()),
         name: Set(required_string(payload.name, "Project name")?),
         description: Set(non_empty(payload.description)),
         status: Set(normalize_project_status(payload.status.as_deref())),
@@ -722,12 +777,22 @@ async fn create_project(
     }
     .insert(&state.db)
     .await?;
+    let response = project_response(&state, row).await?;
+    state
+        .realtime
+        .publish_workspace_event_with_payload(
+            &state.db,
+            &organization_id,
+            RealtimeEntity::Project,
+            RealtimeAction::Created,
+            &response.id,
+            &response,
+        )
+        .await;
 
     Ok((
         StatusCode::CREATED,
-        Json(ProjectEnvelope {
-            project: project_response(&state, row).await?,
-        }),
+        Json(ProjectEnvelope { project: response }),
     ))
 }
 
@@ -785,9 +850,19 @@ async fn update_project(
     active.updated_at = Set(Utc::now().fixed_offset());
 
     let row = active.update(&state.db).await?;
-    Ok(Json(ProjectEnvelope {
-        project: project_response(&state, row).await?,
-    }))
+    let response = project_response(&state, row).await?;
+    state
+        .realtime
+        .publish_workspace_event_with_payload(
+            &state.db,
+            &organization_id,
+            RealtimeEntity::Project,
+            RealtimeAction::Updated,
+            &response.id,
+            &response,
+        )
+        .await;
+    Ok(Json(ProjectEnvelope { project: response }))
 }
 
 async fn delete_project(
@@ -798,6 +873,16 @@ async fn delete_project(
     let auth = require_api_key(&headers, &state).await?;
     let row = crate::http::projects::find_project(&state, &auth.organization.id, &id).await?;
     row.delete(&state.db).await?;
+    state
+        .realtime
+        .publish_workspace_event(
+            &state.db,
+            &auth.organization.id,
+            RealtimeEntity::Project,
+            RealtimeAction::Deleted,
+            &id,
+        )
+        .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
