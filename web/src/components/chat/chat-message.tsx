@@ -281,25 +281,33 @@ function AskUserCard({
 
 export function readAskUserQuestion(call: ChatToolCall): string {
   const args = parseAskUserPayload(call.arguments);
-  const result = call.result as { question?: string } | undefined;
-  return result?.question ?? args.question ?? "";
+  const result = call.result as { question?: unknown } | undefined;
+  if (typeof result?.question === "string") return result.question;
+  if (typeof args.question === "string") return args.question;
+  return "";
 }
 
 export function readAskUserOptions(call: ChatToolCall): string[] {
   const args = parseAskUserPayload(call.arguments);
-  const result = call.result as { options?: string[] } | undefined;
-  if (result?.options && result.options.length > 0) return result.options;
-  return args.options ?? [];
+  const result = call.result as { options?: unknown } | undefined;
+  const fromResult = normalizeOptions(result?.options);
+  if (fromResult.length > 0) return fromResult;
+  return normalizeOptions(args.options);
+}
+
+function normalizeOptions(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
 }
 
 function parseAskUserPayload(raw: string): {
-  question?: string;
-  options?: string[];
+  question?: unknown;
+  options?: unknown;
 } {
   try {
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object") {
-      return parsed as { question?: string; options?: string[] };
+      return parsed as { question?: unknown; options?: unknown };
     }
   } catch {
     // ignore — return empty
