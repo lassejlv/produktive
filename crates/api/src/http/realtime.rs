@@ -110,6 +110,7 @@ fn realtime_entity_filter(query: &RealtimeQuery) -> Result<Option<RealtimeEntity
         Some("project") => Ok(Some(RealtimeEntity::Project)),
         Some("label") => Ok(Some(RealtimeEntity::Label)),
         Some("notification") => Ok(Some(RealtimeEntity::Notification)),
+        Some("chat") => Ok(Some(RealtimeEntity::Chat)),
         Some(_) => Err(ApiError::BadRequest(
             "Unsupported realtime entity".to_owned(),
         )),

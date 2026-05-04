@@ -181,6 +181,7 @@ pub enum RealtimeEntity {
     Project,
     Label,
     Notification,
+    Chat,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

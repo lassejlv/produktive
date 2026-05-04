@@ -3,6 +3,7 @@ use crate::{
     auth::{require_auth, AuthContext},
     error::ApiError,
     mcp,
+    realtime::{RealtimeAction, RealtimeEntity},
     state::AppState,
     storage,
 };
@@ -218,13 +219,21 @@ async fn create_chat(
     .insert(&txn)
     .await?;
     txn.commit().await?;
+    let summary = ChatSummary::from(&model);
+    state
+        .realtime
+        .publish_user_event_with_payload(
+            &state.db,
+            &auth.organization.id,
+            &auth.user.id,
+            RealtimeEntity::Chat,
+            RealtimeAction::Created,
+            &summary.id,
+            &summary,
+        )
+        .await;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(ChatEnvelope {
-            chat: ChatSummary::from(&model),
-        }),
-    ))
+    Ok((StatusCode::CREATED, Json(ChatEnvelope { chat: summary })))
 }
 
 async fn get_chat_with_messages(
@@ -260,7 +269,26 @@ async fn delete_chat(
             "Only the chat creator can delete this chat".to_owned(),
         ));
     }
+    let accessors = chat_access::Entity::find()
+        .filter(chat_access::Column::ChatId.eq(&id))
+        .all(&state.db)
+        .await?;
+    let summary = ChatSummary::from(&chat);
     chat.delete(&state.db).await?;
+    for accessor in accessors {
+        state
+            .realtime
+            .publish_user_event_with_payload(
+                &state.db,
+                &auth.organization.id,
+                &accessor.user_id,
+                RealtimeEntity::Chat,
+                RealtimeAction::Deleted,
+                &id,
+                &summary,
+            )
+            .await;
+    }
     Ok(Json(OkResponse { ok: true }))
 }
 
@@ -630,9 +658,44 @@ async fn finish_assistant_turn(
         active.title = Set(truncate_title(user_content));
     }
     active.updated_at = Set(now);
-    active.update(&state.db).await?;
+    let updated = active.update(&state.db).await?;
+    let summary = ChatSummary::from(&updated);
+    publish_chat_event_to_accessors(
+        state,
+        &auth.organization.id,
+        RealtimeAction::Updated,
+        &summary,
+    )
+    .await?;
 
     Ok(new_rows)
+}
+
+async fn publish_chat_event_to_accessors(
+    state: &AppState,
+    organization_id: &str,
+    action: RealtimeAction,
+    summary: &ChatSummary,
+) -> Result<(), ApiError> {
+    let rows = chat_access::Entity::find()
+        .filter(chat_access::Column::ChatId.eq(&summary.id))
+        .all(&state.db)
+        .await?;
+    for row in rows {
+        state
+            .realtime
+            .publish_user_event_with_payload(
+                &state.db,
+                organization_id,
+                &row.user_id,
+                RealtimeEntity::Chat,
+                action.clone(),
+                &summary.id,
+                summary,
+            )
+            .await;
+    }
+    Ok(())
 }
 
 async fn find_chat(
@@ -767,15 +830,28 @@ async fn grant_access(
         .await?;
     }
 
-    Ok(Json(ChatAccessSingleResponse {
-        access: ChatAccessEntry {
-            is_creator: chat.created_by_id.as_deref() == Some(user.id.as_str()),
-            user_id: user.id,
-            name: user.name,
-            email: user.email,
-            image: user.image,
-        },
-    }))
+    let access = ChatAccessEntry {
+        is_creator: chat.created_by_id.as_deref() == Some(user.id.as_str()),
+        user_id: user.id.clone(),
+        name: user.name,
+        email: user.email,
+        image: user.image,
+    };
+    let summary = ChatSummary::from(&chat);
+    state
+        .realtime
+        .publish_user_event_with_payload(
+            &state.db,
+            &auth.organization.id,
+            &user.id,
+            RealtimeEntity::Chat,
+            RealtimeAction::Created,
+            &summary.id,
+            &summary,
+        )
+        .await;
+
+    Ok(Json(ChatAccessSingleResponse { access }))
 }
 
 async fn revoke_access(
@@ -798,6 +874,18 @@ async fn revoke_access(
         .filter(chat_access::Column::UserId.eq(&user_id))
         .exec(&state.db)
         .await?;
+    state
+        .realtime
+        .publish_user_event_with_payload(
+            &state.db,
+            &auth.organization.id,
+            &user_id,
+            RealtimeEntity::Chat,
+            RealtimeAction::Deleted,
+            &chat.id,
+            &ChatSummary::from(&chat),
+        )
+        .await;
 
     Ok(Json(OkResponse { ok: true }))
 }

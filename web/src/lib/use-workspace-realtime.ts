@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import {
   apiPath,
+  type Chat,
   type InboxNotification,
   type InboxResponse,
   type Issue,
@@ -11,7 +12,7 @@ import {
 import { queryKeys } from "@/lib/queries/keys";
 
 type WorkspaceRealtimeEvent = {
-  entity: "issue" | "project" | "label" | "notification";
+  entity: "issue" | "project" | "label" | "notification" | "chat";
   action: "created" | "updated" | "deleted";
   entityId: string;
   payload?: unknown;
@@ -36,6 +37,9 @@ const isLabel = (payload: unknown): payload is Label =>
 
 const isNotification = (payload: unknown): payload is InboxNotification =>
   Boolean(payload && typeof payload === "object" && "id" in payload && "targetType" in payload);
+
+const isChat = (payload: unknown): payload is Chat =>
+  Boolean(payload && typeof payload === "object" && "id" in payload && "updatedAt" in payload);
 
 const upsertById = <T extends { id: string }>(
   items: T[] | undefined,
@@ -175,6 +179,29 @@ export function useWorkspaceRealtime(enabled: boolean) {
       });
     };
 
+    const applyChatEvent = (message: WorkspaceRealtimeEvent) => {
+      if (message.action === "deleted") {
+        queryClient.setQueryData<Chat[]>(queryKeys.chats, (old) =>
+          old?.filter((chat) => chat.id !== message.entityId),
+        );
+        return;
+      }
+
+      if (!isChat(message.payload)) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.chats });
+        return;
+      }
+
+      const chat = message.payload;
+      queryClient.setQueryData<Chat[]>(queryKeys.chats, (old) =>
+        upsertById<Chat>(
+          old,
+          chat,
+          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+        ),
+      );
+    };
+
     const handleWorkspaceEvent = (event: MessageEvent<string>) => {
       const message = parseWorkspaceEvent(event);
       if (!message) return;
@@ -183,6 +210,7 @@ export function useWorkspaceRealtime(enabled: boolean) {
       if (message.entity === "project") applyProjectEvent(message);
       if (message.entity === "label") applyLabelEvent(message);
       if (message.entity === "notification") applyNotificationEvent(message);
+      if (message.entity === "chat") applyChatEvent(message);
     };
 
     const handleSyncRequired = () => {
@@ -190,6 +218,7 @@ export function useWorkspaceRealtime(enabled: boolean) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
       void queryClient.invalidateQueries({ queryKey: queryKeys.labels.all });
       void queryClient.invalidateQueries({ queryKey: queryKeys.inbox });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.chats });
     };
 
     source.addEventListener("workspace", handleWorkspaceEvent);
