@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, Utc};
-use produktive_entity::{member, produktive_oauth_grant, produktive_oauth_token};
+use produktive_entity::{member, organization, produktive_oauth_grant, produktive_oauth_token, user};
 use rust_mcp_sdk::{
     auth::{AuthInfo, AuthProvider, AuthenticationError, OauthEndpoint},
     mcp_http::{http, GenericBody, GenericBodyExt, McpAppState},
@@ -61,6 +61,18 @@ impl AuthProvider for ProduktiveAuthProvider {
         if grant.revoked_at.is_some() || grant.resource != self.state.resource_url {
             return Err(AuthenticationError::InvalidToken {
                 description: "MCP OAuth grant is invalid",
+            });
+        }
+        let token_user = user::Entity::find_by_id(&token.user_id)
+            .one(&self.state.db)
+            .await
+            .map_err(auth_server_error)?
+            .ok_or_else(|| AuthenticationError::InvalidToken {
+                description: "MCP OAuth token user no longer exists",
+            })?;
+        if token_user.suspended_at.is_some() {
+            return Err(AuthenticationError::InvalidToken {
+                description: "Produktive user is suspended",
             });
         }
 
@@ -163,7 +175,22 @@ async fn valid_selected_workspace(
         .await
         .map_err(auth_server_error)?
         .is_some();
-    Ok(is_member.then(|| organization_id.to_owned()))
+    if !is_member {
+        return Ok(None);
+    }
+    let organization = organization::Entity::find_by_id(organization_id)
+        .one(db)
+        .await
+        .map_err(auth_server_error)?;
+    let Some(organization) = organization else {
+        return Ok(None);
+    };
+    if organization.suspended_at.is_some() {
+        return Err(AuthenticationError::InvalidToken {
+            description: "Selected Produktive workspace is suspended",
+        });
+    }
+    Ok(Some(organization.id))
 }
 
 pub(crate) fn hash_token(token: &str) -> String {

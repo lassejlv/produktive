@@ -1,4 +1,9 @@
-use crate::{auth::require_platform_admin, error::ApiError, state::AppState};
+use crate::{
+    auth::require_platform_admin,
+    email::{send_organization_suspended_email, send_user_suspended_email},
+    error::ApiError,
+    state::AppState,
+};
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
@@ -6,7 +11,9 @@ use axum::{
     Json, Router,
 };
 use chrono::{Duration, Utc};
-use produktive_entity::{admin_audit_event, issue, member, organization, project, session, user};
+use produktive_entity::{
+    admin_audit_event, issue, issue_event, member, organization, project, session, user,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, EntityTrait, FromQueryResult,
     IntoActiveModel, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
@@ -258,8 +265,28 @@ async fn list_users(
 struct UserDetailResponse {
     user: AdminUserSummary,
     memberships: Vec<UserMembershipResponse>,
-    active_sessions: u64,
+    sessions: SessionStatsResponse,
+    activity_events: Vec<ActivityEventResponse>,
     audit_events: Vec<AuditEventResponse>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionStatsResponse {
+    active: u64,
+    revoked: u64,
+    total: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ActivityEventResponse {
+    id: String,
+    organization_id: String,
+    issue_id: String,
+    issue_title: Option<String>,
+    action: String,
+    created_at: String,
 }
 
 #[derive(Serialize)]
@@ -305,18 +332,16 @@ async fn get_user(
         }
     }
 
-    let active_sessions = session::Entity::find()
-        .filter(session::Column::UserId.eq(&id))
-        .filter(session::Column::RevokedAt.is_null())
-        .count(&state.db)
-        .await?;
+    let sessions = user_session_stats(&state, &id).await?;
+    let activity_events = user_activity_events(&state, &id).await?;
     let audit_events = recent_audit_events(&state, "user", &id).await?;
     let user = user_summary(&state, row).await?;
 
     Ok(Json(UserDetailResponse {
         user,
         memberships: membership_responses,
-        active_sessions,
+        sessions,
+        activity_events,
         audit_events,
     }))
 }
@@ -378,10 +403,13 @@ async fn list_organizations(
 struct OrganizationDetailResponse {
     organization: AdminOrganizationSummary,
     members: Vec<OrganizationMemberResponse>,
+    owners: Vec<OrganizationMemberResponse>,
+    sessions: SessionStatsResponse,
+    activity_events: Vec<ActivityEventResponse>,
     audit_events: Vec<AuditEventResponse>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct OrganizationMemberResponse {
     id: String,
@@ -409,27 +437,37 @@ async fn get_organization(
         .all(&state.db)
         .await?;
     let mut members = Vec::with_capacity(memberships.len());
+    let mut owners = Vec::new();
     for membership in memberships {
         if let Some(row) = user::Entity::find_by_id(&membership.user_id)
             .one(&state.db)
             .await?
         {
-            members.push(OrganizationMemberResponse {
+            let member_response = OrganizationMemberResponse {
                 id: row.id,
                 name: row.name,
                 email: row.email,
                 image: row.image,
-                role: membership.role,
+                role: membership.role.clone(),
                 joined_at: membership.created_at.to_rfc3339(),
                 suspended_at: row.suspended_at.map(|value| value.to_rfc3339()),
-            });
+            };
+            if membership.role == "owner" {
+                owners.push(member_response.clone());
+            }
+            members.push(member_response);
         }
     }
+    let sessions = organization_session_stats(&state, &id).await?;
+    let activity_events = organization_activity_events(&state, &id).await?;
     let audit_events = recent_audit_events(&state, "organization", &id).await?;
     let organization = organization_summary(&state, row).await?;
     Ok(Json(OrganizationDetailResponse {
         organization,
         members,
+        owners,
+        sessions,
+        activity_events,
         audit_events,
     }))
 }
@@ -459,6 +497,8 @@ async fn suspend_user(
         .one(&state.db)
         .await?
         .ok_or_else(|| ApiError::NotFound("User not found".to_owned()))?;
+    let target_email = row.email.clone();
+    let target_name = row.name.clone();
     let mut active = row.into_active_model();
     active.suspended_at = Set(Some(now));
     active.suspended_by_id = Set(Some(admin.user.id.clone()));
@@ -468,6 +508,9 @@ async fn suspend_user(
     active.update(&state.db).await?;
 
     revoke_user_sessions_for_admin(&state, &id, None).await?;
+    let email_metadata = email_audit_metadata(
+        send_user_suspended_email(&state, &target_email, &target_name, &reason).await,
+    );
     audit(
         &state,
         &admin.user.id,
@@ -475,7 +518,7 @@ async fn suspend_user(
         "user",
         &id,
         Some(&reason),
-        json!({}),
+        email_metadata,
     )
     .await?;
     Ok(StatusCode::NO_CONTENT)
@@ -524,6 +567,7 @@ async fn suspend_organization(
         .one(&state.db)
         .await?
         .ok_or_else(|| ApiError::NotFound("Organization not found".to_owned()))?;
+    let organization_name = row.name.clone();
     let mut active = row.into_active_model();
     active.suspended_at = Set(Some(now));
     active.suspended_by_id = Set(Some(admin.user.id.clone()));
@@ -533,6 +577,34 @@ async fn suspend_organization(
     active.update(&state.db).await?;
 
     revoke_user_sessions_for_admin(&state, "", Some(&id)).await?;
+    let owner_recipients = organization_owner_recipients(&state, &id).await?;
+    let mut sent_count = 0usize;
+    let mut failed_count = 0usize;
+    let mut last_error = None;
+    for owner in &owner_recipients {
+        match send_organization_suspended_email(
+            &state,
+            &owner.email,
+            &owner.name,
+            &organization_name,
+            &reason,
+        )
+        .await
+        {
+            Ok(()) => sent_count += 1,
+            Err(error) => {
+                failed_count += 1;
+                let message = error.to_string();
+                tracing::warn!(
+                    organization_id = %id,
+                    owner_email = %owner.email,
+                    error = %message,
+                    "failed to send organization suspension email"
+                );
+                last_error = Some(message);
+            }
+        }
+    }
     audit(
         &state,
         &admin.user.id,
@@ -540,7 +612,13 @@ async fn suspend_organization(
         "organization",
         &id,
         Some(&reason),
-        json!({}),
+        json!({
+            "emailSent": failed_count == 0,
+            "emailSentCount": sent_count,
+            "emailFailedCount": failed_count,
+            "emailRecipientCount": owner_recipients.len(),
+            "emailLastError": last_error,
+        }),
     )
     .await?;
     Ok(StatusCode::NO_CONTENT)
@@ -602,6 +680,7 @@ struct AuditEventResponse {
     target_type: String,
     target_id: String,
     reason: Option<String>,
+    metadata: serde_json::Value,
     created_at: String,
 }
 
@@ -806,6 +885,134 @@ async fn revoke_user_sessions_for_admin(
     Ok(())
 }
 
+async fn user_session_stats(
+    state: &AppState,
+    user_id: &str,
+) -> Result<SessionStatsResponse, ApiError> {
+    let total = session::Entity::find()
+        .filter(session::Column::UserId.eq(user_id))
+        .count(&state.db)
+        .await?;
+    let active = session::Entity::find()
+        .filter(session::Column::UserId.eq(user_id))
+        .filter(session::Column::RevokedAt.is_null())
+        .count(&state.db)
+        .await?;
+    Ok(SessionStatsResponse {
+        active,
+        revoked: total.saturating_sub(active),
+        total,
+    })
+}
+
+async fn organization_session_stats(
+    state: &AppState,
+    organization_id: &str,
+) -> Result<SessionStatsResponse, ApiError> {
+    let total = session::Entity::find()
+        .filter(session::Column::ActiveOrganizationId.eq(organization_id))
+        .count(&state.db)
+        .await?;
+    let active = session::Entity::find()
+        .filter(session::Column::ActiveOrganizationId.eq(organization_id))
+        .filter(session::Column::RevokedAt.is_null())
+        .count(&state.db)
+        .await?;
+    Ok(SessionStatsResponse {
+        active,
+        revoked: total.saturating_sub(active),
+        total,
+    })
+}
+
+async fn user_activity_events(
+    state: &AppState,
+    user_id: &str,
+) -> Result<Vec<ActivityEventResponse>, ApiError> {
+    let rows = issue_event::Entity::find()
+        .filter(issue_event::Column::ActorId.eq(user_id))
+        .order_by_desc(issue_event::Column::CreatedAt)
+        .limit(30)
+        .all(&state.db)
+        .await?;
+    activity_event_responses(state, rows).await
+}
+
+async fn organization_activity_events(
+    state: &AppState,
+    organization_id: &str,
+) -> Result<Vec<ActivityEventResponse>, ApiError> {
+    let rows = issue_event::Entity::find()
+        .filter(issue_event::Column::OrganizationId.eq(organization_id))
+        .order_by_desc(issue_event::Column::CreatedAt)
+        .limit(30)
+        .all(&state.db)
+        .await?;
+    activity_event_responses(state, rows).await
+}
+
+async fn activity_event_responses(
+    state: &AppState,
+    rows: Vec<issue_event::Model>,
+) -> Result<Vec<ActivityEventResponse>, ApiError> {
+    let mut events = Vec::with_capacity(rows.len());
+    for row in rows {
+        let issue_title = issue::Entity::find_by_id(&row.issue_id)
+            .one(&state.db)
+            .await?
+            .map(|issue| issue.title);
+        events.push(ActivityEventResponse {
+            id: row.id,
+            organization_id: row.organization_id,
+            issue_id: row.issue_id,
+            issue_title,
+            action: row.action,
+            created_at: row.created_at.to_rfc3339(),
+        });
+    }
+    Ok(events)
+}
+
+async fn organization_owner_recipients(
+    state: &AppState,
+    organization_id: &str,
+) -> Result<Vec<AdminUserIdentity>, ApiError> {
+    let owners = member::Entity::find()
+        .filter(member::Column::OrganizationId.eq(organization_id))
+        .filter(member::Column::Role.eq("owner"))
+        .all(&state.db)
+        .await?;
+    let mut recipients = Vec::with_capacity(owners.len());
+    for owner in owners {
+        if let Some(user) = user::Entity::find_by_id(&owner.user_id)
+            .one(&state.db)
+            .await?
+        {
+            recipients.push(AdminUserIdentity {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                image: user.image,
+            });
+        }
+    }
+    Ok(recipients)
+}
+
+fn email_audit_metadata(result: Result<(), ApiError>) -> serde_json::Value {
+    match result {
+        Ok(()) => json!({ "emailSent": true }),
+        Err(error) => {
+            let message = error.to_string();
+            tracing::warn!(error = %message, "failed to send user suspension email");
+            json!({
+                "emailSent": false,
+                "emailLastError": message,
+            })
+        }
+    }
+}
+
 async fn audit(
     state: &AppState,
     actor_user_id: &str,
@@ -875,6 +1082,7 @@ async fn audit_response(
         target_type: row.target_type,
         target_id: row.target_id,
         reason: row.reason,
+        metadata: row.metadata,
         created_at: row.created_at.to_rfc3339(),
     })
 }

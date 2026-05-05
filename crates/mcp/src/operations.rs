@@ -45,6 +45,9 @@ pub(crate) async fn list_workspaces(
             .await
             .map_err(db_tool_error)?
         {
+            if org.suspended_at.is_some() {
+                continue;
+            }
             workspaces.push(json!({
                 "id": org.id,
                 "name": org.name,
@@ -84,6 +87,9 @@ pub(crate) async fn select_workspace(
         .await
         .map_err(db_tool_error)?
         .ok_or_else(|| tool_error("Workspace not found"))?;
+    if org.suspended_at.is_some() {
+        return Err(tool_error("Workspace is suspended"));
+    }
 
     let grant = produktive_oauth_grant::Entity::find_by_id(&ctx.grant_id)
         .one(&state.db)

@@ -79,6 +79,46 @@ pub async fn send_invitation_email(
     send_email(state, to, &subject, html, text).await
 }
 
+pub async fn send_user_suspended_email(
+    state: &AppState,
+    to: &str,
+    name: &str,
+    reason: &str,
+) -> Result<(), ApiError> {
+    let subject = "Your Produktive account has been suspended";
+    let html = format!(
+        "<p>Hi {name},</p><p>Your Produktive account has been suspended.</p><p><strong>Reason:</strong> {reason}</p><p>If you believe this is a mistake, reply to this email or contact Produktive support.</p>",
+        name = html_escape(name),
+        reason = html_escape(reason),
+    );
+    let text = format!(
+        "Hi {name},\n\nYour Produktive account has been suspended.\n\nReason: {reason}\n\nIf you believe this is a mistake, reply to this email or contact Produktive support."
+    );
+
+    send_email(state, to, subject, html, text).await
+}
+
+pub async fn send_organization_suspended_email(
+    state: &AppState,
+    to: &str,
+    name: &str,
+    organization_name: &str,
+    reason: &str,
+) -> Result<(), ApiError> {
+    let subject = format!("{organization_name} has been suspended on Produktive");
+    let html = format!(
+        "<p>Hi {name},</p><p>Your workspace <strong>{org}</strong> has been suspended on Produktive.</p><p><strong>Reason:</strong> {reason}</p><p>Members will not be able to access this workspace, use API keys, or use MCP access while it is suspended. If you believe this is a mistake, reply to this email or contact Produktive support.</p>",
+        name = html_escape(name),
+        org = html_escape(organization_name),
+        reason = html_escape(reason),
+    );
+    let text = format!(
+        "Hi {name},\n\nYour workspace {organization_name} has been suspended on Produktive.\n\nReason: {reason}\n\nMembers will not be able to access this workspace, use API keys, or use MCP access while it is suspended. If you believe this is a mistake, reply to this email or contact Produktive support."
+    );
+
+    send_email(state, to, &subject, html, text).await
+}
+
 pub struct ProgressDigest<'a> {
     pub closed_count: usize,
     pub closed_titles: &'a [String],

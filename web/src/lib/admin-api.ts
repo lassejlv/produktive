@@ -95,7 +95,23 @@ export type AuditEvent = {
   targetType: string;
   targetId: string;
   reason: string | null;
+  metadata?: Record<string, unknown>;
   createdAt: string;
+};
+
+export type ActivityEvent = {
+  id: string;
+  organizationId: string;
+  issueId: string;
+  issueTitle: string | null;
+  action: string;
+  createdAt: string;
+};
+
+export type SessionStats = {
+  active: number;
+  revoked: number;
+  total: number;
 };
 
 export type UserDetail = {
@@ -108,7 +124,8 @@ export type UserDetail = {
     joinedAt: string;
     organizationSuspendedAt: string | null;
   }[];
-  activeSessions: number;
+  sessions: SessionStats;
+  activityEvents: ActivityEvent[];
   auditEvents: AuditEvent[];
 };
 
@@ -123,6 +140,17 @@ export type OrganizationDetail = {
     joinedAt: string;
     suspendedAt: string | null;
   }[];
+  owners: {
+    id: string;
+    name: string;
+    email: string;
+    image: string | null;
+    role: string;
+    joinedAt: string;
+    suspendedAt: string | null;
+  }[];
+  sessions: SessionStats;
+  activityEvents: ActivityEvent[];
   auditEvents: AuditEvent[];
 };
 

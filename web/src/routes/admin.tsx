@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
+  type ActivityEvent,
   getAdminOrganization,
   getAdminSession,
   getAdminUser,
@@ -384,8 +385,10 @@ function UsersView({
           <div className="space-y-4">
             <IdentityBlock title={detail.user.name} subtitle={detail.user.email} />
             <div className="grid grid-cols-2 gap-2">
-              <MiniStat label="Active sessions" value={detail.activeSessions} />
+              <MiniStat label="Active sessions" value={detail.sessions.active} />
+              <MiniStat label="Revoked sessions" value={detail.sessions.revoked} />
               <MiniStat label="Memberships" value={detail.memberships.length} />
+              <MiniStat label="Activity events" value={detail.activityEvents.length} />
             </div>
             <button
               type="button"
@@ -416,6 +419,7 @@ function UsersView({
               ))}
             </div>
             <AuditMini events={detail.auditEvents} />
+            <ActivityMini events={detail.activityEvents} />
           </div>
         ) : (
           <EmptyDetail label="Select a user" />
@@ -507,6 +511,8 @@ function OrganizationsView({
               <MiniStat label="Issues" value={detail.organization.issueCount} />
               <MiniStat label="Owners" value={detail.organization.ownerCount} />
               <MiniStat label="Projects" value={detail.organization.projectCount} />
+              <MiniStat label="Active sessions" value={detail.sessions.active} />
+              <MiniStat label="Activity events" value={detail.activityEvents.length} />
             </div>
             <button
               type="button"
@@ -536,7 +542,17 @@ function OrganizationsView({
                 </div>
               ))}
             </div>
+            <PanelTitle title="Owners" meta={`${detail.owners.length}`} />
+            <div className="space-y-2">
+              {detail.owners.map((owner) => (
+                <div key={owner.id} className="border border-border-subtle p-2">
+                  <p className="truncate text-[12px] text-fg">{owner.name}</p>
+                  <p className="truncate text-[11px] text-fg-faint">{owner.email}</p>
+                </div>
+              ))}
+            </div>
             <AuditMini events={detail.auditEvents} />
+            <ActivityMini events={detail.activityEvents} />
           </div>
         ) : (
           <EmptyDetail label="Select an organization" />
@@ -793,6 +809,28 @@ function AuditMini({ events }: { events: AuditEvent[] }) {
           <div key={event.id} className="border border-border-subtle p-2 text-[11px]">
             <p className="text-fg">{event.action}</p>
             <p className="truncate text-fg-faint">{event.reason ?? event.actor.email}</p>
+            {event.metadata?.emailSent !== undefined ? (
+              <p className="font-mono text-[10px] text-fg-faint">
+                email: {event.metadata.emailSent ? "sent" : "failed"}
+              </p>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ActivityMini({ events }: { events: ActivityEvent[] }) {
+  return (
+    <div>
+      <PanelTitle title="Activity events" meta={`${events.length}`} />
+      <div className="max-h-56 space-y-2 overflow-auto">
+        {events.map((event) => (
+          <div key={event.id} className="border border-border-subtle p-2 text-[11px]">
+            <p className="text-fg">{event.action}</p>
+            <p className="truncate text-fg-faint">{event.issueTitle ?? event.issueId}</p>
+            <p className="font-mono text-[10px] text-fg-faint">{shortDate(event.createdAt)}</p>
           </div>
         ))}
       </div>
