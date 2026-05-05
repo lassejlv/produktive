@@ -41,7 +41,8 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
     <div className="ml-3 mt-0.5 flex flex-col gap-px border-l border-border-subtle/60 pl-2">
       {recent.map((project) => {
         const isActive =
-          pathname === `/projects/${project.id}` || pathname.startsWith(`/projects/${project.id}`);
+          pathname === `/projects/${project.id}` ||
+          pathname.startsWith(`/projects/${project.id}`);
         return (
           <button
             key={project.id}
@@ -57,13 +58,25 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
               if (!event.dataTransfer.types.includes(ISSUE_DRAG_MIME)) return;
               event.preventDefault();
               event.dataTransfer.dropEffect = "move";
-              event.currentTarget.classList.add("ring-2", "ring-accent", "bg-accent/15");
+              event.currentTarget.classList.add(
+                "ring-2",
+                "ring-accent",
+                "bg-accent/15",
+              );
             }}
             onDragLeave={(event) => {
-              event.currentTarget.classList.remove("ring-2", "ring-accent", "bg-accent/15");
+              event.currentTarget.classList.remove(
+                "ring-2",
+                "ring-accent",
+                "bg-accent/15",
+              );
             }}
             onDrop={(event) => {
-              event.currentTarget.classList.remove("ring-2", "ring-accent", "bg-accent/15");
+              event.currentTarget.classList.remove(
+                "ring-2",
+                "ring-accent",
+                "bg-accent/15",
+              );
               const issueId = event.dataTransfer.getData(ISSUE_DRAG_MIME);
               if (!issueId) return;
               event.preventDefault();
@@ -72,16 +85,27 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
                   await updateIssue(issueId, { projectId: project.id });
                   toast.success(`Added to ${project.name}`);
                 } catch (error) {
-                  toast.error(error instanceof Error ? error.message : "Failed to add to project");
+                  toast.error(
+                    error instanceof Error
+                      ? error.message
+                      : "Failed to add to project",
+                  );
                 }
               })();
             }}
             className={cn(
               "flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[12.5px] transition-colors",
-              isActive ? "bg-surface text-fg" : "text-fg-muted hover:bg-surface hover:text-fg",
+              isActive
+                ? "bg-surface text-fg"
+                : "text-fg-muted hover:bg-surface hover:text-fg",
             )}
           >
-            <ProjectIcon color={project.color} icon={project.icon} name={project.name} size="sm" />
+            <ProjectIcon
+              color={project.color}
+              icon={project.icon}
+              name={project.name}
+              size="sm"
+            />
             <span className="min-w-0 flex-1 truncate">{project.name}</span>
             {project.issueCount > 0 ? (
               <span className="shrink-0 text-[10px] tabular-nums text-fg-faint">
@@ -98,10 +122,42 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
 function OverviewIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <rect x="2" y="2" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.4" />
-      <rect x="8" y="2" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.4" />
-      <rect x="2" y="8" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.4" />
-      <rect x="8" y="8" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.4" />
+      <rect
+        x="2"
+        y="2"
+        width="4"
+        height="4"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <rect
+        x="8"
+        y="2"
+        width="4"
+        height="4"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <rect
+        x="2"
+        y="8"
+        width="4"
+        height="4"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <rect
+        x="8"
+        y="8"
+        width="4"
+        height="4"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
     </svg>
   );
 }
@@ -180,21 +236,24 @@ const NAV_ITEM_SPECS: Record<SidebarItemId, NavItemSpec> = {
     icon: <IssuesIcon />,
     isActive: (ctx) =>
       (ctx.pathname === "/issues" && !ctx.issuesMine) ||
-      (ctx.pathname.startsWith("/issues/") && ctx.pathname.length > "/issues/".length),
+      (ctx.pathname.startsWith("/issues/") &&
+        ctx.pathname.length > "/issues/".length),
     onNavigate: (n) => void n({ to: "/issues" }),
   },
   notes: {
     id: "notes",
-    label: "Notes",
+    label: "Notes (preview)",
     icon: <SidebarNotesIcon />,
-    isActive: (ctx) => ctx.pathname === "/notes" || ctx.pathname.startsWith("/notes/"),
+    isActive: (ctx) =>
+      ctx.pathname === "/notes" || ctx.pathname.startsWith("/notes/"),
     onNavigate: (n) => void n({ to: "/notes" }),
   },
   projects: {
     id: "projects",
     label: "Projects",
     icon: <ProjectsIcon />,
-    isActive: (ctx) => ctx.pathname === "/projects" || ctx.pathname.startsWith("/projects/"),
+    isActive: (ctx) =>
+      ctx.pathname === "/projects" || ctx.pathname.startsWith("/projects/"),
     onNavigate: (n) => void n({ to: "/projects" }),
   },
   labels: {
@@ -212,7 +271,9 @@ function sidebarItemsEqual(a: SidebarLayoutItem[], b: SidebarLayoutItem[]) {
   if (a.length !== b.length) return false;
   return a.every((item, index) => {
     const other = b[index];
-    return Boolean(other) && item.id === other.id && item.hidden === other.hidden;
+    return (
+      Boolean(other) && item.id === other.id && item.hidden === other.hidden
+    );
   });
 }
 
@@ -304,7 +365,8 @@ function SidebarNavRow({
           if (!dropping) setDropping(true);
         }}
         onDragLeave={(event) => {
-          if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+          if (event.currentTarget.contains(event.relatedTarget as Node | null))
+            return;
           setDropping(false);
         }}
         onDrop={(event) => {
@@ -316,7 +378,9 @@ function SidebarNavRow({
         }}
         className={cn(
           "group flex h-8 w-full select-none items-center gap-1.5 rounded-[7px] border border-transparent pl-1 pr-1.5 text-[13px] transition-colors",
-          dropping ? "border-accent/40 bg-accent/10" : "border-border-subtle/60 bg-surface/30",
+          dropping
+            ? "border-accent/40 bg-accent/10"
+            : "border-border-subtle/60 bg-surface/30",
           isDragging && "opacity-60",
           hidden && !dropping && "text-fg-faint",
         )}
@@ -328,7 +392,9 @@ function SidebarNavRow({
         >
           <DragHandleIcon />
         </span>
-        <span className={cn("shrink-0", hidden ? "text-fg-faint" : "text-fg-muted")}>
+        <span
+          className={cn("shrink-0", hidden ? "text-fg-faint" : "text-fg-muted")}
+        >
           {spec.icon}
         </span>
         <span className="flex-1 truncate">{spec.label}</span>
@@ -385,7 +451,9 @@ export function SidebarNav({
 
   useEffect(() => {
     if (!isEditing) {
-      setDraft((current) => (sidebarItemsEqual(current, savedItems) ? current : savedItems));
+      setDraft((current) =>
+        sidebarItemsEqual(current, savedItems) ? current : savedItems,
+      );
     }
   }, [isEditing, savedItems]);
 
@@ -406,7 +474,9 @@ export function SidebarNav({
 
   const toggleHidden = (id: string) => {
     setDraft((current) =>
-      current.map((item) => (item.id === id ? { ...item, hidden: !item.hidden } : item)),
+      current.map((item) =>
+        item.id === id ? { ...item, hidden: !item.hidden } : item,
+      ),
     );
   };
 
