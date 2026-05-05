@@ -208,6 +208,25 @@ export type SupportTicketDetail = {
     email: string;
     image: string | null;
   } | null;
+  customerUser: {
+    id: string;
+    name: string;
+    email: string;
+    image: string | null;
+    emailVerified: boolean;
+    suspendedAt: string | null;
+    suspensionReason: string | null;
+    createdAt: string;
+    lastSessionAt: string | null;
+    memberships: {
+      organizationId: string;
+      organizationName: string;
+      organizationSlug: string;
+      role: string;
+      joinedAt: string;
+      organizationSuspendedAt: string | null;
+    }[];
+  } | null;
 };
 
 export const getAdminSession = () => request<AdminIdentity>("/api/admin/session");

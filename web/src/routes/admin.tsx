@@ -927,6 +927,72 @@ function SupportView({
               <p className="mt-1 truncate text-fg">{selectedTicket.customerName ?? "Unknown"}</p>
               <p className="truncate text-fg-muted">{selectedTicket.customerEmail}</p>
             </div>
+            {detail?.customerUser ? (
+              <div className="space-y-3 border border-border-subtle p-3 text-[12px]">
+                <div className="flex items-start gap-3">
+                  {detail.customerUser.image ? (
+                    <img
+                      src={detail.customerUser.image}
+                      alt=""
+                      className="h-9 w-9 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="grid h-9 w-9 place-items-center rounded-full border border-border-subtle font-mono text-[11px] text-fg-muted">
+                      {initials(detail.customerUser.name || detail.customerUser.email)}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="truncate text-fg">{detail.customerUser.name}</p>
+                    <p className="truncate text-fg-muted">{detail.customerUser.email}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <MiniFact
+                    label="Verified"
+                    value={detail.customerUser.emailVerified ? "yes" : "no"}
+                  />
+                  <MiniFact
+                    label="Last seen"
+                    value={shortDate(detail.customerUser.lastSessionAt)}
+                  />
+                  <MiniFact
+                    label="Joined"
+                    value={shortDate(detail.customerUser.createdAt)}
+                  />
+                  <MiniFact
+                    label="Workspaces"
+                    value={String(detail.customerUser.memberships.length)}
+                  />
+                </div>
+                {detail.customerUser.suspendedAt ? (
+                  <div className="border border-danger/40 bg-danger/10 p-2 text-danger">
+                    <p>Suspended</p>
+                    <p className="mt-1 text-[11px]">{detail.customerUser.suspensionReason}</p>
+                  </div>
+                ) : null}
+                <div className="space-y-2">
+                  <p className="text-fg-faint">Organizations</p>
+                  {detail.customerUser.memberships.slice(0, 5).map((membership) => (
+                    <div key={membership.organizationId} className="border border-border-subtle p-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-fg">{membership.organizationName}</p>
+                        <span className="font-mono text-[10px] text-fg-faint">
+                          {membership.role}
+                        </span>
+                      </div>
+                      <p className="truncate text-[11px] text-fg-faint">
+                        {membership.organizationSlug}
+                        {membership.organizationSuspendedAt ? " · suspended" : ""}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="border border-border-subtle p-3 text-[12px] text-fg-faint">
+                No Produktive account matched this email.
+              </div>
+            )}
             <div className="border border-border-subtle p-3 text-[12px]">
               <p className="text-fg-faint">Assigned</p>
               <p className="mt-1 truncate text-fg-muted">
@@ -1219,6 +1285,15 @@ function MiniStat({ label, value }: { label: string; value: number }) {
   );
 }
 
+function MiniFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border border-border-subtle p-2">
+      <p className="text-[10px] text-fg-faint">{label}</p>
+      <p className="mt-1 truncate font-mono text-[11px] text-fg">{value}</p>
+    </div>
+  );
+}
+
 function Status({ suspended }: { suspended: boolean }) {
   return (
     <span className={cn("font-mono text-[10px]", suspended ? "text-danger" : "text-success")}>
@@ -1287,4 +1362,13 @@ function stripHtml(value: string) {
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function initials(value: string) {
+  return value
+    .split(/\s|@/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
 }

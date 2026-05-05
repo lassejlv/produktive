@@ -13,7 +13,9 @@ use axum::{
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::Utc;
 use mail_parser::MessageParser;
-use produktive_entity::{support_message, support_ticket, support_ticket_event, user};
+use produktive_entity::{
+    member, organization, session, support_message, support_ticket, support_ticket_event, user,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, EntityTrait, IntoActiveModel, PaginatorTrait,
     QueryFilter, QueryOrder, QuerySelect, Set,
@@ -285,6 +287,7 @@ struct TicketDetail {
     messages: Vec<MessageWire>,
     events: Vec<EventWire>,
     assigned_admin: Option<AdminWire>,
+    customer_user: Option<CustomerUserWire>,
 }
 
 #[derive(Serialize)]
@@ -326,6 +329,32 @@ struct AdminWire {
     name: String,
     email: String,
     image: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CustomerUserWire {
+    id: String,
+    name: String,
+    email: String,
+    image: Option<String>,
+    email_verified: bool,
+    suspended_at: Option<String>,
+    suspension_reason: Option<String>,
+    created_at: String,
+    last_session_at: Option<String>,
+    memberships: Vec<CustomerMembershipWire>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CustomerMembershipWire {
+    organization_id: String,
+    organization_name: String,
+    organization_slug: String,
+    role: String,
+    joined_at: String,
+    organization_suspended_at: Option<String>,
 }
 
 async fn get_ticket(
@@ -705,11 +734,13 @@ async fn ticket_detail(
             .map(admin_wire),
         None => None,
     };
+    let customer_user = support_customer_user(state, &ticket.customer_email).await?;
     Ok(TicketDetail {
         ticket: ticket_summary(state, ticket).await?,
         messages,
         events,
         assigned_admin,
+        customer_user,
     })
 }
 
@@ -761,6 +792,58 @@ fn admin_wire(admin: user::Model) -> AdminWire {
         email: admin.email,
         image: admin.image,
     }
+}
+
+async fn support_customer_user(
+    state: &AppState,
+    email: &str,
+) -> Result<Option<CustomerUserWire>, ApiError> {
+    let Some(row) = user::Entity::find()
+        .filter(user::Column::Email.eq(email.to_ascii_lowercase()))
+        .one(&state.db)
+        .await?
+    else {
+        return Ok(None);
+    };
+    let memberships = member::Entity::find()
+        .filter(member::Column::UserId.eq(&row.id))
+        .order_by_asc(member::Column::CreatedAt)
+        .all(&state.db)
+        .await?;
+    let mut membership_wires = Vec::with_capacity(memberships.len());
+    for membership in memberships {
+        if let Some(org) = organization::Entity::find_by_id(&membership.organization_id)
+            .one(&state.db)
+            .await?
+        {
+            membership_wires.push(CustomerMembershipWire {
+                organization_id: org.id,
+                organization_name: org.name,
+                organization_slug: org.slug,
+                role: membership.role,
+                joined_at: membership.created_at.to_rfc3339(),
+                organization_suspended_at: org.suspended_at.map(|value| value.to_rfc3339()),
+            });
+        }
+    }
+    let last_session_at = session::Entity::find()
+        .filter(session::Column::UserId.eq(&row.id))
+        .order_by_desc(session::Column::UpdatedAt)
+        .one(&state.db)
+        .await?
+        .map(|session| session.updated_at.to_rfc3339());
+    Ok(Some(CustomerUserWire {
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        image: row.image,
+        email_verified: row.email_verified,
+        suspended_at: row.suspended_at.map(|value| value.to_rfc3339()),
+        suspension_reason: row.suspension_reason,
+        created_at: row.created_at.to_rfc3339(),
+        last_session_at,
+        memberships: membership_wires,
+    }))
 }
 
 async fn create_pending_reply(
