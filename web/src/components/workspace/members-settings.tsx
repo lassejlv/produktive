@@ -219,14 +219,13 @@ export function MembersSettings({
       <SectionEyebrow label="Members" count={members.length} />
       <MemberSecurityFilterBar
         active={memberSecurityFilter}
-        totalCount={members.length}
         missingCount={membersMissingTwoFactor.length}
         onChange={setMemberSecurityFilter}
       />
       {canInvite ? (
         <form
           onSubmit={onInvite}
-          className="flex flex-wrap items-center gap-2 border-b border-border-subtle pb-3 pt-3"
+          className="flex flex-wrap items-center gap-2 border-b border-border-subtle pb-3"
         >
           <Input
             type="email"
@@ -322,33 +321,23 @@ export function MembersSettings({
 
 function MemberSecurityFilterBar({
   active,
-  totalCount,
   missingCount,
   onChange,
 }: {
   active: "all" | "missing2fa";
-  totalCount: number;
   missingCount: number;
   onChange: (filter: "all" | "missing2fa") => void;
 }) {
+  if (missingCount === 0) return null;
   return (
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border-subtle bg-surface/35 px-2 py-2">
-      <p className="m-0 text-[11.5px] text-fg-muted">
-        {missingCount === 0
-          ? "All current members are 2FA-ready."
-          : `${missingCount} member${missingCount === 1 ? "" : "s"} missing 2FA.`}
-      </p>
-      <div className="inline-flex rounded-md border border-border-subtle bg-bg p-0.5">
-        <MemberFilterButton active={active === "all"} onClick={() => onChange("all")}>
-          All {totalCount}
-        </MemberFilterButton>
-        <MemberFilterButton
-          active={active === "missing2fa"}
-          onClick={() => onChange("missing2fa")}
-        >
-          Missing 2FA {missingCount}
-        </MemberFilterButton>
-      </div>
+    <div className="mb-2 flex items-center gap-3 text-[11.5px]">
+      <MemberFilterButton active={active === "all"} onClick={() => onChange("all")}>
+        All
+      </MemberFilterButton>
+      <MemberFilterButton active={active === "missing2fa"} onClick={() => onChange("missing2fa")}>
+        Missing 2FA
+        <span className="ml-1 text-fg-faint tabular-nums">{missingCount}</span>
+      </MemberFilterButton>
     </div>
   );
 }
@@ -367,8 +356,8 @@ function MemberFilterButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "h-6 rounded px-2 text-[11px] transition-colors",
-        active ? "bg-surface text-fg shadow-sm" : "text-fg-muted hover:text-fg",
+        "transition-colors",
+        active ? "text-fg" : "text-fg-muted hover:text-fg",
       )}
     >
       {children}
@@ -509,9 +498,13 @@ function MembersList({
 }
 
 function SessionCountBadge({ count }: { count: number }) {
+  if (count === 0) return null;
   return (
-    <span className="hidden shrink-0 rounded border border-border-subtle px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] text-fg-faint md:inline-flex">
-      {count} session{count === 1 ? "" : "s"}
+    <span
+      title={`${count} active session${count === 1 ? "" : "s"}`}
+      className="hidden shrink-0 font-mono text-[10.5px] text-fg-faint tabular-nums md:inline"
+    >
+      {count}
     </span>
   );
 }
@@ -519,14 +512,20 @@ function SessionCountBadge({ count }: { count: number }) {
 function TwoFactorBadge({ enabled }: { enabled: boolean }) {
   return (
     <span
+      title={enabled ? "Two-factor enabled" : "Two-factor not set up"}
       className={cn(
-        "hidden shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] sm:inline-flex",
-        enabled
-          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700"
-          : "border-amber-500/20 bg-amber-500/10 text-amber-700",
+        "hidden shrink-0 items-center gap-1 text-[10.5px] uppercase tracking-[0.08em] sm:inline-flex",
+        enabled ? "text-fg-faint" : "text-warning",
       )}
     >
-      {enabled ? "2FA on" : "2FA off"}
+      <span
+        aria-hidden
+        className={cn(
+          "inline-block size-1.5 rounded-full",
+          enabled ? "bg-success" : "bg-warning",
+        )}
+      />
+      2FA
     </span>
   );
 }
