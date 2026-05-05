@@ -4,6 +4,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   type ActivityEvent,
+  createSupportTicket,
   getAdminOrganization,
   getAdminSession,
   getAdminUser,
@@ -53,6 +54,7 @@ function AdminDashboard() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [suspensionTarget, setSuspensionTarget] = useState<SuspensionTarget | null>(null);
+  const [composeSupportOpen, setComposeSupportOpen] = useState(false);
 
   const admin = useQuery({ queryKey: ["admin", "session"], queryFn: getAdminSession, retry: 0 });
   const growth = useQuery({
@@ -136,6 +138,23 @@ function AdminDashboard() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Reply failed");
+    },
+  });
+
+  const supportCreateMutation = useMutation({
+    mutationFn: createSupportTicket,
+    onSuccess: async (result) => {
+      setSelectedTicketId(result.ticket.ticket.id);
+      setSupportStatus("all");
+      setSection("support");
+      setComposeSupportOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["admin", "support"] });
+      toast.success(
+        result.message.deliveryStatus === "sent" ? "Email sent" : "Email saved as failed",
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Email failed");
     },
   });
 
@@ -337,11 +356,13 @@ function AdminDashboard() {
                 selected={selectedTicketId}
                 detail={supportDetail.data}
                 replyBusy={supportReplyMutation.isPending}
+                createBusy={supportCreateMutation.isPending}
                 updateBusy={supportUpdateMutation.isPending}
                 retryBusy={supportRetryMutation.isPending}
                 onSearch={setSupportSearch}
                 onStatus={setSupportStatus}
                 onSelect={setSelectedTicketId}
+                onCompose={() => setComposeSupportOpen(true)}
                 onReply={(bodyText, closeAfterReply) => {
                   if (!selectedTicketId) return;
                   supportReplyMutation.mutate({ id: selectedTicketId, bodyText, closeAfterReply });
@@ -364,6 +385,13 @@ function AdminDashboard() {
           onSubmit={(reason, note) =>
             suspendMutation.mutate({ target: suspensionTarget, reason, note })
           }
+        />
+      ) : null}
+      {composeSupportOpen ? (
+        <ComposeSupportDialog
+          busy={supportCreateMutation.isPending}
+          onClose={() => setComposeSupportOpen(false)}
+          onSubmit={(input) => supportCreateMutation.mutate(input)}
         />
       ) : null}
     </main>
@@ -706,11 +734,13 @@ function SupportView({
   selected,
   detail,
   replyBusy,
+  createBusy,
   updateBusy,
   retryBusy,
   onSearch,
   onStatus,
   onSelect,
+  onCompose,
   onReply,
   onUpdate,
   onRetry,
@@ -723,11 +753,13 @@ function SupportView({
   selected: string | null;
   detail: Awaited<ReturnType<typeof getSupportTicket>> | undefined;
   replyBusy: boolean;
+  createBusy: boolean;
   updateBusy: boolean;
   retryBusy: boolean;
   onSearch: (value: string) => void;
   onStatus: (value: string) => void;
   onSelect: (value: string) => void;
+  onCompose: () => void;
   onReply: (bodyText: string, closeAfterReply: boolean) => void;
   onUpdate: (input: {
     status?: string;
@@ -775,7 +807,17 @@ function SupportView({
               </button>
             ))}
           </div>
-          <p className="font-mono text-[11px] text-fg-faint">{pageTotal} tickets</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-mono text-[11px] text-fg-faint">{pageTotal} tickets</p>
+            <button
+              type="button"
+              disabled={createBusy}
+              onClick={onCompose}
+              className="h-8 rounded-[6px] bg-accent px-3 text-[12px] text-white disabled:opacity-50"
+            >
+              New email
+            </button>
+          </div>
         </div>
         <div className="divide-y divide-border-subtle">
           {tickets.map((ticket) => (
@@ -1015,6 +1057,122 @@ function SupportView({
           <EmptyDetail label="No ticket selected" />
         )}
       </aside>
+    </div>
+  );
+}
+
+function ComposeSupportDialog({
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (input: {
+    toEmail: string;
+    customerName?: string;
+    subject: string;
+    bodyText: string;
+    priority?: string;
+  }) => void;
+}) {
+  const [toEmail, setToEmail] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [subject, setSubject] = useState("");
+  const [bodyText, setBodyText] = useState("");
+  const [priority, setPriority] = useState("normal");
+  const canSubmit = Boolean(toEmail.trim() && subject.trim() && bodyText.trim());
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!canSubmit || busy) return;
+    onSubmit({
+      toEmail,
+      customerName: customerName.trim() || undefined,
+      subject,
+      bodyText,
+      priority,
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4">
+      <form onSubmit={submit} className="w-full max-w-xl border border-border bg-bg p-5 shadow-2xl">
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
+          Produktive Support
+        </p>
+        <h3 className="mt-2 text-[18px] font-medium">Send customer email</h3>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <label className="block text-[12px] text-fg-muted">
+            To
+            <input
+              value={toEmail}
+              onChange={(event) => setToEmail(event.target.value)}
+              type="email"
+              placeholder="customer@example.com"
+              className="mt-1 h-9 w-full rounded-[6px] border border-border bg-surface px-3 text-[13px] text-fg outline-none focus:border-accent"
+              autoFocus
+            />
+          </label>
+          <label className="block text-[12px] text-fg-muted">
+            Customer name
+            <input
+              value={customerName}
+              onChange={(event) => setCustomerName(event.target.value)}
+              placeholder="Optional"
+              className="mt-1 h-9 w-full rounded-[6px] border border-border bg-surface px-3 text-[13px] text-fg outline-none focus:border-accent"
+            />
+          </label>
+        </div>
+        <label className="mt-3 block text-[12px] text-fg-muted">
+          Subject
+          <input
+            value={subject}
+            onChange={(event) => setSubject(event.target.value)}
+            placeholder="How can we help?"
+            className="mt-1 h-9 w-full rounded-[6px] border border-border bg-surface px-3 text-[13px] text-fg outline-none focus:border-accent"
+          />
+        </label>
+        <label className="mt-3 block text-[12px] text-fg-muted">
+          Priority
+          <select
+            value={priority}
+            onChange={(event) => setPriority(event.target.value)}
+            className="mt-1 h-9 w-full rounded-[6px] border border-border bg-surface px-2 text-[13px] text-fg outline-none focus:border-accent"
+          >
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </label>
+        <label className="mt-3 block text-[12px] text-fg-muted">
+          Message
+          <textarea
+            value={bodyText}
+            onChange={(event) => setBodyText(event.target.value)}
+            placeholder="Write as Produktive Support..."
+            className="mt-1 min-h-44 w-full resize-none rounded-[6px] border border-border bg-surface px-3 py-2 text-[13px] leading-6 text-fg outline-none focus:border-accent"
+          />
+        </label>
+        <p className="mt-2 text-[11px] text-fg-faint">
+          This creates a support ticket and sends from the configured Produktive support address.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 rounded-[6px] px-3 text-[13px] text-fg-muted hover:bg-surface"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!canSubmit || busy}
+            className="h-9 rounded-[6px] bg-accent px-3 text-[13px] text-white disabled:opacity-50"
+          >
+            {busy ? "Sending..." : "Send email"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

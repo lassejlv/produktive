@@ -1,5 +1,5 @@
 use crate::{
-    auth::require_platform_admin,
+    auth::{require_platform_admin, validate_email},
     error::ApiError,
     state::AppState,
     storage::{put_object, safe_support_raw_email_key},
@@ -35,7 +35,7 @@ pub fn routes() -> Router<AppState> {
 
 pub fn admin_routes() -> Router<AppState> {
     Router::new()
-        .route("/tickets", get(list_tickets))
+        .route("/tickets", get(list_tickets).post(create_outbound_ticket))
         .route("/tickets/{id}", get(get_ticket).patch(update_ticket))
         .route("/tickets/{id}/reply", post(reply_to_ticket))
         .route("/messages/{id}/retry", post(retry_support_message))
@@ -239,6 +239,16 @@ struct TicketSummary {
     message_count: u64,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateOutboundTicketPayload {
+    to_email: String,
+    customer_name: Option<String>,
+    subject: String,
+    body_text: String,
+    priority: Option<String>,
+}
+
 async fn list_tickets(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -267,6 +277,77 @@ async fn list_tickets(
     Ok(Json(TicketsResponse {
         tickets,
         page: PageInfo { page, limit, total },
+    }))
+}
+
+async fn create_outbound_ticket(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<CreateOutboundTicketPayload>,
+) -> Result<Json<ReplyResponse>, ApiError> {
+    let admin = require_platform_admin(&headers, &state).await?;
+    let to_email = validate_email(&payload.to_email)?;
+    let subject = payload.subject.trim();
+    if subject.is_empty() {
+        return Err(ApiError::BadRequest("Subject is required".to_owned()));
+    }
+    let body_text = payload.body_text.trim();
+    if body_text.is_empty() {
+        return Err(ApiError::BadRequest("Message body is required".to_owned()));
+    }
+    let priority = match payload.priority {
+        Some(priority) => validate_choice(priority, VALID_PRIORITIES, "priority")?,
+        None => "normal".to_owned(),
+    };
+    let customer_name = payload
+        .customer_name
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+
+    let now = Utc::now().fixed_offset();
+    let id = Uuid::new_v4().to_string();
+    let ticket = support_ticket::ActiveModel {
+        id: Set(id.clone()),
+        number: Set(format!("SUP-{}", short_id(&id))),
+        subject: Set(subject.to_owned()),
+        status: Set("open".to_owned()),
+        priority: Set(priority),
+        customer_email: Set(to_email),
+        customer_name: Set(customer_name),
+        assigned_admin_id: Set(Some(admin.user.id.clone())),
+        last_message_at: Set(now),
+        closed_at: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(&state.db)
+    .await?;
+
+    let message =
+        create_pending_initial_outbound(&state, &ticket, &admin.user.id, body_text).await?;
+    let sent = send_support_reply(&state, &ticket, &message).await;
+    let updated_message = update_delivery_result(&state, message, sent).await?;
+
+    insert_event(
+        &state,
+        &ticket.id,
+        Some(&admin.user.id),
+        "outbound_ticket_created",
+        json!({
+            "messageId": updated_message.id,
+            "deliveryStatus": updated_message.delivery_status,
+            "deliveryError": updated_message.delivery_error,
+        }),
+    )
+    .await?;
+
+    let detail_ticket = support_ticket::Entity::find_by_id(ticket.id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Support ticket not found".to_owned()))?;
+    Ok(Json(ReplyResponse {
+        ticket: ticket_detail(&state, detail_ticket).await?,
+        message: message_wire(updated_message),
     }))
 }
 
@@ -880,6 +961,41 @@ async fn create_pending_reply(
     .map_err(ApiError::from)
 }
 
+async fn create_pending_initial_outbound(
+    state: &AppState,
+    ticket: &support_ticket::Model,
+    admin_id: &str,
+    body_text: &str,
+) -> Result<support_message::Model, ApiError> {
+    let now = Utc::now().fixed_offset();
+    let provider_message_id = format!("{}@support.produktive.app", Uuid::new_v4());
+    let signed_text = with_support_signature(body_text);
+    support_message::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        ticket_id: Set(ticket.id.clone()),
+        direction: Set("outbound".to_owned()),
+        from_email: Set(state.config.support_email_from.clone()),
+        to_email: Set(ticket.customer_email.clone()),
+        cc: Set(json!([])),
+        subject: Set(initial_outbound_subject(ticket)),
+        body_text: Set(Some(signed_text.clone())),
+        body_html: Set(Some(render_reply_html(&signed_text))),
+        message_id: Set(Some(provider_message_id)),
+        in_reply_to: Set(None),
+        references: Set(None),
+        raw_object_key: Set(None),
+        sent_by_admin_id: Set(Some(admin_id.to_owned())),
+        delivery_status: Set("pending".to_owned()),
+        delivery_provider_id: Set(None),
+        delivery_error: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(&state.db)
+    .await
+    .map_err(ApiError::from)
+}
+
 async fn send_status_change_email(
     state: &AppState,
     ticket: &support_ticket::Model,
@@ -1166,6 +1282,15 @@ fn reply_subject(ticket: &support_ticket::Model) -> String {
         format!("Re: [{}] {}", ticket.number, subject[3..].trim())
     } else {
         format!("Re: [{}] {subject}", ticket.number)
+    }
+}
+
+fn initial_outbound_subject(ticket: &support_ticket::Model) -> String {
+    let subject = ticket.subject.trim();
+    if subject.contains(&ticket.number) {
+        subject.to_owned()
+    } else {
+        format!("[{}] {subject}", ticket.number)
     }
 }
 

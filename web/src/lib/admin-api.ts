@@ -281,6 +281,18 @@ export const listSupportTickets = (params: { status?: string; search?: string; p
     `/api/admin/support/tickets?${toQuery({ ...params, limit: 30 })}`,
   );
 
+export const createSupportTicket = (input: {
+  toEmail: string;
+  customerName?: string;
+  subject: string;
+  bodyText: string;
+  priority?: string;
+}) =>
+  request<{ ticket: SupportTicketDetail; message: SupportMessage }>("/api/admin/support/tickets", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
 export const getSupportTicket = (id: string) =>
   request<SupportTicketDetail>(`/api/admin/support/tickets/${id}`);
 
