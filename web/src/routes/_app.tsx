@@ -109,6 +109,14 @@ function AppLayout() {
   }, [navigate, session.data, session.isPending]);
 
   useEffect(() => {
+    if (!session.data) return;
+    if (!session.data.organization.requireTwoFactor || session.data.user.twoFactorEnabled) return;
+    if (pathname === "/account") return;
+    toast.message("This workspace requires two-factor authentication.");
+    void navigate({ to: "/account", search: { section: "security" } });
+  }, [navigate, pathname, session.data]);
+
+  useEffect(() => {
     const user = session.data?.user;
     if (!user) return;
     if (user.onboardingCompletedAt) return;

@@ -70,6 +70,7 @@ pub struct UserResponse {
     pub name: String,
     pub email: String,
     pub email_verified: bool,
+    pub two_factor_enabled: bool,
     pub image: Option<String>,
     pub onboarding_completed_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub onboarding_step: Option<String>,
@@ -82,6 +83,7 @@ pub struct OrganizationResponse {
     pub name: String,
     pub slug: String,
     pub image: Option<String>,
+    pub require_two_factor: bool,
 }
 
 impl From<user::Model> for UserResponse {
@@ -91,6 +93,7 @@ impl From<user::Model> for UserResponse {
             name: user.name,
             email: user.email,
             email_verified: user.email_verified,
+            two_factor_enabled: user.two_factor_enabled,
             image: user.image,
             onboarding_completed_at: user.onboarding_completed_at,
             onboarding_step: user.onboarding_step,
@@ -105,6 +108,7 @@ impl From<organization::Model> for OrganizationResponse {
             name: organization.name,
             slug: organization.slug,
             image: organization.image,
+            require_two_factor: organization.require_two_factor,
         }
     }
 }
@@ -119,6 +123,21 @@ impl AuthContext {
 }
 
 pub async fn require_auth(headers: &HeaderMap, state: &AppState) -> Result<AuthContext, ApiError> {
+    require_auth_inner(headers, state, true).await
+}
+
+pub async fn require_auth_without_two_factor_policy(
+    headers: &HeaderMap,
+    state: &AppState,
+) -> Result<AuthContext, ApiError> {
+    require_auth_inner(headers, state, false).await
+}
+
+async fn require_auth_inner(
+    headers: &HeaderMap,
+    state: &AppState,
+    enforce_two_factor_policy: bool,
+) -> Result<AuthContext, ApiError> {
     let token = read_cookie(headers, &state.config.cookie_name).ok_or(ApiError::Unauthorized)?;
     let claims = decode::<Claims>(
         &token,
@@ -147,6 +166,11 @@ pub async fn require_auth(headers: &HeaderMap, state: &AppState) -> Result<AuthC
         .await?
         .ok_or(ApiError::Unauthorized)?;
     ensure_organization_not_suspended(&organization)?;
+    if enforce_two_factor_policy && organization.require_two_factor && !user.two_factor_enabled {
+        return Err(ApiError::Forbidden(
+            "Two-factor authentication is required for this workspace".to_owned(),
+        ));
+    }
 
     let membership = member::Entity::find()
         .filter(member::Column::UserId.eq(&user.id))
@@ -250,6 +274,11 @@ pub async fn require_api_key(
         .await?
         .ok_or(ApiError::Unauthorized)?;
     ensure_organization_not_suspended(&organization)?;
+    if organization.require_two_factor && !user.two_factor_enabled {
+        return Err(ApiError::Forbidden(
+            "Two-factor authentication is required for this workspace".to_owned(),
+        ));
+    }
 
     let mut active = key.clone().into_active_model();
     active.last_used_at = Set(Some(now));
@@ -322,6 +351,7 @@ pub async fn create_user_session(
         active_organization_id: Set(organization_id.to_owned()),
         expires_at: Set(expires_at),
         revoked_at: Set(None),
+        last_two_factor_verified_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     }
@@ -330,6 +360,34 @@ pub async fn create_user_session(
 
     let token = sign_session_token(state, &session)?;
     Ok((session, token))
+}
+
+pub async fn mark_session_two_factor_verified(
+    db: &DatabaseConnection,
+    session: session::Model,
+) -> Result<session::Model, ApiError> {
+    let now = Utc::now().fixed_offset();
+    let mut active: session::ActiveModel = session.into();
+    active.last_two_factor_verified_at = Set(Some(now));
+    active.updated_at = Set(now);
+    Ok(active.update(db).await?)
+}
+
+pub fn ensure_fresh_two_factor(auth: &AuthContext) -> Result<(), ApiError> {
+    if !auth.user.two_factor_enabled {
+        return Ok(());
+    }
+    let Some(verified_at) = auth.session.last_two_factor_verified_at else {
+        return Err(ApiError::Forbidden(
+            "Fresh two-factor verification required".to_owned(),
+        ));
+    };
+    if verified_at + Duration::minutes(10) < Utc::now().fixed_offset() {
+        return Err(ApiError::Forbidden(
+            "Fresh two-factor verification required".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 pub async fn create_signup_records(
@@ -365,6 +423,7 @@ pub async fn create_signup_records(
         suspended_by_id: Set(None),
         suspension_reason: Set(None),
         suspension_note: Set(None),
+        two_factor_enabled: Set(false),
     }
     .insert(&txn)
     .await?;
@@ -443,6 +502,7 @@ pub async fn create_organization_for_user(
         name: Set(name.to_owned()),
         slug: Set(build_organization_slug(name)),
         image: Set(None),
+        require_two_factor: Set(false),
         created_at: Set(now),
         updated_at: Set(now),
         suspended_at: Set(None),
@@ -702,13 +762,16 @@ fn hash_password(password: &str) -> Result<String, ApiError> {
         .map_err(|error| ApiError::Internal(anyhow::anyhow!(error.to_string())))
 }
 
-fn hash_token(token: &str) -> String {
+pub(crate) fn hash_token(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     hex::encode(hasher.finalize())
 }
 
-fn sign_session_token(state: &AppState, session: &session::Model) -> Result<String, ApiError> {
+pub(crate) fn sign_session_token(
+    state: &AppState,
+    session: &session::Model,
+) -> Result<String, ApiError> {
     let claims = Claims {
         sub: session.user_id.clone(),
         sid: session.id.clone(),
@@ -781,6 +844,7 @@ async fn create_default_organization(
         }),
         slug: Set(slug),
         image: Set(None),
+        require_two_factor: Set(false),
         created_at: Set(now),
         updated_at: Set(now),
         suspended_at: Set(None),
@@ -845,6 +909,7 @@ mod tests {
             active_organization_id: "org_1".to_owned(),
             expires_at: now + Duration::minutes(5),
             revoked_at: None,
+            last_two_factor_verified_at: None,
             created_at: now,
             updated_at: now,
         }

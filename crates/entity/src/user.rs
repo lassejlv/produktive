@@ -19,6 +19,7 @@ pub struct Model {
     pub suspended_by_id: Option<String>,
     pub suspension_reason: Option<String>,
     pub suspension_note: Option<String>,
+    pub two_factor_enabled: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
