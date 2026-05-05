@@ -1,10 +1,13 @@
 use crate::{
-    auth::require_auth,
+    auth::{ensure_fresh_two_factor, require_auth},
     error::ApiError,
     issue_history::IssueChange,
     permissions::{
         self, is_privileged_member_role, member_role, require_permission, role_exists,
         MEMBERS_ASSIGN_ROLE, MEMBERS_REMOVE, ROLE_OWNER,
+    },
+    security_events::{
+        record_security_event, SecurityEventInput, EVENT_MEMBER_REMOVED, EVENT_MEMBER_ROLE_CHANGED,
     },
     state::AppState,
 };
@@ -22,6 +25,7 @@ use sea_orm::{
     QueryOrder, QuerySelect, Set,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/", get(list_members)).route(
@@ -46,6 +50,8 @@ struct MemberSummaryResponse {
     email: String,
     image: Option<String>,
     role: String,
+    two_factor_enabled: bool,
+    active_sessions: u64,
 }
 
 async fn list_members(
@@ -65,12 +71,22 @@ async fn list_members(
             .one(&state.db)
             .await?
         {
+            let now = Utc::now().fixed_offset();
+            let active_sessions = session::Entity::find()
+                .filter(session::Column::UserId.eq(&user.id))
+                .filter(session::Column::ActiveOrganizationId.eq(&auth.organization.id))
+                .filter(session::Column::RevokedAt.is_null())
+                .filter(session::Column::ExpiresAt.gt(now))
+                .count(&state.db)
+                .await?;
             members.push(MemberSummaryResponse {
                 id: user.id,
                 name: user.name,
                 email: user.email,
                 image: user.image,
                 role: membership.role,
+                two_factor_enabled: user.two_factor_enabled,
+                active_sessions,
             });
         }
     }
@@ -92,6 +108,8 @@ struct MemberProfileResponse {
     email: String,
     image: Option<String>,
     role: String,
+    two_factor_enabled: bool,
+    active_sessions: u64,
     joined_at: String,
     stats: MemberStatsResponse,
     assigned_issues: Vec<MemberIssueResponse>,
@@ -160,6 +178,14 @@ async fn get_member(
         .filter(issue_event::Column::ActorId.eq(&user.id))
         .count(&state.db)
         .await?;
+    let now = Utc::now().fixed_offset();
+    let active_sessions = session::Entity::find()
+        .filter(session::Column::UserId.eq(&user.id))
+        .filter(session::Column::ActiveOrganizationId.eq(&auth.organization.id))
+        .filter(session::Column::RevokedAt.is_null())
+        .filter(session::Column::ExpiresAt.gt(now))
+        .count(&state.db)
+        .await?;
 
     let assigned_issues = issue::Entity::find()
         .filter(issue::Column::OrganizationId.eq(&auth.organization.id))
@@ -215,6 +241,8 @@ async fn get_member(
             email: user.email,
             image: user.image,
             role: membership.role,
+            two_factor_enabled: user.two_factor_enabled,
+            active_sessions,
             joined_at: membership.created_at.to_rfc3339(),
             stats: MemberStatsResponse {
                 assigned_issues: assigned_count,
@@ -242,6 +270,7 @@ async fn update_member_role(
 ) -> Result<StatusCode, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     require_permission(&state, &auth, MEMBERS_ASSIGN_ROLE).await?;
+    ensure_fresh_two_factor(&auth)?;
 
     let target = member::Entity::find()
         .filter(member::Column::OrganizationId.eq(&auth.organization.id))
@@ -272,9 +301,23 @@ async fn update_member_role(
         ensure_not_last_owner(&state, &auth.organization.id, Some(&target.user_id)).await?;
     }
 
+    let previous_role = target.role.clone();
+    let target_user_id = target.user_id.clone();
     let mut active = target.into_active_model();
     active.role = Set(new_role.to_owned());
     active.update(&state.db).await?;
+    record_security_event(
+        &state,
+        Some(&headers),
+        SecurityEventInput {
+            organization_id: Some(auth.organization.id.clone()),
+            actor_user_id: Some(auth.user.id.clone()),
+            target_user_id: Some(target_user_id),
+            event_type: EVENT_MEMBER_ROLE_CHANGED,
+            metadata: json!({ "from": previous_role, "to": new_role }),
+        },
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -285,6 +328,7 @@ async fn remove_member(
 ) -> Result<StatusCode, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     require_permission(&state, &auth, MEMBERS_REMOVE).await?;
+    ensure_fresh_two_factor(&auth)?;
 
     if id == auth.user.id {
         return Err(ApiError::BadRequest(
@@ -313,13 +357,28 @@ async fn remove_member(
         }
     }
 
-    member::Entity::delete_by_id(&target.id)
+    let target_member_id = target.id.clone();
+    let target_user_id = target.user_id.clone();
+    let target_role = target.role.clone();
+    member::Entity::delete_by_id(&target_member_id)
         .exec(&state.db)
         .await?;
+    record_security_event(
+        &state,
+        Some(&headers),
+        SecurityEventInput {
+            organization_id: Some(auth.organization.id.clone()),
+            actor_user_id: Some(auth.user.id.clone()),
+            target_user_id: Some(target_user_id.clone()),
+            event_type: EVENT_MEMBER_REMOVED,
+            metadata: json!({ "role": target_role }),
+        },
+    )
+    .await?;
 
     let now = Utc::now().fixed_offset();
     let sessions = session::Entity::find()
-        .filter(session::Column::UserId.eq(&id))
+        .filter(session::Column::UserId.eq(&target_user_id))
         .filter(session::Column::ActiveOrganizationId.eq(&auth.organization.id))
         .filter(session::Column::RevokedAt.is_null())
         .all(&state.db)

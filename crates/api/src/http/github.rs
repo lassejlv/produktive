@@ -733,6 +733,7 @@ async fn auto_import_auth(
         active_organization_id: Set(organization.id.clone()),
         expires_at: Set(now() + Duration::minutes(5)),
         revoked_at: Set(None),
+        last_two_factor_verified_at: Set(None),
         created_at: Set(now()),
         updated_at: Set(now()),
     };

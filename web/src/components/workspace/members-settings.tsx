@@ -23,11 +23,14 @@ import {
   createRole,
   deleteRole,
   removeMember,
+  resetMemberTwoFactor,
+  revokeMemberSessions,
   resendInvitation,
   revokeInvitation,
   updateMemberRole,
   updateRole,
 } from "@/lib/api";
+import { requestFreshTwoFactorIfNeeded } from "@/lib/fresh-two-factor";
 import { cn } from "@/lib/utils";
 
 export function MembersSettings({
@@ -42,6 +45,7 @@ export function MembersSettings({
   currentUserEmail,
   currentRole,
   currentPermissions,
+  currentUserTwoFactorEnabled,
 }: {
   loading: boolean;
   members: Member[];
@@ -54,17 +58,27 @@ export function MembersSettings({
   currentUserEmail: string | null;
   currentRole: string | null;
   currentPermissions: Set<string>;
+  currentUserTwoFactorEnabled: boolean;
 }) {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
+  const [memberSecurityFilter, setMemberSecurityFilter] = useState<"all" | "missing2fa">("all");
   const { confirm, dialog } = useConfirmDialog();
 
   const roleByKey = useMemo(() => new Map(roles.map((role) => [role.key, role])), [roles]);
+  const membersMissingTwoFactor = useMemo(
+    () => members.filter((member) => !member.twoFactorEnabled),
+    [members],
+  );
+  const visibleMembers =
+    memberSecurityFilter === "missing2fa" ? membersMissingTwoFactor : members;
   const canInvite = currentPermissions.has("members.invite");
   const canRemove = currentPermissions.has("members.remove");
   const canAssignRole = currentPermissions.has("members.assign_role");
+  const canRevokeMemberSessions = currentPermissions.has("workspace.security");
   const canManageRoles = currentRole === "owner";
+  const canResetMemberTwoFactor = currentRole === "owner";
 
   const onInvite = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -118,6 +132,7 @@ export function MembersSettings({
       current.map((item) => (item.id === member.id ? { ...item, role } : item)),
     );
     try {
+      await requestFreshTwoFactorIfNeeded(currentUserTwoFactorEnabled);
       await updateMemberRole(member.id, role);
       toast.success("Member role updated");
     } catch (error) {
@@ -136,6 +151,7 @@ export function MembersSettings({
       destructive: true,
       onConfirm: async () => {
         try {
+          await requestFreshTwoFactorIfNeeded(currentUserTwoFactorEnabled);
           await removeMember(member.id);
           setMembers((current) => current.filter((item) => item.id !== member.id));
           toast.success("Member removed");
@@ -146,11 +162,66 @@ export function MembersSettings({
     });
   };
 
+  const onResetMemberTwoFactor = (member: Member) => {
+    confirm({
+      title: "Reset member 2FA?",
+      description: `${member.name} will be signed out and must set up two-factor authentication again before using protected workspaces.`,
+      confirmLabel: "Reset 2FA",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await requestFreshTwoFactorIfNeeded(currentUserTwoFactorEnabled);
+          await resetMemberTwoFactor(member.id);
+          setMembers((current) =>
+            current.map((item) =>
+              item.id === member.id ? { ...item, twoFactorEnabled: false } : item,
+            ),
+          );
+          toast.success("Member 2FA reset");
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Failed to reset member 2FA");
+        }
+      },
+    });
+  };
+
+  const onRevokeMemberSessions = (member: Member) => {
+    confirm({
+      title: "Revoke member sessions?",
+      description: `${member.name} will be signed out of this workspace on ${member.activeSessions} active session${
+        member.activeSessions === 1 ? "" : "s"
+      }.`,
+      confirmLabel: "Revoke sessions",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await requestFreshTwoFactorIfNeeded(currentUserTwoFactorEnabled);
+          const response = await revokeMemberSessions(member.id);
+          setMembers((current) =>
+            current.map((item) =>
+              item.id === member.id ? { ...item, activeSessions: 0 } : item,
+            ),
+          );
+          toast.success(
+            response.revoked === 1 ? "Revoked 1 session" : `Revoked ${response.revoked} sessions`,
+          );
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Failed to revoke sessions");
+        }
+      },
+    });
+  };
+
   return (
     <div>
       {dialog}
 
       <SectionEyebrow label="Members" count={members.length} />
+      <MemberSecurityFilterBar
+        active={memberSecurityFilter}
+        missingCount={membersMissingTwoFactor.length}
+        onChange={setMemberSecurityFilter}
+      />
       {canInvite ? (
         <form
           onSubmit={onInvite}
@@ -179,14 +250,23 @@ export function MembersSettings({
       ) : null}
       <MembersList
         loading={loading}
-        members={members}
+        members={visibleMembers}
+        emptyText={
+          memberSecurityFilter === "missing2fa"
+            ? "Every member has two-factor authentication enabled."
+            : "No members yet."
+        }
         roles={roles}
         currentRole={currentRole}
         currentUserEmail={currentUserEmail}
         canAssignRole={canAssignRole}
         canRemove={canRemove}
+        canResetTwoFactor={canResetMemberTwoFactor}
+        canRevokeSessions={canRevokeMemberSessions}
         onChangeRole={onChangeMemberRole}
         onRemove={onRemoveMember}
+        onResetTwoFactor={onResetMemberTwoFactor}
+        onRevokeSessions={onRevokeMemberSessions}
       />
 
       {invitations.length > 0 ? (
@@ -239,6 +319,52 @@ export function MembersSettings({
   );
 }
 
+function MemberSecurityFilterBar({
+  active,
+  missingCount,
+  onChange,
+}: {
+  active: "all" | "missing2fa";
+  missingCount: number;
+  onChange: (filter: "all" | "missing2fa") => void;
+}) {
+  if (missingCount === 0) return null;
+  return (
+    <div className="mb-2 flex items-center gap-3 text-[11.5px]">
+      <MemberFilterButton active={active === "all"} onClick={() => onChange("all")}>
+        All
+      </MemberFilterButton>
+      <MemberFilterButton active={active === "missing2fa"} onClick={() => onChange("missing2fa")}>
+        Missing 2FA
+        <span className="ml-1 text-fg-faint tabular-nums">{missingCount}</span>
+      </MemberFilterButton>
+    </div>
+  );
+}
+
+function MemberFilterButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "transition-colors",
+        active ? "text-fg" : "text-fg-muted hover:text-fg",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 function SectionEyebrow({
   label,
   count,
@@ -263,23 +389,33 @@ function SectionEyebrow({
 function MembersList({
   loading,
   members,
+  emptyText,
   roles,
   currentRole,
   currentUserEmail,
   canAssignRole,
   canRemove,
+  canResetTwoFactor,
+  canRevokeSessions,
   onChangeRole,
   onRemove,
+  onResetTwoFactor,
+  onRevokeSessions,
 }: {
   loading: boolean;
   members: Member[];
+  emptyText: string;
   roles: Role[];
   currentRole: string | null;
   currentUserEmail: string | null;
   canAssignRole: boolean;
   canRemove: boolean;
+  canResetTwoFactor: boolean;
+  canRevokeSessions: boolean;
   onChangeRole: (member: Member, role: string) => void;
   onRemove: (member: Member) => void;
+  onResetTwoFactor: (member: Member) => void;
+  onRevokeSessions: (member: Member) => void;
 }) {
   const roleByKey = useMemo(() => new Map(roles.map((role) => [role.key, role])), [roles]);
   if (loading) {
@@ -302,7 +438,7 @@ function MembersList({
     );
   }
   if (members.length === 0)
-    return <p className="px-2 py-3 text-[12px] text-fg-faint">No members yet.</p>;
+    return <p className="px-2 py-3 text-[12px] text-fg-faint">{emptyText}</p>;
   return (
     <ul className="flex flex-col">
       {members.map((member) => {
@@ -311,6 +447,12 @@ function MembersList({
         const canTouchPrivileged = currentRole === "owner";
         const canEditThisRole = canAssignRole && (!isPrivileged || canTouchPrivileged);
         const canRemoveThis = canRemove && !isSelf && (!isPrivileged || canTouchPrivileged);
+        const canResetThisTwoFactor = canResetTwoFactor && !isSelf && member.twoFactorEnabled;
+        const canRevokeThisSessions =
+          canRevokeSessions &&
+          !isSelf &&
+          member.activeSessions > 0 &&
+          (!isPrivileged || canTouchPrivileged);
         return (
           <li
             key={member.id}
@@ -324,6 +466,8 @@ function MembersList({
               </p>
               <p className="m-0 mt-0.5 truncate text-[11px] text-fg-muted">{member.email}</p>
             </div>
+            <SessionCountBadge count={member.activeSessions} />
+            <TwoFactorBadge enabled={member.twoFactorEnabled} />
             {canEditThisRole ? (
               <RoleSelect
                 value={member.role}
@@ -336,7 +480,16 @@ function MembersList({
                 {roleByKey.get(member.role)?.name ?? member.role}
               </span>
             )}
-            {canRemoveThis ? <MemberRowMenu onRemove={() => onRemove(member)} /> : null}
+            {canRemoveThis || canResetThisTwoFactor || canRevokeThisSessions ? (
+              <MemberRowMenu
+                canResetTwoFactor={canResetThisTwoFactor}
+                canRevokeSessions={canRevokeThisSessions}
+                canRemove={canRemoveThis}
+                onResetTwoFactor={() => onResetTwoFactor(member)}
+                onRevokeSessions={() => onRevokeSessions(member)}
+                onRemove={() => onRemove(member)}
+              />
+            ) : null}
           </li>
         );
       })}
@@ -344,7 +497,54 @@ function MembersList({
   );
 }
 
-function MemberRowMenu({ onRemove }: { onRemove: () => void }) {
+function SessionCountBadge({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <span
+      title={`${count} active session${count === 1 ? "" : "s"}`}
+      className="hidden shrink-0 font-mono text-[10.5px] text-fg-faint tabular-nums md:inline"
+    >
+      {count}
+    </span>
+  );
+}
+
+function TwoFactorBadge({ enabled }: { enabled: boolean }) {
+  return (
+    <span
+      title={enabled ? "Two-factor enabled" : "Two-factor not set up"}
+      className={cn(
+        "hidden shrink-0 items-center gap-1 text-[10.5px] uppercase tracking-[0.08em] sm:inline-flex",
+        enabled ? "text-fg-faint" : "text-warning",
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "inline-block size-1.5 rounded-full",
+          enabled ? "bg-success" : "bg-warning",
+        )}
+      />
+      2FA
+    </span>
+  );
+}
+
+function MemberRowMenu({
+  canResetTwoFactor,
+  canRevokeSessions,
+  canRemove,
+  onResetTwoFactor,
+  onRevokeSessions,
+  onRemove,
+}: {
+  canResetTwoFactor: boolean;
+  canRevokeSessions: boolean;
+  canRemove: boolean;
+  onResetTwoFactor: () => void;
+  onRevokeSessions: () => void;
+  onRemove: () => void;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -367,15 +567,37 @@ function MemberRowMenu({ onRemove }: { onRemove: () => void }) {
         sideOffset={4}
         className="w-44 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-xl"
       >
-        <RowMenuItem
-          danger
-          onClick={() => {
-            setOpen(false);
-            onRemove();
-          }}
-        >
-          Remove member
-        </RowMenuItem>
+        {canRevokeSessions ? (
+          <RowMenuItem
+            onClick={() => {
+              setOpen(false);
+              onRevokeSessions();
+            }}
+          >
+            Revoke sessions
+          </RowMenuItem>
+        ) : null}
+        {canResetTwoFactor ? (
+          <RowMenuItem
+            onClick={() => {
+              setOpen(false);
+              onResetTwoFactor();
+            }}
+          >
+            Reset 2FA
+          </RowMenuItem>
+        ) : null}
+        {canRemove ? (
+          <RowMenuItem
+            danger
+            onClick={() => {
+              setOpen(false);
+              onRemove();
+            }}
+          >
+            Remove member
+          </RowMenuItem>
+        ) : null}
       </PopoverContent>
     </Popover>
   );

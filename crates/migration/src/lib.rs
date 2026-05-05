@@ -90,6 +90,16 @@ mod m20260505_000043_add_note_folders_and_visibility;
 mod m20260505_000044_add_note_versions;
 #[path = "../migrations/m20260505_000045_create_support_tickets.rs"]
 mod m20260505_000045_create_support_tickets;
+#[path = "../migrations/m20260505_000046_add_two_factor_auth.rs"]
+mod m20260505_000046_add_two_factor_auth;
+#[path = "../migrations/m20260505_000047_add_workspace_2fa_policy.rs"]
+mod m20260505_000047_add_workspace_2fa_policy;
+#[path = "../migrations/m20260505_000048_create_security_events.rs"]
+mod m20260505_000048_create_security_events;
+#[path = "../migrations/m20260505_000049_add_two_factor_trusted_devices.rs"]
+mod m20260505_000049_add_two_factor_trusted_devices;
+#[path = "../migrations/m20260505_000050_add_session_fresh_two_factor.rs"]
+mod m20260505_000050_add_session_fresh_two_factor;
 
 pub struct Migrator;
 
@@ -142,6 +152,11 @@ impl MigratorTrait for Migrator {
             Box::new(m20260505_000043_add_note_folders_and_visibility::Migration),
             Box::new(m20260505_000044_add_note_versions::Migration),
             Box::new(m20260505_000045_create_support_tickets::Migration),
+            Box::new(m20260505_000046_add_two_factor_auth::Migration),
+            Box::new(m20260505_000047_add_workspace_2fa_policy::Migration),
+            Box::new(m20260505_000048_create_security_events::Migration),
+            Box::new(m20260505_000049_add_two_factor_trusted_devices::Migration),
+            Box::new(m20260505_000050_add_session_fresh_two_factor::Migration),
         ]
     }
 }

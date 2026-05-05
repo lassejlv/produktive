@@ -99,6 +99,17 @@ function MemberProfilePage() {
                   <span className="text-fg-faint">/</span>
                   <span className="capitalize">{member.role}</span>
                   <span className="text-fg-faint">/</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "inline-block size-1.5 rounded-full",
+                        member.twoFactorEnabled ? "bg-success" : "bg-warning",
+                      )}
+                    />
+                    <span>2FA {member.twoFactorEnabled ? "on" : "off"}</span>
+                  </span>
+                  <span className="text-fg-faint">/</span>
                   <span>Joined {formatDate(member.joinedAt)}</span>
                 </div>
               </div>

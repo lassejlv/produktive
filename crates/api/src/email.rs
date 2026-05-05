@@ -79,6 +79,28 @@ pub async fn send_invitation_email(
     send_email(state, to, &subject, html, text).await
 }
 
+pub async fn send_two_factor_nudge_email(
+    state: &AppState,
+    to: &str,
+    name: &str,
+    organization_name: &str,
+    actor_name: &str,
+) -> Result<(), ApiError> {
+    let url = format!("{}/account?section=security", state.config.app_url);
+    let subject = format!("Enable 2FA for {organization_name}");
+    let html = format!(
+        "<p>Hi {name},</p><p><strong>{actor}</strong> asked you to enable two-factor authentication for <strong>{org}</strong> on Produktive.</p><p><a href=\"{url}\">Open account security</a></p><p style=\"color:#888;font-size:12px\">Backup codes are shown when setup is complete. Store them somewhere safe.</p>",
+        name = html_escape(name),
+        actor = html_escape(actor_name),
+        org = html_escape(organization_name),
+    );
+    let text = format!(
+        "Hi {name},\n\n{actor_name} asked you to enable two-factor authentication for {organization_name} on Produktive.\n\nOpen account security:\n{url}\n\nBackup codes are shown when setup is complete. Store them somewhere safe."
+    );
+
+    send_email(state, to, &subject, html, text).await
+}
+
 pub async fn send_user_suspended_email(
     state: &AppState,
     to: &str,

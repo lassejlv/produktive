@@ -10,16 +10,22 @@ import {
   leaveActiveOrganization,
   refreshSession,
 } from "@/lib/auth-client";
+import { requestFreshTwoFactorIfNeeded } from "@/lib/fresh-two-factor";
 
 export function DangerSettings({
   organization,
   canEdit,
+  currentUserTwoFactorEnabled,
 }: {
   organization: { id: string; name: string };
   canEdit: boolean;
+  currentUserTwoFactorEnabled: boolean;
 }) {
   return canEdit ? (
-    <DeleteWorkspace organization={organization} />
+    <DeleteWorkspace
+      organization={organization}
+      currentUserTwoFactorEnabled={currentUserTwoFactorEnabled}
+    />
   ) : (
     <LeaveWorkspace organization={organization} />
   );
@@ -27,8 +33,10 @@ export function DangerSettings({
 
 function DeleteWorkspace({
   organization,
+  currentUserTwoFactorEnabled,
 }: {
   organization: { name: string };
+  currentUserTwoFactorEnabled: boolean;
 }) {
   const navigate = useNavigate();
   const [confirmName, setConfirmName] = useState("");
@@ -42,6 +50,7 @@ function DeleteWorkspace({
     if (!canDelete) return;
     setSubmitting(true);
     try {
+      await requestFreshTwoFactorIfNeeded(currentUserTwoFactorEnabled);
       await deleteActiveOrganization({ confirm: confirmName.trim() });
       await refreshSession();
       toast.success("Workspace deleted");

@@ -6,6 +6,7 @@ type AuthUser = {
   name: string;
   email: string;
   emailVerified: boolean;
+  twoFactorEnabled: boolean;
   image: string | null;
   onboardingCompletedAt: string | null;
   onboardingStep: string | null;
@@ -16,6 +17,7 @@ type AuthOrganization = {
   name: string;
   slug: string;
   image: string | null;
+  requireTwoFactor: boolean;
 };
 
 export type OrganizationMembership = {
@@ -34,6 +36,10 @@ type AuthSession = {
 type AuthResult = {
   data: AuthSession | null;
   error: { message: string } | null;
+};
+
+type SignInResult = AuthResult & {
+  twoFactorRequired?: boolean;
 };
 
 type EmptyResult = {
@@ -121,6 +127,32 @@ type SessionsListResponse = {
   sessions: AccountSession[];
 };
 
+export type TrustedTwoFactorDevice = {
+  id: string;
+  current: boolean;
+  expiresAt: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+};
+
+type TrustedTwoFactorDevicesResponse = {
+  devices: TrustedTwoFactorDevice[];
+};
+
+export type TwoFactorStatus = {
+  enabled: boolean;
+  backupCodesRemaining: number;
+};
+
+export type TwoFactorSetup = {
+  secret: string;
+  totpUri: string;
+};
+
+export type TwoFactorBackupCodes = {
+  backupCodes: string[];
+};
+
 const requestJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const response = await fetch(apiPath(path), {
     credentials: "include",
@@ -155,6 +187,30 @@ const requestUpload = async <T>(path: string, file: File): Promise<T> => {
   }
 
   return response.json() as Promise<T>;
+};
+
+const requestSignIn = async (email: string, password: string): Promise<SignInResult> => {
+  const response = await fetch(apiPath("/api/auth/sign-in"), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    return {
+      data: null,
+      error: { message: error?.error ?? "Authentication failed" },
+    };
+  }
+
+  const data = (await response.json()) as AuthSession | { twoFactorRequired: true };
+  if ("twoFactorRequired" in data) {
+    return { data: null, error: null, twoFactorRequired: true };
+  }
+
+  return applySessionResult({ data, error: null });
 };
 
 let sessionState: SessionState = {
@@ -200,7 +256,7 @@ export const createOrganization = (name: string) =>
     body: JSON.stringify({ name }),
   });
 
-export const updateActiveOrganization = (input: { name: string }) =>
+export const updateActiveOrganization = (input: { name?: string; requireTwoFactor?: boolean }) =>
   requestJson<{ organization: AuthOrganization }>("/api/auth/organizations/active", {
     method: "PATCH",
     body: JSON.stringify(input),
@@ -247,10 +303,49 @@ export const revokeOtherAccountSessions = () =>
     method: "DELETE",
   });
 
+export const getTwoFactorStatus = () => requestJson<TwoFactorStatus>("/api/auth/two-factor/status");
+
+export const listTrustedTwoFactorDevices = () =>
+  requestJson<TrustedTwoFactorDevicesResponse>("/api/auth/two-factor/trusted-devices");
+
+export const revokeTrustedTwoFactorDevice = (id: string) =>
+  requestJson<{ ok: true }>(`/api/auth/two-factor/trusted-devices/${id}`, {
+    method: "DELETE",
+  });
+
+export const setupTwoFactor = (password: string) =>
+  requestJson<TwoFactorSetup>("/api/auth/two-factor/setup", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+
+export const enableTwoFactor = (code: string) =>
+  requestJson<TwoFactorBackupCodes>("/api/auth/two-factor/enable", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+
+export const disableTwoFactor = (input: { password: string; code: string }) =>
+  requestJson<{ ok: true }>("/api/auth/two-factor/disable", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const regenerateTwoFactorBackupCodes = (input: { password: string; code: string }) =>
+  requestJson<TwoFactorBackupCodes>("/api/auth/two-factor/backup-codes", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const refreshTwoFactor = (code: string) =>
+  requestJson<{ ok: true }>("/api/auth/two-factor/fresh", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+
 export const authClient = {
   signIn: {
-    email: ({ email, password }: EmailCredentials) =>
-      requestAuth("/api/auth/sign-in", { email, password }).then(applySessionResult),
+    email: ({ email, password }: EmailCredentials) => requestSignIn(email, password),
     githubUrl: ({ invite, redirect }: GithubOAuthOptions = {}) => {
       const url = new URL(apiPath("/api/auth/github/start"), window.location.origin);
       if (invite) url.searchParams.set("invite", invite);
@@ -268,6 +363,16 @@ export const authClient = {
     requestEmpty("/api/auth/request-password-reset", { email }),
   resetPassword: ({ token, password }: { token: string; password: string }) =>
     requestEmpty("/api/auth/reset-password", { token, password }),
+  verifyTwoFactorLogin: ({
+    code,
+    rememberDevice,
+  }: {
+    code: string;
+    rememberDevice?: boolean;
+  }) =>
+    requestAuth("/api/auth/two-factor/verify-login", { code, rememberDevice }).then(
+      applySessionResult,
+    ),
   getSession: () => requestAuth("/api/auth/session"),
 };
 
