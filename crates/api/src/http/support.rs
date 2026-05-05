@@ -820,7 +820,6 @@ async fn send_support_reply(
         html: Option<&'a str>,
         in_reply_to: Option<String>,
         references: Option<String>,
-        message_id: Option<String>,
         ticket_number: &'a str,
     }
     #[derive(Deserialize)]
@@ -840,7 +839,6 @@ async fn send_support_reply(
             html: message.body_html.as_deref(),
             in_reply_to: message.in_reply_to.as_deref().map(format_header_id),
             references: message.references.as_deref().map(format_references),
-            message_id: message.message_id.as_deref().map(format_header_id),
             ticket_number: &ticket.number,
         })
         .send()

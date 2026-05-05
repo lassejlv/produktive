@@ -15,7 +15,6 @@ type SendRequest = {
   html?: string;
   inReplyTo?: string;
   references?: string;
-  messageId?: string;
   ticketNumber?: string;
 };
 
@@ -93,7 +92,6 @@ export default {
     const headers: Record<string, string> = {};
     if (body.inReplyTo) headers["In-Reply-To"] = body.inReplyTo;
     if (body.references) headers["References"] = body.references;
-    if (body.messageId) headers["Message-ID"] = body.messageId;
     if (body.ticketNumber) headers["X-Produktive-Support-Ticket"] = body.ticketNumber;
 
     const email: EmailSendBody = {
