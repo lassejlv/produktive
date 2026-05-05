@@ -361,11 +361,16 @@ async fn update_ticket(
         .await?
         .ok_or_else(|| ApiError::NotFound("Support ticket not found".to_owned()))?;
     let now = Utc::now().fixed_offset();
+    let previous_status = ticket.status.clone();
     let mut active = ticket.into_active_model();
     let mut metadata = json!({});
+    let mut changed_status = None;
 
     if let Some(status) = payload.status {
         let status = validate_choice(status, VALID_STATUSES, "status")?;
+        if status != previous_status {
+            changed_status = Some(status.clone());
+        }
         active.status = Set(status.clone());
         active.closed_at = Set(if status == "closed" { Some(now) } else { None });
         metadata["status"] = json!(status);
@@ -403,6 +408,16 @@ async fn update_ticket(
         metadata,
     )
     .await?;
+    if let Some(status) = changed_status {
+        if let Err(error) = send_status_change_email(&state, &updated, &status).await {
+            tracing::warn!(
+                %error,
+                ticket_id = %updated.id,
+                status = %status,
+                "failed to send support status change email"
+            );
+        }
+    }
     Ok(Json(ticket_detail(&state, updated).await?))
 }
 
@@ -773,9 +788,9 @@ async fn create_pending_reply(
         from_email: Set(state.config.support_email_from.clone()),
         to_email: Set(ticket.customer_email.clone()),
         cc: Set(json!([])),
-        subject: Set(reply_subject(&ticket.subject)),
-        body_text: Set(Some(body_text.to_owned())),
-        body_html: Set(Some(render_reply_html(body_text))),
+        subject: Set(reply_subject(ticket)),
+        body_text: Set(Some(with_support_signature(body_text))),
+        body_html: Set(Some(render_reply_html(&with_support_signature(body_text)))),
         message_id: Set(Some(provider_message_id)),
         in_reply_to: Set(in_reply_to),
         references: Set(references),
@@ -796,7 +811,7 @@ async fn send_new_ticket_auto_reply(
     state: &AppState,
     ticket: &support_ticket::Model,
 ) -> Result<(), ApiError> {
-    let body = "Hey,\n\nWe have received your message. Our support team will review it and get back to you as soon as possible.\n\nSupport can take up to 1-2 business days.\n\nProduktive Support";
+    let body = "Hey,\n\nWe have received your message. Our support team will review it and get back to you as soon as possible.\n\nSupport can take up to 1-2 business days.";
     let message = create_pending_system_reply(state, ticket, body).await?;
     let sent = send_support_reply(state, ticket, &message).await;
     let updated_message = update_delivery_result(state, message, sent).await?;
@@ -806,6 +821,34 @@ async fn send_new_ticket_auto_reply(
         None,
         "auto_reply",
         json!({
+            "messageId": updated_message.id,
+            "deliveryStatus": updated_message.delivery_status,
+            "deliveryError": updated_message.delivery_error,
+        }),
+    )
+    .await
+}
+
+async fn send_status_change_email(
+    state: &AppState,
+    ticket: &support_ticket::Model,
+    status: &str,
+) -> Result<(), ApiError> {
+    let body = match status {
+        "closed" => "Hey,\n\nYour support ticket has been marked as closed. If you still need help, reply to this email and we will reopen the conversation.",
+        "pending" => "Hey,\n\nYour support ticket is now pending. We may be waiting on more information or reviewing the issue internally.",
+        _ => "Hey,\n\nYour support ticket has been reopened. Our support team will follow up as soon as possible.",
+    };
+    let message = create_pending_system_reply(state, ticket, body).await?;
+    let sent = send_support_reply(state, ticket, &message).await;
+    let updated_message = update_delivery_result(state, message, sent).await?;
+    insert_event(
+        state,
+        &ticket.id,
+        None,
+        "status_email",
+        json!({
+            "status": status,
             "messageId": updated_message.id,
             "deliveryStatus": updated_message.delivery_status,
             "deliveryError": updated_message.delivery_error,
@@ -838,9 +881,9 @@ async fn create_pending_system_reply(
         from_email: Set(state.config.support_email_from.clone()),
         to_email: Set(ticket.customer_email.clone()),
         cc: Set(json!([])),
-        subject: Set(reply_subject(&ticket.subject)),
-        body_text: Set(Some(body_text.to_owned())),
-        body_html: Set(Some(render_reply_html(body_text))),
+        subject: Set(reply_subject(ticket)),
+        body_text: Set(Some(with_support_signature(body_text))),
+        body_html: Set(Some(render_reply_html(&with_support_signature(body_text)))),
         message_id: Set(Some(provider_message_id)),
         in_reply_to: Set(in_reply_to),
         references: Set(references),
@@ -1060,11 +1103,27 @@ fn validate_choice(value: String, valid: &[&str], label: &str) -> Result<String,
     Ok(value)
 }
 
-fn reply_subject(subject: &str) -> String {
-    if subject.to_ascii_lowercase().starts_with("re:") {
-        subject.to_owned()
+fn reply_subject(ticket: &support_ticket::Model) -> String {
+    let subject = ticket.subject.trim();
+    if subject.contains(&ticket.number) {
+        if subject.to_ascii_lowercase().starts_with("re:") {
+            subject.to_owned()
+        } else {
+            format!("Re: {subject}")
+        }
+    } else if subject.to_ascii_lowercase().starts_with("re:") {
+        format!("Re: [{}] {}", ticket.number, subject[3..].trim())
     } else {
-        format!("Re: {subject}")
+        format!("Re: [{}] {subject}", ticket.number)
+    }
+}
+
+fn with_support_signature(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.contains("Produktive Support") {
+        trimmed.to_owned()
+    } else {
+        format!("{trimmed}\n\n--\nProduktive Support")
     }
 }
 
