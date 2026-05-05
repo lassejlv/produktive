@@ -132,6 +132,7 @@ export type MemberProfile = {
   image: string | null;
   role: string;
   twoFactorEnabled: boolean;
+  activeSessions: number;
   joinedAt: string;
   stats: {
     assignedIssues: number;
@@ -990,6 +991,7 @@ export type Member = {
   image: string | null;
   role: string;
   twoFactorEnabled: boolean;
+  activeSessions: number;
 };
 
 export const listMembers = () => request<{ members: Member[] }>("/api/members");
@@ -1067,6 +1069,12 @@ export const removeMember = (id: string) =>
 
 export const resetMemberTwoFactor = (userId: string) =>
   request<void>("/api/security/two-factor-recovery/reset", {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  });
+
+export const revokeMemberSessions = (userId: string) =>
+  request<{ revoked: number }>("/api/security/member-sessions/revoke", {
     method: "POST",
     body: JSON.stringify({ userId }),
   });

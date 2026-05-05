@@ -15,6 +15,7 @@ pub const EVENT_WORKSPACE_REQUIRE_2FA_ENABLED: &str = "workspace.require_2fa_ena
 pub const EVENT_WORKSPACE_REQUIRE_2FA_DISABLED: &str = "workspace.require_2fa_disabled";
 pub const EVENT_MEMBER_ROLE_CHANGED: &str = "member.role_changed";
 pub const EVENT_MEMBER_REMOVED: &str = "member.removed";
+pub const EVENT_MEMBER_SESSIONS_REVOKED: &str = "member.sessions_revoked";
 pub const EVENT_WORKSPACE_DELETED: &str = "workspace.deleted";
 pub const EVENT_ACCOUNT_DELETED: &str = "account.deleted";
 pub const EVENT_TWO_FACTOR_NUDGE_SENT: &str = "two_factor.nudge_sent";

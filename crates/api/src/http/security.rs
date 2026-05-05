@@ -2,9 +2,11 @@ use crate::{
     auth::{ensure_fresh_two_factor, require_auth, require_auth_without_two_factor_policy},
     email::send_two_factor_nudge_email,
     error::ApiError,
-    permissions::{member_role, require_permission, ROLE_OWNER, WORKSPACE_SECURITY},
+    permissions::{
+        is_privileged_member_role, member_role, require_permission, ROLE_OWNER, WORKSPACE_SECURITY,
+    },
     security_events::{
-        metadata_empty, record_security_event, SecurityEventInput,
+        metadata_empty, record_security_event, SecurityEventInput, EVENT_MEMBER_SESSIONS_REVOKED,
         EVENT_TWO_FACTOR_ENFORCEMENT_BLOCKED, EVENT_TWO_FACTOR_NUDGE_SENT,
         EVENT_TWO_FACTOR_RECOVERY_RESET,
     },
@@ -32,6 +34,7 @@ pub fn routes() -> Router<AppState> {
             "/two-factor-enforcement/blocked",
             post(record_two_factor_enforcement_blocked),
         )
+        .route("/member-sessions/revoke", post(revoke_member_sessions))
         .route("/two-factor-nudges", post(send_two_factor_nudges))
         .route("/two-factor-recovery/reset", post(reset_member_two_factor))
 }
@@ -58,6 +61,18 @@ struct EmptyResponse {
 #[serde(rename_all = "camelCase")]
 struct ResetTwoFactorRequest {
     user_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RevokeMemberSessionsRequest {
+    user_id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RevokeMemberSessionsResponse {
+    revoked: usize,
 }
 
 #[derive(Serialize)]
@@ -226,6 +241,67 @@ async fn record_two_factor_enforcement_blocked(
     }
 
     Ok(Json(EmptyResponse { ok: true }))
+}
+
+async fn revoke_member_sessions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<RevokeMemberSessionsRequest>,
+) -> Result<Json<RevokeMemberSessionsResponse>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, WORKSPACE_SECURITY).await?;
+    ensure_fresh_two_factor(&auth)?;
+    if payload.user_id == auth.user.id {
+        return Err(ApiError::BadRequest(
+            "Use account sessions to revoke your own sessions".to_owned(),
+        ));
+    }
+
+    let actor_role = member_role(&state.db, &auth.user.id, &auth.organization.id)
+        .await?
+        .ok_or_else(|| ApiError::Forbidden("Not a member of this workspace".to_owned()))?;
+    let target_membership = member::Entity::find()
+        .filter(member::Column::OrganizationId.eq(&auth.organization.id))
+        .filter(member::Column::UserId.eq(&payload.user_id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Member not found".to_owned()))?;
+    if is_privileged_member_role(&target_membership.role) && actor_role != ROLE_OWNER {
+        return Err(ApiError::Forbidden(
+            "Only owners can revoke admin or owner sessions".to_owned(),
+        ));
+    }
+
+    let now = chrono::Utc::now().fixed_offset();
+    let sessions = session::Entity::find()
+        .filter(session::Column::UserId.eq(&target_membership.user_id))
+        .filter(session::Column::ActiveOrganizationId.eq(&auth.organization.id))
+        .filter(session::Column::RevokedAt.is_null())
+        .filter(session::Column::ExpiresAt.gt(now))
+        .all(&state.db)
+        .await?;
+    let revoked = sessions.len();
+    for session in sessions {
+        let mut active = session.into_active_model();
+        active.revoked_at = Set(Some(now));
+        active.updated_at = Set(now);
+        active.update(&state.db).await?;
+    }
+
+    record_security_event(
+        &state,
+        Some(&headers),
+        SecurityEventInput {
+            organization_id: Some(auth.organization.id),
+            actor_user_id: Some(auth.user.id),
+            target_user_id: Some(target_membership.user_id),
+            event_type: EVENT_MEMBER_SESSIONS_REVOKED,
+            metadata: json!({ "revoked": revoked, "targetRole": target_membership.role }),
+        },
+    )
+    .await?;
+
+    Ok(Json(RevokeMemberSessionsResponse { revoked }))
 }
 
 async fn reset_member_two_factor(
