@@ -80,6 +80,8 @@ mod m20260502_000038_add_sidebar_layout;
 mod m20260503_000039_create_chat_access;
 #[path = "../migrations/m20260503_000040_create_slack_integration.rs"]
 mod m20260503_000040_create_slack_integration;
+#[path = "../migrations/m20260505_000041_create_platform_admin.rs"]
+mod m20260505_000041_create_platform_admin;
 
 pub struct Migrator;
 
@@ -127,6 +129,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260502_000038_add_sidebar_layout::Migration),
             Box::new(m20260503_000039_create_chat_access::Migration),
             Box::new(m20260503_000040_create_slack_integration::Migration),
+            Box::new(m20260505_000041_create_platform_admin::Migration),
         ]
     }
 }

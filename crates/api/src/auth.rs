@@ -11,7 +11,9 @@ use axum::http::{header, HeaderMap, HeaderValue};
 use chrono::{Duration, Utc};
 use cookie::{Cookie, SameSite};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
-use produktive_entity::{auth_token, mcp_api_key, member, organization, session, user};
+use produktive_entity::{
+    auth_token, mcp_api_key, member, organization, platform_admin, session, user,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DatabaseTransaction, EntityTrait,
     IntoActiveModel, QueryFilter, QueryOrder, Set, TransactionTrait,
@@ -37,6 +39,12 @@ pub struct AuthContext {
 pub struct ApiKeyContext {
     pub user: user::Model,
     pub organization: organization::Model,
+}
+
+#[derive(Clone, Debug)]
+pub struct PlatformAdminContext {
+    pub user: user::Model,
+    pub role: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -133,10 +141,12 @@ pub async fn require_auth(headers: &HeaderMap, state: &AppState) -> Result<AuthC
         .one(&state.db)
         .await?
         .ok_or(ApiError::Unauthorized)?;
+    ensure_user_not_suspended(&user)?;
     let organization = organization::Entity::find_by_id(&session.active_organization_id)
         .one(&state.db)
         .await?
         .ok_or(ApiError::Unauthorized)?;
+    ensure_organization_not_suspended(&organization)?;
 
     let membership = member::Entity::find()
         .filter(member::Column::UserId.eq(&user.id))
@@ -153,6 +163,51 @@ pub async fn require_auth(headers: &HeaderMap, state: &AppState) -> Result<AuthC
         session,
         organization,
     })
+}
+
+pub async fn require_platform_admin(
+    headers: &HeaderMap,
+    state: &AppState,
+) -> Result<PlatformAdminContext, ApiError> {
+    let token = read_cookie(headers, &state.config.cookie_name).ok_or(ApiError::Unauthorized)?;
+    let claims = decode::<Claims>(
+        &token,
+        &DecodingKey::from_secret(state.config.jwt_secret.as_bytes()),
+        &Validation::default(),
+    )?
+    .claims;
+
+    let now = Utc::now().fixed_offset();
+    let session = session::Entity::find_by_id(&claims.sid)
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    if !session_matches_claims(&session, &claims, now) {
+        return Err(ApiError::Unauthorized);
+    }
+
+    let user = user::Entity::find_by_id(&session.user_id)
+        .one(&state.db)
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    ensure_user_not_suspended(&user)?;
+
+    let role = platform_admin::Entity::find()
+        .filter(platform_admin::Column::UserId.eq(&user.id))
+        .one(&state.db)
+        .await?
+        .map(|admin| admin.role)
+        .or_else(|| {
+            state
+                .config
+                .platform_admin_emails
+                .iter()
+                .any(|email| email.eq_ignore_ascii_case(&user.email))
+                .then(|| "super_admin".to_owned())
+        })
+        .ok_or_else(|| ApiError::Forbidden("Platform admin access required".to_owned()))?;
+
+    Ok(PlatformAdminContext { user, role })
 }
 
 pub async fn require_api_key(
@@ -184,6 +239,7 @@ pub async fn require_api_key(
         .one(&state.db)
         .await?
         .ok_or(ApiError::Unauthorized)?;
+    ensure_user_not_suspended(&user)?;
     if !user_is_member(&state.db, &user.id, &organization_id).await? {
         return Err(ApiError::Forbidden(
             "API key user is not a member of this workspace".to_owned(),
@@ -193,6 +249,7 @@ pub async fn require_api_key(
         .one(&state.db)
         .await?
         .ok_or(ApiError::Unauthorized)?;
+    ensure_organization_not_suspended(&organization)?;
 
     let mut active = key.clone().into_active_model();
     active.last_used_at = Set(Some(now));
@@ -304,6 +361,10 @@ pub async fn create_signup_records(
         updated_at: Set(now),
         onboarding_completed_at: Set(None),
         onboarding_step: Set(None),
+        suspended_at: Set(None),
+        suspended_by_id: Set(None),
+        suspension_reason: Set(None),
+        suspension_note: Set(None),
     }
     .insert(&txn)
     .await?;
@@ -384,6 +445,10 @@ pub async fn create_organization_for_user(
         image: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
+        suspended_at: Set(None),
+        suspended_by_id: Set(None),
+        suspension_reason: Set(None),
+        suspension_note: Set(None),
     }
     .insert(&txn)
     .await?;
@@ -427,6 +492,24 @@ pub async fn user_is_member(
         .one(db)
         .await?
         .is_some())
+}
+
+pub fn ensure_user_not_suspended(user: &user::Model) -> Result<(), ApiError> {
+    if user.suspended_at.is_some() {
+        Err(ApiError::Forbidden("User is suspended".to_owned()))
+    } else {
+        Ok(())
+    }
+}
+
+pub fn ensure_organization_not_suspended(
+    organization: &organization::Model,
+) -> Result<(), ApiError> {
+    if organization.suspended_at.is_some() {
+        Err(ApiError::Forbidden("Organization is suspended".to_owned()))
+    } else {
+        Ok(())
+    }
 }
 
 pub async fn require_workspace_owner(
@@ -700,6 +783,10 @@ async fn create_default_organization(
         image: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
+        suspended_at: Set(None),
+        suspended_by_id: Set(None),
+        suspension_reason: Set(None),
+        suspension_note: Set(None),
     }
     .insert(txn)
     .await?)

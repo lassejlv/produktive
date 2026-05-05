@@ -1,3 +1,4 @@
+mod admin;
 mod ai;
 mod ai_mcp;
 mod auth;
@@ -26,6 +27,7 @@ mod tabs;
 mod unsubscribe;
 mod waitlist;
 
+pub use admin::routes as admin_routes;
 pub use ai::routes as ai_routes;
 pub use ai_mcp::routes as ai_mcp_routes;
 pub use auth::routes as auth_routes;

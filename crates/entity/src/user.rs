@@ -15,6 +15,10 @@ pub struct Model {
     pub updated_at: DateTimeWithTimeZone,
     pub onboarding_completed_at: Option<DateTimeWithTimeZone>,
     pub onboarding_step: Option<String>,
+    pub suspended_at: Option<DateTimeWithTimeZone>,
+    pub suspended_by_id: Option<String>,
+    pub suspension_reason: Option<String>,
+    pub suspension_note: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

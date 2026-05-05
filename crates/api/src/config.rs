@@ -31,6 +31,7 @@ pub struct Config {
     pub mcp_token_encryption_key: Option<String>,
     pub slack_token_encryption_key: Option<String>,
     pub enable_dev_triggers: bool,
+    pub platform_admin_emails: Vec<String>,
     pub storage: Option<StorageConfig>,
 }
 
@@ -118,6 +119,12 @@ impl Config {
             enable_dev_triggers: env_or_default("ENABLE_DEV_TRIGGERS", "false")
                 .parse()
                 .context("ENABLE_DEV_TRIGGERS must be true or false")?,
+            platform_admin_emails: env_or_default("PLATFORM_ADMIN_EMAILS", "")
+                .split(',')
+                .map(str::trim)
+                .filter(|email| !email.is_empty())
+                .map(|email| email.to_ascii_lowercase())
+                .collect(),
             storage: StorageConfig::from_env()?,
         })
     }

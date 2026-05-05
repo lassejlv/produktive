@@ -1,6 +1,7 @@
 use crate::{
     auth::{
-        auth_cookie, require_auth, set_session_active_organization, validate_email, AuthResponse,
+        auth_cookie, ensure_organization_not_suspended, require_auth,
+        set_session_active_organization, validate_email, AuthResponse,
     },
     email,
     error::ApiError,
@@ -185,6 +186,7 @@ async fn accept_invitation(
         .one(&state.db)
         .await?
         .ok_or_else(|| ApiError::NotFound("Organization not found".to_owned()))?;
+    ensure_organization_not_suspended(&organization)?;
 
     // Switch active org so the next request lands in the right workspace
     let (_, token) =

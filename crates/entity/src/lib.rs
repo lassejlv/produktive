@@ -1,3 +1,4 @@
+pub mod admin_audit_event;
 pub mod auth_token;
 pub mod chat;
 pub mod chat_access;
@@ -29,6 +30,7 @@ pub mod notification;
 pub mod notification_preference;
 pub mod organization;
 pub mod organization_role;
+pub mod platform_admin;
 pub mod produktive_oauth_client;
 pub mod produktive_oauth_code;
 pub mod produktive_oauth_grant;

@@ -2,19 +2,15 @@ use sea_orm::entity::prelude::*;
 use serde::Serialize;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize)]
-#[sea_orm(table_name = "organizations")]
+#[sea_orm(table_name = "platform_admins")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
-    pub name: String,
-    pub slug: String,
-    pub image: Option<String>,
+    pub user_id: String,
+    pub role: String,
+    pub created_by_id: Option<String>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
-    pub suspended_at: Option<DateTimeWithTimeZone>,
-    pub suspended_by_id: Option<String>,
-    pub suspension_reason: Option<String>,
-    pub suspension_note: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

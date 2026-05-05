@@ -2,10 +2,11 @@ use crate::{
     auth::{
         auth_cookie, clear_auth_cookie, consume_auth_token, create_auth_token,
         create_organization_for_user, create_signup_records, create_user_session,
-        first_or_create_organization, require_auth, revoke_session, revoke_user_sessions,
-        set_session_active_organization, update_user_password, user_is_member, validate_email,
-        validate_name, validate_password, verify_password, verify_user_email, OrganizationResponse,
-        EMAIL_VERIFICATION_PURPOSE, PASSWORD_RESET_PURPOSE,
+        ensure_organization_not_suspended, ensure_user_not_suspended, first_or_create_organization,
+        require_auth, revoke_session, revoke_user_sessions, set_session_active_organization,
+        update_user_password, user_is_member, validate_email, validate_name, validate_password,
+        verify_password, verify_user_email, OrganizationResponse, EMAIL_VERIFICATION_PURPOSE,
+        PASSWORD_RESET_PURPOSE,
     },
     email::{send_password_reset_email, send_verification_email},
     error::ApiError,
@@ -221,8 +222,10 @@ async fn sign_in(
             "Please verify your email before signing in".to_owned(),
         ));
     }
+    ensure_user_not_suspended(&user)?;
 
     let organization = first_or_create_organization(&state.db, &user).await?;
+    ensure_organization_not_suspended(&organization)?;
     let (_, token) = create_user_session(&state.db, &state, &user.id, &organization.id).await?;
     let cookie = auth_cookie(&state, &token)?;
 
@@ -287,7 +290,9 @@ pub(super) async fn complete_github_auth_callback(
     let github_emails = fetch_github_auth_emails(access_token).await?;
     let email = select_verified_github_email(&github_emails)?;
     let user = find_or_create_github_user(&state, email, &github_user).await?;
+    ensure_user_not_suspended(&user)?;
     let organization = first_or_create_organization(&state.db, &user).await?;
+    ensure_organization_not_suspended(&organization)?;
     let (_, session_token) =
         create_user_session(&state.db, &state, &user.id, &organization.id).await?;
     let cookie = auth_cookie(&state, &session_token)?;
@@ -307,7 +312,9 @@ async fn verify_email(
     let auth_token =
         consume_auth_token(&state.db, &payload.token, EMAIL_VERIFICATION_PURPOSE).await?;
     let user = verify_user_email(&state.db, &auth_token.user_id).await?;
+    ensure_user_not_suspended(&user)?;
     let organization = first_or_create_organization(&state.db, &user).await?;
+    ensure_organization_not_suspended(&organization)?;
     let (_, session_token) =
         create_user_session(&state.db, &state, &user.id, &organization.id).await?;
     let cookie = auth_cookie(&state, &session_token)?;
@@ -555,6 +562,7 @@ async fn switch_organization(
         .one(&state.db)
         .await?
         .ok_or_else(|| ApiError::NotFound("Organization not found".to_owned()))?;
+    ensure_organization_not_suspended(&organization)?;
 
     let (_, token) =
         set_session_active_organization(&state.db, &state, auth.session, organization.id.clone())
