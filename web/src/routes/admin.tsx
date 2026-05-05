@@ -80,6 +80,7 @@ function AdminDashboard() {
     queryFn: () => listAuditEvents(),
     enabled: admin.isSuccess,
   });
+  const supportPollingEnabled = section === "support";
   const supportTickets = useQuery({
     queryKey: ["admin", "support", "tickets", supportSearch, supportStatus],
     queryFn: () =>
@@ -88,11 +89,15 @@ function AdminDashboard() {
         status: supportStatus === "all" ? undefined : supportStatus,
       }),
     enabled: admin.isSuccess,
+    refetchInterval: supportPollingEnabled ? 2000 : false,
+    refetchIntervalInBackground: false,
   });
   const supportDetail = useQuery({
     queryKey: ["admin", "support", "ticket", selectedTicketId],
     queryFn: () => getSupportTicket(selectedTicketId!),
     enabled: Boolean(selectedTicketId) && admin.isSuccess,
+    refetchInterval: supportPollingEnabled && selectedTicketId ? 1500 : false,
+    refetchIntervalInBackground: false,
   });
   const userDetail = useQuery({
     queryKey: ["admin", "user", selectedUserId],
