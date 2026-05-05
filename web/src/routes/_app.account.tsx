@@ -623,34 +623,23 @@ function SecuritySectionBody({
   return (
     <AccountPaneSections>
       {enforcementRequired && !status.enabled ? (
-        <AccountSectionBlock
-          title="2FA required"
-          description="This workspace requires two-factor authentication before you can continue."
-        >
-          <div className="rounded-md border border-amber-500/20 bg-amber-500/10 p-3 text-[12.5px] leading-relaxed text-fg">
-            Set up an authenticator app now. After setup, you will return to the workspace page you
-            were trying to open.
-          </div>
-        </AccountSectionBlock>
+        <p className="m-0 border-l-2 border-warning/60 pl-3 text-[12.5px] leading-relaxed text-fg-muted">
+          This workspace requires two-factor authentication. Finish setup below to continue.
+        </p>
       ) : null}
 
       <AccountSectionBlock
         title="Authenticator app"
-        description="Require a short-lived code whenever this account signs in."
+        description="A short-lived code is required whenever this account signs in."
       >
-        <div className="rounded-md border border-border-subtle">
-          <ToggleRow
-            label={status.enabled ? "Enabled" : "Disabled"}
-            hint={
-              status.enabled
-                ? "Sign-ins require an authenticator or backup code."
-                : "Add an authenticator app before this protection is active."
-            }
-            checked={status.enabled}
-            disabled
-            className="px-4 py-3.5"
-            onChange={() => {}}
-          />
+        <div className="flex items-baseline gap-2 text-[13px]">
+          <span className="text-fg">{status.enabled ? "Enabled" : "Not set up"}</span>
+          <span className="text-fg-faint">·</span>
+          <span className="text-[12px] text-fg-muted">
+            {status.enabled
+              ? "Authenticator or backup code required at sign-in."
+              : "Add an authenticator app to turn on this protection."}
+          </span>
         </div>
       </AccountSectionBlock>
 
@@ -679,20 +668,20 @@ function SecuritySectionBody({
                 {busy === "setup" ? "Starting…" : "Start setup"}
               </Button>
             ) : (
-              <div className="grid gap-4 rounded-md border border-border-subtle p-4">
+              <div className="grid gap-4 border-t border-border-subtle pt-4">
                 <div className="flex flex-wrap items-start gap-4">
-                  <div className="grid size-[184px] place-items-center rounded-md bg-white">
+                  <div className="grid size-[160px] shrink-0 place-items-center bg-white">
                     {qrDataUrl ? (
-                      <img src={qrDataUrl} alt="" className="size-[184px]" />
+                      <img src={qrDataUrl} alt="" className="size-[160px]" />
                     ) : (
                       <LoadingTip compact />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="m-0 text-[12px] leading-relaxed text-fg-muted">
-                      Scan the QR code or enter this secret manually.
+                      Scan the QR code, or enter this secret manually.
                     </p>
-                    <code className="mt-2 block break-all rounded-md border border-border-subtle bg-bg p-2 font-mono text-[11px] text-fg">
+                    <code className="mt-2 block break-all font-mono text-[11px] text-fg-muted">
                       {setup.secret}
                     </code>
                   </div>
@@ -790,7 +779,7 @@ function SecuritySectionBody({
               <p className="m-0 text-[12.5px] text-fg-muted">No trusted devices.</p>
             ) : (
               <ul
-                className="m-0 list-none divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle p-0"
+                className="m-0 flex list-none flex-col p-0"
                 aria-label="Trusted two-factor devices"
               >
                 {trustedDevices.map((device) => (
@@ -873,12 +862,9 @@ function BackupCodesPanel({ codes }: { codes: string[] }) {
 
   return (
     <div className="grid gap-3">
-      <div className="grid grid-cols-2 gap-2 rounded-md border border-border-subtle p-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 border-y border-border-subtle py-3 sm:grid-cols-3">
         {codes.map((code) => (
-          <code
-            key={code}
-            className="rounded bg-bg px-2 py-1.5 text-center font-mono text-[12px] text-fg"
-          >
+          <code key={code} className="font-mono text-[12px] tracking-tight text-fg tabular-nums">
             {code}
           </code>
         ))}
@@ -900,7 +886,7 @@ function TrustedTwoFactorDeviceListItem({
   onRevoke: (id: string) => void | Promise<void>;
 }) {
   return (
-    <li className="px-4 py-4">
+    <li className="border-t border-border-subtle py-3 first:border-t-0 first:pt-0">
       <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(78px,max-content)] sm:gap-8">
         <div className="min-w-0">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">

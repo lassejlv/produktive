@@ -99,15 +99,15 @@ function MemberProfilePage() {
                   <span className="text-fg-faint">/</span>
                   <span className="capitalize">{member.role}</span>
                   <span className="text-fg-faint">/</span>
-                  <span
-                    className={cn(
-                      "rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em]",
-                      member.twoFactorEnabled
-                        ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700"
-                        : "border-amber-500/20 bg-amber-500/10 text-amber-700",
-                    )}
-                  >
-                    {member.twoFactorEnabled ? "2FA on" : "2FA off"}
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "inline-block size-1.5 rounded-full",
+                        member.twoFactorEnabled ? "bg-success" : "bg-warning",
+                      )}
+                    />
+                    <span>2FA {member.twoFactorEnabled ? "on" : "off"}</span>
                   </span>
                   <span className="text-fg-faint">/</span>
                   <span>Joined {formatDate(member.joinedAt)}</span>
