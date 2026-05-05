@@ -154,6 +154,62 @@ export type OrganizationDetail = {
   auditEvents: AuditEvent[];
 };
 
+export type SupportTicketSummary = {
+  id: string;
+  number: string;
+  subject: string;
+  status: "open" | "pending" | "closed";
+  priority: "normal" | "high" | "urgent";
+  customerEmail: string;
+  customerName: string | null;
+  assignedAdminId: string | null;
+  lastMessageAt: string;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+};
+
+export type SupportMessage = {
+  id: string;
+  direction: "inbound" | "outbound";
+  fromEmail: string;
+  toEmail: string;
+  cc: string[];
+  subject: string;
+  bodyText: string | null;
+  bodyHtml: string | null;
+  messageId: string | null;
+  inReplyTo: string | null;
+  references: string | null;
+  deliveryStatus: "received" | "pending" | "sent" | "failed";
+  deliveryProviderId: string | null;
+  deliveryError: string | null;
+  sentByAdminId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SupportTicketEvent = {
+  id: string;
+  eventType: string;
+  metadata: Record<string, unknown>;
+  actorAdminId: string | null;
+  createdAt: string;
+};
+
+export type SupportTicketDetail = {
+  ticket: SupportTicketSummary;
+  messages: SupportMessage[];
+  events: SupportTicketEvent[];
+  assignedAdmin: {
+    id: string;
+    name: string;
+    email: string;
+    image: string | null;
+  } | null;
+};
+
 export const getAdminSession = () => request<AdminIdentity>("/api/admin/session");
 
 export const getGrowthAnalytics = (range = "30d") =>
@@ -200,6 +256,38 @@ export const listAuditEvents = (params: { page?: number } = {}) =>
   request<{ events: AuditEvent[]; page: PageInfo }>(
     `/api/admin/audit-events?${toQuery({ ...params, limit: 50 })}`,
   );
+
+export const listSupportTickets = (params: { status?: string; search?: string; page?: number }) =>
+  request<{ tickets: SupportTicketSummary[]; page: PageInfo }>(
+    `/api/admin/support/tickets?${toQuery({ ...params, limit: 30 })}`,
+  );
+
+export const getSupportTicket = (id: string) =>
+  request<SupportTicketDetail>(`/api/admin/support/tickets/${id}`);
+
+export const updateSupportTicket = (
+  id: string,
+  input: { status?: string; priority?: string; assignedAdminId?: string | null },
+) =>
+  request<SupportTicketDetail>(`/api/admin/support/tickets/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+
+export const replyToSupportTicket = (
+  id: string,
+  input: { bodyText: string; closeAfterReply?: boolean },
+) =>
+  request<{ ticket: SupportTicketDetail; message: SupportMessage }>(
+    `/api/admin/support/tickets/${id}/reply`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+
+export const retrySupportMessage = (id: string) =>
+  request<SupportTicketDetail>(`/api/admin/support/messages/${id}/retry`, { method: "POST" });
 
 const toQuery = (params: Record<string, string | number | undefined>) => {
   const query = new URLSearchParams();

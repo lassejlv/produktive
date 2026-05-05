@@ -22,6 +22,10 @@ pub struct Config {
     pub email_api_token: String,
     pub email_account_id: Option<String>,
     pub email_from: String,
+    pub support_worker_secret: Option<String>,
+    pub support_email_from: String,
+    pub support_email_worker_url: Option<String>,
+    pub support_email_fallback_forward: Option<String>,
     pub ai_api_key: String,
     pub ai_base_url: String,
     pub ai_model: String,
@@ -108,6 +112,10 @@ impl Config {
                 .context("CLOUDFLARE_API_TOKEN is required")?,
             email_account_id: optional_env("CLOUDFLARE_ACCOUNT_ID").or_else(|| optional_env("CF_ACCOUNT_ID")),
             email_from: env_or_default("CLOUDFLARE_FROM", "Produktive <be@produktive.app>"),
+            support_worker_secret: optional_env("SUPPORT_WORKER_SECRET"),
+            support_email_from: env_or_default("SUPPORT_EMAIL_FROM", "support@produktive.app"),
+            support_email_worker_url: optional_env("SUPPORT_EMAIL_WORKER_URL"),
+            support_email_fallback_forward: optional_env("SUPPORT_EMAIL_FALLBACK_FORWARD"),
             ai_api_key: required_env("AI_API_KEY").context("AI_API_KEY is required")?,
             ai_base_url: env_or_default("AI_BASE_URL", "https://ollama.com/v1"),
             ai_model: env_or_default("AI_MODEL", "glm-5.1"),
@@ -148,6 +156,11 @@ impl Config {
                 app_url = %self.app_url,
                 cookie_secure = self.cookie_secure,
                 "AUTH_COOKIE_SECURE=false while APP_URL uses HTTPS"
+            );
+        }
+        if self.support_email_fallback_forward.is_some() && self.support_worker_secret.is_none() {
+            tracing::warn!(
+                "SUPPORT_EMAIL_FALLBACK_FORWARD is set but SUPPORT_WORKER_SECRET is missing"
             );
         }
     }

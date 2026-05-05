@@ -204,6 +204,10 @@ pub fn safe_note_version_key(organization_id: &str, note_id: &str, version_id: &
     format!("organizations/{organization_id}/notes/{note_id}/versions/{version_id}.md")
 }
 
+pub fn safe_support_raw_email_key(ticket_id: &str, message_id: &str) -> String {
+    format!("support/tickets/{ticket_id}/raw/{message_id}.eml")
+}
+
 fn object_url(config: &StorageConfig, key: &str) -> Result<String, anyhow::Error> {
     let endpoint = config.endpoint.trim_end_matches('/');
     let bucket = sanitize_path_segment(&config.bucket);

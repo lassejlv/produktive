@@ -88,6 +88,8 @@ mod m20260505_000042_create_notes;
 mod m20260505_000043_add_note_folders_and_visibility;
 #[path = "../migrations/m20260505_000044_add_note_versions.rs"]
 mod m20260505_000044_add_note_versions;
+#[path = "../migrations/m20260505_000045_create_support_tickets.rs"]
+mod m20260505_000045_create_support_tickets;
 
 pub struct Migrator;
 
@@ -139,6 +141,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260505_000042_create_notes::Migration),
             Box::new(m20260505_000043_add_note_folders_and_visibility::Migration),
             Box::new(m20260505_000044_add_note_versions::Migration),
+            Box::new(m20260505_000045_create_support_tickets::Migration),
         ]
     }
 }

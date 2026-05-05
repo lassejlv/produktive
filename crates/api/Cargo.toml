@@ -25,6 +25,7 @@ rand_core.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 flaremail-rs.workspace = true
+mail-parser.workspace = true
 sea-orm.workspace = true
 sea-orm-migration.workspace = true
 serde.workspace = true

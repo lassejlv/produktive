@@ -34,7 +34,8 @@ use http::{
     issue_status_routes, label_routes, mcp_key_routes, member_routes, note_routes,
     oauth_metadata_routes, oauth_routes, onboarding_routes, org_invitation_routes,
     preferences_routes, project_routes, public_api_routes, realtime_routes, role_routes,
-    slack_routes, spawn_github_auto_importer, tabs_routes, unsubscribe_routes, waitlist_routes,
+    slack_routes, spawn_github_auto_importer, support_admin_routes, support_routes, tabs_routes,
+    unsubscribe_routes, waitlist_routes,
 };
 use produktive_ai::AiClient;
 use sea_orm::Database;
@@ -95,6 +96,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(oauth_metadata_routes())
         .nest("/api/auth", auth_routes())
         .nest("/api/admin", admin_routes())
+        .nest("/api/admin/support", support_admin_routes())
         .nest("/api/oauth", oauth_routes())
         .nest("/api/v1", public_api_routes())
         .nest("/api/ai", ai_routes())
@@ -107,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/favorites", favorite_routes())
         .nest("/api/github", github_routes())
         .nest("/api/slack", slack_routes())
+        .nest("/api/support", support_routes())
         .nest("/api/inbox", inbox_routes())
         .nest("/api/invitations", invitation_routes())
         .nest("/api/organizations/me", org_invitation_routes())

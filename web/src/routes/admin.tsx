@@ -8,17 +8,23 @@ import {
   getAdminSession,
   getAdminUser,
   getGrowthAnalytics,
+  getSupportTicket,
   listAdminOrganizations,
   listAdminUsers,
   listAuditEvents,
+  listSupportTickets,
+  replyToSupportTicket,
+  retrySupportMessage,
   suspendAdminOrganization,
   suspendAdminUser,
+  updateSupportTicket,
   unsuspendAdminOrganization,
   unsuspendAdminUser,
   type AdminOrganizationSummary,
   type AdminUserSummary,
   type AuditEvent,
   type GrowthPoint,
+  type SupportTicketSummary,
 } from "@/lib/admin-api";
 import { signOut } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
@@ -27,7 +33,7 @@ export const Route = createFileRoute("/admin")({
   component: AdminDashboard,
 });
 
-type Section = "overview" | "users" | "organizations" | "audit";
+type Section = "overview" | "users" | "organizations" | "support" | "audit";
 type SuspensionTarget =
   | { type: "user"; id: string; label: string; suspended: boolean }
   | { type: "organization"; id: string; label: string; suspended: boolean };
@@ -41,6 +47,9 @@ function AdminDashboard() {
   const [userStatus, setUserStatus] = useState("all");
   const [orgSearch, setOrgSearch] = useState("");
   const [orgStatus, setOrgStatus] = useState("all");
+  const [supportSearch, setSupportSearch] = useState("");
+  const [supportStatus, setSupportStatus] = useState("open");
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [suspensionTarget, setSuspensionTarget] = useState<SuspensionTarget | null>(null);
@@ -71,6 +80,20 @@ function AdminDashboard() {
     queryFn: () => listAuditEvents(),
     enabled: admin.isSuccess,
   });
+  const supportTickets = useQuery({
+    queryKey: ["admin", "support", "tickets", supportSearch, supportStatus],
+    queryFn: () =>
+      listSupportTickets({
+        search: supportSearch,
+        status: supportStatus === "all" ? undefined : supportStatus,
+      }),
+    enabled: admin.isSuccess,
+  });
+  const supportDetail = useQuery({
+    queryKey: ["admin", "support", "ticket", selectedTicketId],
+    queryFn: () => getSupportTicket(selectedTicketId!),
+    enabled: Boolean(selectedTicketId) && admin.isSuccess,
+  });
   const userDetail = useQuery({
     queryKey: ["admin", "user", selectedUserId],
     queryFn: () => getAdminUser(selectedUserId!),
@@ -90,7 +113,53 @@ function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ["admin", "audit"] }),
       queryClient.invalidateQueries({ queryKey: ["admin", "user"] }),
       queryClient.invalidateQueries({ queryKey: ["admin", "organization"] }),
+      queryClient.invalidateQueries({ queryKey: ["admin", "support"] }),
     ]);
+
+  const supportReplyMutation = useMutation({
+    mutationFn: (input: { id: string; bodyText: string; closeAfterReply?: boolean }) =>
+      replyToSupportTicket(input.id, {
+        bodyText: input.bodyText,
+        closeAfterReply: input.closeAfterReply,
+      }),
+    onSuccess: async (result) => {
+      setSelectedTicketId(result.ticket.ticket.id);
+      await queryClient.invalidateQueries({ queryKey: ["admin", "support"] });
+      toast.success(
+        result.message.deliveryStatus === "sent" ? "Reply sent" : "Reply saved as failed",
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Reply failed");
+    },
+  });
+
+  const supportUpdateMutation = useMutation({
+    mutationFn: (input: {
+      id: string;
+      status?: string;
+      priority?: string;
+      assignedAdminId?: string | null;
+    }) => updateSupportTicket(input.id, input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin", "support"] });
+      toast.success("Ticket updated");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Ticket update failed");
+    },
+  });
+
+  const supportRetryMutation = useMutation({
+    mutationFn: retrySupportMessage,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin", "support"] });
+      toast.success("Retry complete");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Retry failed");
+    },
+  });
 
   const suspendMutation = useMutation({
     mutationFn: async (input: { target: SuspensionTarget; reason: string; note?: string }) => {
@@ -153,21 +222,28 @@ function AdminDashboard() {
             <p className="mt-1 truncate text-[12px] text-fg-muted">{adminData.user.email}</p>
           </div>
           <nav className="space-y-1">
-            {(["overview", "users", "organizations", "audit"] as Section[]).map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => setSection(item)}
-                className={cn(
-                  "flex h-8 w-full items-center justify-between rounded-[6px] px-2 text-left text-[13px] capitalize transition-colors",
-                  section === item ? "bg-surface text-fg" : "text-fg-muted hover:bg-surface",
-                )}
-              >
-                {item}
-                {item === "users" && totals ? <Badge>{totals.users}</Badge> : null}
-                {item === "organizations" && totals ? <Badge>{totals.organizations}</Badge> : null}
-              </button>
-            ))}
+            {(["overview", "users", "organizations", "support", "audit"] as Section[]).map(
+              (item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => setSection(item)}
+                  className={cn(
+                    "flex h-8 w-full items-center justify-between rounded-[6px] px-2 text-left text-[13px] capitalize transition-colors",
+                    section === item ? "bg-surface text-fg" : "text-fg-muted hover:bg-surface",
+                  )}
+                >
+                  {item}
+                  {item === "users" && totals ? <Badge>{totals.users}</Badge> : null}
+                  {item === "organizations" && totals ? (
+                    <Badge>{totals.organizations}</Badge>
+                  ) : null}
+                  {item === "support" ? (
+                    <Badge>{supportTickets.data?.page.total ?? 0}</Badge>
+                  ) : null}
+                </button>
+              ),
+            )}
           </nav>
           <button
             type="button"
@@ -245,6 +321,32 @@ function AdminDashboard() {
             ) : null}
             {section === "audit" ? (
               <AuditView events={audit.data?.events ?? []} isLoading={audit.isLoading} />
+            ) : null}
+            {section === "support" ? (
+              <SupportView
+                tickets={supportTickets.data?.tickets ?? []}
+                pageTotal={supportTickets.data?.page.total ?? 0}
+                search={supportSearch}
+                status={supportStatus}
+                isLoading={supportTickets.isLoading}
+                selected={selectedTicketId}
+                detail={supportDetail.data}
+                replyBusy={supportReplyMutation.isPending}
+                updateBusy={supportUpdateMutation.isPending}
+                retryBusy={supportRetryMutation.isPending}
+                onSearch={setSupportSearch}
+                onStatus={setSupportStatus}
+                onSelect={setSelectedTicketId}
+                onReply={(bodyText, closeAfterReply) => {
+                  if (!selectedTicketId) return;
+                  supportReplyMutation.mutate({ id: selectedTicketId, bodyText, closeAfterReply });
+                }}
+                onUpdate={(input) => {
+                  if (!selectedTicketId) return;
+                  supportUpdateMutation.mutate({ id: selectedTicketId, ...input });
+                }}
+                onRetry={(messageId) => supportRetryMutation.mutate(messageId)}
+              />
             ) : null}
           </div>
         </section>
@@ -590,6 +692,262 @@ function AuditView({ events, isLoading }: { events: AuditEvent[]; isLoading: boo
   );
 }
 
+function SupportView({
+  tickets,
+  pageTotal,
+  search,
+  status,
+  isLoading,
+  selected,
+  detail,
+  replyBusy,
+  updateBusy,
+  retryBusy,
+  onSearch,
+  onStatus,
+  onSelect,
+  onReply,
+  onUpdate,
+  onRetry,
+}: {
+  tickets: SupportTicketSummary[];
+  pageTotal: number;
+  search: string;
+  status: string;
+  isLoading: boolean;
+  selected: string | null;
+  detail: Awaited<ReturnType<typeof getSupportTicket>> | undefined;
+  replyBusy: boolean;
+  updateBusy: boolean;
+  retryBusy: boolean;
+  onSearch: (value: string) => void;
+  onStatus: (value: string) => void;
+  onSelect: (value: string) => void;
+  onReply: (bodyText: string, closeAfterReply: boolean) => void;
+  onUpdate: (input: {
+    status?: string;
+    priority?: string;
+    assignedAdminId?: string | null;
+  }) => void;
+  onRetry: (messageId: string) => void;
+}) {
+  const [reply, setReply] = useState("");
+  const [closeAfterReply, setCloseAfterReply] = useState(false);
+  const selectedTicket = detail?.ticket;
+
+  const submitReply = (event: FormEvent) => {
+    event.preventDefault();
+    if (!selected || !reply.trim() || replyBusy) return;
+    onReply(reply, closeAfterReply);
+    setReply("");
+    setCloseAfterReply(false);
+  };
+
+  return (
+    <div className="grid grid-cols-[360px_minmax(0,1fr)_280px] gap-4">
+      <section className="min-w-0 border border-border-subtle bg-surface/35">
+        <div className="space-y-3 p-3">
+          <input
+            value={search}
+            onChange={(event) => onSearch(event.target.value)}
+            placeholder="Search tickets"
+            className="h-9 w-full rounded-[6px] border border-border bg-bg px-3 text-[13px] outline-none focus:border-accent"
+          />
+          <div className="grid grid-cols-4 gap-1">
+            {["open", "pending", "closed", "all"].map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => onStatus(item)}
+                className={cn(
+                  "h-8 rounded-[6px] border text-[11px] capitalize",
+                  status === item
+                    ? "border-accent bg-accent/10 text-accent"
+                    : "border-border-subtle text-fg-muted hover:bg-surface",
+                )}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+          <p className="font-mono text-[11px] text-fg-faint">{pageTotal} tickets</p>
+        </div>
+        <div className="divide-y divide-border-subtle">
+          {tickets.map((ticket) => (
+            <button
+              key={ticket.id}
+              type="button"
+              onClick={() => onSelect(ticket.id)}
+              className={cn(
+                "block w-full px-3 py-3 text-left hover:bg-surface",
+                selected === ticket.id && "bg-surface",
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="truncate text-[13px] text-fg">{ticket.subject}</p>
+                <TicketStatus status={ticket.status} />
+              </div>
+              <p className="mt-1 truncate text-[12px] text-fg-faint">
+                {ticket.customerName ?? ticket.customerEmail}
+              </p>
+              <div className="mt-2 flex items-center justify-between font-mono text-[10px] text-fg-faint">
+                <span>{ticket.number}</span>
+                <span>{shortDate(ticket.lastMessageAt)}</span>
+              </div>
+            </button>
+          ))}
+          {isLoading ? <p className="p-4 text-[12px] text-fg-faint">Loading tickets...</p> : null}
+          {!isLoading && tickets.length === 0 ? (
+            <p className="p-4 text-[12px] text-fg-faint">No support tickets.</p>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="min-w-0 border border-border-subtle bg-surface/35">
+        {detail ? (
+          <div className="flex h-[calc(100vh-120px)] flex-col">
+            <div className="border-b border-border-subtle p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-mono text-[10px] text-fg-faint">{detail.ticket.number}</p>
+                  <h3 className="mt-1 truncate text-[18px] font-medium">{detail.ticket.subject}</h3>
+                  <p className="mt-1 truncate text-[12px] text-fg-faint">
+                    {detail.ticket.customerEmail}
+                  </p>
+                </div>
+                <TicketStatus status={detail.ticket.status} />
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
+              {detail.messages.map((message) => (
+                <article
+                  key={message.id}
+                  className={cn(
+                    "max-w-[78%] border border-border-subtle p-3",
+                    message.direction === "outbound" ? "ml-auto bg-accent/10" : "bg-bg",
+                  )}
+                >
+                  <div className="mb-2 flex items-center justify-between gap-3 text-[11px]">
+                    <p className="truncate text-fg-muted">
+                      {message.direction === "outbound" ? message.toEmail : message.fromEmail}
+                    </p>
+                    <span className="font-mono text-fg-faint">{shortDate(message.createdAt)}</span>
+                  </div>
+                  <p className="whitespace-pre-wrap text-[13px] leading-6 text-fg">
+                    {message.bodyText ?? stripHtml(message.bodyHtml ?? "")}
+                  </p>
+                  {message.deliveryStatus === "failed" ? (
+                    <div className="mt-3 border border-danger/40 bg-danger/10 p-2 text-[11px] text-danger">
+                      <p>{message.deliveryError ?? "Email send failed"}</p>
+                      <button
+                        type="button"
+                        disabled={retryBusy}
+                        onClick={() => onRetry(message.id)}
+                        className="mt-2 h-7 rounded-[6px] border border-danger/50 px-2 disabled:opacity-50"
+                      >
+                        Retry send
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="mt-3 font-mono text-[10px] text-fg-faint">
+                      {message.deliveryStatus}
+                    </p>
+                  )}
+                </article>
+              ))}
+            </div>
+            <form onSubmit={submitReply} className="border-t border-border-subtle p-3">
+              <textarea
+                value={reply}
+                onChange={(event) => setReply(event.target.value)}
+                placeholder="Reply to customer..."
+                className="min-h-28 w-full resize-none rounded-[6px] border border-border bg-bg px-3 py-2 text-[13px] leading-6 text-fg outline-none focus:border-accent"
+              />
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <label className="flex items-center gap-2 text-[12px] text-fg-muted">
+                  <input
+                    type="checkbox"
+                    checked={closeAfterReply}
+                    onChange={(event) => setCloseAfterReply(event.target.checked)}
+                  />
+                  Close after reply
+                </label>
+                <button
+                  type="submit"
+                  disabled={!reply.trim() || replyBusy}
+                  className="h-9 rounded-[6px] bg-accent px-3 text-[13px] text-white disabled:opacity-50"
+                >
+                  {replyBusy ? "Sending..." : "Send reply"}
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : (
+          <EmptyDetail label="Select a ticket" />
+        )}
+      </section>
+
+      <aside className="border border-border-subtle bg-surface/35 p-4">
+        {selectedTicket ? (
+          <div className="space-y-4">
+            <PanelTitle title="Ticket" meta={selectedTicket.number} />
+            <label className="block text-[12px] text-fg-muted">
+              Status
+              <select
+                value={selectedTicket.status}
+                disabled={updateBusy}
+                onChange={(event) => onUpdate({ status: event.target.value })}
+                className="mt-1 h-9 w-full rounded-[6px] border border-border bg-bg px-2 text-[12px] text-fg"
+              >
+                <option value="open">Open</option>
+                <option value="pending">Pending</option>
+                <option value="closed">Closed</option>
+              </select>
+            </label>
+            <label className="block text-[12px] text-fg-muted">
+              Priority
+              <select
+                value={selectedTicket.priority}
+                disabled={updateBusy}
+                onChange={(event) => onUpdate({ priority: event.target.value })}
+                className="mt-1 h-9 w-full rounded-[6px] border border-border bg-bg px-2 text-[12px] text-fg"
+              >
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </label>
+            <div className="border border-border-subtle p-3 text-[12px]">
+              <p className="text-fg-faint">Customer</p>
+              <p className="mt-1 truncate text-fg">{selectedTicket.customerName ?? "Unknown"}</p>
+              <p className="truncate text-fg-muted">{selectedTicket.customerEmail}</p>
+            </div>
+            <div className="border border-border-subtle p-3 text-[12px]">
+              <p className="text-fg-faint">Assigned</p>
+              <p className="mt-1 truncate text-fg-muted">
+                {detail?.assignedAdmin?.email ?? "Unassigned"}
+              </p>
+            </div>
+            <PanelTitle title="Events" meta={`${detail?.events.length ?? 0}`} />
+            <div className="max-h-72 space-y-2 overflow-auto">
+              {detail?.events.map((event) => (
+                <div key={event.id} className="border border-border-subtle p-2">
+                  <p className="text-[12px] text-fg">{event.eventType.replace(/_/g, " ")}</p>
+                  <p className="font-mono text-[10px] text-fg-faint">
+                    {shortDate(event.createdAt)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <EmptyDetail label="No ticket selected" />
+        )}
+      </aside>
+    </div>
+  );
+}
+
 function SuspensionDialog({
   target,
   busy,
@@ -864,6 +1222,23 @@ function Status({ suspended }: { suspended: boolean }) {
   );
 }
 
+function TicketStatus({ status }: { status: SupportTicketSummary["status"] }) {
+  return (
+    <span
+      className={cn(
+        "shrink-0 font-mono text-[10px]",
+        status === "closed"
+          ? "text-fg-faint"
+          : status === "pending"
+            ? "text-accent"
+            : "text-success",
+      )}
+    >
+      {status}
+    </span>
+  );
+}
+
 function Badge({ children }: { children: ReactNode }) {
   return <span className="font-mono text-[10px] text-fg-faint">{children}</span>;
 }
@@ -900,4 +1275,11 @@ function shortDate(value: string | null) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(
     new Date(value),
   );
+}
+
+function stripHtml(value: string) {
+  return value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
