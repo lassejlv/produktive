@@ -345,6 +345,8 @@ async fn update_note(
     Json(payload): Json<UpdateNoteRequest>,
 ) -> Result<Json<NoteEnvelope>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    let write_lock = state.note_write_lock(&id);
+    let _guard = write_lock.lock().await;
     let existing = find_note(&state, &auth.organization.id, &auth.user.id, &id).await?;
     let now = Utc::now().fixed_offset();
     let body_update = if let Some(body) = payload.body_markdown {

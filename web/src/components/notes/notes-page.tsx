@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { NoteEditor } from "@/components/notes/note-editor";
 import { Button } from "@/components/ui/button";
@@ -329,6 +329,19 @@ function NoteDetail({ noteId, folders }: { noteId: string; folders: NoteFolder[]
   const [historyOpen, setHistoryOpen] = useState(false);
   const [commitDialogOpen, setCommitDialogOpen] = useState(false);
 
+  type Snapshot = {
+    title: string;
+    bodyMarkdown: string;
+    folderId: string | null;
+    visibility: Note["visibility"];
+  };
+  const lastSavedRef = useRef<Snapshot | null>(null);
+  const savingRef = useRef(false);
+  const localRef = useRef<Snapshot>({ title, bodyMarkdown, folderId, visibility });
+  localRef.current = { title, bodyMarkdown, folderId, visibility };
+  const updateMutationRef = useRef(updateMutation);
+  updateMutationRef.current = updateMutation;
+
   useEffect(() => {
     if (!note) return;
     setTitle(note.title);
@@ -336,35 +349,65 @@ function NoteDetail({ noteId, folders }: { noteId: string; folders: NoteFolder[]
     setFolderId(note.folderId);
     setVisibility(note.visibility);
     setSaveState("saved");
+    lastSavedRef.current = {
+      title: note.title,
+      bodyMarkdown: note.bodyMarkdown,
+      folderId: note.folderId,
+      visibility: note.visibility,
+    };
   }, [note?.id]);
 
   const dirty = Boolean(
-    note &&
-      (title !== note.title ||
-        bodyMarkdown !== note.bodyMarkdown ||
-        folderId !== note.folderId ||
-        visibility !== note.visibility),
+    lastSavedRef.current &&
+      (title !== lastSavedRef.current.title ||
+        bodyMarkdown !== lastSavedRef.current.bodyMarkdown ||
+        folderId !== lastSavedRef.current.folderId ||
+        visibility !== lastSavedRef.current.visibility),
   );
 
-  useEffect(() => {
-    if (!note || !dirty) return;
+  const isSnapshotDirty = (a: Snapshot, b: Snapshot) =>
+    a.title !== b.title ||
+    a.bodyMarkdown !== b.bodyMarkdown ||
+    a.folderId !== b.folderId ||
+    a.visibility !== b.visibility;
+
+  const runSave = useCallback((id: string) => {
+    if (savingRef.current) return;
+    const baseline = lastSavedRef.current;
+    if (!baseline) return;
+    const snapshot = { ...localRef.current };
+    if (!isSnapshotDirty(snapshot, baseline)) return;
+    savingRef.current = true;
     setSaveState("saving");
-    const timeout = window.setTimeout(() => {
-      updateMutation.mutate(
-        { id: note.id, patch: { title, bodyMarkdown, folderId, visibility } },
-        {
-          onSuccess: () => setSaveState("saved"),
-          onError: (mutationError) => {
-            setSaveState("error");
-            toast.error(
-              mutationError instanceof Error ? mutationError.message : "Failed to save note",
-            );
-          },
+    updateMutationRef.current.mutate(
+      { id, patch: snapshot },
+      {
+        onSuccess: () => {
+          lastSavedRef.current = snapshot;
+          setSaveState("saved");
         },
-      );
-    }, 650);
+        onError: (mutationError) => {
+          setSaveState("error");
+          toast.error(
+            mutationError instanceof Error ? mutationError.message : "Failed to save note",
+          );
+        },
+        onSettled: () => {
+          savingRef.current = false;
+          const next = lastSavedRef.current;
+          if (!next) return;
+          if (isSnapshotDirty(localRef.current, next)) runSave(id);
+        },
+      },
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!dirty) return;
+    setSaveState("saving");
+    const timeout = window.setTimeout(() => runSave(noteId), 650);
     return () => window.clearTimeout(timeout);
-  }, [bodyMarkdown, dirty, folderId, note, title, updateMutation, visibility]);
+  }, [noteId, title, bodyMarkdown, folderId, visibility, dirty, runSave]);
 
   const archive = () => {
     if (!note) return;

@@ -37,6 +37,7 @@ export function useCreateNote() {
 export function useUpdateNote() {
   const qc = useQueryClient();
   return useMutation({
+    scope: { id: "note-update" },
     mutationFn: ({ id, patch }: UpdateVars) => updateNote(id, patch).then((r) => r.note),
     onMutate: async ({ id, patch }) => {
       await qc.cancelQueries({ queryKey: queryKeys.notes.all });
@@ -50,7 +51,10 @@ export function useUpdateNote() {
       if (ctx?.prevDetail) qc.setQueryData(queryKeys.notes.detail(id), ctx.prevDetail);
     },
     onSuccess: (note) => {
-      qc.setQueryData(queryKeys.notes.detail(note.id), note);
+      qc.setQueryData<Note>(queryKeys.notes.detail(note.id), (current) => {
+        if (!current) return note;
+        return current.updatedAt > note.updatedAt ? current : note;
+      });
       qc.invalidateQueries({ queryKey: queryKeys.notes.all });
       qc.invalidateQueries({ queryKey: queryKeys.notes.versions(note.id) });
     },
