@@ -554,6 +554,8 @@ function NoteDetail({ noteId, folders }: { noteId: string; folders: NoteFolder[]
       {commitDialogOpen ? (
         <CommitDialog
           busy={commitMutation.isPending}
+          baseline={note.committedBodyMarkdown ?? ""}
+          draft={bodyMarkdown}
           onClose={() => setCommitDialogOpen(false)}
           onSubmit={submitCommit}
         />
@@ -728,28 +730,42 @@ function CreateFolderDialog({
 
 function CommitDialog({
   busy,
+  baseline,
+  draft,
   onClose,
   onSubmit,
 }: {
   busy: boolean;
+  baseline: string;
+  draft: string;
   onClose: () => void;
   onSubmit: (message: string) => Promise<void>;
 }) {
   const [message, setMessage] = useState("");
+  const diff = useMemo(() => lineDiff(baseline, draft), [baseline, draft]);
+  const adds = diff.filter((row) => row.type === "add").length;
+  const removes = diff.filter((row) => row.type === "remove").length;
+  const hasChanges = adds + removes > 0;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (busy) return;
+    if (busy || !hasChanges) return;
     await onSubmit(message);
   };
 
   return (
-    <Dialog open onClose={onClose} className="max-w-md">
+    <Dialog open onClose={onClose} className="max-w-2xl">
       <form onSubmit={submit}>
         <DialogHeader>
           <DialogTitle>Commit changes</DialogTitle>
+          {hasChanges ? (
+            <span className="font-mono text-[11px] text-fg-faint">
+              <span className="text-success">+{adds}</span>{" "}
+              <span className="text-danger">−{removes}</span>
+            </span>
+          ) : null}
         </DialogHeader>
-        <DialogContent>
+        <DialogContent className="space-y-3">
           <label className="block">
             <span className="mb-1 block text-[12px] text-fg-muted">
               Message <span className="text-fg-faint">(optional)</span>
@@ -761,18 +777,98 @@ function CommitDialog({
               autoFocus
             />
           </label>
+          <div>
+            <span className="mb-1 block text-[12px] text-fg-muted">Diff</span>
+            <DiffView rows={diff} />
+          </div>
         </DialogContent>
         <DialogFooter>
           <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button type="submit" size="sm" disabled={busy}>
+          <Button type="submit" size="sm" disabled={busy || !hasChanges}>
             {busy ? "Committing…" : "Commit"}
           </Button>
         </DialogFooter>
       </form>
     </Dialog>
   );
+}
+
+type DiffRow = { type: "add" | "remove" | "context"; line: string };
+
+function DiffView({ rows }: { rows: DiffRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <p className="rounded-md border border-border-subtle bg-surface px-3 py-6 text-center text-[12px] text-fg-faint">
+        No changes since last commit.
+      </p>
+    );
+  }
+  return (
+    <pre className="max-h-72 overflow-auto rounded-md border border-border-subtle bg-surface font-mono text-[12px] leading-5">
+      <code className="block">
+        {rows.map((row, index) => (
+          <div
+            key={index}
+            className={cn(
+              "flex gap-2 whitespace-pre px-3",
+              row.type === "add" && "bg-success/10 text-fg",
+              row.type === "remove" && "bg-danger/10 text-fg",
+              row.type === "context" && "text-fg-faint",
+            )}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                "w-3 shrink-0 select-none",
+                row.type === "add" && "text-success",
+                row.type === "remove" && "text-danger",
+              )}
+            >
+              {row.type === "add" ? "+" : row.type === "remove" ? "−" : " "}
+            </span>
+            <span className="min-w-0 flex-1">{row.line || " "}</span>
+          </div>
+        ))}
+      </code>
+    </pre>
+  );
+}
+
+function lineDiff(a: string, b: string): DiffRow[] {
+  const aLines = a.split("\n");
+  const bLines = b.split("\n");
+  const n = aLines.length;
+  const m = bLines.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () =>
+    Array.from({ length: m + 1 }, () => 0),
+  );
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] =
+        aLines[i] === bLines[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const out: DiffRow[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (aLines[i] === bLines[j]) {
+      out.push({ type: "context", line: aLines[i] });
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      out.push({ type: "remove", line: aLines[i] });
+      i++;
+    } else {
+      out.push({ type: "add", line: bLines[j] });
+      j++;
+    }
+  }
+  while (i < n) out.push({ type: "remove", line: aLines[i++] });
+  while (j < m) out.push({ type: "add", line: bLines[j++] });
+  return out;
 }
 
 function noteSnippet(markdown: string) {

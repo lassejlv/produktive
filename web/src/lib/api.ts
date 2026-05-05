@@ -156,6 +156,7 @@ export type Note = {
   folderId: string | null;
   title: string;
   bodyMarkdown: string;
+  committedBodyMarkdown: string | null;
   bodySnippet: string | null;
   bodySha256: string | null;
   currentVersionId: string | null;

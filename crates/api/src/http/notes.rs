@@ -151,6 +151,7 @@ struct NoteResponse {
     folder_id: Option<String>,
     title: String,
     body_markdown: String,
+    committed_body_markdown: Option<String>,
     body_snippet: Option<String>,
     body_sha256: Option<String>,
     current_version_id: Option<String>,
@@ -866,11 +867,18 @@ async fn note_response(
         Some(version) => note.body_sha256.as_deref() != Some(version.body_sha256.as_str()),
         None => true,
     };
+    let committed_body_markdown = match current_version.as_ref() {
+        Some(version) if has_uncommitted_changes => {
+            Some(note_storage::read_body_key(state, &version.object_key).await?)
+        }
+        _ => None,
+    };
     Ok(NoteResponse {
         id: note.id,
         folder_id: note.folder_id,
         title: note.title,
         body_markdown,
+        committed_body_markdown,
         body_snippet: note.body_snippet,
         body_sha256: note.body_sha256,
         current_version_id: note.current_version_id,
@@ -902,6 +910,7 @@ async fn note_summary_response(
         folder_id: note.folder_id,
         title: note.title,
         body_markdown: String::new(),
+        committed_body_markdown: None,
         body_snippet: note.body_snippet,
         body_sha256: note.body_sha256,
         current_version_id: note.current_version_id,
