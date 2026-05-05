@@ -1,3 +1,6 @@
+import { EmailMessage } from "cloudflare:email";
+import { createMimeMessage } from "mimetext";
+
 interface Env {
   EMAIL: SendEmail;
   SUPPORT_API_URL: string;
@@ -25,6 +28,13 @@ type EmailSendBody = {
   text: string;
   html?: string;
   headers?: Record<string, string>;
+};
+
+type InboundApiResponse = {
+  ticketId: string;
+  ticketNumber: string;
+  messageId: string;
+  createdTicket: boolean;
 };
 
 export default {
@@ -56,6 +66,10 @@ export default {
 
       if (!response.ok) {
         throw new Error(`Produktive API returned ${response.status}: ${await response.text()}`);
+      }
+      const result = (await response.json()) as InboundApiResponse;
+      if (result.createdTicket) {
+        await sendNativeAutoReply(message, env, result.ticketNumber);
       }
     } catch (error) {
       console.error("Support email ingestion failed", error);
@@ -115,6 +129,30 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>;
+
+async function sendNativeAutoReply(
+  message: ForwardableEmailMessage,
+  env: Env,
+  ticketNumber: string,
+): Promise<void> {
+  const text = `Hey,
+
+We have received your message (${ticketNumber}). Our support team will review it and get back to you as soon as possible.
+
+Support can take up to 1-2 business days.
+
+Produktive Support`;
+  const msg = createMimeMessage();
+  const inboundMessageId = message.headers.get("Message-ID");
+  if (inboundMessageId) msg.setHeader("In-Reply-To", inboundMessageId);
+  msg.setHeader("X-Produktive-Support-Ticket", ticketNumber);
+  msg.setSender({ name: "Produktive Support", addr: env.SUPPORT_FROM_EMAIL });
+  msg.setRecipient(message.from);
+  msg.setSubject(`We received your message (${ticketNumber})`);
+  msg.addMessage({ contentType: "text/plain", data: text });
+
+  await message.reply(new EmailMessage(env.SUPPORT_FROM_EMAIL, message.from, msg.asRaw()));
+}
 
 async function streamToArrayBuffer(stream: ReadableStream<Uint8Array>): Promise<ArrayBuffer> {
   return new Response(stream).arrayBuffer();
