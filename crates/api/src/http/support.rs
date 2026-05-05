@@ -189,16 +189,6 @@ async fn ingest_inbound_email(
     )
     .await?;
 
-    if created_ticket {
-        if let Err(error) = send_new_ticket_auto_reply(&state, &ticket).await {
-            tracing::warn!(
-                %error,
-                ticket_id = %ticket.id,
-                "failed to create support auto-reply"
-            );
-        }
-    }
-
     Ok(Json(InboundEmailResponse {
         ticket_id: ticket.id,
         ticket_number: ticket.number,
@@ -888,28 +878,6 @@ async fn create_pending_reply(
     .insert(&state.db)
     .await
     .map_err(ApiError::from)
-}
-
-async fn send_new_ticket_auto_reply(
-    state: &AppState,
-    ticket: &support_ticket::Model,
-) -> Result<(), ApiError> {
-    let body = "Hey,\n\nWe have received your message. Our support team will review it and get back to you as soon as possible.\n\nSupport can take up to 1-2 business days.";
-    let message = create_pending_system_reply(state, ticket, body).await?;
-    let sent = send_support_reply(state, ticket, &message).await;
-    let updated_message = update_delivery_result(state, message, sent).await?;
-    insert_event(
-        state,
-        &ticket.id,
-        None,
-        "auto_reply",
-        json!({
-            "messageId": updated_message.id,
-            "deliveryStatus": updated_message.delivery_status,
-            "deliveryError": updated_message.delivery_error,
-        }),
-    )
-    .await
 }
 
 async fn send_status_change_email(
