@@ -32,14 +32,15 @@ pub async fn put_object(
     };
 
     let payload_hash = hex::encode(Sha256::digest(&bytes));
+    let content_length = bytes.len().to_string();
     let now = Utc::now();
     let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
     let short_date = now.format("%Y%m%d").to_string();
     let canonical_uri = parsed.path();
     let canonical_headers = format!(
-        "content-type:{content_type}\nhost:{host_header}\nx-amz-content-sha256:{payload_hash}\nx-amz-date:{amz_date}\n"
+        "content-length:{content_length}\ncontent-type:{content_type}\nhost:{host_header}\nx-amz-content-sha256:{payload_hash}\nx-amz-date:{amz_date}\n"
     );
-    let signed_headers = "content-type;host;x-amz-content-sha256;x-amz-date";
+    let signed_headers = "content-length;content-type;host;x-amz-content-sha256;x-amz-date";
     let canonical_request =
         format!("PUT\n{canonical_uri}\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}");
     let scope = format!("{short_date}/{}/s3/aws4_request", config.region);
@@ -61,6 +62,7 @@ pub async fn put_object(
     let response = reqwest::Client::new()
         .put(&url)
         .header("authorization", authorization)
+        .header("content-length", content_length)
         .header("content-type", content_type)
         .header("x-amz-content-sha256", payload_hash)
         .header("x-amz-date", amz_date)
