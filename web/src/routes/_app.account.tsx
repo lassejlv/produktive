@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import {
   type AccountSession,
+  type TrustedTwoFactorDevice,
   type TwoFactorSetup,
   type TwoFactorStatus,
   deleteAccount,
@@ -22,10 +23,12 @@ import {
   enableTwoFactor,
   getTwoFactorStatus,
   listAccountSessions,
+  listTrustedTwoFactorDevices,
   regenerateTwoFactorBackupCodes,
   refreshSession,
   revokeAccountSession,
   revokeOtherAccountSessions,
+  revokeTrustedTwoFactorDevice,
   setupTwoFactor,
   uploadAccountIcon,
   useSession,
@@ -439,6 +442,7 @@ function ProfileIcon({ name, image }: { name: string; image?: string | null }) {
 
 function SecuritySectionBody() {
   const [status, setStatus] = useState<TwoFactorStatus | null>(null);
+  const [trustedDevices, setTrustedDevices] = useState<TrustedTwoFactorDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [setup, setSetup] = useState<TwoFactorSetup | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
@@ -450,7 +454,12 @@ function SecuritySectionBody() {
   const load = async () => {
     setLoading(true);
     try {
-      setStatus(await getTwoFactorStatus());
+      const [nextStatus, nextTrustedDevices] = await Promise.all([
+        getTwoFactorStatus(),
+        listTrustedTwoFactorDevices(),
+      ]);
+      setStatus(nextStatus);
+      setTrustedDevices(nextTrustedDevices.devices);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to load security settings");
     } finally {
@@ -560,6 +569,19 @@ function SecuritySectionBody() {
       toast.error(
         error instanceof Error ? error.message : "Failed to disable two-factor authentication",
       );
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const revokeTrustedDevice = async (deviceId: string) => {
+    setBusy(deviceId);
+    try {
+      await revokeTrustedTwoFactorDevice(deviceId);
+      setTrustedDevices((devices) => devices.filter((device) => device.id !== deviceId));
+      toast.success("Trusted device revoked");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to revoke trusted device");
     } finally {
       setBusy(null);
     }
@@ -718,6 +740,29 @@ function SecuritySectionBody() {
               {busy === "disable" ? "Disabling…" : "Disable two-factor"}
             </Button>
           </AccountSectionBlock>
+
+          <AccountSectionBlock
+            title="Trusted devices"
+            description="Browsers that can skip 2FA until their trust expires."
+          >
+            {trustedDevices.length === 0 ? (
+              <p className="m-0 text-[12.5px] text-fg-muted">No trusted devices.</p>
+            ) : (
+              <ul
+                className="m-0 list-none divide-y divide-border-subtle overflow-hidden rounded-md border border-border-subtle p-0"
+                aria-label="Trusted two-factor devices"
+              >
+                {trustedDevices.map((device) => (
+                  <TrustedTwoFactorDeviceListItem
+                    key={device.id}
+                    device={device}
+                    busy={busy}
+                    onRevoke={revokeTrustedDevice}
+                  />
+                ))}
+              </ul>
+            )}
+          </AccountSectionBlock>
         </>
       )}
 
@@ -791,6 +836,58 @@ function BackupCodesPanel({ codes }: { codes: string[] }) {
         Copy codes
       </Button>
     </div>
+  );
+}
+
+function TrustedTwoFactorDeviceListItem({
+  device,
+  busy,
+  onRevoke,
+}: {
+  device: TrustedTwoFactorDevice;
+  busy: string | null;
+  onRevoke: (id: string) => void | Promise<void>;
+}) {
+  return (
+    <li className="px-4 py-4">
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(78px,max-content)] sm:gap-8">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-[13px] font-medium tracking-[-0.01em] text-fg">
+              Trusted browser
+            </span>
+            {device.current ? (
+              <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-fg-faint">
+                Current
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 mb-0 font-mono text-[11px] leading-relaxed tracking-tight text-fg-muted">
+            <span className="tabular-nums">
+              last used {device.lastUsedAt ? formatDateTime(device.lastUsedAt) : "never"}
+            </span>
+            <MetaSep />
+            <span className="tabular-nums">expires {formatDateTime(device.expiresAt)}</span>
+            <MetaSep />
+            <span title={device.id} className="text-fg-faint tabular-nums">
+              id {sessionIdShort(device.id)}
+            </span>
+          </p>
+        </div>
+        <div className="flex items-start pt-px sm:justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={busy !== null}
+            className="-mr-2 h-8 px-2 text-[12px] font-medium text-fg-muted hover:bg-transparent hover:text-danger"
+            onClick={() => void onRevoke(device.id)}
+          >
+            {busy === device.id ? "Revoking…" : "Revoke"}
+          </Button>
+        </div>
+      </div>
+    </li>
   );
 }
 

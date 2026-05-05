@@ -85,6 +85,14 @@ pub fn routes() -> Router<AppState> {
         .route("/two-factor/disable", post(two_factor_disable))
         .route("/two-factor/fresh", post(two_factor_fresh))
         .route(
+            "/two-factor/trusted-devices",
+            get(list_trusted_two_factor_devices),
+        )
+        .route(
+            "/two-factor/trusted-devices/{id}",
+            delete(revoke_trusted_two_factor_device),
+        )
+        .route(
             "/two-factor/backup-codes",
             post(two_factor_regenerate_backup_codes),
         )
@@ -249,6 +257,22 @@ struct EmptyResponse {
 #[serde(rename_all = "camelCase")]
 struct SessionsResponse {
     sessions: Vec<SessionListItem>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrustedTwoFactorDevicesResponse {
+    devices: Vec<TrustedTwoFactorDeviceListItem>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrustedTwoFactorDeviceListItem {
+    id: String,
+    current: bool,
+    expires_at: chrono::DateTime<chrono::FixedOffset>,
+    last_used_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    created_at: chrono::DateTime<chrono::FixedOffset>,
 }
 
 #[derive(Serialize)]
@@ -670,6 +694,10 @@ async fn two_factor_disable(
         .filter(user_two_factor_backup_code::Column::UserId.eq(&auth.user.id))
         .exec(&txn)
         .await?;
+    user_two_factor_trusted_device::Entity::delete_many()
+        .filter(user_two_factor_trusted_device::Column::UserId.eq(&auth.user.id))
+        .exec(&txn)
+        .await?;
     user_two_factor::Entity::delete_many()
         .filter(user_two_factor::Column::UserId.eq(&auth.user.id))
         .exec(&txn)
@@ -868,6 +896,69 @@ async fn two_factor_fresh(
     verify_account_second_factor(&state, &auth.user, &payload.code).await?;
     mark_session_two_factor_verified(&state.db, auth.session).await?;
     Ok(Json(EmptyResponse { ok: true }))
+}
+
+async fn list_trusted_two_factor_devices(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<TrustedTwoFactorDevicesResponse>, ApiError> {
+    let auth = require_auth_without_two_factor_policy(&headers, &state).await?;
+    let now = Utc::now().fixed_offset();
+    let current_token_hash =
+        read_trusted_two_factor_device_cookie(&headers, &state).map(|token| hash_token(&token));
+    let devices = user_two_factor_trusted_device::Entity::find()
+        .filter(user_two_factor_trusted_device::Column::UserId.eq(&auth.user.id))
+        .filter(user_two_factor_trusted_device::Column::ExpiresAt.gt(now))
+        .order_by_desc(user_two_factor_trusted_device::Column::LastUsedAt)
+        .order_by_desc(user_two_factor_trusted_device::Column::CreatedAt)
+        .all(&state.db)
+        .await?
+        .into_iter()
+        .map(|device| TrustedTwoFactorDeviceListItem {
+            current: current_token_hash.as_deref() == Some(device.token_hash.as_str()),
+            id: device.id,
+            expires_at: device.expires_at,
+            last_used_at: device.last_used_at,
+            created_at: device.created_at,
+        })
+        .collect();
+
+    Ok(Json(TrustedTwoFactorDevicesResponse { devices }))
+}
+
+async fn revoke_trusted_two_factor_device(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    let auth = require_auth_without_two_factor_policy(&headers, &state).await?;
+    let device = user_two_factor_trusted_device::Entity::find_by_id(&id)
+        .filter(user_two_factor_trusted_device::Column::UserId.eq(&auth.user.id))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::NotFound("Trusted device not found".to_owned()))?;
+    let current_token_hash =
+        read_trusted_two_factor_device_cookie(&headers, &state).map(|token| hash_token(&token));
+    let revoke_current = current_token_hash.as_deref() == Some(device.token_hash.as_str());
+
+    user_two_factor_trusted_device::Entity::delete_by_id(device.id)
+        .exec(&state.db)
+        .await?;
+
+    let body = Json(EmptyResponse { ok: true });
+    if revoke_current {
+        Ok((
+            StatusCode::OK,
+            [(
+                header::SET_COOKIE,
+                clear_trusted_two_factor_device_cookie(&state)?,
+            )],
+            body,
+        )
+            .into_response())
+    } else {
+        Ok((StatusCode::OK, body).into_response())
+    }
 }
 
 async fn list_sessions(
@@ -1543,6 +1634,24 @@ fn trusted_two_factor_device_cookie(
 
 fn trusted_two_factor_device_cookie_name(state: &AppState) -> String {
     format!("{}_2fa_trusted", state.config.cookie_name)
+}
+
+fn clear_trusted_two_factor_device_cookie(
+    state: &AppState,
+) -> Result<header::HeaderValue, ApiError> {
+    let mut cookie = Cookie::build((trusted_two_factor_device_cookie_name(state), ""))
+        .path("/")
+        .http_only(true)
+        .same_site(SameSite::Lax)
+        .secure(state.config.cookie_secure)
+        .max_age(CookieDuration::seconds(0));
+
+    if let Some(domain) = &state.config.cookie_domain {
+        cookie = cookie.domain(domain.clone());
+    }
+
+    header::HeaderValue::from_str(&cookie.build().to_string())
+        .map_err(|error| ApiError::Internal(error.into()))
 }
 
 fn read_trusted_two_factor_device_cookie(headers: &HeaderMap, state: &AppState) -> Option<String> {

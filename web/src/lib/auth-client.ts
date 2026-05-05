@@ -127,6 +127,18 @@ type SessionsListResponse = {
   sessions: AccountSession[];
 };
 
+export type TrustedTwoFactorDevice = {
+  id: string;
+  current: boolean;
+  expiresAt: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+};
+
+type TrustedTwoFactorDevicesResponse = {
+  devices: TrustedTwoFactorDevice[];
+};
+
 export type TwoFactorStatus = {
   enabled: boolean;
   backupCodesRemaining: number;
@@ -292,6 +304,14 @@ export const revokeOtherAccountSessions = () =>
   });
 
 export const getTwoFactorStatus = () => requestJson<TwoFactorStatus>("/api/auth/two-factor/status");
+
+export const listTrustedTwoFactorDevices = () =>
+  requestJson<TrustedTwoFactorDevicesResponse>("/api/auth/two-factor/trusted-devices");
+
+export const revokeTrustedTwoFactorDevice = (id: string) =>
+  requestJson<{ ok: true }>(`/api/auth/two-factor/trusted-devices/${id}`, {
+    method: "DELETE",
+  });
 
 export const setupTwoFactor = (password: string) =>
   requestJson<TwoFactorSetup>("/api/auth/two-factor/setup", {
