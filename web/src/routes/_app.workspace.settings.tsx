@@ -2092,6 +2092,12 @@ function securityEventLabel(event: SecurityEvent) {
       return `${actor} changed ${target}'s role`;
     case "member.removed":
       return `${actor} removed ${target}`;
+    case "member.sessions_revoked": {
+      const revoked = typeof event.metadata.revoked === "number" ? event.metadata.revoked : null;
+      return revoked === null
+        ? `${actor} revoked ${target}'s sessions`
+        : `${actor} revoked ${revoked} session${revoked === 1 ? "" : "s"} for ${target}`;
+    }
     case "login.2fa_failed":
       return `${target} failed a 2FA login challenge`;
     case "login.success":

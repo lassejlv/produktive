@@ -24,6 +24,7 @@ import {
   deleteRole,
   removeMember,
   resetMemberTwoFactor,
+  revokeMemberSessions,
   resendInvitation,
   revokeInvitation,
   updateMemberRole,
@@ -75,6 +76,7 @@ export function MembersSettings({
   const canInvite = currentPermissions.has("members.invite");
   const canRemove = currentPermissions.has("members.remove");
   const canAssignRole = currentPermissions.has("members.assign_role");
+  const canRevokeMemberSessions = currentPermissions.has("workspace.security");
   const canManageRoles = currentRole === "owner";
   const canResetMemberTwoFactor = currentRole === "owner";
 
@@ -183,6 +185,33 @@ export function MembersSettings({
     });
   };
 
+  const onRevokeMemberSessions = (member: Member) => {
+    confirm({
+      title: "Revoke member sessions?",
+      description: `${member.name} will be signed out of this workspace on ${member.activeSessions} active session${
+        member.activeSessions === 1 ? "" : "s"
+      }.`,
+      confirmLabel: "Revoke sessions",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await requestFreshTwoFactorIfNeeded(currentUserTwoFactorEnabled);
+          const response = await revokeMemberSessions(member.id);
+          setMembers((current) =>
+            current.map((item) =>
+              item.id === member.id ? { ...item, activeSessions: 0 } : item,
+            ),
+          );
+          toast.success(
+            response.revoked === 1 ? "Revoked 1 session" : `Revoked ${response.revoked} sessions`,
+          );
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Failed to revoke sessions");
+        }
+      },
+    });
+  };
+
   return (
     <div>
       {dialog}
@@ -234,9 +263,11 @@ export function MembersSettings({
         canAssignRole={canAssignRole}
         canRemove={canRemove}
         canResetTwoFactor={canResetMemberTwoFactor}
+        canRevokeSessions={canRevokeMemberSessions}
         onChangeRole={onChangeMemberRole}
         onRemove={onRemoveMember}
         onResetTwoFactor={onResetMemberTwoFactor}
+        onRevokeSessions={onRevokeMemberSessions}
       />
 
       {invitations.length > 0 ? (
@@ -376,9 +407,11 @@ function MembersList({
   canAssignRole,
   canRemove,
   canResetTwoFactor,
+  canRevokeSessions,
   onChangeRole,
   onRemove,
   onResetTwoFactor,
+  onRevokeSessions,
 }: {
   loading: boolean;
   members: Member[];
@@ -389,9 +422,11 @@ function MembersList({
   canAssignRole: boolean;
   canRemove: boolean;
   canResetTwoFactor: boolean;
+  canRevokeSessions: boolean;
   onChangeRole: (member: Member, role: string) => void;
   onRemove: (member: Member) => void;
   onResetTwoFactor: (member: Member) => void;
+  onRevokeSessions: (member: Member) => void;
 }) {
   const roleByKey = useMemo(() => new Map(roles.map((role) => [role.key, role])), [roles]);
   if (loading) {
@@ -424,6 +459,11 @@ function MembersList({
         const canEditThisRole = canAssignRole && (!isPrivileged || canTouchPrivileged);
         const canRemoveThis = canRemove && !isSelf && (!isPrivileged || canTouchPrivileged);
         const canResetThisTwoFactor = canResetTwoFactor && !isSelf && member.twoFactorEnabled;
+        const canRevokeThisSessions =
+          canRevokeSessions &&
+          !isSelf &&
+          member.activeSessions > 0 &&
+          (!isPrivileged || canTouchPrivileged);
         return (
           <li
             key={member.id}
@@ -437,6 +477,7 @@ function MembersList({
               </p>
               <p className="m-0 mt-0.5 truncate text-[11px] text-fg-muted">{member.email}</p>
             </div>
+            <SessionCountBadge count={member.activeSessions} />
             <TwoFactorBadge enabled={member.twoFactorEnabled} />
             {canEditThisRole ? (
               <RoleSelect
@@ -450,11 +491,13 @@ function MembersList({
                 {roleByKey.get(member.role)?.name ?? member.role}
               </span>
             )}
-            {canRemoveThis || canResetThisTwoFactor ? (
+            {canRemoveThis || canResetThisTwoFactor || canRevokeThisSessions ? (
               <MemberRowMenu
                 canResetTwoFactor={canResetThisTwoFactor}
+                canRevokeSessions={canRevokeThisSessions}
                 canRemove={canRemoveThis}
                 onResetTwoFactor={() => onResetTwoFactor(member)}
+                onRevokeSessions={() => onRevokeSessions(member)}
                 onRemove={() => onRemove(member)}
               />
             ) : null}
@@ -462,6 +505,14 @@ function MembersList({
         );
       })}
     </ul>
+  );
+}
+
+function SessionCountBadge({ count }: { count: number }) {
+  return (
+    <span className="hidden shrink-0 rounded border border-border-subtle px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] text-fg-faint md:inline-flex">
+      {count} session{count === 1 ? "" : "s"}
+    </span>
   );
 }
 
@@ -482,13 +533,17 @@ function TwoFactorBadge({ enabled }: { enabled: boolean }) {
 
 function MemberRowMenu({
   canResetTwoFactor,
+  canRevokeSessions,
   canRemove,
   onResetTwoFactor,
+  onRevokeSessions,
   onRemove,
 }: {
   canResetTwoFactor: boolean;
+  canRevokeSessions: boolean;
   canRemove: boolean;
   onResetTwoFactor: () => void;
+  onRevokeSessions: () => void;
   onRemove: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -513,6 +568,16 @@ function MemberRowMenu({
         sideOffset={4}
         className="w-44 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-xl"
       >
+        {canRevokeSessions ? (
+          <RowMenuItem
+            onClick={() => {
+              setOpen(false);
+              onRevokeSessions();
+            }}
+          >
+            Revoke sessions
+          </RowMenuItem>
+        ) : null}
         {canResetTwoFactor ? (
           <RowMenuItem
             onClick={() => {

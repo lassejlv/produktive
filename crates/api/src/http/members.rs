@@ -51,6 +51,7 @@ struct MemberSummaryResponse {
     image: Option<String>,
     role: String,
     two_factor_enabled: bool,
+    active_sessions: u64,
 }
 
 async fn list_members(
@@ -70,6 +71,14 @@ async fn list_members(
             .one(&state.db)
             .await?
         {
+            let now = Utc::now().fixed_offset();
+            let active_sessions = session::Entity::find()
+                .filter(session::Column::UserId.eq(&user.id))
+                .filter(session::Column::ActiveOrganizationId.eq(&auth.organization.id))
+                .filter(session::Column::RevokedAt.is_null())
+                .filter(session::Column::ExpiresAt.gt(now))
+                .count(&state.db)
+                .await?;
             members.push(MemberSummaryResponse {
                 id: user.id,
                 name: user.name,
@@ -77,6 +86,7 @@ async fn list_members(
                 image: user.image,
                 role: membership.role,
                 two_factor_enabled: user.two_factor_enabled,
+                active_sessions,
             });
         }
     }
@@ -99,6 +109,7 @@ struct MemberProfileResponse {
     image: Option<String>,
     role: String,
     two_factor_enabled: bool,
+    active_sessions: u64,
     joined_at: String,
     stats: MemberStatsResponse,
     assigned_issues: Vec<MemberIssueResponse>,
@@ -167,6 +178,14 @@ async fn get_member(
         .filter(issue_event::Column::ActorId.eq(&user.id))
         .count(&state.db)
         .await?;
+    let now = Utc::now().fixed_offset();
+    let active_sessions = session::Entity::find()
+        .filter(session::Column::UserId.eq(&user.id))
+        .filter(session::Column::ActiveOrganizationId.eq(&auth.organization.id))
+        .filter(session::Column::RevokedAt.is_null())
+        .filter(session::Column::ExpiresAt.gt(now))
+        .count(&state.db)
+        .await?;
 
     let assigned_issues = issue::Entity::find()
         .filter(issue::Column::OrganizationId.eq(&auth.organization.id))
@@ -223,6 +242,7 @@ async fn get_member(
             image: user.image,
             role: membership.role,
             two_factor_enabled: user.two_factor_enabled,
+            active_sessions,
             joined_at: membership.created_at.to_rfc3339(),
             stats: MemberStatsResponse {
                 assigned_issues: assigned_count,
