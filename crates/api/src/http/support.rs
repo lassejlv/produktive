@@ -187,6 +187,16 @@ async fn ingest_inbound_email(
     )
     .await?;
 
+    if created_ticket {
+        if let Err(error) = send_new_ticket_auto_reply(&state, &ticket).await {
+            tracing::warn!(
+                %error,
+                ticket_id = %ticket.id,
+                "failed to create support auto-reply"
+            );
+        }
+    }
+
     Ok(Json(InboundEmailResponse {
         ticket_id: ticket.id,
         ticket_number: ticket.number,
@@ -771,6 +781,71 @@ async fn create_pending_reply(
         references: Set(references),
         raw_object_key: Set(None),
         sent_by_admin_id: Set(Some(admin_id.to_owned())),
+        delivery_status: Set("pending".to_owned()),
+        delivery_provider_id: Set(None),
+        delivery_error: Set(None),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(&state.db)
+    .await
+    .map_err(ApiError::from)
+}
+
+async fn send_new_ticket_auto_reply(
+    state: &AppState,
+    ticket: &support_ticket::Model,
+) -> Result<(), ApiError> {
+    let body = "Hey,\n\nWe have received your message. Our support team will review it and get back to you as soon as possible.\n\nSupport can take up to 1-2 business days.\n\nProduktive Support";
+    let message = create_pending_system_reply(state, ticket, body).await?;
+    let sent = send_support_reply(state, ticket, &message).await;
+    let updated_message = update_delivery_result(state, message, sent).await?;
+    insert_event(
+        state,
+        &ticket.id,
+        None,
+        "auto_reply",
+        json!({
+            "messageId": updated_message.id,
+            "deliveryStatus": updated_message.delivery_status,
+            "deliveryError": updated_message.delivery_error,
+        }),
+    )
+    .await
+}
+
+async fn create_pending_system_reply(
+    state: &AppState,
+    ticket: &support_ticket::Model,
+    body_text: &str,
+) -> Result<support_message::Model, ApiError> {
+    let now = Utc::now().fixed_offset();
+    let latest_inbound = support_message::Entity::find()
+        .filter(support_message::Column::TicketId.eq(&ticket.id))
+        .filter(support_message::Column::Direction.eq("inbound"))
+        .order_by_desc(support_message::Column::CreatedAt)
+        .one(&state.db)
+        .await?;
+    let in_reply_to = latest_inbound
+        .as_ref()
+        .and_then(|message| message.message_id.clone());
+    let references = build_references(latest_inbound.as_ref());
+    let provider_message_id = format!("{}@support.produktive.app", Uuid::new_v4());
+    support_message::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        ticket_id: Set(ticket.id.clone()),
+        direction: Set("outbound".to_owned()),
+        from_email: Set(state.config.support_email_from.clone()),
+        to_email: Set(ticket.customer_email.clone()),
+        cc: Set(json!([])),
+        subject: Set(reply_subject(&ticket.subject)),
+        body_text: Set(Some(body_text.to_owned())),
+        body_html: Set(Some(render_reply_html(body_text))),
+        message_id: Set(Some(provider_message_id)),
+        in_reply_to: Set(in_reply_to),
+        references: Set(references),
+        raw_object_key: Set(None),
+        sent_by_admin_id: Set(None),
         delivery_status: Set("pending".to_owned()),
         delivery_provider_id: Set(None),
         delivery_error: Set(None),
