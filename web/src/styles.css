@@ -471,3 +471,131 @@
   display: block;
   color-scheme: dark;
 }
+
+.note-editor-shell {
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.note-editor-shell .tiptap {
+  min-height: 100%;
+  padding: 22px 28px 52px;
+  outline: none;
+  color: var(--color-fg);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.note-editor-shell .ProseMirror {
+  min-height: 100%;
+  outline: none;
+}
+
+.note-editor-shell .ProseMirror p {
+  margin: 0.45rem 0;
+}
+
+.note-editor-shell .ProseMirror h1,
+.note-editor-shell .ProseMirror h2,
+.note-editor-shell .ProseMirror h3 {
+  margin: 1.1rem 0 0.5rem;
+  line-height: 1.25;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.note-editor-shell .ProseMirror h1 {
+  font-size: 1.75rem;
+}
+
+.note-editor-shell .ProseMirror h2 {
+  font-size: 1.35rem;
+}
+
+.note-editor-shell .ProseMirror h3 {
+  font-size: 1.1rem;
+}
+
+.note-editor-shell .ProseMirror ul,
+.note-editor-shell .ProseMirror ol {
+  margin: 0.65rem 0;
+  padding-left: 1.35rem;
+}
+
+.note-editor-shell .ProseMirror blockquote {
+  margin: 0.9rem 0;
+  border-left: 2px solid var(--color-border);
+  padding-left: 0.9rem;
+  color: var(--color-fg-muted);
+}
+
+.note-editor-shell .ProseMirror code {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  background: var(--color-surface);
+  padding: 0.1rem 0.28rem;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+
+.note-editor-shell .ProseMirror pre {
+  margin: 0.9rem 0;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  background: #101012;
+  padding: 0.8rem 0.9rem;
+}
+
+.note-editor-shell .ProseMirror pre code {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.note-editor-shell .ProseMirror a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  text-underline-offset: 3px;
+}
+
+.note-editor-shell .ProseMirror a[href^="produktive://"] {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 5px;
+  background: var(--color-surface-2);
+  padding: 0.04rem 0.35rem;
+  color: var(--color-fg);
+  font-weight: 540;
+  text-decoration: none;
+  vertical-align: baseline;
+}
+
+.note-editor-shell .ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+
+.note-editor-shell .ProseMirror ul[data-type="taskList"] li {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.note-editor-shell .ProseMirror ul[data-type="taskList"] li > label {
+  margin-top: 0.22rem;
+}
+
+.note-editor-shell .ProseMirror ul[data-type="taskList"] li > div {
+  flex: 1;
+}
+
+.note-editor-shell .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--color-fg-faint);
+  pointer-events: none;
+}

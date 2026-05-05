@@ -82,6 +82,72 @@ pub async fn put_object(
     })
 }
 
+pub async fn get_object(config: &StorageConfig, key: &str) -> Result<Vec<u8>, ApiError> {
+    let url = object_url(config, key)?;
+    let parsed = Url::parse(&url).context("invalid S3 object URL")?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| anyhow!("S3 object URL is missing a host"))?;
+    let host_header = match parsed.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host.to_owned(),
+    };
+
+    let payload_hash = hex::encode(Sha256::digest([]));
+    let now = Utc::now();
+    let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
+    let short_date = now.format("%Y%m%d").to_string();
+    let canonical_uri = parsed.path();
+    let canonical_headers =
+        format!("host:{host_header}\nx-amz-content-sha256:{payload_hash}\nx-amz-date:{amz_date}\n");
+    let signed_headers = "host;x-amz-content-sha256;x-amz-date";
+    let canonical_request =
+        format!("GET\n{canonical_uri}\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}");
+    let scope = format!("{short_date}/{}/s3/aws4_request", config.region);
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{amz_date}\n{scope}\n{}",
+        hex::encode(Sha256::digest(canonical_request.as_bytes()))
+    );
+    let signature = hex::encode(
+        signing_key(&config.secret_access_key, &short_date, &config.region)
+            .chain_update(string_to_sign.as_bytes())
+            .finalize()
+            .into_bytes(),
+    );
+    let authorization = format!(
+        "AWS4-HMAC-SHA256 Credential={}/{scope}, SignedHeaders={signed_headers}, Signature={signature}",
+        config.access_key_id
+    );
+
+    let response = reqwest::Client::new()
+        .get(&url)
+        .header("authorization", authorization)
+        .header("x-amz-content-sha256", payload_hash)
+        .header("x-amz-date", amz_date)
+        .send()
+        .await
+        .context("failed to read object")?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        tracing::warn!(%status, %body, "S3 read failed");
+        return Err(ApiError::Internal(anyhow!("failed to read note body")));
+    }
+
+    Ok(response
+        .bytes()
+        .await
+        .context("failed to read object bytes")?
+        .to_vec())
+}
+
+pub async fn get_text_object(config: &StorageConfig, key: &str) -> Result<String, ApiError> {
+    String::from_utf8(get_object(config, key).await?)
+        .context("S3 object was not valid UTF-8")
+        .map_err(ApiError::Internal)
+}
+
 pub fn safe_object_key(organization_id: &str, chat_id: &str, filename: &str) -> String {
     format!(
         "organizations/{organization_id}/chats/{chat_id}/attachments/{}-{}",
@@ -126,6 +192,14 @@ pub fn safe_user_icon_key(user_id: &str, filename: &str) -> String {
         uuid::Uuid::new_v4(),
         sanitize_filename(filename)
     )
+}
+
+pub fn safe_note_current_key(organization_id: &str, note_id: &str) -> String {
+    format!("organizations/{organization_id}/notes/{note_id}/current.md")
+}
+
+pub fn safe_note_version_key(organization_id: &str, note_id: &str, version_id: &str) -> String {
+    format!("organizations/{organization_id}/notes/{note_id}/versions/{version_id}.md")
 }
 
 fn object_url(config: &StorageConfig, key: &str) -> Result<String, anyhow::Error> {

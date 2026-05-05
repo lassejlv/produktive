@@ -1,11 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-import {
-  AttachIcon,
-  AtIcon,
-  ChangesIcon,
-  SendIcon,
-  StopIcon,
-} from "@/components/chat/icons";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AttachIcon, AtIcon, ChangesIcon, SendIcon, StopIcon } from "@/components/chat/icons";
 import {
   MentionPopup,
   type MentionItem,
@@ -17,12 +11,15 @@ import {
   type ChatAttachmentDraft,
   type ReferencedChat,
   type ReferencedIssue,
+  type ReferencedNote,
   formatBytes,
   formatChatReferences,
   formatIssueReferences,
+  formatNoteReferences,
   formatToolReferences,
   prepareChatAttachments,
 } from "@/lib/chat-attachments";
+import { useNotesQuery } from "@/lib/queries/notes";
 import { getCaretCoords } from "@/lib/textarea-caret";
 import { useChats } from "@/lib/use-chats";
 import { useIssues } from "@/lib/use-issues";
@@ -43,6 +40,7 @@ export function ChatComposer({
   changesCount = 0,
   changesOpen = false,
   pendingQuestion,
+  draftInsertion,
 }: {
   busy: boolean;
   onSend: (value: string, attachments: ChatAttachmentDraft[]) => void;
@@ -51,6 +49,7 @@ export function ChatComposer({
   changesCount?: number;
   changesOpen?: boolean;
   pendingQuestion?: PendingQuestion | null;
+  draftInsertion?: { id: number; text: string } | null;
 }) {
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
@@ -58,6 +57,7 @@ export function ChatComposer({
   const [issues, setIssues] = useState<ReferencedIssue[]>([]);
   const [mentionedTools, setMentionedTools] = useState<MentionableTool[]>([]);
   const [mentionedChats, setMentionedChats] = useState<ReferencedChat[]>([]);
+  const [mentionedNotes, setMentionedNotes] = useState<ReferencedNote[]>([]);
   const [mentionState, setMentionState] = useState<{
     anchor: number;
     query: string;
@@ -68,6 +68,22 @@ export function ChatComposer({
   const { tools: availableTools } = useMcpTools();
   const { issues: availableIssues } = useIssues();
   const { chats: availableChats } = useChats();
+  const { data: availableNotes = [] } = useNotesQuery("");
+
+  useEffect(() => {
+    if (!draftInsertion?.text) return;
+    setValue((current) => {
+      const trimmed = current.trimEnd();
+      return `${trimmed}${trimmed ? "\n\n" : ""}${draftInsertion.text}`;
+    });
+    requestAnimationFrame(() => {
+      const textarea = taRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      autoresize(textarea);
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    });
+  }, [draftInsertion?.id, draftInsertion?.text]);
 
   const mentionItems = useMemo<MentionItem[]>(() => {
     const issueItems: MentionItem[] = availableIssues.map((issue) => ({
@@ -85,13 +101,18 @@ export function ChatComposer({
       id: `chat:${chat.id}`,
       chat,
     }));
+    const noteItems: MentionItem[] = availableNotes.map((note) => ({
+      kind: "note",
+      id: `note:${note.id}`,
+      note,
+    }));
     const toolItems: MentionItem[] = availableTools.map((tool) => ({
       kind: "tool",
       id: `tool:${tool.id}`,
       tool,
     }));
-    return [...issueItems, ...chatItems, ...toolItems];
-  }, [availableIssues, availableChats, availableTools]);
+    return [...issueItems, ...noteItems, ...chatItems, ...toolItems];
+  }, [availableIssues, availableNotes, availableChats, availableTools]);
 
   const autoresize = (el: HTMLTextAreaElement | null) => {
     if (!el) return;
@@ -138,8 +159,7 @@ export function ChatComposer({
     const caret = ta.selectionStart ?? ta.value.length;
     const before = ta.value.slice(0, caret);
     const after = ta.value.slice(caret);
-    const needsSpace =
-      before.length > 0 && !/\s/.test(before[before.length - 1] ?? "");
+    const needsSpace = before.length > 0 && !/\s/.test(before[before.length - 1] ?? "");
     const insertion = `${needsSpace ? " " : ""}@`;
     const next = before + insertion + after;
     setValue(next);
@@ -153,25 +173,25 @@ export function ChatComposer({
 
   const addMentionedTool = (tool: MentionableTool) => {
     setMentionedTools((current) =>
-      current.find((existing) => existing.id === tool.id)
-        ? current
-        : [...current, tool],
+      current.find((existing) => existing.id === tool.id) ? current : [...current, tool],
     );
   };
 
   const addMentionedIssue = (issue: ReferencedIssue) => {
     setIssues((current) =>
-      current.find((existing) => existing.id === issue.id)
-        ? current
-        : [...current, issue],
+      current.find((existing) => existing.id === issue.id) ? current : [...current, issue],
     );
   };
 
   const addMentionedChat = (chat: ReferencedChat) => {
     setMentionedChats((current) =>
-      current.find((existing) => existing.id === chat.id)
-        ? current
-        : [...current, chat],
+      current.find((existing) => existing.id === chat.id) ? current : [...current, chat],
+    );
+  };
+
+  const addMentionedNote = (note: ReferencedNote) => {
+    setMentionedNotes((current) =>
+      current.find((existing) => existing.id === note.id) ? current : [...current, note],
     );
   };
 
@@ -179,17 +199,22 @@ export function ChatComposer({
     const ta = taRef.current;
     if (!ta || !mentionState) return;
     const caret = ta.selectionStart ?? ta.value.length;
-    const nextValue =
-      ta.value.slice(0, mentionState.anchor) + ta.value.slice(caret);
+    const nextValue = ta.value.slice(0, mentionState.anchor) + ta.value.slice(caret);
     setValue(nextValue);
     if (item.kind === "tool") {
       addMentionedTool(item.tool);
     } else if (item.kind === "issue") {
       addMentionedIssue(item.issue);
-    } else {
+    } else if (item.kind === "chat") {
       addMentionedChat({
         id: item.chat.id,
         title: item.chat.title || "Untitled chat",
+      });
+    } else {
+      addMentionedNote({
+        id: item.note.id,
+        title: item.note.title,
+        visibility: item.note.visibility,
       });
     }
     const restoreAt = mentionState.anchor;
@@ -202,13 +227,15 @@ export function ChatComposer({
   };
 
   const removeTool = (id: string) => {
-    setMentionedTools((current) =>
-      current.filter((tool) => tool.id !== id),
-    );
+    setMentionedTools((current) => current.filter((tool) => tool.id !== id));
   };
 
   const removeMentionedChat = (id: string) => {
     setMentionedChats((current) => current.filter((chat) => chat.id !== id));
+  };
+
+  const removeMentionedNote = (id: string) => {
+    setMentionedNotes((current) => current.filter((note) => note.id !== id));
   };
 
   const trySend = () => {
@@ -218,7 +245,8 @@ export function ChatComposer({
         attachments.length === 0 &&
         issues.length === 0 &&
         mentionedTools.length === 0 &&
-        mentionedChats.length === 0) ||
+        mentionedChats.length === 0 &&
+        mentionedNotes.length === 0) ||
       busy
     ) {
       return;
@@ -227,7 +255,7 @@ export function ChatComposer({
     const baseText = trimmed || fallback;
     const outgoing = `${baseText}${formatIssueReferences(issues)}${formatChatReferences(
       mentionedChats,
-    )}${formatToolReferences(mentionedTools)}`.trim();
+    )}${formatNoteReferences(mentionedNotes)}${formatToolReferences(mentionedTools)}`.trim();
     onSend(outgoing, attachments);
     setValue("");
     setAttachments([]);
@@ -235,6 +263,7 @@ export function ChatComposer({
     setIssues([]);
     setMentionedTools([]);
     setMentionedChats([]);
+    setMentionedNotes([]);
     setMentionState(null);
     requestAnimationFrame(() => autoresize(taRef.current));
   };
@@ -282,7 +311,8 @@ export function ChatComposer({
       attachments.length > 0 ||
       issues.length > 0 ||
       mentionedTools.length > 0 ||
-      mentionedChats.length > 0) &&
+      mentionedChats.length > 0 ||
+      mentionedNotes.length > 0) &&
     !busy;
 
   return (
@@ -308,9 +338,7 @@ export function ChatComposer({
               <span aria-hidden="true">?</span>
               Question
             </div>
-            <p className="m-0 text-[13.5px] leading-snug text-fg">
-              {pendingQuestion.question}
-            </p>
+            <p className="m-0 text-[13.5px] leading-snug text-fg">{pendingQuestion.question}</p>
             {pendingQuestion.options.length > 0 ? (
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {pendingQuestion.options.map((option) => (
@@ -331,7 +359,8 @@ export function ChatComposer({
         {attachments.length > 0 ||
         issues.length > 0 ||
         mentionedTools.length > 0 ||
-        mentionedChats.length > 0 ? (
+        mentionedChats.length > 0 ||
+        mentionedNotes.length > 0 ? (
           <div className="border-b border-border-subtle px-3 py-2">
             <div className="flex flex-wrap gap-1.5">
               {mentionedChats.map((chat) => (
@@ -342,14 +371,30 @@ export function ChatComposer({
                   <span className="text-fg-faint">
                     <SparkleIcon size={11} />
                   </span>
-                  <span className="max-w-[180px] truncate text-fg">
-                    {chat.title}
-                  </span>
+                  <span className="max-w-[180px] truncate text-fg">{chat.title}</span>
                   <button
                     type="button"
                     className="text-fg-faint transition-colors hover:text-fg"
                     onClick={() => removeMentionedChat(chat.id)}
                     aria-label={`Remove ${chat.title}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {mentionedNotes.map((note) => (
+                <div
+                  key={note.id}
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-[5px] border border-border-subtle bg-surface px-2 py-1 text-[11px] text-fg-muted"
+                >
+                  <span className="font-mono text-[10px] text-fg-faint">N</span>
+                  <span className="max-w-[180px] truncate text-fg">{note.title}</span>
+                  <span className="text-fg-faint">· {note.visibility}</span>
+                  <button
+                    type="button"
+                    className="text-fg-faint transition-colors hover:text-fg"
+                    onClick={() => removeMentionedNote(note.id)}
+                    aria-label={`Remove ${note.title}`}
                   >
                     ×
                   </button>
@@ -381,9 +426,7 @@ export function ChatComposer({
                   className="inline-flex max-w-full items-center gap-1.5 rounded-[5px] border border-border-subtle bg-surface px-2 py-1 text-[11px] text-fg-muted"
                 >
                   <StatusIcon status={issue.status} />
-                  <span className="max-w-[220px] truncate text-fg">
-                    {issue.title}
-                  </span>
+                  <span className="max-w-[220px] truncate text-fg">{issue.title}</span>
                   <button
                     type="button"
                     className="text-fg-faint transition-colors hover:text-fg"
@@ -399,9 +442,7 @@ export function ChatComposer({
                   key={file.id}
                   className="inline-flex max-w-full items-center gap-2 rounded-[5px] border border-border-subtle bg-surface px-2 py-1 font-mono text-[11px] text-fg-muted"
                 >
-                  <span className="max-w-[220px] truncate text-fg">
-                    {file.file.name}
-                  </span>
+                  <span className="max-w-[220px] truncate text-fg">{file.file.name}</span>
                   <span>{formatBytes(file.file.size)}</span>
                   <button
                     type="button"
@@ -456,20 +497,12 @@ export function ChatComposer({
             <AtIcon size={11} />
             Context
           </ToolButton>
-          <ToolButton
-            title="Attach files"
-            onClick={() => fileRef.current?.click()}
-            disabled={busy}
-          >
+          <ToolButton title="Attach files" onClick={() => fileRef.current?.click()} disabled={busy}>
             <AttachIcon size={11} />
             Attach
           </ToolButton>
           {onOpenChanges ? (
-            <ToolButton
-              title="View changes"
-              onClick={onOpenChanges}
-              active={changesOpen}
-            >
+            <ToolButton title="View changes" onClick={onOpenChanges} active={changesOpen}>
               <ChangesIcon size={11} />
               Changes
               {changesCount > 0 ? (
@@ -527,13 +560,10 @@ function ToolButton({
       disabled={disabled}
       className={cn(
         "inline-flex h-6 items-center gap-1 rounded-[5px] px-1.5 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        active
-          ? "bg-surface-2 text-fg"
-          : "text-fg-muted hover:bg-surface hover:text-fg",
+        active ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface hover:text-fg",
       )}
     >
       {children}
     </button>
   );
 }
-

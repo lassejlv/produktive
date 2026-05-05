@@ -1,10 +1,7 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  ChatComposer,
-  type PendingQuestion,
-} from "@/components/chat/chat-composer";
+import { ChatComposer, type PendingQuestion } from "@/components/chat/chat-composer";
 import { ChatMarkdown } from "@/components/chat/chat-markdown";
 import {
   ChatMessageItem,
@@ -13,18 +10,8 @@ import {
   readAskUserOptions,
   readAskUserQuestion,
 } from "@/components/chat/chat-message";
-import {
-  CaretIcon,
-  CheckIcon,
-  ExpandIcon,
-  PlusIcon,
-  SparkleIcon,
-} from "@/components/chat/icons";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { CaretIcon, CheckIcon, ExpandIcon, PlusIcon, SparkleIcon } from "@/components/chat/icons";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   type Chat,
   type ChatMessageRecord,
@@ -46,6 +33,12 @@ import { cn } from "@/lib/utils";
 
 const WIDGET_CHAT_ID_KEY = "produktive:widget-chat-id";
 const MODEL_STORAGE_KEY = "produktive:chat-model";
+const ADD_TO_WIDGET_CHAT_EVENT = "produktive:add-to-widget-chat";
+
+type AddToWidgetChatEvent = CustomEvent<{
+  text: string;
+  source?: string;
+}>;
 
 export function ChatWidget() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -59,6 +52,10 @@ export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [draftInsertion, setDraftInsertion] = useState<{
+    id: number;
+    text: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -67,6 +64,7 @@ export function ChatWidget() {
   const listRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const bubbleRef = useRef<HTMLButtonElement | null>(null);
+  const draftCounterRef = useRef(0);
 
   // Load persisted chat once on mount.
   useEffect(() => {
@@ -90,6 +88,25 @@ export function ChatWidget() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleAddToChat = (event: Event) => {
+      const custom = event as AddToWidgetChatEvent;
+      const text = custom.detail?.text?.trim();
+      if (!text) return;
+      const source = custom.detail?.source?.trim();
+      const content = source
+        ? `From ${source}:\n\n> ${text.replace(/\n/g, "\n> ")}`
+        : `> ${text.replace(/\n/g, "\n> ")}`;
+      setOpen(true);
+      setDraftInsertion({
+        id: ++draftCounterRef.current,
+        text: content,
+      });
+    };
+    window.addEventListener(ADD_TO_WIDGET_CHAT_EVENT, handleAddToChat);
+    return () => window.removeEventListener(ADD_TO_WIDGET_CHAT_EVENT, handleAddToChat);
+  }, []);
+
   // Scroll list to bottom when messages grow or panel opens.
   useEffect(() => {
     if (!open) return;
@@ -102,10 +119,7 @@ export function ChatWidget() {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (
-        panelRef.current?.contains(target) ||
-        bubbleRef.current?.contains(target)
-      ) {
+      if (panelRef.current?.contains(target) || bubbleRef.current?.contains(target)) {
         return;
       }
       // Don't close if the click is on a portal'd popover (mention, model picker, etc.)
@@ -126,15 +140,9 @@ export function ChatWidget() {
     };
   }, [open]);
 
-  const renderedMessages = useMemo(
-    () => collapseToolMessages(messages),
-    [messages],
-  );
+  const renderedMessages = useMemo(() => collapseToolMessages(messages), [messages]);
 
-  const handleSend = async (
-    text: string,
-    attachmentDrafts: ChatAttachmentDraft[] = [],
-  ) => {
+  const handleSend = async (text: string, attachmentDrafts: ChatAttachmentDraft[] = []) => {
     setError(null);
     stopRef.current = false;
     setBusy(true);
@@ -151,16 +159,11 @@ export function ChatWidget() {
         }
       }
 
-      const uploadedAttachments = await uploadAttachments(
-        activeId,
-        attachmentDrafts,
-      );
+      const uploadedAttachments = await uploadAttachments(activeId, attachmentDrafts);
       const messageText = buildOutgoingMessage(text, uploadedAttachments);
 
       const selectedModel =
-        typeof window !== "undefined"
-          ? window.localStorage.getItem(MODEL_STORAGE_KEY)
-          : null;
+        typeof window !== "undefined" ? window.localStorage.getItem(MODEL_STORAGE_KEY) : null;
 
       let streamedText = "";
       await streamChatMessage(
@@ -195,10 +198,7 @@ export function ChatWidget() {
             setMessages((prev) => {
               const withoutTyping = prev.filter((m) => !m.typing);
               const last = withoutTyping[withoutTyping.length - 1];
-              const base =
-                last?.role === "assistant"
-                  ? withoutTyping.slice(0, -1)
-                  : withoutTyping;
+              const base = last?.role === "assistant" ? withoutTyping.slice(0, -1) : withoutTyping;
               return [
                 ...base,
                 ...event.messages
@@ -216,8 +216,7 @@ export function ChatWidget() {
         selectedModel ? { model: selectedModel } : undefined,
       );
     } catch (sendError) {
-      const message =
-        sendError instanceof Error ? sendError.message : "Failed to send";
+      const message = sendError instanceof Error ? sendError.message : "Failed to send";
       setError(message);
       setMessages((prev) => prev.filter((m) => !m.typing));
     } finally {
@@ -260,25 +259,17 @@ export function ChatWidget() {
         window.localStorage.setItem(WIDGET_CHAT_ID_KEY, id);
       }
     } catch (loadError) {
-      const message =
-        loadError instanceof Error
-          ? loadError.message
-          : "Failed to load chat";
+      const message = loadError instanceof Error ? loadError.message : "Failed to load chat";
       setError(message);
       toast.error(message);
     }
   };
 
-  const currentChat = chatId
-    ? chats.find((c) => c.id === chatId) ?? null
-    : null;
-  const headerLabel = currentChat
-    ? displayChatTitle(currentChat)
-    : "Assistant";
+  const currentChat = chatId ? (chats.find((c) => c.id === chatId) ?? null) : null;
+  const headerLabel = currentChat ? displayChatTitle(currentChat) : "Assistant";
 
   const pendingQuestion = useMemo(
-    () =>
-      findPendingQuestion(renderedMessages, (answer) => void handleSend(answer)),
+    () => findPendingQuestion(renderedMessages, (answer) => void handleSend(answer)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [renderedMessages],
   );
@@ -311,9 +302,7 @@ export function ChatWidget() {
                   type="button"
                   className="inline-flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-surface"
                 >
-                  <span className="truncate text-[13px] font-medium text-fg">
-                    {headerLabel}
-                  </span>
+                  <span className="truncate text-[13px] font-medium text-fg">{headerLabel}</span>
                   <span className="shrink-0 text-fg-faint">
                     <CaretIcon size={10} />
                   </span>
@@ -355,9 +344,7 @@ export function ChatWidget() {
                               )
                             }
                           >
-                            <span className="truncate">
-                              {displayChatTitle(chat)}
-                            </span>
+                            <span className="truncate">{displayChatTitle(chat)}</span>
                           </ChatPickerItem>
                         );
                       })}
@@ -367,17 +354,10 @@ export function ChatWidget() {
               </PopoverContent>
             </Popover>
             <div className="flex items-center gap-0.5">
-              <HeaderButton
-                title="New chat"
-                onClick={handleNewChat}
-                disabled={busy}
-              >
+              <HeaderButton title="New chat" onClick={handleNewChat} disabled={busy}>
                 <PlusIcon size={13} />
               </HeaderButton>
-              <HeaderButton
-                title="Open in full chat"
-                onClick={handleOpenInFullChat}
-              >
+              <HeaderButton title="Open in full chat" onClick={handleOpenInFullChat}>
                 <ExpandIcon size={13} />
               </HeaderButton>
               <HeaderButton title="Close" onClick={() => setOpen(false)}>
@@ -392,10 +372,7 @@ export function ChatWidget() {
             ) : (
               <div className="flex flex-col gap-4">
                 {renderedMessages.map((message, index) => (
-                  <ChatMessageItem
-                    key={message.id ?? index}
-                    message={message}
-                  />
+                  <ChatMessageItem key={message.id ?? index} message={message} />
                 ))}
               </div>
             )}
@@ -410,11 +387,10 @@ export function ChatWidget() {
           <div className="shrink-0 border-t border-border-subtle">
             <ChatComposer
               busy={busy}
-              onSend={(text, attachments) =>
-                void handleSend(text, attachments)
-              }
+              onSend={(text, attachments) => void handleSend(text, attachments)}
               onStop={handleStop}
               pendingQuestion={pendingQuestion}
+              draftInsertion={draftInsertion}
             />
           </div>
         </div>
@@ -452,12 +428,7 @@ function HeaderButton({
 function CloseGlyph() {
   return (
     <svg width="12" height="12" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path
-        d="M3 3l8 8M11 3l-8 8"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
+      <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
@@ -471,9 +442,7 @@ function WidgetEmptyState({ name }: { name: string | null }) {
       <h2 className="m-0 text-[15px] font-medium tracking-[-0.01em] text-fg">
         {name ? `Hi ${name},` : "Hi there,"}
       </h2>
-      <p className="m-0 mt-0.5 text-[12.5px] text-fg-muted">
-        what can I help with?
-      </p>
+      <p className="m-0 mt-0.5 text-[12.5px] text-fg-muted">what can I help with?</p>
     </div>
   );
 }
@@ -593,9 +562,7 @@ function ChatPickerItem({
       onClick={onClick}
       className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[12.5px] text-fg transition-colors hover:bg-surface-2"
     >
-      {leading ? (
-        <span className="shrink-0 text-fg-faint">{leading}</span>
-      ) : null}
+      {leading ? <span className="shrink-0 text-fg-faint">{leading}</span> : null}
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {trailing ? <span className="shrink-0">{trailing}</span> : null}
     </button>

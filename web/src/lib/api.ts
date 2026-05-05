@@ -142,6 +142,76 @@ export type MemberProfile = {
   activity: MemberActivity[];
 };
 
+export type NoteMentionTargetType = "issue" | "chat" | "user";
+
+export type NoteMention = {
+  targetType: NoteMentionTargetType;
+  targetId: string;
+  label: string;
+  subtitle: string | null;
+};
+
+export type Note = {
+  id: string;
+  folderId: string | null;
+  title: string;
+  bodyMarkdown: string;
+  bodySnippet: string | null;
+  bodySha256: string | null;
+  currentVersionId: string | null;
+  hasUncommittedChanges: boolean;
+  latestVersion: NoteVersion | null;
+  visibility: "workspace" | "private";
+  createdBy: {
+    id: string;
+    name: string;
+    email: string;
+    image: string | null;
+  } | null;
+  updatedBy: {
+    id: string;
+    name: string;
+    email: string;
+    image: string | null;
+  } | null;
+  mentions: NoteMention[];
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+};
+
+export type NoteVersion = {
+  id: string;
+  noteId: string;
+  bodySha256: string;
+  parentVersionId: string | null;
+  commitMessage: string | null;
+  createdBy: {
+    id: string;
+    name: string;
+    email: string;
+    image: string | null;
+  } | null;
+  createdAt: string;
+};
+
+export type NoteFolder = {
+  id: string;
+  name: string;
+  visibility: "workspace" | "private";
+  createdBy: {
+    id: string;
+    name: string;
+    email: string;
+    image: string | null;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+};
+
+export type NoteMentionSearchResult = NoteMention;
+
 type CreateIssueInput = {
   title: string;
   description?: string;
@@ -217,6 +287,96 @@ export const reorderIssueStatuses = (statuses: { id: string; sortOrder: number }
   });
 
 export const getIssue = (id: string) => request<{ issue: Issue }>(`/api/issues/${id}`);
+
+export const listNotes = (search?: string) => {
+  const params = new URLSearchParams();
+  if (search?.trim()) params.set("search", search.trim());
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return request<{ notes: Note[] }>(`/api/notes${suffix}`);
+};
+
+export const createNote = (input?: {
+  title?: string;
+  bodyMarkdown?: string;
+  folderId?: string | null;
+  visibility?: "workspace" | "private";
+}) =>
+  request<{ note: Note }>("/api/notes", {
+    method: "POST",
+    body: JSON.stringify(input ?? {}),
+  });
+
+export const getNote = (id: string) => request<{ note: Note }>(`/api/notes/${id}`);
+
+export const updateNote = (
+  id: string,
+  patch: {
+    title?: string;
+    bodyMarkdown?: string;
+    folderId?: string | null;
+    visibility?: "workspace" | "private";
+  },
+) =>
+  request<{ note: Note }>(`/api/notes/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+
+export const archiveNote = (id: string) => request<void>(`/api/notes/${id}`, { method: "DELETE" });
+
+export const listNoteVersions = (id: string) =>
+  request<{ versions: NoteVersion[] }>(`/api/notes/${id}/versions`);
+
+export const commitNote = (id: string, input?: { message?: string }) =>
+  request<{ version: NoteVersion }>(`/api/notes/${id}/commit`, {
+    method: "POST",
+    body: JSON.stringify(input ?? {}),
+  });
+
+export const restoreNoteVersion = (id: string, versionId: string) =>
+  request<{ note: Note }>(`/api/notes/${id}/versions/${versionId}/restore`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+
+export const proposeNoteAiEdit = (
+  id: string,
+  input: {
+    selectedText: string;
+    instruction?: string;
+    title?: string;
+    bodyMarkdown?: string;
+  },
+) =>
+  request<{ replacementMarkdown: string }>(`/api/notes/${id}/ai/edit`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const listNoteFolders = () => request<{ folders: NoteFolder[] }>("/api/notes/folders");
+
+export const createNoteFolder = (input: { name: string; visibility?: "workspace" | "private" }) =>
+  request<{ folder: NoteFolder }>("/api/notes/folders", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+export const updateNoteFolder = (
+  id: string,
+  patch: { name?: string; visibility?: "workspace" | "private" },
+) =>
+  request<{ folder: NoteFolder }>(`/api/notes/folders/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+
+export const archiveNoteFolder = (id: string) =>
+  request<void>(`/api/notes/folders/${id}`, { method: "DELETE" });
+
+export const searchNoteMentions = (q: string) =>
+  request<{ mentions: NoteMentionSearchResult[] }>(
+    `/api/notes/mentions?q=${encodeURIComponent(q)}`,
+  );
 
 export const getIssueHistory = (id: string) =>
   request<{ events: IssueHistoryEvent[] }>(`/api/issues/${id}/history`);

@@ -4,7 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { SparkleIcon } from "@/components/chat/icons";
 import type { PickableIssue } from "@/components/chat/issue-picker";
 import { StatusIcon } from "@/components/issue/status-icon";
-import type { Chat } from "@/lib/api";
+import type { Chat, Note } from "@/lib/api";
 import type { MentionableTool } from "@/lib/use-mcp-tools";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +16,8 @@ const CARET_GAP = 8;
 export type MentionItem =
   | { kind: "tool"; id: string; tool: MentionableTool }
   | { kind: "issue"; id: string; issue: PickableIssue }
-  | { kind: "chat"; id: string; chat: Chat };
+  | { kind: "chat"; id: string; chat: Chat }
+  | { kind: "note"; id: string; note: Note };
 
 type Props = {
   open: boolean;
@@ -27,14 +28,7 @@ type Props = {
   onClose: () => void;
 };
 
-export function MentionPopup({
-  open,
-  query,
-  items,
-  coords,
-  onSelect,
-  onClose,
-}: Props) {
+export function MentionPopup({ open, query, items, coords, onSelect, onClose }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const activeRowRef = useRef<HTMLButtonElement | null>(null);
@@ -64,9 +58,7 @@ export function MentionPopup({
         setActiveIndex((current) => (current + 1) % filtered.length);
       } else if (event.key === "ArrowUp") {
         event.preventDefault();
-        setActiveIndex(
-          (current) => (current - 1 + filtered.length) % filtered.length,
-        );
+        setActiveIndex((current) => (current - 1 + filtered.length) % filtered.length);
       } else if (event.key === "Enter" || event.key === "Tab") {
         const item = filtered[activeIndex];
         if (item) {
@@ -100,10 +92,7 @@ export function MentionPopup({
 
   const maxLeft = window.innerWidth - POPOVER_WIDTH - VIEWPORT_PADDING;
   const left = Math.min(Math.max(coords.left, VIEWPORT_PADDING), maxLeft);
-  const bottom = Math.max(
-    VIEWPORT_PADDING,
-    window.innerHeight - coords.top + CARET_GAP,
-  );
+  const bottom = Math.max(VIEWPORT_PADDING, window.innerHeight - coords.top + CARET_GAP);
   const maxHeight = Math.min(
     POPOVER_MAX_HEIGHT,
     Math.max(160, window.innerHeight - bottom - VIEWPORT_PADDING),
@@ -181,7 +170,7 @@ function renderRows(
           onSelect={() => onSelect(item)}
         />,
       );
-    } else {
+    } else if (item.kind === "chat") {
       rows.push(
         <ChatRow
           key={item.id}
@@ -191,10 +180,51 @@ function renderRows(
           onSelect={() => onSelect(item)}
         />,
       );
+    } else {
+      rows.push(
+        <NoteRow
+          key={item.id}
+          note={item.note}
+          active={active}
+          activeRef={active ? activeRowRef : null}
+          onSelect={() => onSelect(item)}
+        />,
+      );
     }
   });
 
   return rows;
+}
+
+function NoteRow({
+  note,
+  active,
+  activeRef,
+  onSelect,
+}: {
+  note: Note;
+  active: boolean;
+  activeRef: React.RefObject<HTMLButtonElement | null> | null;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      ref={activeRef}
+      type="button"
+      onClick={onSelect}
+      style={{ fontSize: 12, lineHeight: 1.3 }}
+      className={cn(
+        "flex w-full items-center gap-2 px-3 py-1 text-left transition-colors",
+        active ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg",
+      )}
+    >
+      <span className="shrink-0 font-mono text-[10px] text-fg-faint">N</span>
+      <span className="block min-w-0 flex-1 truncate text-fg">{note.title}</span>
+      <span style={{ fontSize: 10 }} className="shrink-0 text-fg-faint">
+        {note.visibility}
+      </span>
+    </button>
+  );
 }
 
 function ToolRow({
@@ -216,19 +246,12 @@ function ToolRow({
       style={{ fontSize: 12, lineHeight: 1.3 }}
       className={cn(
         "flex w-full flex-col items-start gap-0 px-3 py-1 text-left transition-colors",
-        active
-          ? "bg-surface-2 text-fg"
-          : "text-fg-muted hover:bg-surface-2 hover:text-fg",
+        active ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg",
       )}
     >
-      <span className="block w-full truncate font-mono text-fg">
-        {prettyToolName(tool)}
-      </span>
+      <span className="block w-full truncate font-mono text-fg">{prettyToolName(tool)}</span>
       {tool.description ? (
-        <span
-          style={{ fontSize: 11 }}
-          className="block w-full truncate text-fg-faint"
-        >
+        <span style={{ fontSize: 11 }} className="block w-full truncate text-fg-faint">
           {tool.description}
         </span>
       ) : null}
@@ -255,19 +278,12 @@ function IssueRow({
       style={{ fontSize: 12, lineHeight: 1.3 }}
       className={cn(
         "flex w-full items-center gap-2 px-3 py-1 text-left transition-colors",
-        active
-          ? "bg-surface-2 text-fg"
-          : "text-fg-muted hover:bg-surface-2 hover:text-fg",
+        active ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg",
       )}
     >
       <StatusIcon status={issue.status} />
-      <span className="block min-w-0 flex-1 truncate text-fg">
-        {issue.title}
-      </span>
-      <span
-        style={{ fontSize: 10 }}
-        className="shrink-0 font-mono text-fg-faint"
-      >
+      <span className="block min-w-0 flex-1 truncate text-fg">{issue.title}</span>
+      <span style={{ fontSize: 10 }} className="shrink-0 font-mono text-fg-faint">
         P-{issue.id.slice(0, 4).toUpperCase()}
       </span>
     </button>
@@ -293,21 +309,14 @@ function ChatRow({
       style={{ fontSize: 12, lineHeight: 1.3 }}
       className={cn(
         "flex w-full items-center gap-2 px-3 py-1 text-left transition-colors",
-        active
-          ? "bg-surface-2 text-fg"
-          : "text-fg-muted hover:bg-surface-2 hover:text-fg",
+        active ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface-2 hover:text-fg",
       )}
     >
       <span className="shrink-0 text-fg-faint">
         <SparkleIcon size={11} />
       </span>
-      <span className="block min-w-0 flex-1 truncate text-fg">
-        {chat.title || "Untitled chat"}
-      </span>
-      <span
-        style={{ fontSize: 10 }}
-        className="shrink-0 text-fg-faint"
-      >
+      <span className="block min-w-0 flex-1 truncate text-fg">{chat.title || "Untitled chat"}</span>
+      <span style={{ fontSize: 10 }} className="shrink-0 text-fg-faint">
         {relativeTime(chat.updatedAt)}
       </span>
     </button>
@@ -333,6 +342,7 @@ function relativeTime(value: string): string {
 function groupOf(item: MentionItem): { key: string; label: string } {
   if (item.kind === "issue") return { key: "issues", label: "Issues" };
   if (item.kind === "chat") return { key: "chats", label: "Chats" };
+  if (item.kind === "note") return { key: "notes", label: "Notes" };
   return {
     key: `tool:${item.tool.server.id}`,
     label: item.tool.server.name,
@@ -347,6 +357,10 @@ function itemHaystack(item: MentionItem): string {
   if (item.kind === "issue") {
     const i = item.issue;
     return `${i.title} ${i.id} ${i.status} ${i.priority}`.toLowerCase();
+  }
+  if (item.kind === "note") {
+    const n = item.note;
+    return `${n.title} ${n.id} ${n.visibility} note`.toLowerCase();
   }
   return `${item.chat.title} ${item.chat.id}`.toLowerCase();
 }

@@ -3,6 +3,7 @@ export type StaticPageGlyph =
   | "issues"
   | "projects"
   | "inbox"
+  | "notes"
   | "labels"
   | "account"
   | "settings";
@@ -18,6 +19,7 @@ export const STATIC_PAGES: StaticPage[] = [
   { path: "/issues", title: "Issues", glyph: "issues" },
   { path: "/projects", title: "Projects", glyph: "projects" },
   { path: "/inbox", title: "Inbox", glyph: "inbox" },
+  { path: "/notes", title: "Notes", glyph: "notes" },
   { path: "/labels", title: "Labels", glyph: "labels" },
   { path: "/account", title: "Account", glyph: "account" },
   { path: "/workspace/settings", title: "Settings", glyph: "settings" },

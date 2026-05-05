@@ -10,6 +10,7 @@ export const SIDEBAR_ITEM_IDS = [
   "inbox",
   "my-issues",
   "overview",
+  "notes",
   "issues",
   "projects",
   "labels",
@@ -32,9 +33,7 @@ export type SidebarLayout = {
 
 const KNOWN_IDS = new Set<string>(SIDEBAR_ITEM_IDS);
 
-export const defaultSidebarItems: SidebarLayoutItem[] = SIDEBAR_ITEM_IDS.map(
-  (id) => ({ id }),
-);
+export const defaultSidebarItems: SidebarLayoutItem[] = SIDEBAR_ITEM_IDS.map((id) => ({ id }));
 
 export const defaultSidebarLayout: SidebarLayout = {
   items: defaultSidebarItems,
@@ -83,11 +82,11 @@ export function normalizeLayout(raw: unknown): SidebarLayout {
   if (!raw || typeof raw !== "object") return defaultSidebarLayout;
   const obj = raw as Record<string, unknown>;
   const rawLimit = obj.chatsLimit;
-  const limit = typeof rawLimit === "number" && Number.isFinite(rawLimit)
-    ? Math.max(1, Math.min(200, Math.round(rawLimit)))
-    : defaultSidebarLayout.chatsLimit;
-  const sort: ChatsSortMode =
-    obj.chatsSort === "alphabetical" ? "alphabetical" : "recent";
+  const limit =
+    typeof rawLimit === "number" && Number.isFinite(rawLimit)
+      ? Math.max(1, Math.min(200, Math.round(rawLimit)))
+      : defaultSidebarLayout.chatsLimit;
+  const sort: ChatsSortMode = obj.chatsSort === "alphabetical" ? "alphabetical" : "recent";
   return {
     items: normalizeItems(obj.items),
     favoritesCollapsed: obj.favoritesCollapsed === true,
@@ -100,11 +99,7 @@ export function normalizeLayout(raw: unknown): SidebarLayout {
 
 // Order a list of objects by a saved id sequence; objects whose id is not in
 // the saved order keep their original relative position at the end.
-export function applyOrder<T>(
-  items: T[],
-  savedOrder: string[],
-  getId: (item: T) => string,
-): T[] {
+export function applyOrder<T>(items: T[], savedOrder: string[], getId: (item: T) => string): T[] {
   if (savedOrder.length === 0) return items;
   const indexById = new Map<string, number>();
   savedOrder.forEach((id, index) => indexById.set(id, index));
@@ -114,10 +109,7 @@ export function applyOrder<T>(
     if (indexById.has(getId(item))) known.push(item);
     else unknown.push(item);
   }
-  known.sort(
-    (a, b) =>
-      (indexById.get(getId(a)) ?? 0) - (indexById.get(getId(b)) ?? 0),
-  );
+  known.sort((a, b) => (indexById.get(getId(a)) ?? 0) - (indexById.get(getId(b)) ?? 0));
   return [...known, ...unknown];
 }
 
@@ -127,8 +119,7 @@ export function useSidebarLayout() {
   const layout = normalizeLayout(prefs?.sidebarLayout);
 
   const mutation = useMutation({
-    mutationFn: (next: SidebarLayout | null) =>
-      updateMyPreferences({ sidebarLayout: next }),
+    mutationFn: (next: SidebarLayout | null) => updateMyPreferences({ sidebarLayout: next }),
     onSuccess: (data: NotificationPreferences) => {
       qc.setQueryData<NotificationPreferences>(["user-preferences"], data);
     },
@@ -142,12 +133,9 @@ export function useSidebarLayout() {
     layout,
     update,
     saveItems: (items: SidebarLayoutItem[]) => update({ items }),
-    toggleFavoritesCollapsed: () =>
-      update({ favoritesCollapsed: !layout.favoritesCollapsed }),
-    toggleChatsCollapsed: () =>
-      update({ chatsCollapsed: !layout.chatsCollapsed }),
-    setFavoritesOrder: (favoritesOrder: string[]) =>
-      update({ favoritesOrder }),
+    toggleFavoritesCollapsed: () => update({ favoritesCollapsed: !layout.favoritesCollapsed }),
+    toggleChatsCollapsed: () => update({ chatsCollapsed: !layout.chatsCollapsed }),
+    setFavoritesOrder: (favoritesOrder: string[]) => update({ favoritesOrder }),
     setChatsLimit: (chatsLimit: number) => update({ chatsLimit }),
     setChatsSort: (chatsSort: ChatsSortMode) => update({ chatsSort }),
     reset: () => mutation.mutate(null),

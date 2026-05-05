@@ -30,9 +30,7 @@ export function TabBar({ enabled }: Props) {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const [position, setPosition] = useState<Position | null>(() =>
-    readStoredPosition(),
-  );
+  const [position, setPosition] = useState<Position | null>(() => readStoredPosition());
   const [dragging, setDragging] = useState(false);
   const barRef = useRef<HTMLDivElement | null>(null);
   const dragOffsetRef = useRef<Position>({ x: 0, y: 0 });
@@ -125,9 +123,7 @@ export function TabBar({ enabled }: Props) {
     <div
       className={cn(
         "pointer-events-none z-30",
-        position
-          ? ""
-          : "fixed inset-x-0 bottom-0 flex justify-center px-3 pb-3",
+        position ? "" : "fixed inset-x-0 bottom-0 flex justify-center px-3 pb-3",
       )}
       style={wrapperStyle}
     >
@@ -222,9 +218,7 @@ function TabPill({
         tabIndex={hover || active ? 0 : -1}
         className={cn(
           "grid size-4 shrink-0 place-items-center rounded-[4px] text-fg-faint transition-opacity hover:bg-surface-3 hover:text-fg",
-          hover || active
-            ? "opacity-100"
-            : "pointer-events-none opacity-0",
+          hover || active ? "opacity-100" : "pointer-events-none opacity-0",
         )}
       >
         <CloseIcon />
@@ -251,6 +245,8 @@ function PageGlyph({ glyph }: { glyph: StaticPageGlyph | null }) {
       return <ProjectsIcon size={11} />;
     case "inbox":
       return <InboxIcon size={11} />;
+    case "notes":
+      return <NotesGlyph />;
     case "labels":
       return <HashIcon size={11} />;
     case "settings":
@@ -289,10 +285,7 @@ function GridGlyph() {
   );
 }
 
-function navigateToPage(
-  navigate: ReturnType<typeof useNavigate>,
-  path: string,
-): Promise<void> {
+function navigateToPage(navigate: ReturnType<typeof useNavigate>, path: string): Promise<void> {
   switch (path) {
     case "/workspace":
       return navigate({ to: "/workspace" });
@@ -302,6 +295,8 @@ function navigateToPage(
       return navigate({ to: "/projects" });
     case "/inbox":
       return navigate({ to: "/inbox" });
+    case "/notes":
+      return navigate({ to: "/notes" });
     case "/labels":
       return navigate({ to: "/labels" });
     case "/account":
@@ -313,42 +308,42 @@ function navigateToPage(
   }
 }
 
+function NotesGlyph() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <path
+        d="M3 1.8h5.2l2.8 2.8V12a.8.8 0 01-.8.8H3a.8.8 0 01-.8-.8V2.6A.8.8 0 013 1.8z"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4.4 7h5.2M4.4 9.4h4"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function ProjectGlyph({ targetId, title }: { targetId: string; title: string }) {
   const { data } = useProjectsQuery();
   const project = (data ?? []).find((p) => p.id === targetId);
   if (!project) {
-    return (
-      <ProjectIcon color="blue" icon={null} name={title} size="sm" />
-    );
+    return <ProjectIcon color="blue" icon={null} name={title} size="sm" />;
   }
-  return (
-    <ProjectIcon
-      color={project.color}
-      icon={project.icon}
-      name={project.name}
-      size="sm"
-    />
-  );
+  return <ProjectIcon color={project.color} icon={project.icon} name={project.name} size="sm" />;
 }
 
 function IssueDot() {
-  return (
-    <span
-      aria-hidden
-      className="size-1.5 shrink-0 rounded-full bg-fg-faint"
-    />
-  );
+  return <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-fg-faint" />;
 }
 
 function CloseIcon() {
   return (
     <svg width="9" height="9" viewBox="0 0 12 12" fill="none" aria-hidden>
-      <path
-        d="M3 3l6 6M9 3l-6 6"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
+      <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   );
 }
@@ -399,7 +394,10 @@ function activeTargetFor(pathname: string): {
     return { tabType: "issue", targetId: decodeURIComponent(pathname.slice("/issues/".length)) };
   }
   if (pathname.startsWith("/projects/")) {
-    return { tabType: "project", targetId: decodeURIComponent(pathname.slice("/projects/".length)) };
+    return {
+      tabType: "project",
+      targetId: decodeURIComponent(pathname.slice("/projects/".length)),
+    };
   }
   if (pathname.startsWith("/chat/")) {
     return { tabType: "chat", targetId: decodeURIComponent(pathname.slice("/chat/".length)) };
@@ -410,4 +408,3 @@ function activeTargetFor(pathname: string): {
   }
   return { tabType: null, targetId: null };
 }
-

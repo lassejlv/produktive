@@ -120,6 +120,25 @@ function SidebarLabelsIcon() {
   );
 }
 
+function SidebarNotesIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <path
+        d="M3 1.5h5.4L11.5 4.6V12a1 1 0 01-1 1H3a1 1 0 01-1-1V2.5a1 1 0 011-1z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.4 1.7v3h2.9M4.4 7h5M4.4 9.5h4"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 type NavContext = {
   pathname: string;
   issuesMine: boolean;
@@ -163,6 +182,13 @@ const NAV_ITEM_SPECS: Record<SidebarItemId, NavItemSpec> = {
       (ctx.pathname === "/issues" && !ctx.issuesMine) ||
       (ctx.pathname.startsWith("/issues/") && ctx.pathname.length > "/issues/".length),
     onNavigate: (n) => void n({ to: "/issues" }),
+  },
+  notes: {
+    id: "notes",
+    label: "Notes",
+    icon: <SidebarNotesIcon />,
+    isActive: (ctx) => ctx.pathname === "/notes" || ctx.pathname.startsWith("/notes/"),
+    onNavigate: (n) => void n({ to: "/notes" }),
   },
   projects: {
     id: "projects",

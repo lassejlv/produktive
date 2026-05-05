@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -30,7 +31,7 @@ const sanitizeSchema = {
   },
   protocols: {
     ...defaultSchema.protocols,
-    href: ["http", "https", "mailto"],
+    href: ["http", "https", "mailto", "produktive"],
     src: ["http", "https"],
     poster: ["http", "https"],
   },
@@ -38,6 +39,37 @@ const sanitizeSchema = {
 
 const components: Components = {
   a({ children, href, ...props }) {
+    const produktiveLink = parseProduktiveLink(href);
+    if (produktiveLink) {
+      const className =
+        "inline-flex max-w-full items-center rounded-[5px] border border-border-subtle bg-surface-2 px-1.5 py-0.5 text-[0.88em] font-medium text-fg no-underline align-baseline transition-colors hover:border-accent/40 hover:text-accent";
+      if (produktiveLink.type === "issue") {
+        return (
+          <Link to="/issues/$issueId" params={{ issueId: produktiveLink.id }} className={className}>
+            {children}
+          </Link>
+        );
+      }
+      if (produktiveLink.type === "chat") {
+        return (
+          <Link to="/chat/$chatId" params={{ chatId: produktiveLink.id }} className={className}>
+            {children}
+          </Link>
+        );
+      }
+      if (produktiveLink.type === "user") {
+        return (
+          <Link
+            to="/members/$memberId"
+            params={{ memberId: produktiveLink.id }}
+            className={className}
+          >
+            {children}
+          </Link>
+        );
+      }
+    }
+
     return (
       <a
         {...props}
@@ -166,6 +198,13 @@ export function ChatMarkdown({ content }: { content: string }) {
       {content}
     </ReactMarkdown>
   );
+}
+
+function parseProduktiveLink(value: unknown) {
+  if (typeof value !== "string" || !value.startsWith("produktive://")) return null;
+  const match = /^produktive:\/\/(issue|chat|user)\/([^/?#]+)$/.exec(value);
+  if (!match) return null;
+  return { type: match[1] as "issue" | "chat" | "user", id: decodeURIComponent(match[2]) };
 }
 
 function safeMediaUrl(value: unknown) {

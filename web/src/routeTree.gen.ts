@@ -24,6 +24,7 @@ import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as DiscordLinkRouteImport } from './routes/discord.link'
 import { Route as AppWorkspaceRouteImport } from './routes/_app.workspace'
 import { Route as AppProjectsRouteImport } from './routes/_app.projects'
+import { Route as AppNotesRouteImport } from './routes/_app.notes'
 import { Route as AppLabelsRouteImport } from './routes/_app.labels'
 import { Route as AppIssuesRouteImport } from './routes/_app.issues'
 import { Route as AppInboxRouteImport } from './routes/_app.inbox'
@@ -33,6 +34,7 @@ import { Route as AppChatRouteImport } from './routes/_app.chat'
 import { Route as AppAccountRouteImport } from './routes/_app.account'
 import { Route as AppWorkspaceSettingsRouteImport } from './routes/_app.workspace.settings'
 import { Route as AppProjectsProjectIdRouteImport } from './routes/_app.projects.$projectId'
+import { Route as AppNotesNoteIdRouteImport } from './routes/_app.notes.$noteId'
 import { Route as AppMembersMemberIdRouteImport } from './routes/_app.members.$memberId'
 import { Route as AppIssuesIssueIdRouteImport } from './routes/_app.issues.$issueId'
 import { Route as AppChatChatIdRouteImport } from './routes/_app.chat.$chatId'
@@ -111,6 +113,11 @@ const AppProjectsRoute = AppProjectsRouteImport.update({
   path: '/projects',
   getParentRoute: () => AppRoute,
 } as any)
+const AppNotesRoute = AppNotesRouteImport.update({
+  id: '/notes',
+  path: '/notes',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppLabelsRoute = AppLabelsRouteImport.update({
   id: '/labels',
   path: '/labels',
@@ -156,6 +163,11 @@ const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
   path: '/$projectId',
   getParentRoute: () => AppProjectsRoute,
 } as any)
+const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
+  id: '/$noteId',
+  path: '/$noteId',
+  getParentRoute: () => AppNotesRoute,
+} as any)
 const AppMembersMemberIdRoute = AppMembersMemberIdRouteImport.update({
   id: '/members/$memberId',
   path: '/members/$memberId',
@@ -187,6 +199,7 @@ export interface FileRoutesByFullPath {
   '/inbox': typeof AppInboxRoute
   '/issues': typeof AppIssuesRouteWithChildren
   '/labels': typeof AppLabelsRoute
+  '/notes': typeof AppNotesRouteWithChildren
   '/projects': typeof AppProjectsRouteWithChildren
   '/workspace': typeof AppWorkspaceRouteWithChildren
   '/discord/link': typeof DiscordLinkRoute
@@ -197,6 +210,7 @@ export interface FileRoutesByFullPath {
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/members/$memberId': typeof AppMembersMemberIdRoute
+  '/notes/$noteId': typeof AppNotesNoteIdRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
   '/workspace/settings': typeof AppWorkspaceSettingsRoute
 }
@@ -215,6 +229,7 @@ export interface FileRoutesByTo {
   '/inbox': typeof AppInboxRoute
   '/issues': typeof AppIssuesRouteWithChildren
   '/labels': typeof AppLabelsRoute
+  '/notes': typeof AppNotesRouteWithChildren
   '/projects': typeof AppProjectsRouteWithChildren
   '/workspace': typeof AppWorkspaceRouteWithChildren
   '/discord/link': typeof DiscordLinkRoute
@@ -225,6 +240,7 @@ export interface FileRoutesByTo {
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/members/$memberId': typeof AppMembersMemberIdRoute
+  '/notes/$noteId': typeof AppNotesNoteIdRoute
   '/projects/$projectId': typeof AppProjectsProjectIdRoute
   '/workspace/settings': typeof AppWorkspaceSettingsRoute
 }
@@ -245,6 +261,7 @@ export interface FileRoutesById {
   '/_app/inbox': typeof AppInboxRoute
   '/_app/issues': typeof AppIssuesRouteWithChildren
   '/_app/labels': typeof AppLabelsRoute
+  '/_app/notes': typeof AppNotesRouteWithChildren
   '/_app/projects': typeof AppProjectsRouteWithChildren
   '/_app/workspace': typeof AppWorkspaceRouteWithChildren
   '/discord/link': typeof DiscordLinkRoute
@@ -255,6 +272,7 @@ export interface FileRoutesById {
   '/_app/chat/$chatId': typeof AppChatChatIdRoute
   '/_app/issues/$issueId': typeof AppIssuesIssueIdRoute
   '/_app/members/$memberId': typeof AppMembersMemberIdRoute
+  '/_app/notes/$noteId': typeof AppNotesNoteIdRoute
   '/_app/projects/$projectId': typeof AppProjectsProjectIdRoute
   '/_app/workspace/settings': typeof AppWorkspaceSettingsRoute
 }
@@ -275,6 +293,7 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/issues'
     | '/labels'
+    | '/notes'
     | '/projects'
     | '/workspace'
     | '/discord/link'
@@ -285,6 +304,7 @@ export interface FileRouteTypes {
     | '/chat/$chatId'
     | '/issues/$issueId'
     | '/members/$memberId'
+    | '/notes/$noteId'
     | '/projects/$projectId'
     | '/workspace/settings'
   fileRoutesByTo: FileRoutesByTo
@@ -303,6 +323,7 @@ export interface FileRouteTypes {
     | '/inbox'
     | '/issues'
     | '/labels'
+    | '/notes'
     | '/projects'
     | '/workspace'
     | '/discord/link'
@@ -313,6 +334,7 @@ export interface FileRouteTypes {
     | '/chat/$chatId'
     | '/issues/$issueId'
     | '/members/$memberId'
+    | '/notes/$noteId'
     | '/projects/$projectId'
     | '/workspace/settings'
   id:
@@ -332,6 +354,7 @@ export interface FileRouteTypes {
     | '/_app/inbox'
     | '/_app/issues'
     | '/_app/labels'
+    | '/_app/notes'
     | '/_app/projects'
     | '/_app/workspace'
     | '/discord/link'
@@ -342,6 +365,7 @@ export interface FileRouteTypes {
     | '/_app/chat/$chatId'
     | '/_app/issues/$issueId'
     | '/_app/members/$memberId'
+    | '/_app/notes/$noteId'
     | '/_app/projects/$projectId'
     | '/_app/workspace/settings'
   fileRoutesById: FileRoutesById
@@ -468,6 +492,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/notes': {
+      id: '/_app/notes'
+      path: '/notes'
+      fullPath: '/notes'
+      preLoaderRoute: typeof AppNotesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/labels': {
       id: '/_app/labels'
       path: '/labels'
@@ -531,6 +562,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsProjectIdRouteImport
       parentRoute: typeof AppProjectsRoute
     }
+    '/_app/notes/$noteId': {
+      id: '/_app/notes/$noteId'
+      path: '/$noteId'
+      fullPath: '/notes/$noteId'
+      preLoaderRoute: typeof AppNotesNoteIdRouteImport
+      parentRoute: typeof AppNotesRoute
+    }
     '/_app/members/$memberId': {
       id: '/_app/members/$memberId'
       path: '/members/$memberId'
@@ -578,6 +616,18 @@ const AppIssuesRouteWithChildren = AppIssuesRoute._addFileChildren(
   AppIssuesRouteChildren,
 )
 
+interface AppNotesRouteChildren {
+  AppNotesNoteIdRoute: typeof AppNotesNoteIdRoute
+}
+
+const AppNotesRouteChildren: AppNotesRouteChildren = {
+  AppNotesNoteIdRoute: AppNotesNoteIdRoute,
+}
+
+const AppNotesRouteWithChildren = AppNotesRoute._addFileChildren(
+  AppNotesRouteChildren,
+)
+
 interface AppProjectsRouteChildren {
   AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRoute
 }
@@ -610,6 +660,7 @@ interface AppRouteChildren {
   AppInboxRoute: typeof AppInboxRoute
   AppIssuesRoute: typeof AppIssuesRouteWithChildren
   AppLabelsRoute: typeof AppLabelsRoute
+  AppNotesRoute: typeof AppNotesRouteWithChildren
   AppProjectsRoute: typeof AppProjectsRouteWithChildren
   AppWorkspaceRoute: typeof AppWorkspaceRouteWithChildren
   AppMembersMemberIdRoute: typeof AppMembersMemberIdRoute
@@ -623,6 +674,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppInboxRoute: AppInboxRoute,
   AppIssuesRoute: AppIssuesRouteWithChildren,
   AppLabelsRoute: AppLabelsRoute,
+  AppNotesRoute: AppNotesRouteWithChildren,
   AppProjectsRoute: AppProjectsRouteWithChildren,
   AppWorkspaceRoute: AppWorkspaceRouteWithChildren,
   AppMembersMemberIdRoute: AppMembersMemberIdRoute,

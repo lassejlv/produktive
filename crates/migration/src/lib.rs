@@ -82,6 +82,12 @@ mod m20260503_000039_create_chat_access;
 mod m20260503_000040_create_slack_integration;
 #[path = "../migrations/m20260505_000041_create_platform_admin.rs"]
 mod m20260505_000041_create_platform_admin;
+#[path = "../migrations/m20260505_000042_create_notes.rs"]
+mod m20260505_000042_create_notes;
+#[path = "../migrations/m20260505_000043_add_note_folders_and_visibility.rs"]
+mod m20260505_000043_add_note_folders_and_visibility;
+#[path = "../migrations/m20260505_000044_add_note_versions.rs"]
+mod m20260505_000044_add_note_versions;
 
 pub struct Migrator;
 
@@ -130,6 +136,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20260503_000039_create_chat_access::Migration),
             Box::new(m20260503_000040_create_slack_integration::Migration),
             Box::new(m20260505_000041_create_platform_admin::Migration),
+            Box::new(m20260505_000042_create_notes::Migration),
+            Box::new(m20260505_000043_add_note_folders_and_visibility::Migration),
+            Box::new(m20260505_000044_add_note_versions::Migration),
         ]
     }
 }
