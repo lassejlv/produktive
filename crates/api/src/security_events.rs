@@ -19,6 +19,9 @@ pub const EVENT_WORKSPACE_DELETED: &str = "workspace.deleted";
 pub const EVENT_ACCOUNT_DELETED: &str = "account.deleted";
 pub const EVENT_TWO_FACTOR_NUDGE_SENT: &str = "two_factor.nudge_sent";
 pub const EVENT_TWO_FACTOR_RECOVERY_RESET: &str = "two_factor.recovery_reset";
+pub const EVENT_TWO_FACTOR_ENFORCEMENT_BLOCKED: &str = "two_factor.enforcement_blocked";
+pub const EVENT_TWO_FACTOR_ENFORCEMENT_SETUP_COMPLETED: &str =
+    "two_factor.enforcement_setup_completed";
 
 #[derive(Clone, Debug)]
 pub struct SecurityEventInput {

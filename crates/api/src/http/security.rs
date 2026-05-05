@@ -1,10 +1,11 @@
 use crate::{
-    auth::{ensure_fresh_two_factor, require_auth},
+    auth::{ensure_fresh_two_factor, require_auth, require_auth_without_two_factor_policy},
     email::send_two_factor_nudge_email,
     error::ApiError,
     permissions::{member_role, require_permission, ROLE_OWNER, WORKSPACE_SECURITY},
     security_events::{
-        metadata_empty, record_security_event, SecurityEventInput, EVENT_TWO_FACTOR_NUDGE_SENT,
+        metadata_empty, record_security_event, SecurityEventInput,
+        EVENT_TWO_FACTOR_ENFORCEMENT_BLOCKED, EVENT_TWO_FACTOR_NUDGE_SENT,
         EVENT_TWO_FACTOR_RECOVERY_RESET,
     },
     state::AppState,
@@ -27,6 +28,10 @@ use std::collections::HashMap;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/events", get(list_security_events))
+        .route(
+            "/two-factor-enforcement/blocked",
+            post(record_two_factor_enforcement_blocked),
+        )
         .route("/two-factor-nudges", post(send_two_factor_nudges))
         .route("/two-factor-recovery/reset", post(reset_member_two_factor))
 }
@@ -41,6 +46,12 @@ struct SecurityEventsEnvelope {
 #[serde(rename_all = "camelCase")]
 struct TwoFactorNudgeResponse {
     sent: usize,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EmptyResponse {
+    ok: bool,
 }
 
 #[derive(Deserialize)]
@@ -192,6 +203,29 @@ async fn send_two_factor_nudges(
     .await?;
 
     Ok((StatusCode::OK, Json(TwoFactorNudgeResponse { sent })))
+}
+
+async fn record_two_factor_enforcement_blocked(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<EmptyResponse>, ApiError> {
+    let auth = require_auth_without_two_factor_policy(&headers, &state).await?;
+    if auth.organization.require_two_factor && !auth.user.two_factor_enabled {
+        record_security_event(
+            &state,
+            Some(&headers),
+            SecurityEventInput {
+                organization_id: Some(auth.organization.id.clone()),
+                actor_user_id: Some(auth.user.id.clone()),
+                target_user_id: Some(auth.user.id.clone()),
+                event_type: EVENT_TWO_FACTOR_ENFORCEMENT_BLOCKED,
+                metadata: metadata_empty(),
+            },
+        )
+        .await?;
+    }
+
+    Ok(Json(EmptyResponse { ok: true }))
 }
 
 async fn reset_member_two_factor(

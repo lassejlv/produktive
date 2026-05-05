@@ -1937,6 +1937,30 @@ function SecuritySettings({
 
   return (
     <div className="space-y-7">
+      {!requireTwoFactor && membersMissingTwoFactor.length > 0 ? (
+        <section className="rounded-md border border-amber-500/20 bg-amber-500/10 p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="m-0 text-[13px] font-medium text-fg">Before you require 2FA</h3>
+              <p className="m-0 mt-1 text-[12px] leading-relaxed text-fg-muted">
+                {membersMissingTwoFactor.length} member
+                {membersMissingTwoFactor.length === 1 ? "" : "s"} will be asked to set up 2FA the
+                next time they open this workspace.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!canEditSecurity || sendingNudges}
+              onClick={() => void onSendNudges()}
+            >
+              {sendingNudges ? "Sending..." : "Send reminders"}
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
       <section>
         <div className="mb-3 flex items-center justify-between gap-4">
           <div>
@@ -2080,6 +2104,10 @@ function securityEventLabel(event: SecurityEvent) {
       return `${actor} sent 2FA reminders`;
     case "two_factor.recovery_reset":
       return `${actor} reset ${target}'s 2FA`;
+    case "two_factor.enforcement_blocked":
+      return `${target} was blocked until 2FA is enabled`;
+    case "two_factor.enforcement_setup_completed":
+      return `${target} completed required 2FA setup`;
     default:
       return event.eventType.replace(/[_.]/g, " ");
   }

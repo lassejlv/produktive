@@ -18,7 +18,8 @@ use crate::{
     security_events::{
         metadata_empty, record_security_event, SecurityEventInput, EVENT_ACCOUNT_DELETED,
         EVENT_LOGIN_2FA_FAILED, EVENT_LOGIN_SUCCESS, EVENT_TWO_FACTOR_BACKUP_CODES_REGENERATED,
-        EVENT_TWO_FACTOR_DISABLED, EVENT_TWO_FACTOR_ENABLED, EVENT_WORKSPACE_DELETED,
+        EVENT_TWO_FACTOR_DISABLED, EVENT_TWO_FACTOR_ENABLED,
+        EVENT_TWO_FACTOR_ENFORCEMENT_SETUP_COMPLETED, EVENT_WORKSPACE_DELETED,
         EVENT_WORKSPACE_REQUIRE_2FA_DISABLED, EVENT_WORKSPACE_REQUIRE_2FA_ENABLED,
     },
     state::AppState,
@@ -673,6 +674,20 @@ async fn two_factor_enable(
         },
     )
     .await?;
+    if auth.organization.require_two_factor {
+        record_security_event(
+            &state,
+            Some(&headers),
+            SecurityEventInput {
+                organization_id: Some(auth.organization.id.clone()),
+                actor_user_id: Some(auth.user.id.clone()),
+                target_user_id: Some(auth.user.id.clone()),
+                event_type: EVENT_TWO_FACTOR_ENFORCEMENT_SETUP_COMPLETED,
+                metadata: metadata_empty(),
+            },
+        )
+        .await?;
+    }
 
     Ok(Json(TwoFactorBackupCodesResponse { backup_codes }))
 }

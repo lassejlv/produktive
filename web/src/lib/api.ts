@@ -1017,6 +1017,9 @@ export const listSecurityEvents = () =>
 export const sendTwoFactorNudges = () =>
   request<{ sent: number }>("/api/security/two-factor-nudges", { method: "POST" });
 
+export const recordTwoFactorEnforcementBlocked = () =>
+  request<{ ok: true }>("/api/security/two-factor-enforcement/blocked", { method: "POST" });
+
 export type PermissionInfo = {
   key: string;
   label: string;

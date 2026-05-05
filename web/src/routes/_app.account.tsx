@@ -122,6 +122,12 @@ function AccountPaneSections({ children }: { children: React.ReactNode }) {
   );
 }
 
+function safeAccountRedirect(value: string | null) {
+  if (!value?.startsWith("/") || value.startsWith("//")) return null;
+  if (value.startsWith("/account")) return null;
+  return value;
+}
+
 function AccountSectionBlock({
   title,
   description,
@@ -154,6 +160,10 @@ function AccountPage() {
   const session = useSession();
   const navigate = useNavigate();
   const user = session.data?.user;
+  const searchParams =
+    typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search);
+  const enforcementRequired = searchParams.get("twoFactorRequired") === "1";
+  const enforcementRedirect = safeAccountRedirect(searchParams.get("redirect"));
 
   const [activeSection, setActiveSection] = useState<AccountSectionId>("profile");
   const [confirm, setConfirm] = useState("");
@@ -170,7 +180,11 @@ function AccountPage() {
     setActiveSection(id);
     void navigate({
       to: "/account",
-      search: { section: id },
+      search: {
+        section: id,
+        ...(enforcementRequired ? { twoFactorRequired: "1" } : {}),
+        ...(enforcementRedirect ? { redirect: enforcementRedirect } : {}),
+      },
       replace: true,
     });
   };
@@ -213,7 +227,9 @@ function AccountPage() {
         </button>
         <h1 className="m-0 text-[22px] font-semibold tracking-[-0.02em] text-fg">Account</h1>
         <p className="mt-1 text-[13px] text-fg-muted">
-          Profile, preferences, security, and sessions.
+          {enforcementRequired
+            ? "Set up two-factor authentication to continue to this workspace."
+            : "Profile, preferences, security, and sessions."}
         </p>
       </header>
 
@@ -305,7 +321,12 @@ function AccountPage() {
 
           {activeSection === "appearance" ? <AppearanceSectionBody /> : null}
           {activeSection === "notifications" ? <NotificationPrefsSectionBody /> : null}
-          {activeSection === "security" ? <SecuritySectionBody /> : null}
+          {activeSection === "security" ? (
+            <SecuritySectionBody
+              enforcementRequired={enforcementRequired}
+              enforcementRedirect={enforcementRedirect}
+            />
+          ) : null}
           {activeSection === "sessions" ? <SessionsSectionBody /> : null}
           {activeSection === "tour" ? <ProductTourSectionBody /> : null}
 
@@ -440,7 +461,13 @@ function ProfileIcon({ name, image }: { name: string; image?: string | null }) {
   );
 }
 
-function SecuritySectionBody() {
+function SecuritySectionBody({
+  enforcementRequired,
+  enforcementRedirect,
+}: {
+  enforcementRequired: boolean;
+  enforcementRedirect: string | null;
+}) {
   const [status, setStatus] = useState<TwoFactorStatus | null>(null);
   const [trustedDevices, setTrustedDevices] = useState<TrustedTwoFactorDevice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -450,6 +477,7 @@ function SecuritySectionBody() {
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [readyToContinue, setReadyToContinue] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -522,6 +550,7 @@ function SecuritySectionBody() {
       resetInputs();
       await refreshSession();
       await load();
+      setReadyToContinue(enforcementRequired && !!enforcementRedirect);
       toast.success("Two-factor authentication enabled");
     } catch (error) {
       toast.error(
@@ -593,6 +622,18 @@ function SecuritySectionBody() {
 
   return (
     <AccountPaneSections>
+      {enforcementRequired && !status.enabled ? (
+        <AccountSectionBlock
+          title="2FA required"
+          description="This workspace requires two-factor authentication before you can continue."
+        >
+          <div className="rounded-md border border-amber-500/20 bg-amber-500/10 p-3 text-[12.5px] leading-relaxed text-fg">
+            Set up an authenticator app now. After setup, you will return to the workspace page you
+            were trying to open.
+          </div>
+        </AccountSectionBlock>
+      ) : null}
+
       <AccountSectionBlock
         title="Authenticator app"
         description="Require a short-lived code whenever this account signs in."
@@ -772,6 +813,16 @@ function SecuritySectionBody() {
           description="Each code works once. Store them somewhere safe before leaving this page."
         >
           <BackupCodesPanel codes={backupCodes} />
+          {readyToContinue && enforcementRedirect ? (
+            <Button
+              type="button"
+              size="sm"
+              className="mt-3"
+              onClick={() => window.location.assign(enforcementRedirect)}
+            >
+              Continue to workspace
+            </Button>
+          ) : null}
         </AccountSectionBlock>
       ) : null}
     </AccountPaneSections>
