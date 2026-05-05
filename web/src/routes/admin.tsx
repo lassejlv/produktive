@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   type ActivityEvent,
@@ -39,6 +39,14 @@ type SuspensionTarget =
   | { type: "user"; id: string; label: string; suspended: boolean }
   | { type: "organization"; id: string; label: string; suspended: boolean };
 
+const SECTION_META: Record<Section, { title: string; subtitle: string }> = {
+  overview: { title: "Overview", subtitle: "Realtime platform health and growth" },
+  users: { title: "Users", subtitle: "Find, audit, and manage end users" },
+  organizations: { title: "Organizations", subtitle: "Workspaces and members" },
+  support: { title: "Support", subtitle: "Customer tickets and email replies" },
+  audit: { title: "Audit log", subtitle: "Operator actions and security events" },
+};
+
 function AdminDashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -55,6 +63,7 @@ function AdminDashboard() {
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [suspensionTarget, setSuspensionTarget] = useState<SuspensionTarget | null>(null);
   const [composeSupportOpen, setComposeSupportOpen] = useState(false);
+  const [auditFilter, setAuditFilter] = useState("all");
 
   const admin = useQuery({ queryKey: ["admin", "session"], queryFn: getAdminSession, retry: 0 });
   const growth = useQuery({
@@ -231,152 +240,236 @@ function AdminDashboard() {
   }
 
   const totals = growth.data?.totals;
-  const recentUsers = users.data?.users.slice(0, 6) ?? [];
-  const recentOrgs = organizations.data?.organizations.slice(0, 6) ?? [];
+  const points = growth.data?.points ?? [];
+  const auditEvents = audit.data?.events ?? [];
+  const filteredAudit = auditEvents.filter((event) => {
+    if (auditFilter === "all") return true;
+    return event.action.toLowerCase().startsWith(auditFilter);
+  });
 
   return (
-    <main className="min-h-screen bg-bg text-fg">
-      <div className="grid min-h-screen grid-cols-[220px_minmax(0,1fr)]">
-        <aside className="border-r border-border-subtle bg-sidebar px-3 py-4">
-          <div className="mb-6 px-2">
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-danger">
-              Platform admin
-            </p>
-            <h1 className="mt-2 text-[18px] font-semibold tracking-tight">Produktive Ops</h1>
-            <p className="mt-1 truncate text-[12px] text-fg-muted">{adminData.user.email}</p>
+    <main className="h-screen overflow-hidden bg-bg text-fg">
+      <div className="grid h-screen grid-cols-[244px_minmax(0,1fr)] grid-rows-[56px_minmax(0,1fr)]">
+        <aside className="col-start-1 row-span-2 flex min-w-0 flex-col border-r border-border-subtle bg-sidebar">
+          <div className="flex h-14 items-center gap-[10px] border-b border-border-subtle px-4">
+            <div className="grid h-7 w-7 place-items-center rounded-[7px] bg-accent text-[#1a1410]">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 12 12 3l9 9-9 9-9-9Z" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-[13.5px] font-semibold tracking-tight text-fg">
+                Produktive
+              </p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                Ops · Admin
+              </p>
+            </div>
           </div>
-          <nav className="space-y-1">
-            {(["overview", "users", "organizations", "support", "audit"] as Section[]).map(
-              (item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => setSection(item)}
-                  className={cn(
-                    "flex h-8 w-full items-center justify-between rounded-[6px] px-2 text-left text-[13px] capitalize transition-colors",
-                    section === item ? "bg-surface text-fg" : "text-fg-muted hover:bg-surface",
-                  )}
-                >
-                  {item}
-                  {item === "users" && totals ? <Badge>{totals.users}</Badge> : null}
-                  {item === "organizations" && totals ? (
-                    <Badge>{totals.organizations}</Badge>
-                  ) : null}
-                  {item === "support" ? (
-                    <Badge>{supportTickets.data?.page.total ?? 0}</Badge>
-                  ) : null}
-                </button>
-              ),
-            )}
+
+          <div className="mx-3 mt-3 flex h-[38px] items-center gap-2 rounded-[6px] border border-border-subtle bg-surface px-[10px]">
+            <div className="grid h-[22px] w-[22px] place-items-center rounded-[4px] bg-surface-2 font-mono text-[11px] font-semibold">
+              P
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[12px] font-medium text-fg">Platform admin</p>
+              <p className="font-mono text-[10px] text-fg-faint">{adminData.role}</p>
+            </div>
+          </div>
+
+          <nav className="flex flex-1 flex-col gap-[18px] overflow-auto p-3">
+            <NavGroup label="Operations">
+              {(
+                [
+                  { id: "overview", label: "Overview", icon: "grid" },
+                  { id: "users", label: "Users", icon: "users", count: totals?.users },
+                  {
+                    id: "organizations",
+                    label: "Organizations",
+                    icon: "building",
+                    count: totals?.organizations,
+                  },
+                  {
+                    id: "support",
+                    label: "Support",
+                    icon: "inbox",
+                    count: supportTickets.data?.page.total,
+                  },
+                  { id: "audit", label: "Audit log", icon: "shield" },
+                ] satisfies { id: Section; label: string; icon: IconName; count?: number }[]
+              ).map((item) => (
+                <NavItem
+                  key={item.id}
+                  active={section === item.id}
+                  icon={item.icon}
+                  label={item.label}
+                  count={item.count}
+                  onClick={() => setSection(item.id)}
+                />
+              ))}
+            </NavGroup>
+
+            <NavGroup label="Live">
+              <div className="rounded-[6px] border border-border-subtle bg-bg px-[10px] py-2">
+                <div className="mb-[6px] flex items-center justify-between">
+                  <span className="text-[11px] uppercase tracking-[0.08em] text-fg-faint">
+                    Active sessions
+                  </span>
+                  <span className="block h-[6px] w-[6px] animate-pulse rounded-full bg-success" />
+                </div>
+                <p className="font-mono text-[22px] font-semibold leading-none tracking-tight text-fg">
+                  {totals ? totals.users - (totals.suspendedUsers ?? 0) : "—"}
+                </p>
+                <p className="mt-[2px] text-[10.5px] text-fg-muted">
+                  across {totals?.organizations ?? "—"} workspaces
+                </p>
+              </div>
+            </NavGroup>
           </nav>
-          <button
-            type="button"
-            onClick={() => void signOut()}
-            className="mt-8 h-8 rounded-[6px] px-2 text-left text-[12px] text-fg-muted hover:bg-surface"
-          >
-            Sign out
-          </button>
+
+          <div className="flex items-center gap-[10px] border-t border-border-subtle p-3">
+            <Avatar name={adminData.user.name || adminData.user.email} seed={adminData.user.id} size={28} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[12px] font-medium text-fg">
+                {adminData.user.name || adminData.user.email}
+              </p>
+              <p className="truncate font-mono text-[10.5px] text-fg-faint">{adminData.role}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void signOut()}
+              className="grid h-7 w-7 place-items-center rounded-[5px] border border-border-subtle text-fg-muted hover:bg-surface"
+              title="Sign out"
+            >
+              <Icon name="logout" size={13} />
+            </button>
+          </div>
         </aside>
 
-        <section className="min-w-0 overflow-hidden">
-          <header className="flex h-14 items-center justify-between border-b border-border-subtle px-6">
-            <div>
-              <h2 className="text-[15px] font-medium capitalize">{section}</h2>
-              <p className="text-[11px] text-fg-faint">{adminData.role.replace("_", " ")} access</p>
-            </div>
-            <div className="flex items-center gap-2">
-              {["30d", "90d", "12m"].map((item) => (
+        <header className="col-start-2 row-start-1 flex h-14 items-center gap-4 border-b border-border-subtle bg-bg px-6">
+          <div className="flex min-w-0 flex-1 items-baseline gap-3">
+            <h1 className="m-0 text-[16px] font-semibold tracking-tight text-fg">
+              {SECTION_META[section].title}
+            </h1>
+            <span className="truncate text-[12px] text-fg-faint">
+              {SECTION_META[section].subtitle}
+            </span>
+          </div>
+          {section === "overview" ? (
+            <div className="flex gap-1 rounded-[6px] border border-border-subtle bg-surface p-[2px]">
+              {["7d", "30d", "90d"].map((item) => (
                 <button
                   key={item}
                   type="button"
                   onClick={() => setRange(item)}
                   className={cn(
-                    "h-7 rounded-[6px] border px-2 font-mono text-[11px]",
-                    range === item
-                      ? "border-accent bg-accent/10 text-accent"
-                      : "border-border-subtle text-fg-muted hover:bg-surface",
+                    "h-6 rounded-[4px] px-[10px] font-mono text-[11px]",
+                    range === item ? "bg-surface-2 text-fg" : "text-fg-muted hover:text-fg",
                   )}
                 >
                   {item}
                 </button>
               ))}
             </div>
-          </header>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void navigate({ to: "/workspace" })}
+            className="grid h-8 place-items-center rounded-[6px] border border-border-subtle bg-surface px-3 text-[12px] text-fg-muted hover:text-fg"
+          >
+            Back to app
+          </button>
+        </header>
 
-          <div className="h-[calc(100vh-56px)] overflow-auto px-6 py-5">
-            {section === "overview" ? (
-              <Overview
-                totals={totals}
-                points={growth.data?.points ?? []}
-                recentUsers={recentUsers}
-                recentOrgs={recentOrgs}
-                isLoading={growth.isLoading}
-              />
-            ) : null}
-            {section === "users" ? (
-              <UsersView
-                users={users.data?.users ?? []}
-                pageTotal={users.data?.page.total ?? 0}
-                search={userSearch}
-                status={userStatus}
-                isLoading={users.isLoading}
-                selected={selectedUserId}
-                detail={userDetail.data}
-                onSearch={setUserSearch}
-                onStatus={setUserStatus}
-                onSelect={setSelectedUserId}
-                onSuspend={setSuspensionTarget}
-              />
-            ) : null}
-            {section === "organizations" ? (
-              <OrganizationsView
-                organizations={organizations.data?.organizations ?? []}
-                pageTotal={organizations.data?.page.total ?? 0}
-                search={orgSearch}
-                status={orgStatus}
-                isLoading={organizations.isLoading}
-                selected={selectedOrgId}
-                detail={organizationDetail.data}
-                onSearch={setOrgSearch}
-                onStatus={setOrgStatus}
-                onSelect={setSelectedOrgId}
-                onSuspend={setSuspensionTarget}
-              />
-            ) : null}
-            {section === "audit" ? (
-              <AuditView events={audit.data?.events ?? []} isLoading={audit.isLoading} />
-            ) : null}
-            {section === "support" ? (
-              <SupportView
-                tickets={supportTickets.data?.tickets ?? []}
-                pageTotal={supportTickets.data?.page.total ?? 0}
-                search={supportSearch}
-                status={supportStatus}
-                isLoading={supportTickets.isLoading}
-                selected={selectedTicketId}
-                detail={supportDetail.data}
-                replyBusy={supportReplyMutation.isPending}
-                createBusy={supportCreateMutation.isPending}
-                updateBusy={supportUpdateMutation.isPending}
-                retryBusy={supportRetryMutation.isPending}
-                onSearch={setSupportSearch}
-                onStatus={setSupportStatus}
-                onSelect={setSelectedTicketId}
-                onCompose={() => setComposeSupportOpen(true)}
-                onReply={(bodyText, closeAfterReply) => {
-                  if (!selectedTicketId) return;
-                  supportReplyMutation.mutate({ id: selectedTicketId, bodyText, closeAfterReply });
-                }}
-                onUpdate={(input) => {
-                  if (!selectedTicketId) return;
-                  supportUpdateMutation.mutate({ id: selectedTicketId, ...input });
-                }}
-                onRetry={(messageId) => supportRetryMutation.mutate(messageId)}
-              />
-            ) : null}
-          </div>
+        <section className="col-start-2 row-start-2 min-w-0 overflow-auto p-5">
+          {section === "overview" ? (
+            <Overview
+              totals={totals}
+              points={points}
+              range={range}
+              auditEvents={auditEvents}
+              isLoading={growth.isLoading}
+            />
+          ) : null}
+          {section === "users" ? (
+            <UsersView
+              users={users.data?.users ?? []}
+              pageTotal={users.data?.page.total ?? 0}
+              search={userSearch}
+              status={userStatus}
+              isLoading={users.isLoading}
+              selected={selectedUserId}
+              detail={userDetail.data}
+              onSearch={setUserSearch}
+              onStatus={setUserStatus}
+              onSelect={setSelectedUserId}
+              onSuspend={setSuspensionTarget}
+            />
+          ) : null}
+          {section === "organizations" ? (
+            <OrganizationsView
+              organizations={organizations.data?.organizations ?? []}
+              pageTotal={organizations.data?.page.total ?? 0}
+              search={orgSearch}
+              status={orgStatus}
+              isLoading={organizations.isLoading}
+              selected={selectedOrgId}
+              detail={organizationDetail.data}
+              onSearch={setOrgSearch}
+              onStatus={setOrgStatus}
+              onSelect={setSelectedOrgId}
+              onSuspend={setSuspensionTarget}
+            />
+          ) : null}
+          {section === "audit" ? (
+            <AuditView
+              events={filteredAudit}
+              total={auditEvents.length}
+              isLoading={audit.isLoading}
+              filter={auditFilter}
+              onFilter={setAuditFilter}
+            />
+          ) : null}
+          {section === "support" ? (
+            <SupportView
+              tickets={supportTickets.data?.tickets ?? []}
+              pageTotal={supportTickets.data?.page.total ?? 0}
+              search={supportSearch}
+              status={supportStatus}
+              isLoading={supportTickets.isLoading}
+              selected={selectedTicketId}
+              detail={supportDetail.data}
+              replyBusy={supportReplyMutation.isPending}
+              createBusy={supportCreateMutation.isPending}
+              updateBusy={supportUpdateMutation.isPending}
+              retryBusy={supportRetryMutation.isPending}
+              onSearch={setSupportSearch}
+              onStatus={setSupportStatus}
+              onSelect={setSelectedTicketId}
+              onCompose={() => setComposeSupportOpen(true)}
+              onReply={(bodyText, closeAfterReply) => {
+                if (!selectedTicketId) return;
+                supportReplyMutation.mutate({ id: selectedTicketId, bodyText, closeAfterReply });
+              }}
+              onUpdate={(input) => {
+                if (!selectedTicketId) return;
+                supportUpdateMutation.mutate({ id: selectedTicketId, ...input });
+              }}
+              onRetry={(messageId) => supportRetryMutation.mutate(messageId)}
+            />
+          ) : null}
         </section>
       </div>
+
       {suspensionTarget ? (
         <SuspensionDialog
           target={suspensionTarget}
@@ -398,11 +491,67 @@ function AdminDashboard() {
   );
 }
 
+function NavGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="px-2 pb-[6px] text-[10px] font-medium uppercase tracking-[0.1em] text-fg-faint">
+        {label}
+      </div>
+      <div className="flex flex-col gap-[1px]">{children}</div>
+    </div>
+  );
+}
+
+function NavItem({
+  active,
+  icon,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean;
+  icon: IconName;
+  label: string;
+  count?: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "relative flex h-8 items-center gap-[9px] rounded-[6px] px-2 text-left text-[13px]",
+        active
+          ? "bg-surface-2 font-medium text-fg"
+          : "text-fg-muted hover:bg-surface hover:text-fg",
+      )}
+    >
+      {active ? (
+        <span className="absolute -left-3 bottom-[6px] top-[6px] w-[2px] rounded-r-[2px] bg-accent" />
+      ) : null}
+      <Icon name={icon} size={15} />
+      <span className="flex-1">{label}</span>
+      {count != null ? (
+        <span
+          className={cn(
+            "rounded-[3px] px-[6px] py-px font-mono text-[10px]",
+            active
+              ? "border border-border-subtle bg-bg text-fg-muted"
+              : "text-fg-faint",
+          )}
+        >
+          {fmtCount(count)}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 function Overview({
   totals,
   points,
-  recentUsers,
-  recentOrgs,
+  range,
+  auditEvents,
   isLoading,
 }: {
   totals:
@@ -414,32 +563,106 @@ function Overview({
       }
     | undefined;
   points: GrowthPoint[];
-  recentUsers: AdminUserSummary[];
-  recentOrgs: AdminOrganizationSummary[];
+  range: string;
+  auditEvents: AuditEvent[];
   isLoading: boolean;
 }) {
+  const [metric, setMetric] = useState<"users" | "organizations">("users");
+  const trail = points.slice(-12);
+  const sparkUsers = trail.map((p) => p.users);
+  const sparkOrgs = trail.map((p) => p.organizations);
+
+  const userDelta = useMemo(() => deltaPercent(sparkUsers), [sparkUsers]);
+  const orgDelta = useMemo(() => deltaPercent(sparkOrgs), [sparkOrgs]);
+
   return (
-    <div className="space-y-5">
+    <div className="flex flex-col gap-[18px]">
       <div className="grid grid-cols-4 gap-3">
-        <Metric label="Users" value={totals?.users} />
-        <Metric label="Organizations" value={totals?.organizations} />
-        <Metric label="Suspended users" value={totals?.suspendedUsers} tone="danger" />
-        <Metric label="Suspended orgs" value={totals?.suspendedOrganizations} tone="danger" />
+        <Kpi label="Total users" value={totals?.users} delta={userDelta} spark={sparkUsers} />
+        <Kpi
+          label="Organizations"
+          value={totals?.organizations}
+          delta={orgDelta}
+          spark={sparkOrgs}
+        />
+        <Kpi
+          label="Suspended users"
+          value={totals?.suspendedUsers}
+          tone="danger"
+          spark={sparkUsers.map(() => 0)}
+        />
+        <Kpi
+          label="Suspended orgs"
+          value={totals?.suspendedOrganizations}
+          tone="danger"
+          spark={sparkOrgs.map(() => 0)}
+        />
       </div>
-      <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(340px,0.8fr)] gap-4">
-        <section className="border border-border-subtle bg-surface/40 p-4">
-          <PanelTitle title="Growth" meta={isLoading ? "loading" : `${points.length} buckets`} />
-          <GrowthChart points={points} />
-        </section>
-        <section className="border border-border-subtle bg-surface/40 p-4">
-          <PanelTitle title="Recent organizations" meta={`${recentOrgs.length} shown`} />
-          <CompactOrgList organizations={recentOrgs} />
-        </section>
+
+      <div className="grid grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)] gap-3">
+        <Panel
+          title="Growth"
+          meta={`Last ${range}`}
+          action={
+            <div className="flex gap-1 rounded-[6px] border border-border-subtle bg-bg p-[2px]">
+              {(
+                [
+                  ["users", "Users"],
+                  ["organizations", "Orgs"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setMetric(key)}
+                  className={cn(
+                    "h-[22px] rounded-[4px] px-2 text-[11px]",
+                    metric === key ? "bg-surface-2 text-fg" : "text-fg-muted hover:text-fg",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          }
+        >
+          <GrowthChart points={points} metric={metric} loading={isLoading} />
+        </Panel>
+
+        <Panel title="Recent activity" meta={`${auditEvents.length} events`}>
+          <div className="flex flex-col">
+            {auditEvents.slice(0, 6).map((event, index) => (
+              <div
+                key={event.id}
+                className={cn(
+                  "flex items-start gap-[10px] py-2 text-[12px]",
+                  index < Math.min(auditEvents.length, 6) - 1 && "border-b border-border-subtle",
+                )}
+              >
+                <span
+                  className={cn(
+                    "mt-[6px] h-[6px] w-[6px] flex-shrink-0 rounded-full",
+                    actionDot(event.action),
+                  )}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-mono text-[11px] text-fg">{event.action}</p>
+                  <p className="truncate text-[11.5px] text-fg-muted">
+                    <span className="text-fg-faint">{event.actor.email} →</span>{" "}
+                    {event.targetType}:{event.targetId}
+                  </p>
+                </div>
+                <span className="flex-shrink-0 font-mono text-[10px] text-fg-faint">
+                  {relativeShort(event.createdAt)}
+                </span>
+              </div>
+            ))}
+            {auditEvents.length === 0 ? (
+              <p className="py-3 text-[12px] text-fg-faint">No audit events yet.</p>
+            ) : null}
+          </div>
+        </Panel>
       </div>
-      <section className="border border-border-subtle bg-surface/40 p-4">
-        <PanelTitle title="Recent users" meta={`${recentUsers.length} shown`} />
-        <CompactUserList users={recentUsers} />
-      </section>
     </div>
   );
 }
@@ -470,97 +693,195 @@ function UsersView({
   onSuspend: (target: SuspensionTarget) => void;
 }) {
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_390px] gap-4">
-      <section className="min-w-0 border border-border-subtle bg-surface/35">
-        <TableToolbar
-          total={pageTotal}
-          search={search}
-          status={status}
-          onSearch={onSearch}
-          onStatus={onStatus}
-        />
-        <table className="w-full table-fixed text-left text-[12px]">
-          <thead className="border-y border-border-subtle text-[10px] uppercase tracking-[0.12em] text-fg-faint">
-            <tr>
-              <th className="px-3 py-2">User</th>
-              <th className="w-24 px-3 py-2">Status</th>
-              <th className="w-20 px-3 py-2">Orgs</th>
-              <th className="w-32 px-3 py-2">Last seen</th>
-              <th className="w-28 px-3 py-2">Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((user) => (
-              <tr
-                key={user.id}
-                onClick={() => onSelect(user.id)}
-                className={cn(
-                  "cursor-pointer border-b border-border-subtle/70 hover:bg-surface",
-                  selected === user.id && "bg-surface",
-                )}
-              >
-                <td className="min-w-0 px-3 py-2">
-                  <p className="truncate text-fg">{user.name}</p>
-                  <p className="truncate text-fg-faint">{user.email}</p>
-                </td>
-                <td className="px-3 py-2">
-                  <Status suspended={Boolean(user.suspendedAt)} />
-                </td>
-                <td className="px-3 py-2 font-mono text-fg-muted">{user.organizationCount}</td>
-                <td className="px-3 py-2 text-fg-muted">{shortDate(user.lastSessionAt)}</td>
-                <td className="px-3 py-2 text-fg-muted">{shortDate(user.createdAt)}</td>
-              </tr>
+    <div className="grid h-full grid-cols-[minmax(0,1fr)_360px] gap-3">
+      <Panel title="Users" meta={`${users.length} of ${pageTotal}`} noPad>
+        <div className="flex items-center gap-2 border-b border-border-subtle px-[14px] py-3">
+          <SearchInput
+            value={search}
+            onChange={onSearch}
+            placeholder="Search by name, email, org..."
+            width={300}
+            kbd="⌘K"
+          />
+          <div className="flex gap-1">
+            {(["all", "active", "suspended"] as const).map((item) => (
+              <Pill key={item} active={status === item} onClick={() => onStatus(item)}>
+                {item}
+              </Pill>
             ))}
-          </tbody>
-        </table>
-        {isLoading ? <p className="p-4 text-[12px] text-fg-faint">Loading users...</p> : null}
-      </section>
-      <DetailPanel title="User detail">
-        {detail ? (
-          <div className="space-y-4">
-            <IdentityBlock title={detail.user.name} subtitle={detail.user.email} />
-            <div className="grid grid-cols-2 gap-2">
-              <MiniStat label="Active sessions" value={detail.sessions.active} />
-              <MiniStat label="Revoked sessions" value={detail.sessions.revoked} />
-              <MiniStat label="Memberships" value={detail.memberships.length} />
-              <MiniStat label="Activity events" value={detail.activityEvents.length} />
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                onSuspend({
-                  type: "user",
-                  id: detail.user.id,
-                  label: detail.user.email,
-                  suspended: Boolean(detail.user.suspendedAt),
-                })
-              }
-              className={cn(
-                "h-9 w-full rounded-[6px] border text-[13px]",
-                detail.user.suspendedAt
-                  ? "border-success/50 text-success hover:bg-success/10"
-                  : "border-danger/50 text-danger hover:bg-danger/10",
-              )}
-            >
-              {detail.user.suspendedAt ? "Unsuspend user" : "Suspend user"}
-            </button>
-            <PanelTitle title="Organizations" meta={`${detail.memberships.length}`} />
-            <div className="space-y-2">
-              {detail.memberships.map((membership) => (
-                <div key={membership.organizationId} className="border border-border-subtle p-2">
-                  <p className="truncate text-[12px] text-fg">{membership.organizationName}</p>
-                  <p className="text-[11px] text-fg-faint">{membership.role}</p>
-                </div>
-              ))}
-            </div>
-            <AuditMini events={detail.auditEvents} />
-            <ActivityMini events={detail.activityEvents} />
           </div>
-        ) : (
-          <EmptyDetail label="Select a user" />
-        )}
-      </DetailPanel>
+        </div>
+        <div className="overflow-auto">
+          <table className="w-full table-fixed border-collapse">
+            <thead>
+              <tr className="border-b border-border-subtle">
+                {["User", "Status", "Workspaces", "Last seen", "Joined"].map((label, idx) => (
+                  <th
+                    key={label}
+                    className={cn(
+                      "px-[14px] py-[9px] text-left text-[10px] font-medium uppercase tracking-[0.08em] text-fg-faint",
+                      idx === 1 && "w-28",
+                      idx === 2 && "w-28",
+                      idx === 3 && "w-28",
+                      idx === 4 && "w-28",
+                    )}
+                  >
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((user) => (
+                <tr
+                  key={user.id}
+                  onClick={() => onSelect(user.id)}
+                  className={cn(
+                    "cursor-pointer border-b border-border-subtle",
+                    selected === user.id ? "bg-surface-2" : "hover:bg-surface",
+                  )}
+                >
+                  <td className="min-w-0 px-[14px] py-[10px]">
+                    <div className="flex min-w-0 items-center gap-[10px]">
+                      <Avatar name={user.name} seed={user.id} size={28} />
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-medium text-fg">
+                          {user.name || "—"}
+                        </p>
+                        <p className="truncate font-mono text-[11.5px] text-fg-faint">
+                          {user.email}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-[14px] py-[10px]">
+                    <StatusDot kind={user.suspendedAt ? "suspended" : "active"} />
+                  </td>
+                  <td className="px-[14px] py-[10px] font-mono text-[12px] text-fg-muted">
+                    {user.organizationCount}
+                  </td>
+                  <td className="px-[14px] py-[10px] text-[12px] text-fg-muted">
+                    {shortDate(user.lastSessionAt)}
+                  </td>
+                  <td className="px-[14px] py-[10px] text-[12px] text-fg-faint">
+                    {shortDate(user.createdAt)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {isLoading ? (
+            <p className="px-4 py-3 text-[12px] text-fg-faint">Loading users...</p>
+          ) : null}
+          {!isLoading && users.length === 0 ? (
+            <p className="px-4 py-6 text-[12px] text-fg-faint">No users match these filters.</p>
+          ) : null}
+        </div>
+      </Panel>
+
+      <UserDetailPanel detail={detail} onSuspend={onSuspend} />
     </div>
+  );
+}
+
+function UserDetailPanel({
+  detail,
+  onSuspend,
+}: {
+  detail: Awaited<ReturnType<typeof getAdminUser>> | undefined;
+  onSuspend: (target: SuspensionTarget) => void;
+}) {
+  if (!detail) {
+    return (
+      <Panel title="User detail">
+        <p className="py-6 text-[12px] text-fg-faint">Select a user</p>
+      </Panel>
+    );
+  }
+  const user = detail.user;
+  return (
+    <Panel title="User detail" meta={user.id}>
+      <div className="flex flex-col gap-[14px]">
+        <div className="flex items-center gap-3">
+          <Avatar name={user.name || user.email} seed={user.id} size={44} />
+          <div className="min-w-0">
+            <p className="truncate text-[15px] font-semibold text-fg">{user.name || "—"}</p>
+            <p className="truncate font-mono text-[12px] text-fg-faint">{user.email}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <StatusDot kind={user.suspendedAt ? "suspended" : "active"} />
+          <Tag>{user.emailVerified ? "verified" : "unverified"}</Tag>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <Stat label="Active sessions" value={detail.sessions.active} />
+          <Stat label="Workspaces" value={detail.memberships.length} />
+          <Stat label="Joined" value={shortDate(user.createdAt)} mono={false} />
+          <Stat label="Last seen" value={shortDate(user.lastSessionAt)} mono={false} />
+        </div>
+
+        {user.suspendedAt ? (
+          <div className="rounded-[6px] border border-danger/35 bg-danger/10 p-[10px] text-[12px] text-danger">
+            <p className="mb-[3px] font-mono text-[10px] uppercase tracking-[0.08em]">
+              Suspension reason
+            </p>
+            {user.suspensionReason || "No reason recorded"}
+          </div>
+        ) : null}
+
+        <div className="flex gap-[6px]">
+          <Btn
+            kind={user.suspendedAt ? "primary" : "danger"}
+            onClick={() =>
+              onSuspend({
+                type: "user",
+                id: user.id,
+                label: user.email,
+                suspended: Boolean(user.suspendedAt),
+              })
+            }
+          >
+            {user.suspendedAt ? "Unsuspend" : "Suspend"}
+          </Btn>
+        </div>
+
+        <div>
+          <p className="mb-2 text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+            Memberships
+          </p>
+          <div className="flex flex-col gap-1">
+            {detail.memberships.slice(0, 6).map((membership) => (
+              <div
+                key={membership.organizationId}
+                className="flex items-center justify-between border-b border-border-subtle py-[6px] text-[11.5px]"
+              >
+                <span className="truncate text-fg">{membership.organizationName}</span>
+                <span className="font-mono text-[10px] text-fg-faint">{membership.role}</span>
+              </div>
+            ))}
+            {detail.memberships.length === 0 ? (
+              <p className="text-[11.5px] text-fg-faint">No memberships</p>
+            ) : null}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+            Recent events
+          </p>
+          <div className="flex flex-col">
+            {detail.activityEvents.slice(0, 6).map((event) => (
+              <ActivityRow key={event.id} event={event} />
+            ))}
+            {detail.activityEvents.length === 0 ? (
+              <p className="text-[11.5px] text-fg-faint">No activity</p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </Panel>
   );
 }
 
@@ -590,138 +911,296 @@ function OrganizationsView({
   onSuspend: (target: SuspensionTarget) => void;
 }) {
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_390px] gap-4">
-      <section className="min-w-0 border border-border-subtle bg-surface/35">
-        <TableToolbar
-          total={pageTotal}
-          search={search}
-          status={status}
-          onSearch={onSearch}
-          onStatus={onStatus}
-        />
-        <table className="w-full table-fixed text-left text-[12px]">
-          <thead className="border-y border-border-subtle text-[10px] uppercase tracking-[0.12em] text-fg-faint">
-            <tr>
-              <th className="px-3 py-2">Organization</th>
-              <th className="w-24 px-3 py-2">Status</th>
-              <th className="w-20 px-3 py-2">Members</th>
-              <th className="w-20 px-3 py-2">Issues</th>
-              <th className="w-28 px-3 py-2">Created</th>
+    <div className="grid h-full grid-cols-[minmax(0,1fr)_360px] gap-3">
+      <Panel title="Organizations" meta={`${organizations.length} of ${pageTotal}`} noPad>
+        <div className="flex items-center gap-2 border-b border-border-subtle px-[14px] py-3">
+          <SearchInput
+            value={search}
+            onChange={onSearch}
+            placeholder="Search by name, slug, owner..."
+            width={300}
+          />
+          <div className="flex gap-1">
+            {(["all", "active", "suspended"] as const).map((item) => (
+              <Pill key={item} active={status === item} onClick={() => onStatus(item)}>
+                {item}
+              </Pill>
+            ))}
+          </div>
+        </div>
+        <div className="overflow-auto">
+          <table className="w-full table-fixed border-collapse">
+            <thead>
+              <tr className="border-b border-border-subtle">
+                {[
+                  ["Organization", "auto"],
+                  ["Status", "110px"],
+                  ["Members", "90px"],
+                  ["Issues", "90px"],
+                  ["Owners", "90px"],
+                  ["Created", "110px"],
+                ].map(([label, width]) => (
+                  <th
+                    key={label}
+                    style={{ width: width === "auto" ? undefined : width }}
+                    className="px-[14px] py-[9px] text-left text-[10px] font-medium uppercase tracking-[0.08em] text-fg-faint"
+                  >
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {organizations.map((org) => (
+                <tr
+                  key={org.id}
+                  onClick={() => onSelect(org.id)}
+                  className={cn(
+                    "cursor-pointer border-b border-border-subtle",
+                    selected === org.id ? "bg-surface-2" : "hover:bg-surface",
+                  )}
+                >
+                  <td className="min-w-0 px-[14px] py-[10px]">
+                    <div className="flex min-w-0 items-center gap-[10px]">
+                      <OrgGlyph name={org.name} />
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-medium text-fg">{org.name}</p>
+                        <p className="truncate font-mono text-[11px] text-fg-faint">/{org.slug}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-[14px] py-[10px]">
+                    <StatusDot kind={org.suspendedAt ? "suspended" : "active"} />
+                  </td>
+                  <td className="px-[14px] py-[10px] font-mono text-[12px] text-fg-muted">
+                    {org.memberCount}
+                  </td>
+                  <td className="px-[14px] py-[10px] font-mono text-[12px] text-fg-muted">
+                    {fmtCount(org.issueCount)}
+                  </td>
+                  <td className="px-[14px] py-[10px] font-mono text-[12px] text-fg-muted">
+                    {org.ownerCount}
+                  </td>
+                  <td className="px-[14px] py-[10px] text-[12px] text-fg-faint">
+                    {shortDate(org.createdAt)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {isLoading ? (
+            <p className="px-4 py-3 text-[12px] text-fg-faint">Loading organizations...</p>
+          ) : null}
+          {!isLoading && organizations.length === 0 ? (
+            <p className="px-4 py-6 text-[12px] text-fg-faint">
+              No organizations match these filters.
+            </p>
+          ) : null}
+        </div>
+      </Panel>
+
+      <OrgDetailPanel detail={detail} onSuspend={onSuspend} />
+    </div>
+  );
+}
+
+function OrgDetailPanel({
+  detail,
+  onSuspend,
+}: {
+  detail: Awaited<ReturnType<typeof getAdminOrganization>> | undefined;
+  onSuspend: (target: SuspensionTarget) => void;
+}) {
+  if (!detail) {
+    return (
+      <Panel title="Organization detail">
+        <p className="py-6 text-[12px] text-fg-faint">Select an organization</p>
+      </Panel>
+    );
+  }
+  const org = detail.organization;
+  return (
+    <Panel title="Organization detail" meta={org.id}>
+      <div className="flex flex-col gap-[14px]">
+        <div className="flex items-center gap-3">
+          <OrgGlyph name={org.name} size={44} />
+          <div className="min-w-0">
+            <p className="truncate text-[15px] font-semibold text-fg">{org.name}</p>
+            <p className="truncate font-mono text-[12px] text-fg-faint">/{org.slug}</p>
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <StatusDot kind={org.suspendedAt ? "suspended" : "active"} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <Stat label="Members" value={org.memberCount} />
+          <Stat label="Projects" value={org.projectCount} />
+          <Stat label="Issues" value={fmtCount(org.issueCount)} mono />
+          <Stat label="Owners" value={org.ownerCount} />
+          <Stat label="Active sessions" value={detail.sessions.active} />
+          <Stat label="Created" value={shortDate(org.createdAt)} mono={false} />
+        </div>
+
+        {detail.owners[0] ? (
+          <div className="rounded-[6px] border border-border-subtle bg-bg p-[10px]">
+            <p className="mb-[4px] text-[10px] uppercase tracking-[0.08em] text-fg-faint">Owner</p>
+            <div className="flex items-center gap-2">
+              <Avatar name={detail.owners[0].name} seed={detail.owners[0].id} size={22} />
+              <div className="min-w-0">
+                <p className="truncate text-[12.5px] text-fg">{detail.owners[0].name}</p>
+                <p className="truncate font-mono text-[11px] text-fg-faint">
+                  {detail.owners[0].email}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {org.suspendedAt ? (
+          <div className="rounded-[6px] border border-danger/35 bg-danger/10 p-[10px] text-[12px] text-danger">
+            <p className="mb-[3px] font-mono text-[10px] uppercase tracking-[0.08em]">
+              Suspension reason
+            </p>
+            {org.suspensionReason || "No reason recorded"}
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap gap-[6px]">
+          <Btn
+            kind={org.suspendedAt ? "primary" : "danger"}
+            onClick={() =>
+              onSuspend({
+                type: "organization",
+                id: org.id,
+                label: org.name,
+                suspended: Boolean(org.suspendedAt),
+              })
+            }
+          >
+            {org.suspendedAt ? "Unsuspend" : "Suspend"}
+          </Btn>
+        </div>
+
+        <div>
+          <p className="mb-2 text-[10px] uppercase tracking-[0.08em] text-fg-faint">Members</p>
+          <div className="flex max-h-56 flex-col gap-1 overflow-auto">
+            {detail.members.slice(0, 12).map((member) => (
+              <div
+                key={member.id}
+                className="flex items-center gap-[8px] border-b border-border-subtle py-[6px]"
+              >
+                <Avatar name={member.name || member.email} seed={member.id} size={22} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[12px] text-fg">{member.name}</p>
+                  <p className="truncate font-mono text-[10.5px] text-fg-faint">{member.email}</p>
+                </div>
+                <span className="font-mono text-[10px] text-fg-faint">{member.role}</span>
+              </div>
+            ))}
+            {detail.members.length === 0 ? (
+              <p className="text-[11.5px] text-fg-faint">No members</p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function AuditView({
+  events,
+  total,
+  isLoading,
+  filter,
+  onFilter,
+}: {
+  events: AuditEvent[];
+  total: number;
+  isLoading: boolean;
+  filter: string;
+  onFilter: (value: string) => void;
+}) {
+  return (
+    <Panel
+      title="Audit log"
+      meta={`${events.length} of ${total} events`}
+      noPad
+      action={
+        <div className="flex gap-1">
+          {["all", "user", "org", "support", "admin"].map((item) => (
+            <Pill key={item} active={filter === item} onClick={() => onFilter(item)}>
+              {item}
+            </Pill>
+          ))}
+        </div>
+      }
+    >
+      <div className="overflow-auto">
+        <table className="w-full table-fixed border-collapse">
+          <thead>
+            <tr className="border-b border-border-subtle">
+              {[
+                ["Action", "200px"],
+                ["Actor", "220px"],
+                ["Target", "auto"],
+                ["Reason", "220px"],
+                ["Time", "150px"],
+              ].map(([label, width]) => (
+                <th
+                  key={label}
+                  style={{ width: width === "auto" ? undefined : width }}
+                  className="px-[14px] py-[9px] text-left text-[10px] font-medium uppercase tracking-[0.08em] text-fg-faint"
+                >
+                  {label}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {organizations.map((org) => (
-              <tr
-                key={org.id}
-                onClick={() => onSelect(org.id)}
-                className={cn(
-                  "cursor-pointer border-b border-border-subtle/70 hover:bg-surface",
-                  selected === org.id && "bg-surface",
-                )}
-              >
-                <td className="min-w-0 px-3 py-2">
-                  <p className="truncate text-fg">{org.name}</p>
-                  <p className="truncate text-fg-faint">{org.slug}</p>
+            {events.map((event) => (
+              <tr key={event.id} className="border-b border-border-subtle">
+                <td className="px-[14px] py-[11px]">
+                  <span className="inline-flex items-center gap-2 font-mono text-[12px] text-fg">
+                    <span
+                      className={cn("h-[6px] w-[6px] rounded-full", actionDot(event.action))}
+                    />
+                    {event.action}
+                  </span>
                 </td>
-                <td className="px-3 py-2">
-                  <Status suspended={Boolean(org.suspendedAt)} />
+                <td className="px-[14px] py-[11px]">
+                  <div className="flex items-center gap-2">
+                    <Avatar name={event.actor.name || event.actor.email} seed={event.actor.id} size={22} />
+                    <div className="min-w-0">
+                      <p className="truncate text-[12.5px] text-fg">{event.actor.name}</p>
+                      <p className="truncate font-mono text-[10.5px] text-fg-faint">
+                        {event.actor.email}
+                      </p>
+                    </div>
+                  </div>
                 </td>
-                <td className="px-3 py-2 font-mono text-fg-muted">{org.memberCount}</td>
-                <td className="px-3 py-2 font-mono text-fg-muted">{org.issueCount}</td>
-                <td className="px-3 py-2 text-fg-muted">{shortDate(org.createdAt)}</td>
+                <td className="truncate px-[14px] py-[11px] font-mono text-[12px] text-fg-muted">
+                  <span className="text-fg-faint">{event.targetType}:</span> {event.targetId}
+                </td>
+                <td className="px-[14px] py-[11px] text-[12px] text-fg-muted">
+                  {event.reason ?? "—"}
+                </td>
+                <td className="px-[14px] py-[11px] font-mono text-[11px] text-fg-faint">
+                  {longDate(event.createdAt)}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
         {isLoading ? (
-          <p className="p-4 text-[12px] text-fg-faint">Loading organizations...</p>
+          <p className="px-4 py-3 text-[12px] text-fg-faint">Loading audit events...</p>
         ) : null}
-      </section>
-      <DetailPanel title="Organization detail">
-        {detail ? (
-          <div className="space-y-4">
-            <IdentityBlock title={detail.organization.name} subtitle={detail.organization.slug} />
-            <div className="grid grid-cols-2 gap-2">
-              <MiniStat label="Members" value={detail.organization.memberCount} />
-              <MiniStat label="Issues" value={detail.organization.issueCount} />
-              <MiniStat label="Owners" value={detail.organization.ownerCount} />
-              <MiniStat label="Projects" value={detail.organization.projectCount} />
-              <MiniStat label="Active sessions" value={detail.sessions.active} />
-              <MiniStat label="Activity events" value={detail.activityEvents.length} />
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                onSuspend({
-                  type: "organization",
-                  id: detail.organization.id,
-                  label: detail.organization.name,
-                  suspended: Boolean(detail.organization.suspendedAt),
-                })
-              }
-              className={cn(
-                "h-9 w-full rounded-[6px] border text-[13px]",
-                detail.organization.suspendedAt
-                  ? "border-success/50 text-success hover:bg-success/10"
-                  : "border-danger/50 text-danger hover:bg-danger/10",
-              )}
-            >
-              {detail.organization.suspendedAt ? "Unsuspend organization" : "Suspend organization"}
-            </button>
-            <PanelTitle title="Members" meta={`${detail.members.length}`} />
-            <div className="max-h-56 space-y-2 overflow-auto">
-              {detail.members.map((member) => (
-                <div key={member.id} className="border border-border-subtle p-2">
-                  <p className="truncate text-[12px] text-fg">{member.name}</p>
-                  <p className="truncate text-[11px] text-fg-faint">{member.email}</p>
-                </div>
-              ))}
-            </div>
-            <PanelTitle title="Owners" meta={`${detail.owners.length}`} />
-            <div className="space-y-2">
-              {detail.owners.map((owner) => (
-                <div key={owner.id} className="border border-border-subtle p-2">
-                  <p className="truncate text-[12px] text-fg">{owner.name}</p>
-                  <p className="truncate text-[11px] text-fg-faint">{owner.email}</p>
-                </div>
-              ))}
-            </div>
-            <AuditMini events={detail.auditEvents} />
-            <ActivityMini events={detail.activityEvents} />
-          </div>
-        ) : (
-          <EmptyDetail label="Select an organization" />
-        )}
-      </DetailPanel>
-    </div>
-  );
-}
-
-function AuditView({ events, isLoading }: { events: AuditEvent[]; isLoading: boolean }) {
-  return (
-    <section className="border border-border-subtle bg-surface/35">
-      <PanelTitle title="Audit log" meta={isLoading ? "loading" : `${events.length} events`} />
-      <div className="divide-y divide-border-subtle">
-        {events.map((event) => (
-          <div
-            key={event.id}
-            className="grid grid-cols-[180px_1fr_220px] gap-4 px-4 py-3 text-[12px]"
-          >
-            <div>
-              <p className="text-fg">{event.action}</p>
-              <p className="text-fg-faint">{shortDate(event.createdAt)}</p>
-            </div>
-            <div>
-              <p className="text-fg-muted">{event.reason ?? "No reason recorded"}</p>
-              <p className="font-mono text-[11px] text-fg-faint">
-                {event.targetType}:{event.targetId}
-              </p>
-            </div>
-            <p className="truncate text-fg-faint">{event.actor.email}</p>
-          </div>
-        ))}
+        {!isLoading && events.length === 0 ? (
+          <p className="px-4 py-6 text-[12px] text-fg-faint">No audit events match this filter.</p>
+        ) : null}
       </div>
-    </section>
+    </Panel>
   );
 }
 
@@ -770,7 +1249,7 @@ function SupportView({
 }) {
   const [reply, setReply] = useState("");
   const [closeAfterReply, setCloseAfterReply] = useState(false);
-  const selectedTicket = detail?.ticket;
+  const ticket = detail?.ticket;
 
   const submitReply = (event: FormEvent) => {
     event.preventDefault();
@@ -781,137 +1260,167 @@ function SupportView({
   };
 
   return (
-    <div className="grid grid-cols-[360px_minmax(0,1fr)_280px] gap-4">
-      <section className="min-w-0 border border-border-subtle bg-surface/35">
-        <div className="space-y-3 p-3">
-          <input
-            value={search}
-            onChange={(event) => onSearch(event.target.value)}
-            placeholder="Search tickets"
-            className="h-9 w-full rounded-[6px] border border-border bg-bg px-3 text-[13px] outline-none focus:border-accent"
-          />
-          <div className="grid grid-cols-4 gap-1">
-            {["open", "pending", "closed", "all"].map((item) => (
-              <button
-                key={item}
-                type="button"
-                onClick={() => onStatus(item)}
-                className={cn(
-                  "h-8 rounded-[6px] border text-[11px] capitalize",
-                  status === item
-                    ? "border-accent bg-accent/10 text-accent"
-                    : "border-border-subtle text-fg-muted hover:bg-surface",
-                )}
-              >
+    <div className="grid h-full grid-cols-[320px_minmax(0,1fr)_300px] gap-3">
+      <Panel
+        title="Inbox"
+        meta={`${tickets.length} of ${pageTotal}`}
+        noPad
+        action={
+          <Btn kind="primary" size="sm" onClick={onCompose} disabled={createBusy}>
+            + New
+          </Btn>
+        }
+      >
+        <div className="border-b border-border-subtle p-[10px]">
+          <SearchInput value={search} onChange={onSearch} placeholder="Search tickets" />
+          <div className="mt-2 flex gap-1">
+            {(["open", "pending", "closed", "all"] as const).map((item) => (
+              <Pill key={item} active={status === item} onClick={() => onStatus(item)}>
                 {item}
-              </button>
+              </Pill>
             ))}
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <p className="font-mono text-[11px] text-fg-faint">{pageTotal} tickets</p>
-            <button
-              type="button"
-              disabled={createBusy}
-              onClick={onCompose}
-              className="h-8 rounded-[6px] bg-accent px-3 text-[12px] text-white disabled:opacity-50"
-            >
-              New email
-            </button>
-          </div>
         </div>
-        <div className="divide-y divide-border-subtle">
+        <div className="overflow-auto">
           {tickets.map((ticket) => (
             <button
               key={ticket.id}
               type="button"
               onClick={() => onSelect(ticket.id)}
               className={cn(
-                "block w-full px-3 py-3 text-left hover:bg-surface",
-                selected === ticket.id && "bg-surface",
+                "block w-full border-b border-l-2 border-border-subtle px-[14px] py-3 text-left",
+                selected === ticket.id
+                  ? "border-l-accent bg-surface-2"
+                  : "border-l-transparent hover:bg-surface",
               )}
             >
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-[13px] text-fg">{ticket.subject}</p>
-                <TicketStatus status={ticket.status} />
+              <div className="mb-1 flex items-center gap-[6px]">
+                <span className="font-mono text-[10px] text-fg-faint">{ticket.number}</span>
+                <PriorityChip priority={ticket.priority} />
+                <span className="ml-auto font-mono text-[10px] text-fg-faint">
+                  {relativeShort(ticket.lastMessageAt)}
+                </span>
               </div>
-              <p className="mt-1 truncate text-[12px] text-fg-faint">
-                {ticket.customerName ?? ticket.customerEmail}
+              <p className="mb-[2px] truncate text-[13px] font-medium text-fg">{ticket.subject}</p>
+              <p className="truncate text-[11.5px] text-fg-muted">
+                <span className="text-fg-faint">
+                  {ticket.customerName ?? ticket.customerEmail}
+                </span>
               </p>
-              <div className="mt-2 flex items-center justify-between font-mono text-[10px] text-fg-faint">
-                <span>{ticket.number}</span>
-                <span>{shortDate(ticket.lastMessageAt)}</span>
-              </div>
             </button>
           ))}
-          {isLoading ? <p className="p-4 text-[12px] text-fg-faint">Loading tickets...</p> : null}
+          {isLoading ? (
+            <p className="p-4 text-[12px] text-fg-faint">Loading tickets...</p>
+          ) : null}
           {!isLoading && tickets.length === 0 ? (
-            <p className="p-4 text-[12px] text-fg-faint">No support tickets.</p>
+            <p className="p-4 text-[12px] text-fg-faint">No tickets match these filters.</p>
           ) : null}
         </div>
-      </section>
+      </Panel>
 
-      <section className="min-w-0 border border-border-subtle bg-surface/35">
-        {detail ? (
-          <div className="flex h-[calc(100vh-120px)] flex-col">
-            <div className="border-b border-border-subtle p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="font-mono text-[10px] text-fg-faint">{detail.ticket.number}</p>
-                  <h3 className="mt-1 truncate text-[18px] font-medium">{detail.ticket.subject}</h3>
-                  <p className="mt-1 truncate text-[12px] text-fg-faint">
-                    {detail.ticket.customerEmail}
-                  </p>
-                </div>
-                <TicketStatus status={detail.ticket.status} />
+      <Panel
+        title={ticket?.subject || "Conversation"}
+        meta={ticket?.number}
+        action={
+          ticket ? (
+            <div className="flex gap-[6px]">
+              <Btn
+                size="sm"
+                onClick={() =>
+                  onUpdate({ status: ticket.status === "closed" ? "open" : "closed" })
+                }
+                disabled={updateBusy}
+              >
+                {ticket.status === "closed" ? "Reopen" : "Close"}
+              </Btn>
+            </div>
+          ) : null
+        }
+      >
+        {ticket && detail ? (
+          <div className="flex h-[calc(100vh-176px)] flex-col gap-3">
+            <div className="flex items-center gap-3 border-b border-border-subtle pb-3">
+              <Avatar
+                name={ticket.customerName || ticket.customerEmail}
+                seed={ticket.customerEmail}
+                size={36}
+              />
+              <div className="min-w-0">
+                <p className="truncate text-[13px] font-semibold text-fg">
+                  {ticket.customerName ?? "Unknown"}
+                </p>
+                <p className="truncate font-mono text-[12px] text-fg-faint">
+                  {ticket.customerEmail}
+                </p>
+              </div>
+              <div className="ml-auto flex gap-[6px]">
+                <PriorityChip priority={ticket.priority} />
+                <StatusDot kind={ticket.status} />
               </div>
             </div>
-            <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
-              {detail.messages.map((message) => (
-                <article
-                  key={message.id}
-                  className={cn(
-                    "max-w-[78%] border border-border-subtle p-3",
-                    message.direction === "outbound" ? "ml-auto bg-accent/10" : "bg-bg",
-                  )}
-                >
-                  <div className="mb-2 flex items-center justify-between gap-3 text-[11px]">
-                    <p className="truncate text-fg-muted">
-                      {message.direction === "outbound" ? message.toEmail : message.fromEmail}
-                    </p>
-                    <span className="font-mono text-fg-faint">{shortDate(message.createdAt)}</span>
-                  </div>
-                  <p className="whitespace-pre-wrap text-[13px] leading-6 text-fg">
-                    {message.bodyText ?? stripHtml(message.bodyHtml ?? "")}
-                  </p>
-                  {message.deliveryStatus === "failed" ? (
-                    <div className="mt-3 border border-danger/40 bg-danger/10 p-2 text-[11px] text-danger">
-                      <p>{message.deliveryError ?? "Email send failed"}</p>
-                      <button
-                        type="button"
-                        disabled={retryBusy}
-                        onClick={() => onRetry(message.id)}
-                        className="mt-2 h-7 rounded-[6px] border border-danger/50 px-2 disabled:opacity-50"
+
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
+              {detail.messages.map((message) => {
+                const outbound = message.direction === "outbound";
+                return (
+                  <div
+                    key={message.id}
+                    className={cn(
+                      "rounded-[6px] border border-border-subtle p-[14px]",
+                      outbound ? "ml-8 bg-accent/[0.04]" : "bg-bg",
+                    )}
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <span
+                        className={cn(
+                          "text-[12px] font-medium",
+                          outbound ? "text-accent" : "text-fg",
+                        )}
                       >
-                        Retry send
-                      </button>
+                        {outbound ? "Produktive Support" : ticket.customerName ?? message.fromEmail}
+                      </span>
+                      <span className="font-mono text-[10px] text-fg-faint">
+                        {longDate(message.createdAt)}
+                      </span>
                     </div>
-                  ) : (
-                    <p className="mt-3 font-mono text-[10px] text-fg-faint">
-                      {message.deliveryStatus}
+                    <p className="m-0 whitespace-pre-wrap text-[13px] leading-6 text-fg-muted">
+                      {message.bodyText ?? stripHtml(message.bodyHtml ?? "")}
                     </p>
-                  )}
-                </article>
-              ))}
+                    {message.deliveryStatus === "failed" ? (
+                      <div className="mt-3 rounded-[5px] border border-danger/35 bg-danger/10 p-2 text-[11px] text-danger">
+                        <p>{message.deliveryError ?? "Email send failed"}</p>
+                        <button
+                          type="button"
+                          disabled={retryBusy}
+                          onClick={() => onRetry(message.id)}
+                          className="mt-2 h-7 rounded-[5px] border border-danger/45 px-2 disabled:opacity-50"
+                        >
+                          Retry send
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="mt-2 font-mono text-[10px] text-fg-faint">
+                        {message.deliveryStatus}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            <form onSubmit={submitReply} className="border-t border-border-subtle p-3">
+
+            <form
+              onSubmit={submitReply}
+              className="rounded-[6px] border border-border bg-bg p-[10px]"
+            >
               <textarea
                 value={reply}
                 onChange={(event) => setReply(event.target.value)}
                 placeholder="Reply to customer..."
-                className="min-h-28 w-full resize-none rounded-[6px] border border-border bg-bg px-3 py-2 text-[13px] leading-6 text-fg outline-none focus:border-accent"
+                className="block w-full resize-y border-none bg-transparent p-[6px] text-[13px] leading-6 text-fg outline-none placeholder:text-fg-faint"
+                style={{ minHeight: 80 }}
               />
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <label className="flex items-center gap-2 text-[12px] text-fg-muted">
+              <div className="mt-[6px] flex items-center justify-between">
+                <label className="flex items-center gap-[6px] text-[11.5px] text-fg-muted">
                   <input
                     type="checkbox"
                     checked={closeAfterReply}
@@ -919,144 +1428,126 @@ function SupportView({
                   />
                   Close after reply
                 </label>
-                <button
-                  type="submit"
-                  disabled={!reply.trim() || replyBusy}
-                  className="h-9 rounded-[6px] bg-accent px-3 text-[13px] text-white disabled:opacity-50"
-                >
+                <Btn kind="primary" size="sm" disabled={!reply.trim() || replyBusy}>
                   {replyBusy ? "Sending..." : "Send reply"}
-                </button>
+                </Btn>
               </div>
             </form>
           </div>
         ) : (
-          <EmptyDetail label="Select a ticket" />
+          <p className="py-6 text-[12px] text-fg-faint">Select a ticket</p>
         )}
-      </section>
+      </Panel>
 
-      <aside className="border border-border-subtle bg-surface/35 p-4">
-        {selectedTicket ? (
-          <div className="space-y-4">
-            <PanelTitle title="Ticket" meta={selectedTicket.number} />
-            <label className="block text-[12px] text-fg-muted">
-              Status
-              <select
-                value={selectedTicket.status}
-                disabled={updateBusy}
-                onChange={(event) => onUpdate({ status: event.target.value })}
-                className="mt-1 h-9 w-full rounded-[6px] border border-border bg-bg px-2 text-[12px] text-fg"
-              >
-                <option value="open">Open</option>
-                <option value="pending">Pending</option>
-                <option value="closed">Closed</option>
-              </select>
-            </label>
-            <label className="block text-[12px] text-fg-muted">
-              Priority
-              <select
-                value={selectedTicket.priority}
-                disabled={updateBusy}
-                onChange={(event) => onUpdate({ priority: event.target.value })}
-                className="mt-1 h-9 w-full rounded-[6px] border border-border bg-bg px-2 text-[12px] text-fg"
-              >
-                <option value="normal">Normal</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </label>
-            <div className="border border-border-subtle p-3 text-[12px]">
-              <p className="text-fg-faint">Customer</p>
-              <p className="mt-1 truncate text-fg">{selectedTicket.customerName ?? "Unknown"}</p>
-              <p className="truncate text-fg-muted">{selectedTicket.customerEmail}</p>
+      <Panel title="Context">
+        {ticket && detail ? (
+          <div className="flex flex-col gap-3">
+            <div>
+              <p className="mb-[6px] text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                Customer
+              </p>
+              <div className="flex items-center gap-[10px]">
+                <Avatar
+                  name={ticket.customerName || ticket.customerEmail}
+                  seed={ticket.customerEmail}
+                  size={32}
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-[13px] font-medium text-fg">
+                    {ticket.customerName ?? "Unknown"}
+                  </p>
+                  <p className="truncate font-mono text-[11px] text-fg-faint">
+                    {ticket.customerEmail}
+                  </p>
+                </div>
+              </div>
             </div>
-            {detail?.customerUser ? (
-              <div className="space-y-3 border border-border-subtle p-3 text-[12px]">
-                <div className="flex items-start gap-3">
-                  {detail.customerUser.image ? (
-                    <img
-                      src={detail.customerUser.image}
-                      alt=""
-                      className="h-9 w-9 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="grid h-9 w-9 place-items-center rounded-full border border-border-subtle font-mono text-[11px] text-fg-muted">
-                      {initials(detail.customerUser.name || detail.customerUser.email)}
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <p className="truncate text-fg">{detail.customerUser.name}</p>
-                    <p className="truncate text-fg-muted">{detail.customerUser.email}</p>
-                  </div>
+
+            <div className="grid grid-cols-2 gap-[6px]">
+              <Stat label="Status" value={ticket.status} mono={false} />
+              <Stat label="Priority" value={ticket.priority} mono={false} />
+              <Stat label="Messages" value={ticket.messageCount} />
+              <Stat label="Created" value={shortDate(ticket.createdAt)} mono={false} />
+            </div>
+
+            <div>
+              <p className="mb-[6px] text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                Update
+              </p>
+              <div className="flex flex-col gap-2">
+                <select
+                  value={ticket.status}
+                  disabled={updateBusy}
+                  onChange={(event) => onUpdate({ status: event.target.value })}
+                  className="h-9 w-full rounded-[5px] border border-border-subtle bg-bg px-2 text-[12px] text-fg"
+                >
+                  <option value="open">Status · Open</option>
+                  <option value="pending">Status · Pending</option>
+                  <option value="closed">Status · Closed</option>
+                </select>
+                <select
+                  value={ticket.priority}
+                  disabled={updateBusy}
+                  onChange={(event) => onUpdate({ priority: event.target.value })}
+                  className="h-9 w-full rounded-[5px] border border-border-subtle bg-bg px-2 text-[12px] text-fg"
+                >
+                  <option value="normal">Priority · Normal</option>
+                  <option value="high">Priority · High</option>
+                  <option value="urgent">Priority · Urgent</option>
+                </select>
+              </div>
+            </div>
+
+            {detail.customerUser ? (
+              <div>
+                <p className="mb-[6px] text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                  Account
+                </p>
+                <div className="rounded-[6px] border border-border-subtle bg-bg p-[10px] text-[12px]">
+                  <p className="text-fg">{detail.customerUser.name}</p>
+                  <p className="font-mono text-[11px] text-fg-faint">
+                    {detail.customerUser.emailVerified ? "verified" : "unverified"} ·{" "}
+                    {detail.customerUser.memberships.length} workspace
+                    {detail.customerUser.memberships.length === 1 ? "" : "s"}
+                  </p>
+                  {detail.customerUser.suspendedAt ? (
+                    <p className="mt-1 font-mono text-[11px] text-danger">
+                      suspended · {detail.customerUser.suspensionReason}
+                    </p>
+                  ) : null}
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <MiniFact
-                    label="Verified"
-                    value={detail.customerUser.emailVerified ? "yes" : "no"}
-                  />
-                  <MiniFact
-                    label="Last seen"
-                    value={shortDate(detail.customerUser.lastSessionAt)}
-                  />
-                  <MiniFact
-                    label="Joined"
-                    value={shortDate(detail.customerUser.createdAt)}
-                  />
-                  <MiniFact
-                    label="Workspaces"
-                    value={String(detail.customerUser.memberships.length)}
-                  />
-                </div>
-                {detail.customerUser.suspendedAt ? (
-                  <div className="border border-danger/40 bg-danger/10 p-2 text-danger">
-                    <p>Suspended</p>
-                    <p className="mt-1 text-[11px]">{detail.customerUser.suspensionReason}</p>
-                  </div>
-                ) : null}
-                <div className="space-y-2">
-                  <p className="text-fg-faint">Organizations</p>
-                  {detail.customerUser.memberships.slice(0, 5).map((membership) => (
-                    <div key={membership.organizationId} className="border border-border-subtle p-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-fg">{membership.organizationName}</p>
-                        <span className="font-mono text-[10px] text-fg-faint">
-                          {membership.role}
-                        </span>
-                      </div>
-                      <p className="truncate text-[11px] text-fg-faint">
-                        {membership.organizationSlug}
-                        {membership.organizationSuspendedAt ? " · suspended" : ""}
+              </div>
+            ) : (
+              <div className="rounded-[6px] border border-border-subtle bg-bg p-[10px] text-[12px] text-fg-faint">
+                No Produktive account matched this email.
+              </div>
+            )}
+
+            {detail.customerUser?.memberships.length ? (
+              <div>
+                <p className="mb-[6px] text-[10px] uppercase tracking-[0.08em] text-fg-faint">
+                  Workspaces
+                </p>
+                <div className="flex flex-col gap-[4px]">
+                  {detail.customerUser.memberships.slice(0, 4).map((membership) => (
+                    <div
+                      key={membership.organizationId}
+                      className="rounded-[5px] border border-border-subtle bg-bg p-[8px] text-[12px]"
+                    >
+                      <p className="truncate text-fg">{membership.organizationName}</p>
+                      <p className="truncate font-mono text-[11px] text-fg-faint">
+                        /{membership.organizationSlug} · {membership.role}
                       </p>
                     </div>
                   ))}
                 </div>
               </div>
-            ) : (
-              <div className="border border-border-subtle p-3 text-[12px] text-fg-faint">
-                No Produktive account matched this email.
-              </div>
-            )}
-            <div className="border border-border-subtle p-3 text-[12px]">
-              <p className="text-fg-faint">Assigned</p>
-              <p className="mt-1 truncate text-fg-muted">
-                {detail?.assignedAdmin?.email ?? "Unassigned"}
-              </p>
-            </div>
-            <PanelTitle title="Events" meta={`${detail?.events.length ?? 0}`} />
-            <div className="max-h-72 space-y-2 overflow-auto">
-              {detail?.events.map((event) => (
-                <div key={event.id} className="border border-border-subtle p-2">
-                  <p className="text-[12px] text-fg">{event.eventType.replace(/_/g, " ")}</p>
-                  <p className="font-mono text-[10px] text-fg-faint">
-                    {shortDate(event.createdAt)}
-                  </p>
-                </div>
-              ))}
-            </div>
+            ) : null}
           </div>
         ) : (
-          <EmptyDetail label="No ticket selected" />
+          <p className="py-6 text-[12px] text-fg-faint">No ticket selected</p>
         )}
-      </aside>
+      </Panel>
     </div>
   );
 }
@@ -1096,7 +1587,7 @@ function ComposeSupportDialog({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4">
-      <form onSubmit={submit} className="w-full max-w-xl border border-border bg-bg p-5 shadow-2xl">
+      <form onSubmit={submit} className="w-full max-w-xl rounded-[8px] border border-border bg-bg p-5 shadow-2xl">
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
           Produktive Support
         </p>
@@ -1167,7 +1658,7 @@ function ComposeSupportDialog({
           <button
             type="submit"
             disabled={!canSubmit || busy}
-            className="h-9 rounded-[6px] bg-accent px-3 text-[13px] text-white disabled:opacity-50"
+            className="h-9 rounded-[6px] bg-accent px-3 text-[13px] text-[#1a1410] disabled:opacity-50"
           >
             {busy ? "Sending..." : "Send email"}
           </button>
@@ -1198,7 +1689,7 @@ function SuspensionDialog({
   };
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4">
-      <form onSubmit={submit} className="w-full max-w-md border border-border bg-bg p-5 shadow-2xl">
+      <form onSubmit={submit} className="w-full max-w-md rounded-[8px] border border-border bg-bg p-5 shadow-2xl">
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-danger">
           {target.suspended ? "Restore access" : "Suspend access"}
         </p>
@@ -1249,240 +1740,544 @@ function SuspensionDialog({
   );
 }
 
-function GrowthChart({ points }: { points: GrowthPoint[] }) {
-  const max = Math.max(1, ...points.map((point) => Math.max(point.users, point.organizations)));
-  const bars = points.slice(-18);
-  return (
-    <div className="mt-4 h-72">
-      <div className="flex h-60 items-end gap-2 border-b border-border-subtle">
-        {bars.length === 0 ? (
-          <p className="pb-4 text-[12px] text-fg-faint">No growth data yet.</p>
-        ) : (
-          bars.map((point) => (
-            <div key={point.bucket} className="flex min-w-0 flex-1 items-end gap-1">
-              <div
-                title={`${point.bucket}: ${point.users} users`}
-                className="min-h-1 flex-1 bg-accent"
-                style={{ height: `${(point.users / max) * 100}%` }}
-              />
-              <div
-                title={`${point.bucket}: ${point.organizations} orgs`}
-                className="min-h-1 flex-1 bg-success"
-                style={{ height: `${(point.organizations / max) * 100}%` }}
-              />
-            </div>
-          ))
-        )}
-      </div>
-      <div className="mt-3 flex gap-4 text-[11px] text-fg-muted">
-        <span className="flex items-center gap-1">
-          <i className="h-2 w-2 bg-accent" /> Users
-        </span>
-        <span className="flex items-center gap-1">
-          <i className="h-2 w-2 bg-success" /> Organizations
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function TableToolbar({
-  total,
-  search,
-  status,
-  onSearch,
-  onStatus,
+function Panel({
+  title,
+  meta,
+  action,
+  children,
+  noPad,
 }: {
-  total: number;
-  search: string;
-  status: string;
-  onSearch: (value: string) => void;
-  onStatus: (value: string) => void;
+  title: string;
+  meta?: string;
+  action?: ReactNode;
+  children: ReactNode;
+  noPad?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 p-3">
-      <input
-        value={search}
-        onChange={(event) => onSearch(event.target.value)}
-        placeholder="Search"
-        className="h-9 min-w-0 flex-1 rounded-[6px] border border-border bg-bg px-3 text-[13px] outline-none focus:border-accent"
-      />
-      <select
-        value={status}
-        onChange={(event) => onStatus(event.target.value)}
-        className="h-9 rounded-[6px] border border-border bg-bg px-2 text-[12px] text-fg"
-      >
-        <option value="all">All</option>
-        <option value="active">Active</option>
-        <option value="suspended">Suspended</option>
-      </select>
-      <span className="font-mono text-[11px] text-fg-faint">{total} total</span>
-    </div>
-  );
-}
-
-function Metric({ label, value, tone }: { label: string; value?: number; tone?: "danger" }) {
-  return (
-    <section className="border border-border-subtle bg-surface/40 p-4">
-      <p className="text-[11px] uppercase tracking-[0.12em] text-fg-faint">{label}</p>
-      <p
-        className={cn(
-          "mt-4 font-mono text-[30px] leading-none",
-          tone === "danger" && "text-danger",
-        )}
-      >
-        {value ?? "..."}
-      </p>
+    <section className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-[8px] border border-border bg-surface">
+      <div className="flex h-11 flex-shrink-0 items-center justify-between border-b border-border-subtle pl-4 pr-[14px]">
+        <div className="flex min-w-0 items-baseline gap-[10px]">
+          <h3 className="m-0 text-[13px] font-semibold tracking-tight text-fg">{title}</h3>
+          {meta ? (
+            <span className="font-mono text-[10.5px] text-fg-faint">{meta}</span>
+          ) : null}
+        </div>
+        {action}
+      </div>
+      <div className={cn("min-h-0 flex-1", noPad ? "" : "px-4 py-[14px]")}>{children}</div>
     </section>
   );
 }
 
-function PanelTitle({ title, meta }: { title: string; meta?: string }) {
+function Kpi({
+  label,
+  value,
+  delta,
+  spark = [],
+  tone,
+}: {
+  label: string;
+  value: number | undefined;
+  delta?: number;
+  spark?: number[];
+  tone?: "danger";
+}) {
+  const display = value == null ? "—" : fmtCount(value);
+  const w = 120;
+  const h = 32;
+  const max = Math.max(...spark, 1);
+  const min = Math.min(...spark, 0);
+  const range = max - min || 1;
+  const points = spark
+    .map((v, i) => {
+      const x = (i / Math.max(spark.length - 1, 1)) * w;
+      const y = h - ((v - min) / range) * h;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const accent = tone === "danger" ? "var(--color-danger)" : "var(--color-accent)";
+  const id = `sg-${label.replace(/\s+/g, "-").toLowerCase()}`;
   return (
-    <div className="flex items-center justify-between px-4 py-3">
-      <h3 className="text-[13px] font-medium">{title}</h3>
-      {meta ? <span className="font-mono text-[10px] text-fg-faint">{meta}</span> : null}
-    </div>
-  );
-}
-
-function DetailPanel({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <aside className="min-h-[560px] border border-border-subtle bg-surface/35 p-4">
-      <PanelTitle title={title} />
-      {children}
-    </aside>
-  );
-}
-
-function CompactUserList({ users }: { users: AdminUserSummary[] }) {
-  return (
-    <div className="grid grid-cols-3 gap-2">
-      {users.map((user) => (
-        <div key={user.id} className="border border-border-subtle p-3">
-          <p className="truncate text-[13px] text-fg">{user.name}</p>
-          <p className="truncate text-[12px] text-fg-faint">{user.email}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function CompactOrgList({ organizations }: { organizations: AdminOrganizationSummary[] }) {
-  return (
-    <div className="space-y-2">
-      {organizations.map((org) => (
-        <div
-          key={org.id}
-          className="flex items-center justify-between border border-border-subtle p-2"
+    <section className="relative flex min-h-[110px] flex-col gap-2 overflow-hidden rounded-[8px] border border-border bg-surface px-4 pb-3 pt-[14px]">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] uppercase tracking-[0.06em] text-fg-muted">{label}</span>
+        {delta != null ? (
+          <span
+            className={cn(
+              "font-mono text-[11px]",
+              delta >= 0 ? "text-success" : "text-danger",
+            )}
+          >
+            {delta >= 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}%
+          </span>
+        ) : null}
+      </div>
+      <p
+        className={cn(
+          "m-0 text-[28px] font-semibold leading-none tracking-tight",
+          tone === "danger" ? "text-danger" : "text-fg",
+        )}
+      >
+        {display}
+      </p>
+      {spark.length > 1 ? (
+        <svg
+          viewBox={`0 0 ${w} ${h}`}
+          width="100%"
+          height={h}
+          preserveAspectRatio="none"
+          className="mt-auto block"
         >
-          <div className="min-w-0">
-            <p className="truncate text-[12px] text-fg">{org.name}</p>
-            <p className="truncate text-[11px] text-fg-faint">{org.slug}</p>
-          </div>
-          <span className="font-mono text-[11px] text-fg-muted">{org.memberCount}</span>
-        </div>
+          <defs>
+            <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={accent} stopOpacity="0.25" />
+              <stop offset="100%" stopColor={accent} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path d={`${points} L${w},${h} L0,${h} Z`} fill={`url(#${id})`} />
+          <path d={points} fill="none" stroke={accent} strokeWidth="1.5" />
+        </svg>
+      ) : (
+        <div className="mt-auto h-[32px]" />
+      )}
+    </section>
+  );
+}
+
+function GrowthChart({
+  points,
+  metric,
+  loading,
+}: {
+  points: GrowthPoint[];
+  metric: "users" | "organizations";
+  loading: boolean;
+}) {
+  const data = points.length ? points : [];
+  if (!data.length) {
+    return (
+      <div className="grid h-[220px] place-items-center text-[12px] text-fg-faint">
+        {loading ? "Loading growth data..." : "No growth data yet."}
+      </div>
+    );
+  }
+  const W = 720;
+  const H = 220;
+  const P = { l: 40, r: 16, t: 16, b: 28 };
+  const vals = data.map((d) => d[metric]);
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const range = max - min || 1;
+  const stepX = (W - P.l - P.r) / Math.max(data.length - 1, 1);
+  const yFor = (v: number) => P.t + (H - P.t - P.b) * (1 - (v - min) / range);
+  const path = data
+    .map(
+      (d, i) =>
+        `${i === 0 ? "M" : "L"}${(P.l + i * stepX).toFixed(1)},${yFor(d[metric]).toFixed(1)}`,
+    )
+    .join(" ");
+  const area = `${path} L${(P.l + (data.length - 1) * stepX).toFixed(1)},${H - P.b} L${P.l},${H - P.b} Z`;
+  const yTicks = 4;
+  const tickVals = Array.from({ length: yTicks + 1 }, (_, i) => min + (range * i) / yTicks);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} className="block">
+      <defs>
+        <linearGradient id="growthGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--color-accent)" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="var(--color-accent)" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {tickVals.map((v, i) => (
+        <g key={i}>
+          <line
+            x1={P.l}
+            x2={W - P.r}
+            y1={yFor(v)}
+            y2={yFor(v)}
+            stroke="var(--color-border-subtle)"
+            strokeDasharray="2 4"
+          />
+          <text
+            x={P.l - 8}
+            y={yFor(v) + 3}
+            textAnchor="end"
+            fontSize="10"
+            fontFamily="var(--font-mono)"
+            fill="var(--color-fg-faint)"
+          >
+            {fmtCount(Math.round(v))}
+          </text>
+        </g>
       ))}
-    </div>
+      {data.map((d, i) =>
+        i % Math.max(1, Math.ceil(data.length / 8)) === 0 ? (
+          <text
+            key={d.bucket}
+            x={P.l + i * stepX}
+            y={H - 10}
+            textAnchor="middle"
+            fontSize="9.5"
+            fontFamily="var(--font-mono)"
+            fill="var(--color-fg-faint)"
+          >
+            {bucketLabel(d.bucket)}
+          </text>
+        ) : null,
+      )}
+      <path d={area} fill="url(#growthGrad)" />
+      <path d={path} stroke="var(--color-accent)" strokeWidth="1.75" fill="none" />
+      {data.length ? (
+        <circle
+          cx={P.l + (data.length - 1) * stepX}
+          cy={yFor(data[data.length - 1][metric])}
+          r="3"
+          fill="var(--color-accent)"
+          stroke="var(--color-bg)"
+          strokeWidth="2"
+        />
+      ) : null}
+    </svg>
   );
 }
 
-function AuditMini({ events }: { events: AuditEvent[] }) {
-  return (
-    <div>
-      <PanelTitle title="Audit" meta={`${events.length}`} />
-      <div className="space-y-2">
-        {events.map((event) => (
-          <div key={event.id} className="border border-border-subtle p-2 text-[11px]">
-            <p className="text-fg">{event.action}</p>
-            <p className="truncate text-fg-faint">{event.reason ?? event.actor.email}</p>
-            {event.metadata?.emailSent !== undefined ? (
-              <p className="font-mono text-[10px] text-fg-faint">
-                email: {event.metadata.emailSent ? "sent" : "failed"}
-              </p>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function ActivityMini({ events }: { events: ActivityEvent[] }) {
-  return (
-    <div>
-      <PanelTitle title="Activity events" meta={`${events.length}`} />
-      <div className="max-h-56 space-y-2 overflow-auto">
-        {events.map((event) => (
-          <div key={event.id} className="border border-border-subtle p-2 text-[11px]">
-            <p className="text-fg">{event.action}</p>
-            <p className="truncate text-fg-faint">{event.issueTitle ?? event.issueId}</p>
-            <p className="font-mono text-[10px] text-fg-faint">{shortDate(event.createdAt)}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function IdentityBlock({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <div className="border border-border-subtle p-3">
-      <p className="truncate text-[15px] text-fg">{title}</p>
-      <p className="truncate text-[12px] text-fg-faint">{subtitle}</p>
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="border border-border-subtle p-3">
-      <p className="text-[11px] text-fg-faint">{label}</p>
-      <p className="mt-2 font-mono text-[20px] text-fg">{value}</p>
-    </div>
-  );
-}
-
-function MiniFact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border border-border-subtle p-2">
-      <p className="text-[10px] text-fg-faint">{label}</p>
-      <p className="mt-1 truncate font-mono text-[11px] text-fg">{value}</p>
-    </div>
-  );
-}
-
-function Status({ suspended }: { suspended: boolean }) {
-  return (
-    <span className={cn("font-mono text-[10px]", suspended ? "text-danger" : "text-success")}>
-      {suspended ? "suspended" : "active"}
-    </span>
-  );
-}
-
-function TicketStatus({ status }: { status: SupportTicketSummary["status"] }) {
+function StatusDot({ kind }: { kind: SupportTicketSummary["status"] | "active" | "suspended" }) {
+  const map: Record<string, { bg: string; dot: string; fg: string; label: string }> = {
+    active: {
+      bg: "rgba(70,176,122,0.16)",
+      dot: "var(--color-success)",
+      fg: "#7fd1a3",
+      label: "Active",
+    },
+    suspended: {
+      bg: "rgba(224,89,74,0.16)",
+      dot: "var(--color-danger)",
+      fg: "#f08a7d",
+      label: "Suspended",
+    },
+    open: {
+      bg: "rgba(241,198,170,0.14)",
+      dot: "var(--color-accent)",
+      fg: "var(--color-accent)",
+      label: "Open",
+    },
+    pending: {
+      bg: "rgba(212,162,58,0.16)",
+      dot: "var(--color-warning)",
+      fg: "#e4be6c",
+      label: "Pending",
+    },
+    closed: {
+      bg: "rgba(138,138,144,0.14)",
+      dot: "var(--color-fg-muted)",
+      fg: "var(--color-fg-muted)",
+      label: "Closed",
+    },
+  };
+  const s = map[kind] ?? map.active;
   return (
     <span
-      className={cn(
-        "shrink-0 font-mono text-[10px]",
-        status === "closed"
-          ? "text-fg-faint"
-          : status === "pending"
-            ? "text-accent"
-            : "text-success",
-      )}
+      className="inline-flex h-[22px] items-center gap-[6px] rounded-[5px] pl-[7px] pr-2 text-[11px] font-medium"
+      style={{ background: s.bg, color: s.fg }}
     >
-      {status}
+      <span
+        className="h-[6px] w-[6px] rounded-full"
+        style={{ background: s.dot, boxShadow: `0 0 0 2px ${s.bg}` }}
+      />
+      {s.label}
     </span>
   );
 }
 
-function Badge({ children }: { children: ReactNode }) {
-  return <span className="font-mono text-[10px] text-fg-faint">{children}</span>;
+function PriorityChip({ priority }: { priority: SupportTicketSummary["priority"] }) {
+  const map: Record<string, { fg: string; bd: string; label: string }> = {
+    urgent: { fg: "#f08a7d", bd: "rgba(224,89,74,0.45)", label: "Urgent" },
+    high: { fg: "#e4be6c", bd: "rgba(212,162,58,0.45)", label: "High" },
+    normal: { fg: "var(--color-fg-muted)", bd: "rgba(138,138,144,0.30)", label: "Normal" },
+  };
+  const s = map[priority] ?? map.normal;
+  return (
+    <span
+      className="inline-flex h-[20px] items-center rounded-[4px] px-[7px] font-mono text-[10px] uppercase tracking-[0.06em]"
+      style={{ border: `1px solid ${s.bd}`, color: s.fg }}
+    >
+      {s.label}
+    </span>
+  );
 }
 
-function EmptyDetail({ label }: { label: string }) {
-  return <p className="mt-6 text-center text-[12px] text-fg-faint">{label}</p>;
+function Pill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-7 items-center rounded-[6px] border px-[10px] text-[12px] font-medium capitalize",
+        active
+          ? "border-accent/45 bg-accent/10 text-accent"
+          : "border-border-subtle text-fg-muted hover:bg-surface-2 hover:text-fg",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Btn({
+  kind = "default",
+  size = "md",
+  onClick,
+  children,
+  disabled,
+}: {
+  kind?: "default" | "primary" | "ghost" | "danger";
+  size?: "sm" | "md";
+  onClick?: () => void;
+  children: ReactNode;
+  disabled?: boolean;
+}) {
+  const styles =
+    kind === "primary"
+      ? "bg-accent text-[#1a1410] border-transparent"
+      : kind === "danger"
+        ? "border-danger/45 bg-danger/10 text-danger"
+        : kind === "ghost"
+          ? "border-transparent text-fg-muted hover:bg-surface"
+          : "border-border bg-surface-2 text-fg hover:bg-surface";
+  const h = size === "sm" ? "h-[26px] px-[9px] text-[11.5px]" : "h-8 px-3 text-[13px]";
+  return (
+    <button
+      type={onClick ? "button" : "submit"}
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "inline-flex items-center gap-[6px] whitespace-nowrap rounded-[6px] border font-medium disabled:opacity-50",
+        styles,
+        h,
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  mono = true,
+}: {
+  label: string;
+  value: number | string | undefined;
+  mono?: boolean;
+}) {
+  return (
+    <div className="rounded-[6px] border border-border-subtle bg-bg px-[10px] py-2">
+      <p className="mb-[3px] text-[10px] uppercase tracking-[0.08em] text-fg-faint">{label}</p>
+      <p
+        className={cn(
+          "m-0 text-[14px] font-medium text-fg",
+          mono && "font-mono",
+        )}
+      >
+        {value == null || value === "" ? "—" : value}
+      </p>
+    </div>
+  );
+}
+
+function Tag({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex h-[22px] items-center rounded-[5px] border border-border-subtle px-2 text-[11px] capitalize text-fg-muted">
+      {children}
+    </span>
+  );
+}
+
+function SearchInput({
+  value,
+  onChange,
+  placeholder,
+  width,
+  kbd,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  width?: number;
+  kbd?: string;
+}) {
+  return (
+    <div className="relative" style={{ width: width ?? "100%" }}>
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        className="absolute left-[10px] top-1/2 -translate-y-1/2 text-fg-faint"
+      >
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-3.5-3.5" />
+      </svg>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="block h-8 w-full rounded-[6px] border border-border-subtle bg-bg pl-[30px] pr-3 text-[13px] text-fg outline-none focus:border-accent"
+      />
+      {kbd ? (
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded-[3px] border border-border-subtle bg-surface-2 px-[5px] py-px font-mono text-[10px] text-fg-faint">
+          {kbd}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function OrgGlyph({ name, size = 28 }: { name: string; size?: number }) {
+  return (
+    <span
+      className="grid place-items-center rounded-[6px] border border-border-subtle bg-surface-2 font-mono font-semibold text-fg"
+      style={{ width: size, height: size, fontSize: size * 0.42, flexShrink: 0 }}
+    >
+      {(name || "?")[0]?.toUpperCase()}
+    </span>
+  );
+}
+
+function Avatar({
+  name,
+  seed,
+  size = 28,
+}: {
+  name: string;
+  seed?: string;
+  size?: number;
+}) {
+  const hues = [12, 32, 52, 196, 220, 268, 320];
+  const key = (seed || name || "").split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  const hue = hues[key % hues.length];
+  const initials = (name || "")
+    .split(/\s|@/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+  return (
+    <span
+      className="inline-grid flex-shrink-0 place-items-center rounded-[5px] font-mono font-semibold"
+      style={{
+        width: size,
+        height: size,
+        background: `oklch(0.32 0.06 ${hue})`,
+        color: `oklch(0.92 0.06 ${hue})`,
+        fontSize: size * 0.4,
+        border: "1px solid rgba(255,255,255,0.04)",
+      }}
+    >
+      {initials || "?"}
+    </span>
+  );
+}
+
+function ActivityRow({ event }: { event: ActivityEvent }) {
+  return (
+    <div className="flex items-center gap-[10px] border-b border-border-subtle py-[6px] text-[11.5px]">
+      <span className="w-[110px] font-mono text-fg-muted">{event.action}</span>
+      <span className="min-w-0 flex-1 truncate text-fg-faint">
+        {event.issueTitle ?? event.issueId}
+      </span>
+      <span className="font-mono text-[10px] text-fg-faint">
+        {relativeShort(event.createdAt)}
+      </span>
+    </div>
+  );
+}
+
+type IconName =
+  | "grid"
+  | "users"
+  | "building"
+  | "inbox"
+  | "shield"
+  | "search"
+  | "logout";
+
+function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
+  const props = {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.75,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  switch (name) {
+    case "grid":
+      return (
+        <svg {...props}>
+          <rect x="3" y="3" width="7" height="7" rx="1" />
+          <rect x="14" y="3" width="7" height="7" rx="1" />
+          <rect x="3" y="14" width="7" height="7" rx="1" />
+          <rect x="14" y="14" width="7" height="7" rx="1" />
+        </svg>
+      );
+    case "users":
+      return (
+        <svg {...props}>
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+      );
+    case "building":
+      return (
+        <svg {...props}>
+          <rect x="4" y="2" width="16" height="20" rx="1" />
+          <path d="M9 22v-4h6v4" />
+          <path d="M8 6h.01M16 6h.01M8 10h.01M16 10h.01M8 14h.01M16 14h.01" />
+        </svg>
+      );
+    case "inbox":
+      return (
+        <svg {...props}>
+          <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+          <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z" />
+        </svg>
+      );
+    case "shield":
+      return (
+        <svg {...props}>
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+        </svg>
+      );
+    case "search":
+      return (
+        <svg {...props}>
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+      );
+    case "logout":
+      return (
+        <svg {...props}>
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <polyline points="16 17 21 12 16 7" />
+          <line x1="21" y1="12" x2="9" y2="12" />
+        </svg>
+      );
+  }
 }
 
 function AdminShellState({
@@ -1496,7 +2291,7 @@ function AdminShellState({
 }) {
   return (
     <main className="grid min-h-screen place-items-center bg-bg px-6 text-fg">
-      <section className="w-full max-w-md border border-border-subtle bg-surface/50 p-6 text-center">
+      <section className="w-full max-w-md rounded-[8px] border border-border-subtle bg-surface/50 p-6 text-center">
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-danger">
           Platform admin
         </p>
@@ -1508,6 +2303,27 @@ function AdminShellState({
   );
 }
 
+function fmtCount(n: number | undefined | null) {
+  if (n == null) return "—";
+  if (Math.abs(n) >= 10000) return `${(n / 1000).toFixed(0)}k`;
+  if (Math.abs(n) >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+
+function deltaPercent(values: number[]): number | undefined {
+  if (values.length < 2) return undefined;
+  const first = values[0];
+  const last = values[values.length - 1];
+  if (!first) return undefined;
+  return ((last - first) / first) * 100;
+}
+
+function bucketLabel(bucket: string) {
+  const date = new Date(bucket);
+  if (Number.isNaN(date.getTime())) return bucket;
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+}
+
 function shortDate(value: string | null) {
   if (!value) return "never";
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(
@@ -1515,18 +2331,42 @@ function shortDate(value: string | null) {
   );
 }
 
+function longDate(value: string | null) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function relativeShort(value: string | null) {
+  if (!value) return "—";
+  const ms = Date.now() - new Date(value).getTime();
+  if (ms < 0) return "now";
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const day = Math.round(hr / 24);
+  if (day < 30) return `${day}d`;
+  const mo = Math.round(day / 30);
+  return `${mo}mo`;
+}
+
+function actionDot(action: string) {
+  const a = action.toLowerCase();
+  if (a.includes("suspend") || a.includes("delete") || a.includes("fail")) return "bg-danger";
+  if (a.includes("login") || a.includes("session")) return "bg-accent";
+  return "bg-success";
+}
+
 function stripHtml(value: string) {
   return value
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function initials(value: string) {
-  return value
-    .split(/\s|@/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
 }
