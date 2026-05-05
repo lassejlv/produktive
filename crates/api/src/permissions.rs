@@ -10,6 +10,7 @@ pub const ROLE_ADMIN: &str = "admin";
 pub const ROLE_MEMBER: &str = "member";
 
 pub const WORKSPACE_RENAME: &str = "workspace.rename";
+pub const WORKSPACE_SECURITY: &str = "workspace.security";
 pub const WORKSPACE_DELETE: &str = "workspace.delete";
 pub const MEMBERS_INVITE: &str = "members.invite";
 pub const MEMBERS_REMOVE: &str = "members.remove";
@@ -55,6 +56,7 @@ pub struct RoleInfo {
 pub fn permission_catalog() -> Vec<PermissionInfo> {
     vec![
         permission(WORKSPACE_RENAME, "Rename workspace", "Workspace"),
+        permission(WORKSPACE_SECURITY, "Manage workspace security", "Workspace"),
         permission(WORKSPACE_DELETE, "Delete workspace", "Workspace"),
         permission(MEMBERS_INVITE, "Invite members", "Members"),
         permission(MEMBERS_REMOVE, "Remove members", "Members"),
@@ -106,6 +108,7 @@ pub fn built_in_roles() -> Vec<RoleInfo> {
                 MEMBERS_INVITE.to_owned(),
                 MEMBERS_REMOVE.to_owned(),
                 MEMBERS_ASSIGN_ROLE.to_owned(),
+                WORKSPACE_SECURITY.to_owned(),
                 ISSUES_CREATE.to_owned(),
                 ISSUES_UPDATE.to_owned(),
                 ISSUES_DELETE.to_owned(),

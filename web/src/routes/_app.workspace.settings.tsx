@@ -29,11 +29,14 @@ import {
   type Member,
   type PermissionInfo,
   type Role,
+  type SecurityEvent,
   createIssueStatus,
   deleteIssueStatus,
   listInvitations,
   listMembers,
   listRoles,
+  listSecurityEvents,
+  sendTwoFactorNudges,
   updateIssueStatus,
 } from "@/lib/api";
 import { useGithubConnectionQuery, useGithubRepositoriesQuery } from "@/lib/queries/github";
@@ -60,6 +63,7 @@ import {
   uploadActiveOrganizationIcon,
   useSession,
 } from "@/lib/auth-client";
+import { requestFreshTwoFactorIfNeeded } from "@/lib/fresh-two-factor";
 import { cn } from "@/lib/utils";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
 
@@ -69,6 +73,7 @@ export const Route = createFileRoute("/_app/workspace/settings")({
 
 type SettingsSectionId =
   | "general"
+  | "security"
   | "members"
   | "statuses"
   | "integrations"
@@ -90,6 +95,12 @@ const settingsSections: SettingsSection[] = [
     id: "general",
     label: "General",
     description: "Workspace name and identity",
+    group: "main",
+  },
+  {
+    id: "security",
+    label: "Security",
+    description: "2FA compliance and security activity",
     group: "main",
   },
   {
@@ -133,7 +144,7 @@ const settingsSections: SettingsSection[] = [
 const LEGACY_SECTION_TO_INTEGRATIONS = new Set(["github", "discord", "mcp"]);
 
 const settingsNavGroups: { label: string; ids: SettingsSectionId[] }[] = [
-  { label: "Workspace", ids: ["general", "members", "statuses"] },
+  { label: "Workspace", ids: ["general", "security", "members", "statuses"] },
   { label: "Integrations", ids: ["integrations"] },
   { label: "Automation", ids: ["ai", "templates"] },
 ];
@@ -145,17 +156,19 @@ function settingsSectionMeta(id: SettingsSectionId): SettingsSection {
   return settingsSections.find((s) => s.id === id)!;
 }
 
-
 function WorkspaceSettingsPage() {
   const session = useSession();
   const navigate = useNavigate();
   const organization = session.data?.organization;
   const currentUserEmail = session.data?.user.email ?? null;
+  const currentUserTwoFactorEnabled = session.data?.user.twoFactorEnabled ?? false;
   const [activeSection, setActiveSection] = useState<SettingsSectionId>("general");
   const [members, setMembers] = useState<Member[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<PermissionInfo[]>([]);
+  const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
+  const [securityEventsLoading, setSecurityEventsLoading] = useState(true);
   const [membersLoading, setMembersLoading] = useState(true);
 
   useEffect(() => {
@@ -193,6 +206,21 @@ function WorkspaceSettingsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    void listSecurityEvents()
+      .then((response) => {
+        if (mounted) setSecurityEvents(response.events);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (mounted) setSecurityEventsLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const onSelectSection = (id: SettingsSectionId) => {
     setActiveSection(id);
     void navigate({
@@ -222,6 +250,7 @@ function WorkspaceSettingsPage() {
 
   const hasPermission = (permission: string) => currentPermissions.has(permission);
   const canEditWorkspace = hasPermission("workspace.rename");
+  const canEditSecurity = hasPermission("workspace.security");
   const activeMeta = settingsSections.find((s) => s.id === activeSection);
   const dangerSections = settingsSections.filter((s) => s.group === "danger");
 
@@ -299,7 +328,14 @@ function WorkspaceSettingsPage() {
           ) : null}
 
           {activeSection === "general" ? (
-            <GeneralSettings organization={organization} canEdit={canEditWorkspace} />
+            <GeneralSettings
+              organization={organization}
+              members={members}
+              membersLoading={membersLoading}
+              canEdit={canEditWorkspace}
+              canEditSecurity={canEditSecurity}
+              currentUserTwoFactorEnabled={currentUserTwoFactorEnabled}
+            />
           ) : null}
           {activeSection === "members" ? (
             <MembersSettings
@@ -314,6 +350,19 @@ function WorkspaceSettingsPage() {
               currentUserEmail={currentUserEmail}
               currentRole={currentRole}
               currentPermissions={currentPermissions}
+              currentUserTwoFactorEnabled={currentUserTwoFactorEnabled}
+            />
+          ) : null}
+          {activeSection === "security" ? (
+            <SecuritySettings
+              organization={organization}
+              members={members}
+              membersLoading={membersLoading}
+              events={securityEvents}
+              eventsLoading={securityEventsLoading}
+              canEditSecurity={canEditSecurity}
+              currentUserTwoFactorEnabled={currentUserTwoFactorEnabled}
+              onEventsChange={setSecurityEvents}
             />
           ) : null}
           {activeSection === "statuses" ? (
@@ -329,7 +378,11 @@ function WorkspaceSettingsPage() {
           {activeSection === "templates" ? <McpTemplatesSettings /> : null}
           {activeSection === "danger" ? (
             organization ? (
-              <DangerSettings organization={organization} canEdit={canEditWorkspace} />
+              <DangerSettings
+                organization={organization}
+                canEdit={canEditWorkspace}
+                currentUserTwoFactorEnabled={currentUserTwoFactorEnabled}
+              />
             ) : (
               <LoadingTip compact />
             )
@@ -650,11 +703,7 @@ function IntegrationsSettings({
     <div className="min-w-0">
       <IntegrationSubtabBar active={sub} onSelect={setSub} />
 
-      <div
-        role="tabpanel"
-        aria-labelledby={`integrations-subtab-${sub}`}
-        className="min-w-0 pt-8"
-      >
+      <div role="tabpanel" aria-labelledby={`integrations-subtab-${sub}`} className="min-w-0 pt-8">
         {sub === "github" ? <GithubSettings canEdit={canEditGithub} /> : null}
         {sub === "slack" ? <SlackSettings canEdit={canEditSlack} /> : null}
         {sub === "discord" ? <DiscordSettings /> : null}
@@ -1805,20 +1854,298 @@ function SectionButton({
   );
 }
 
+function SecuritySettings({
+  organization,
+  members,
+  membersLoading,
+  events,
+  eventsLoading,
+  canEditSecurity,
+  currentUserTwoFactorEnabled,
+  onEventsChange,
+}: {
+  organization?: { requireTwoFactor: boolean } | null;
+  members: Member[];
+  membersLoading: boolean;
+  events: SecurityEvent[];
+  eventsLoading: boolean;
+  canEditSecurity: boolean;
+  currentUserTwoFactorEnabled: boolean;
+  onEventsChange: (events: SecurityEvent[]) => void;
+}) {
+  const [requireTwoFactor, setRequireTwoFactor] = useState(organization?.requireTwoFactor ?? false);
+  const [savingSecurity, setSavingSecurity] = useState(false);
+  const [refreshingEvents, setRefreshingEvents] = useState(false);
+  const [sendingNudges, setSendingNudges] = useState(false);
+  const membersWithTwoFactor = members.filter((member) => member.twoFactorEnabled);
+  const membersMissingTwoFactor = members.filter((member) => !member.twoFactorEnabled);
+
+  useEffect(() => {
+    setRequireTwoFactor(organization?.requireTwoFactor ?? false);
+  }, [organization?.requireTwoFactor]);
+
+  if (!organization) return <LoadingTip compact />;
+
+  const refreshEvents = async () => {
+    setRefreshingEvents(true);
+    try {
+      const response = await listSecurityEvents();
+      onEventsChange(response.events);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load security events");
+    } finally {
+      setRefreshingEvents(false);
+    }
+  };
+
+  const onToggleRequireTwoFactor = async (next: boolean) => {
+    if (!canEditSecurity || savingSecurity) return;
+    const previous = requireTwoFactor;
+    setRequireTwoFactor(next);
+    setSavingSecurity(true);
+    try {
+      await requestFreshTwoFactorIfNeeded(currentUserTwoFactorEnabled);
+      await updateActiveOrganization({ requireTwoFactor: next });
+      await refreshSession();
+      await refreshEvents();
+      toast.success(next ? "Two-factor requirement enabled" : "Two-factor requirement disabled");
+    } catch (error) {
+      setRequireTwoFactor(previous);
+      toast.error(error instanceof Error ? error.message : "Failed to update workspace security");
+    } finally {
+      setSavingSecurity(false);
+    }
+  };
+
+  const onSendNudges = async () => {
+    if (!canEditSecurity || sendingNudges || membersMissingTwoFactor.length === 0) return;
+    setSendingNudges(true);
+    try {
+      const response = await sendTwoFactorNudges();
+      await refreshEvents();
+      toast.success(
+        response.sent === 1
+          ? "Sent 1 two-factor reminder"
+          : `Sent ${response.sent} two-factor reminders`,
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to send reminders");
+    } finally {
+      setSendingNudges(false);
+    }
+  };
+
+  return (
+    <div className="space-y-7">
+      {!requireTwoFactor && membersMissingTwoFactor.length > 0 ? (
+        <section className="rounded-md border border-amber-500/20 bg-amber-500/10 p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="m-0 text-[13px] font-medium text-fg">Before you require 2FA</h3>
+              <p className="m-0 mt-1 text-[12px] leading-relaxed text-fg-muted">
+                {membersMissingTwoFactor.length} member
+                {membersMissingTwoFactor.length === 1 ? "" : "s"} will be asked to set up 2FA the
+                next time they open this workspace.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!canEditSecurity || sendingNudges}
+              onClick={() => void onSendNudges()}
+            >
+              {sendingNudges ? "Sending..." : "Send reminders"}
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
+      <section>
+        <div className="mb-3 flex items-center justify-between gap-4">
+          <div>
+            <h3 className="m-0 text-[13px] font-medium text-fg">Require 2FA</h3>
+            <p className="m-0 mt-1 text-[12px] text-fg-muted">
+              Block workspace access until members enable account two-factor authentication.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={requireTwoFactor}
+            aria-label="Require two-factor authentication"
+            disabled={!canEditSecurity || savingSecurity}
+            onClick={() => void onToggleRequireTwoFactor(!requireTwoFactor)}
+            className={cn(
+              "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+              requireTwoFactor ? "bg-accent" : "bg-surface-2",
+              (!canEditSecurity || savingSecurity) && "cursor-not-allowed opacity-60",
+            )}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                "block size-4 rounded-full bg-white shadow transition-transform",
+                requireTwoFactor ? "translate-x-[18px]" : "translate-x-[2px]",
+              )}
+            />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <TwoFactorCompliancePanel
+            loading={membersLoading}
+            membersWithTwoFactor={membersWithTwoFactor}
+            membersMissingTwoFactor={membersMissingTwoFactor}
+            requireTwoFactor={requireTwoFactor}
+          />
+          {membersMissingTwoFactor.length > 0 ? (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={!canEditSecurity || sendingNudges}
+                onClick={() => void onSendNudges()}
+              >
+                {sendingNudges ? "Sending..." : "Send reminders"}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-3 flex items-center justify-between gap-3 border-b border-border-subtle pb-3">
+          <div>
+            <h3 className="m-0 text-[13px] font-medium text-fg">Security event log</h3>
+            <p className="m-0 mt-1 text-[12px] text-fg-muted">
+              Recent 2FA, member, and workspace security activity.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => void refreshEvents()}
+            disabled={refreshingEvents}
+          >
+            Refresh
+          </Button>
+        </div>
+        <SecurityEventList loading={eventsLoading} events={events} />
+      </section>
+    </div>
+  );
+}
+
+function SecurityEventList({
+  loading,
+  events,
+}: {
+  loading: boolean;
+  events: SecurityEvent[];
+}) {
+  if (loading) return <LoadingTip compact />;
+  if (events.length === 0) {
+    return <p className="px-2 py-3 text-[12px] text-fg-faint">No security events yet.</p>;
+  }
+
+  return (
+    <ul className="flex flex-col">
+      {events.map((event) => (
+        <li
+          key={event.id}
+          className="border-b border-border-subtle/60 px-2 py-3 last:border-b-0"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="m-0 text-[12.5px] text-fg">{securityEventLabel(event)}</p>
+              <p className="m-0 mt-0.5 truncate text-[11px] text-fg-faint">
+                {event.actor?.email ?? "System"} {event.ipAddress ? `· ${event.ipAddress}` : ""}
+              </p>
+            </div>
+            <span className="shrink-0 font-mono text-[10.5px] text-fg-faint">
+              {formatRelative(event.createdAt)}
+            </span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function securityEventLabel(event: SecurityEvent) {
+  const actor = event.actor?.name ?? "Someone";
+  const target = event.target?.name ?? "a member";
+  switch (event.eventType) {
+    case "two_factor.enabled":
+      return `${actor} enabled 2FA`;
+    case "two_factor.disabled":
+      return `${actor} disabled 2FA`;
+    case "two_factor.backup_codes_regenerated":
+      return `${actor} regenerated backup codes`;
+    case "workspace.require_2fa_enabled":
+      return `${actor} required 2FA for the workspace`;
+    case "workspace.require_2fa_disabled":
+      return `${actor} disabled the workspace 2FA requirement`;
+    case "member.role_changed":
+      return `${actor} changed ${target}'s role`;
+    case "member.removed":
+      return `${actor} removed ${target}`;
+    case "login.2fa_failed":
+      return `${target} failed a 2FA login challenge`;
+    case "login.success":
+      return `${target} signed in`;
+    case "workspace.deleted":
+      return `${actor} deleted a workspace`;
+    case "account.deleted":
+      return `${actor} deleted their account`;
+    case "two_factor.nudge_sent":
+      return `${actor} sent 2FA reminders`;
+    case "two_factor.recovery_reset":
+      return `${actor} reset ${target}'s 2FA`;
+    case "two_factor.enforcement_blocked":
+      return `${target} was blocked until 2FA is enabled`;
+    case "two_factor.enforcement_setup_completed":
+      return `${target} completed required 2FA setup`;
+    default:
+      return event.eventType.replace(/[_.]/g, " ");
+  }
+}
+
 function GeneralSettings({
   organization,
+  members,
+  membersLoading,
   canEdit,
+  canEditSecurity,
+  currentUserTwoFactorEnabled,
 }: {
-  organization?: { name: string; slug: string; image: string | null } | null;
+  organization?: {
+    name: string;
+    slug: string;
+    image: string | null;
+    requireTwoFactor: boolean;
+  } | null;
+  members: Member[];
+  membersLoading: boolean;
   canEdit: boolean;
+  canEditSecurity: boolean;
+  currentUserTwoFactorEnabled: boolean;
 }) {
   const [draftName, setDraftName] = useState(organization?.name ?? "");
+  const [requireTwoFactor, setRequireTwoFactor] = useState(organization?.requireTwoFactor ?? false);
   const [submitting, setSubmitting] = useState(false);
+  const [savingSecurity, setSavingSecurity] = useState(false);
   const [uploadingIcon, setUploadingIcon] = useState(false);
 
   useEffect(() => {
     setDraftName(organization?.name ?? "");
   }, [organization?.name]);
+
+  useEffect(() => {
+    setRequireTwoFactor(organization?.requireTwoFactor ?? false);
+  }, [organization?.requireTwoFactor]);
 
   if (!organization) return <LoadingTip compact />;
 
@@ -1826,6 +2153,8 @@ function GeneralSettings({
   const dirty = trimmed !== organization.name;
   const tooLong = trimmed.length > 64;
   const canSave = canEdit && dirty && trimmed.length > 0 && !tooLong && !submitting;
+  const membersWithTwoFactor = members.filter((member) => member.twoFactorEnabled);
+  const membersMissingTwoFactor = members.filter((member) => !member.twoFactorEnabled);
 
   const onSave = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1843,6 +2172,24 @@ function GeneralSettings({
   };
 
   const onReset = () => setDraftName(organization.name);
+
+  const onToggleRequireTwoFactor = async (next: boolean) => {
+    if (!canEditSecurity || savingSecurity) return;
+    const previous = requireTwoFactor;
+    setRequireTwoFactor(next);
+    setSavingSecurity(true);
+    try {
+      await requestFreshTwoFactorIfNeeded(currentUserTwoFactorEnabled);
+      await updateActiveOrganization({ requireTwoFactor: next });
+      await refreshSession();
+      toast.success(next ? "Two-factor requirement enabled" : "Two-factor requirement disabled");
+    } catch (error) {
+      setRequireTwoFactor(previous);
+      toast.error(error instanceof Error ? error.message : "Failed to update workspace security");
+    } finally {
+      setSavingSecurity(false);
+    }
+  };
 
   const onIconFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -1910,6 +2257,49 @@ function GeneralSettings({
           Used in URLs and integrations. Slugs are permanent.
         </p>
       </SettingRow>
+      <SettingRow label="Require 2FA">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="m-0 text-[12px] text-fg-muted">
+                Members must enable account two-factor authentication before using this workspace.
+              </p>
+              {!canEditSecurity ? (
+                <p className="mt-1 text-[11.5px] text-fg-faint">
+                  Missing permission to manage workspace security.
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={requireTwoFactor}
+              aria-label="Require two-factor authentication"
+              disabled={!canEditSecurity || savingSecurity}
+              onClick={() => void onToggleRequireTwoFactor(!requireTwoFactor)}
+              className={cn(
+                "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+                requireTwoFactor ? "bg-accent" : "bg-surface-2",
+                (!canEditSecurity || savingSecurity) && "cursor-not-allowed opacity-60",
+              )}
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  "block size-4 rounded-full bg-white shadow transition-transform",
+                  requireTwoFactor ? "translate-x-[18px]" : "translate-x-[2px]",
+                )}
+              />
+            </button>
+          </div>
+          <TwoFactorCompliancePanel
+            loading={membersLoading}
+            membersWithTwoFactor={membersWithTwoFactor}
+            membersMissingTwoFactor={membersMissingTwoFactor}
+            requireTwoFactor={requireTwoFactor}
+          />
+        </div>
+      </SettingRow>
 
       {canEdit ? (
         <div className="flex justify-end gap-2 pt-3">
@@ -1924,6 +2314,119 @@ function GeneralSettings({
         </div>
       ) : null}
     </form>
+  );
+}
+
+function TwoFactorCompliancePanel({
+  loading,
+  membersWithTwoFactor,
+  membersMissingTwoFactor,
+  requireTwoFactor,
+}: {
+  loading: boolean;
+  membersWithTwoFactor: Member[];
+  membersMissingTwoFactor: Member[];
+  requireTwoFactor: boolean;
+}) {
+  const total = membersWithTwoFactor.length + membersMissingTwoFactor.length;
+  const compliantCount = membersWithTwoFactor.length;
+  const percent = total === 0 ? 0 : Math.round((compliantCount / total) * 100);
+  const previewMissing = membersMissingTwoFactor.slice(0, 6);
+  const extraMissing = Math.max(0, membersMissingTwoFactor.length - previewMissing.length);
+  const copyMissingEmails = async () => {
+    const emails = membersMissingTwoFactor.map((member) => member.email).join(", ");
+    try {
+      await navigator.clipboard.writeText(emails);
+      toast.success("Copied missing 2FA emails");
+    } catch {
+      toast.error("Failed to copy emails");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-md border border-border-subtle bg-surface/40 p-3">
+        <div className="h-3 w-32 rounded bg-surface-2" />
+        <div className="mt-3 h-2 rounded-full bg-surface-2" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-border-subtle bg-surface/40 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="m-0 text-[12px] font-medium text-fg">2FA compliance</p>
+          <p className="m-0 mt-0.5 text-[11.5px] text-fg-faint">
+            {compliantCount} of {total} members have 2FA enabled.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {membersMissingTwoFactor.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => void copyMissingEmails()}
+              className="rounded border border-border-subtle px-2 py-1 text-[11px] text-fg-muted transition-colors hover:border-border hover:text-fg"
+            >
+              Copy emails
+            </button>
+          ) : null}
+          <span
+            className={cn(
+              "rounded border px-2 py-1 font-mono text-[10.5px] uppercase tracking-[0.08em]",
+              membersMissingTwoFactor.length === 0
+                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700"
+                : requireTwoFactor
+                  ? "border-danger/20 bg-danger/10 text-danger"
+                  : "border-amber-500/20 bg-amber-500/10 text-amber-700",
+            )}
+          >
+            {membersMissingTwoFactor.length === 0
+              ? "Ready"
+              : requireTwoFactor
+                ? `${membersMissingTwoFactor.length} blocked`
+                : `${membersMissingTwoFactor.length} missing`}
+          </span>
+        </div>
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-2">
+        <div className="h-full bg-accent transition-[width]" style={{ width: `${percent}%` }} />
+      </div>
+      {membersMissingTwoFactor.length > 0 ? (
+        <div className="mt-3">
+          <p className="m-0 text-[11.5px] text-fg-muted">
+            {requireTwoFactor
+              ? "These members need to enable 2FA before they can use this workspace."
+              : "These members will be affected if you enable the requirement."}
+          </p>
+          <ul className="mt-2 flex flex-col">
+            {previewMissing.map((member) => (
+              <li
+                key={member.id}
+                className="flex items-center justify-between gap-3 border-t border-border-subtle/60 py-2 first:border-t-0 first:pt-0 last:pb-0"
+              >
+                <div className="min-w-0">
+                  <p className="m-0 truncate text-[12px] text-fg">{member.name}</p>
+                  <p className="m-0 mt-0.5 truncate text-[11px] text-fg-faint">{member.email}</p>
+                </div>
+                <span className="shrink-0 rounded border border-border-subtle px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.06em] text-fg-faint">
+                  {member.role}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {extraMissing > 0 ? (
+            <p className="m-0 mt-2 text-[11px] text-fg-faint">
+              +{extraMissing} more without 2FA
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <p className="m-0 mt-3 text-[11.5px] text-fg-muted">
+          Every current member is ready for a workspace 2FA requirement.
+        </p>
+      )}
+    </div>
   );
 }
 

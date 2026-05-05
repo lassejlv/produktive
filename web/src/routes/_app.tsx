@@ -22,7 +22,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar";
 import { LoadingTip } from "@/components/ui/loading-tip";
-import { deleteChat, getChat, type Chat } from "@/lib/api";
+import { deleteChat, getChat, recordTwoFactorEnforcementBlocked, type Chat } from "@/lib/api";
 import { signOut, useSession } from "@/lib/auth-client";
 import { parseMessageWithAttachments } from "@/lib/chat-attachments";
 import { NewLabelDialog } from "@/components/label/new-label-dialog";
@@ -107,6 +107,23 @@ function AppLayout() {
       void navigate({ to: "/login" });
     }
   }, [navigate, session.data, session.isPending]);
+
+  useEffect(() => {
+    if (!session.data) return;
+    if (!session.data.organization.requireTwoFactor || session.data.user.twoFactorEnabled) return;
+    if (pathname === "/account") return;
+    const redirect = `${pathname}${window.location.search}${window.location.hash}`;
+    const blockKey = `produktive:2fa-blocked:${session.data.organization.id}:${session.data.user.id}`;
+    if (typeof window !== "undefined" && !window.sessionStorage.getItem(blockKey)) {
+      window.sessionStorage.setItem(blockKey, "1");
+      void recordTwoFactorEnforcementBlocked().catch(() => {});
+    }
+    toast.message("This workspace requires two-factor authentication.");
+    void navigate({
+      to: "/account",
+      search: { section: "security", twoFactorRequired: "1", redirect },
+    });
+  }, [navigate, pathname, session.data]);
 
   useEffect(() => {
     const user = session.data?.user;

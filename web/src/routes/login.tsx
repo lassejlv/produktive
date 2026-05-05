@@ -11,6 +11,7 @@ type LoginSearch = {
   mode?: "signin" | "signup";
   redirect?: string;
   github?: "oauth_error";
+  twoFactor?: "1";
 };
 
 export const Route = createFileRoute("/login")({
@@ -21,6 +22,7 @@ export const Route = createFileRoute("/login")({
     mode: search.mode === "signin" || search.mode === "signup" ? search.mode : undefined,
     redirect: typeof search.redirect === "string" ? search.redirect : undefined,
     github: search.github === "oauth_error" ? search.github : undefined,
+    twoFactor: search.twoFactor === "1" ? "1" : undefined,
   }),
 });
 
@@ -36,6 +38,10 @@ function LoginPage() {
   const [email, setEmail] = useState(search.email ?? "");
   const [password, setPassword] = useState("");
   const [acceptedLegal, setAcceptedLegal] = useState(false);
+  const [twoFactorPending, setTwoFactorPending] = useState(search.twoFactor === "1");
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [useBackupCode, setUseBackupCode] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(false);
   const [error, setError] = useState<string | null>(
     search.github === "oauth_error" ? "Could not sign in with GitHub." : null,
   );
@@ -64,6 +70,28 @@ function LoginPage() {
     setError(null);
     setMessage(null);
 
+    if (twoFactorPending) {
+      if (!twoFactorCode.trim()) {
+        setError("Enter your authentication code.");
+        return;
+      }
+
+      setIsSubmitting(true);
+      const result = await authClient.verifyTwoFactorLogin({
+        code: twoFactorCode,
+        rememberDevice,
+      });
+      setIsSubmitting(false);
+
+      if (result.error) {
+        setError("Invalid authentication code.");
+        return;
+      }
+
+      await finishSignIn();
+      return;
+    }
+
     if (mode === "signup" && !acceptedLegal) {
       setError("Accept the terms to continue.");
       return;
@@ -83,6 +111,13 @@ function LoginPage() {
       return;
     }
 
+    if ("twoFactorRequired" in result && result.twoFactorRequired) {
+      setTwoFactorPending(true);
+      setTwoFactorCode("");
+      setMessage("Enter the code from your authenticator app.");
+      return;
+    }
+
     if (mode === "signup") {
       setMessage(
         inviteToken
@@ -92,6 +127,10 @@ function LoginPage() {
       return;
     }
 
+    await finishSignIn();
+  };
+
+  const finishSignIn = async () => {
     if (inviteToken) {
       await navigate({
         to: "/invite/$token",
@@ -129,6 +168,7 @@ function LoginPage() {
 
   const switchMode = (newMode: AuthMode) => {
     setMode(newMode);
+    setTwoFactorPending(false);
     setError(null);
     setMessage(null);
   };
@@ -155,7 +195,52 @@ function LoginPage() {
 
       <div className="w-full max-w-sm animate-fade-in rounded-[12px] border border-white/10 bg-bg/72 p-5 backdrop-blur-xl">
         <form className="grid gap-4" onSubmit={onSubmit}>
-          {mode === "signup" ? (
+          {twoFactorPending ? (
+            <>
+              <div>
+                <h1 className="text-sm font-medium text-fg">Two-factor authentication</h1>
+                <p className="mt-1 text-xs leading-relaxed text-fg-muted">
+                  {useBackupCode
+                    ? "Use one of your saved recovery codes."
+                    : "Enter the 6-digit code from your authenticator app."}
+                </p>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="two-factor-code">
+                  {useBackupCode ? "Backup code" : "Authentication code"}
+                </Label>
+                <Input
+                  id="two-factor-code"
+                  inputMode={useBackupCode ? "text" : "numeric"}
+                  autoComplete="one-time-code"
+                  value={twoFactorCode}
+                  onChange={(event) => setTwoFactorCode(event.target.value)}
+                  placeholder={useBackupCode ? "ABCD-1234" : "123456"}
+                  required
+                  autoFocus
+                />
+              </div>
+              <button
+                type="button"
+                className="w-fit text-xs text-fg-muted transition-colors hover:text-fg"
+                onClick={() => {
+                  setUseBackupCode((value) => !value);
+                  setTwoFactorCode("");
+                }}
+              >
+                {useBackupCode ? "Use authenticator code" : "Use backup code"}
+              </button>
+              <label className="flex items-start gap-2 text-xs text-fg-muted">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-3.5 rounded border-border-subtle"
+                  checked={rememberDevice}
+                  onChange={(event) => setRememberDevice(event.target.checked)}
+                />
+                <span>Trust this device for 30 days</span>
+              </label>
+            </>
+          ) : mode === "signup" ? (
             <div className="grid gap-1.5">
               <Label htmlFor="name">Name</Label>
               <Input
@@ -169,49 +254,53 @@ function LoginPage() {
             </div>
           ) : null}
 
-          <div className="grid gap-1.5">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="john@doe.gg"
-              required
-              readOnly={Boolean(inviteToken && mode === "signup")}
-            />
-            {inviteToken && mode === "signup" ? (
-              <p className="text-[11px] text-fg-faint">The invitation is for this email.</p>
-            ) : null}
-          </div>
-
-          <div className="grid gap-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
-              {mode === "signin" ? (
-                <button
-                  type="button"
-                  className="text-xs text-fg-muted hover:text-fg transition-colors"
-                  onClick={() => void onForgotPassword()}
-                >
-                  Forgot password?
-                </button>
+          {!twoFactorPending ? (
+            <div className="grid gap-1.5">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="john@doe.gg"
+                required
+                readOnly={Boolean(inviteToken && mode === "signup")}
+              />
+              {inviteToken && mode === "signup" ? (
+                <p className="text-[11px] text-fg-faint">The invitation is for this email.</p>
               ) : null}
             </div>
-            <Input
-              id="password"
-              type="password"
-              autoComplete={mode === "signin" ? "current-password" : "new-password"}
-              minLength={8}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="At least 8 characters"
-              required
-            />
-          </div>
+          ) : null}
 
-          {mode === "signup" ? (
+          {!twoFactorPending ? (
+            <div className="grid gap-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                {mode === "signin" ? (
+                  <button
+                    type="button"
+                    className="text-xs text-fg-muted hover:text-fg transition-colors"
+                    onClick={() => void onForgotPassword()}
+                  >
+                    Forgot password?
+                  </button>
+                ) : null}
+              </div>
+              <Input
+                id="password"
+                type="password"
+                autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                minLength={8}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="At least 8 characters"
+                required
+              />
+            </div>
+          ) : null}
+
+          {!twoFactorPending && mode === "signup" ? (
             <div className="flex gap-3 border-y border-border-subtle py-3">
               <Label htmlFor="legal-acceptance" className="sr-only">
                 Legal agreement
@@ -249,22 +338,30 @@ function LoginPage() {
           {error ? <LoginNotice variant="error" message={error} /> : null}
           {message ? <LoginNotice variant="info" message={message} /> : null}
 
-          <button
-            type="button"
-            onClick={startGithubAuth}
-            disabled={isSubmitting}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-subtle bg-transparent px-4 text-[13px] font-medium text-fg transition-colors hover:border-border hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <GitHubIcon />
-            Continue with GitHub
-          </button>
+          {!twoFactorPending ? (
+            <button
+              type="button"
+              onClick={startGithubAuth}
+              disabled={isSubmitting}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border-subtle bg-transparent px-4 text-[13px] font-medium text-fg transition-colors hover:border-border hover:bg-surface disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <GitHubIcon />
+              Continue with GitHub
+            </button>
+          ) : null}
 
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? (
               <span className="flex items-center gap-2">
                 <span className="inline-block size-3 animate-spin rounded-full border-2 border-bg/30 border-t-bg" />
-                {mode === "signin" ? "Signing in…" : "Creating account…"}
+                {twoFactorPending
+                  ? "Verifying…"
+                  : mode === "signin"
+                    ? "Signing in…"
+                    : "Creating account…"}
               </span>
+            ) : twoFactorPending ? (
+              "Verify"
             ) : mode === "signin" ? (
               "Sign in"
             ) : (
@@ -274,7 +371,19 @@ function LoginPage() {
         </form>
 
         <div className="mt-6 text-center text-xs text-fg-muted">
-          {mode === "signin" ? (
+          {twoFactorPending ? (
+            <button
+              type="button"
+              className="text-fg hover:underline underline-offset-4"
+              onClick={() => {
+                setTwoFactorPending(false);
+                setTwoFactorCode("");
+                setMessage(null);
+              }}
+            >
+              Back to sign in
+            </button>
+          ) : mode === "signin" ? (
             <>
               Don't have an account?{" "}
               <button

@@ -131,6 +131,7 @@ export type MemberProfile = {
   email: string;
   image: string | null;
   role: string;
+  twoFactorEnabled: boolean;
   joinedAt: string;
   stats: {
     assignedIssues: number;
@@ -988,9 +989,36 @@ export type Member = {
   email: string;
   image: string | null;
   role: string;
+  twoFactorEnabled: boolean;
 };
 
 export const listMembers = () => request<{ members: Member[] }>("/api/members");
+
+export type SecurityEventUser = {
+  id: string;
+  name: string;
+  email: string;
+};
+
+export type SecurityEvent = {
+  id: string;
+  eventType: string;
+  actor: SecurityEventUser | null;
+  target: SecurityEventUser | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+};
+
+export const listSecurityEvents = () =>
+  request<{ events: SecurityEvent[] }>("/api/security/events");
+
+export const sendTwoFactorNudges = () =>
+  request<{ sent: number }>("/api/security/two-factor-nudges", { method: "POST" });
+
+export const recordTwoFactorEnforcementBlocked = () =>
+  request<{ ok: true }>("/api/security/two-factor-enforcement/blocked", { method: "POST" });
 
 export type PermissionInfo = {
   key: string;
@@ -1036,6 +1064,12 @@ export const updateMemberRole = (id: string, role: string) =>
 
 export const removeMember = (id: string) =>
   request<void>(`/api/members/${id}`, { method: "DELETE" });
+
+export const resetMemberTwoFactor = (userId: string) =>
+  request<void>("/api/security/two-factor-recovery/reset", {
+    method: "POST",
+    body: JSON.stringify({ userId }),
+  });
 
 export const createIssue = (input: CreateIssueInput) =>
   request<{ issue: Issue }>("/api/issues", {

@@ -34,6 +34,7 @@ pub struct Config {
     pub unkey_base_url: Option<String>,
     pub mcp_token_encryption_key: Option<String>,
     pub slack_token_encryption_key: Option<String>,
+    pub two_factor_encryption_key: Option<String>,
     pub enable_dev_triggers: bool,
     pub platform_admin_emails: Vec<String>,
     pub storage: Option<StorageConfig>,
@@ -124,6 +125,7 @@ impl Config {
             unkey_base_url: optional_env("UNKEY_BASE_URL"),
             mcp_token_encryption_key,
             slack_token_encryption_key: optional_env("SLACK_TOKEN_ENCRYPTION_KEY"),
+            two_factor_encryption_key: optional_env("TWO_FACTOR_ENCRYPTION_KEY"),
             enable_dev_triggers: env_or_default("ENABLE_DEV_TRIGGERS", "false")
                 .parse()
                 .context("ENABLE_DEV_TRIGGERS must be true or false")?,
@@ -145,6 +147,13 @@ impl Config {
 
     pub fn slack_token_key(&self) -> String {
         self.slack_token_encryption_key
+            .clone()
+            .or_else(|| self.mcp_token_encryption_key.clone())
+            .unwrap_or_else(|| self.jwt_secret.clone())
+    }
+
+    pub fn two_factor_key(&self) -> String {
+        self.two_factor_encryption_key
             .clone()
             .or_else(|| self.mcp_token_encryption_key.clone())
             .unwrap_or_else(|| self.jwt_secret.clone())

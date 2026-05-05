@@ -13,6 +13,7 @@ mod mcp;
 mod note_storage;
 mod permissions;
 mod realtime;
+mod security_events;
 mod state;
 mod storage;
 
@@ -34,8 +35,8 @@ use http::{
     issue_status_routes, label_routes, mcp_key_routes, member_routes, note_routes,
     oauth_metadata_routes, oauth_routes, onboarding_routes, org_invitation_routes,
     preferences_routes, project_routes, public_api_routes, realtime_routes, role_routes,
-    slack_routes, spawn_github_auto_importer, support_admin_routes, support_routes, tabs_routes,
-    unsubscribe_routes, waitlist_routes,
+    security_routes, slack_routes, spawn_github_auto_importer, support_admin_routes,
+    support_routes, tabs_routes, unsubscribe_routes, waitlist_routes,
 };
 use produktive_ai::AiClient;
 use sea_orm::Database;
@@ -122,6 +123,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/members", member_routes())
         .nest("/api/notes", note_routes())
         .nest("/api/roles", role_routes())
+        .nest("/api/security", security_routes())
         .nest("/api/projects", project_routes())
         .nest("/api/realtime", realtime_routes())
         .nest("/api/unsubscribe", unsubscribe_routes())
