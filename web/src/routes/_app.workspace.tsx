@@ -1,11 +1,8 @@
 import { Link, Outlet, createFileRoute, useRouterState } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { toast } from "sonner";
+import { useMemo } from "react";
 import { StatusIcon } from "@/components/issue/status-icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProjectIcon } from "@/components/project/project-icon";
-import { AiBriefPanel } from "@/components/workspace/ai-brief-panel";
-import { generateWorkspaceBrief, type AiBrief } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import { sortedStatuses, statusCategory } from "@/lib/issue-constants";
 import { inboxQueryOptions } from "@/lib/queries/inbox";
@@ -13,7 +10,6 @@ import { issuesQueryOptions, useIssuesQuery } from "@/lib/queries/issues";
 import { projectsQueryOptions, useProjectsQuery } from "@/lib/queries/projects";
 import { useInbox } from "@/lib/use-inbox";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
-import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/workspace")({
   loader: ({ context }) => {
@@ -48,18 +44,12 @@ function OverviewSkeleton() {
   return (
     <div className="mx-auto w-full max-w-2xl space-y-8 px-4 py-10">
       <div className="space-y-2">
-        <Skeleton className="h-8 w-52 max-w-full" />
+        <Skeleton className="h-7 w-52 max-w-full" />
         <Skeleton className="h-4 w-72 max-w-full" />
       </div>
-      <Skeleton className="h-14 w-full rounded-lg" />
-      <div className="space-y-3 border-t border-border-subtle pt-6">
-        <Skeleton className="h-4 w-28" />
-        <Skeleton className="h-24 w-full rounded-lg" />
-      </div>
-      <div className="space-y-2 border-t border-border-subtle pt-6">
-        <Skeleton className="h-4 w-24" />
-        {Array.from({ length: 4 }).map((_, index) => (
-          <Skeleton key={index} className="h-10 w-full rounded-md" />
+      <div className="space-y-2 pt-4">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <Skeleton key={index} className="h-8 w-full" />
         ))}
       </div>
     </div>
@@ -83,14 +73,13 @@ function WorkspaceOverview() {
     let inProgress = 0;
     let done = 0;
     for (const issue of issues) {
+      const category = statusCategory(statuses, issue.status);
       if (issue.status === "in-progress") {
         active++;
         inProgress++;
-      } else if (statusCategory(statuses, issue.status) === "active") {
+      } else if (category === "active" || category === "backlog") {
         active++;
-      } else if (statusCategory(statuses, issue.status) === "backlog") {
-        active++;
-      } else if (statusCategory(statuses, issue.status) === "done") {
+      } else if (category === "done") {
         done++;
       }
     }
@@ -150,63 +139,35 @@ function WorkspaceOverview() {
 
   const isLoading = issuesQuery.isPending || projectsQuery.isPending;
   const empty = !isLoading && issues.length === 0 && projects.length === 0;
-  const [brief, setBrief] = useState<AiBrief | null>(null);
-  const [briefLoading, setBriefLoading] = useState(false);
-  const [briefError, setBriefError] = useState<string | null>(null);
-
-  const handleGenerateBrief = async () => {
-    setBriefLoading(true);
-    setBriefError(null);
-    try {
-      const result = await generateWorkspaceBrief();
-      setBrief(result);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to generate brief";
-      setBriefError(message);
-      toast.error(message);
-    } finally {
-      setBriefLoading(false);
-    }
-  };
 
   return (
     <main className="min-h-full bg-bg">
       <header className="sticky top-0 z-10 flex h-11 items-center justify-between gap-3 border-b border-border-subtle bg-bg px-4">
         <h1 className="text-sm font-medium text-fg">Overview</h1>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/issues"
-            search={{ new: true }}
-            className="rounded-md border border-border-subtle px-2.5 py-1 text-xs text-fg-muted transition-colors hover:border-border hover:text-fg"
-          >
-            New issue
-          </Link>
-        </div>
+        <Link
+          to="/issues"
+          search={{ new: true }}
+          className="text-xs text-fg-muted transition-colors hover:text-fg"
+        >
+          New issue
+        </Link>
       </header>
 
       {isLoading ? (
         <OverviewSkeleton />
       ) : empty ? (
-        <section className="mx-auto flex w-full max-w-2xl flex-col items-center px-4 py-20 text-center">
+        <section className="mx-auto flex w-full max-w-2xl flex-col items-center px-4 py-24 text-center">
           <p className="text-sm text-fg">Add your first issue to get started.</p>
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-            <Link
-              to="/issues"
-              search={{ new: true }}
-              className="rounded-md bg-fg px-3 py-1.5 text-xs font-medium text-bg hover:bg-white"
-            >
-              Create issue
-            </Link>
-            <Link
-              to="/issues"
-              className="rounded-md border border-border-subtle px-3 py-1.5 text-xs text-fg-muted transition-colors hover:border-border hover:text-fg"
-            >
-              Browse issues
-            </Link>
-          </div>
+          <Link
+            to="/issues"
+            search={{ new: true }}
+            className="mt-4 text-xs text-fg-muted transition-colors hover:text-fg"
+          >
+            Create issue →
+          </Link>
         </section>
       ) : (
-        <section className="mx-auto w-full max-w-2xl px-4 py-8">
+        <section className="mx-auto w-full max-w-2xl px-4 py-10">
           <div>
             <h2 className="text-xl font-medium tracking-tight text-fg">{orgName}</h2>
             <p className="mt-1 text-sm text-fg-muted">
@@ -216,39 +177,21 @@ function WorkspaceOverview() {
               <Sep />
               <span className="tabular-nums">{counts.done}</span> done
             </p>
-            <p
-              className="mt-2 max-w-prose text-xs text-fg-faint"
-              title="Includes backlog, active workflow, and in-progress work that is not done or canceled."
-            >
-              Active includes backlog and in-flight work (not done or canceled).
-            </p>
           </div>
 
           <Link
             to="/inbox"
-            className="mt-6 flex items-center justify-between gap-3 rounded-lg border border-border-subtle bg-surface/30 px-3 py-2.5 text-sm transition-colors hover:border-border hover:bg-surface/50"
+            className="mt-8 flex items-center justify-between gap-3 border-b border-border-subtle py-2.5 text-sm transition-colors hover:text-fg"
           >
             <span className="text-fg">Inbox</span>
             {inboxUnread > 0 ? (
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[10px] font-medium text-white">
-                {inboxUnread > 99 ? "99+" : inboxUnread}
+              <span className="text-xs tabular-nums text-fg-muted">
+                {inboxUnread > 99 ? "99+" : inboxUnread} unread
               </span>
             ) : (
               <span className="text-xs text-fg-faint">Up to date</span>
             )}
           </Link>
-
-          <AiBriefPanel
-            className="mt-8"
-            title="AI brief"
-            actionLabel="Generate brief"
-            refreshLabel="Refresh brief"
-            brief={brief}
-            loading={briefLoading}
-            error={briefError}
-            onGenerate={() => void handleGenerateBrief()}
-            emptyDescription="Short read-only summary of active work, risks, and suggested next actions for this workspace."
-          />
 
           <Section title="Your focus" actionLabel="All issues" actionTo="/issues">
             {focusIssues.length === 0 ? (
@@ -357,7 +300,7 @@ function Section({
         <h3 className="text-xs font-medium text-fg-muted">{title}</h3>
         <Link
           to={actionTo}
-          className={cn("text-xs text-fg-faint transition-colors hover:text-fg-muted")}
+          className="text-xs text-fg-faint transition-colors hover:text-fg-muted"
         >
           {actionLabel} →
         </Link>
