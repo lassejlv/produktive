@@ -11,12 +11,16 @@ target/
 
 # env
 .env
+.env.*
 .env.production
 env.txt
 **/.env
+**/.env.*
 **/.env.production
 !.env.example
 !**/.env.example
+!.env.*.example
+!**/.env.*.example
 
 # logs
 logs/
