@@ -6,6 +6,13 @@ ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 ENV_FILE="$ROOT_DIR/.env"
 MCP_ENV_FILE="$ROOT_DIR/.env.mcp"
 BOT_ENV_FILE="$ROOT_DIR/.env.bot"
+SETUP_ENV_FILE="$ROOT_DIR/.env.compose"
+INCLUDE_POSTGRES=false
+
+if [ -f "$SETUP_ENV_FILE" ]; then
+  # shellcheck disable=SC1090
+  . "$SETUP_ENV_FILE"
+fi
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "Missing $ENV_FILE. Copy .env.example to .env and fill in the required values." >&2
@@ -21,4 +28,8 @@ if [ ! -f "$BOT_ENV_FILE" ]; then
 fi
 
 cd "$ROOT_DIR"
-docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker/compose.yaml" up -d --build "$@"
+if [ "${COMPOSE_INCLUDE_POSTGRES:-$INCLUDE_POSTGRES}" = "true" ]; then
+  ${DOCKER_CMD:-docker} compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker/compose.yaml" -f "$ROOT_DIR/docker/compose.postgres.yaml" up -d --build "$@"
+else
+  ${DOCKER_CMD:-docker} compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker/compose.yaml" up -d --build "$@"
+fi
