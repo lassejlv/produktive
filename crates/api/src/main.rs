@@ -63,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
     let database = DatabaseConfig::from_env()?;
     let migration_db = Database::connect(&database.database_direct_url)
         .await
-        .context("failed to connect to migration database")?;
+        .context("failed to connect to migration database :(")?;
 
     produktive_migration::Migrator::up(&migration_db, None)
         .await
@@ -74,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
     config.warn_if_insecure_cookie_settings();
     let db = Database::connect(&config.database_url)
         .await
-        .context("failed to connect to database")?;
+        .context("failed to connect to database :(")?;
 
     let ai = AiClient::new(&config.ai_api_key, &config.ai_base_url)
         .map_err(|e| anyhow::anyhow!("failed to build AI client: {e}"))?;
