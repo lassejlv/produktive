@@ -49,8 +49,10 @@ function LandingPage() {
   const isLoggedIn = Boolean(session.data);
   const heroRef = useRef<HTMLDivElement>(null);
   const stackRef = useRef<HTMLDivElement>(null);
+  const ctaRef = useRef<HTMLDivElement>(null);
   useScrollVar(heroRef);
   useScrollVar(stackRef);
+  useScrollVar(ctaRef);
 
   return (
     <main className="relative isolate flex min-h-screen flex-col overflow-x-hidden bg-bg">
@@ -92,7 +94,8 @@ function LandingPage() {
             fetchPriority="high"
             className="animate-ken-burns absolute inset-0 h-full w-full object-cover object-[center_65%]"
             style={{
-              transform: "translateY(calc(var(--p, 0) * 60px))",
+              transform:
+                "translateY(calc(var(--p, 0) * 80px)) scale(calc(1 + var(--p, 0) * 0.06))",
               willChange: "transform",
             }}
           />
@@ -109,8 +112,9 @@ function LandingPage() {
         <div
           className="relative z-10 flex flex-1 items-center justify-center px-6 pb-12 pt-24"
           style={{
-            transform: "translateY(calc(var(--p, 0) * -60px))",
-            willChange: "transform",
+            transform: "translateY(calc(var(--p, 0) * -90px))",
+            opacity: "calc(1 - max(var(--p, 0) * 2 - 0.3, 0))",
+            willChange: "transform, opacity",
           }}
         >
           <div className="w-full max-w-[760px] text-center lg:-translate-y-[3%]">
@@ -180,7 +184,7 @@ function LandingPage() {
         <div
           aria-hidden
           className="absolute inset-x-0 bottom-7 z-10 flex justify-center"
-          style={{ opacity: "calc(1 - var(--p, 0) * 4)" }}
+          style={{ opacity: "calc(1 - var(--p, 0) * 5)" }}
         >
           <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-fg/45">
             <span className="inline-block animate-bounce">↓</span>
@@ -190,6 +194,7 @@ function LandingPage() {
       </section>
 
       <StackSection sectionRef={stackRef} />
+      <ClosingCTA sectionRef={ctaRef} isLoggedIn={isLoggedIn} />
 
       <footer className="relative z-10 px-7 pb-5 pt-14 text-center font-mono text-[10px] uppercase tracking-[0.16em] text-fg/35">
         © 2026 — Produktive
@@ -198,16 +203,20 @@ function LandingPage() {
   );
 }
 
-const STACK_TILES: Array<{ icon: IconSvgElement | null; label: string }> = [
-  { icon: GithubIcon, label: "GitHub" },
-  { icon: SlackIcon, label: "Slack" },
-  { icon: Notion01Icon, label: "Notion" },
-  { icon: DiscordIcon, label: "Discord" },
-  { icon: null, label: "Produktive" },
-  { icon: GitlabIcon, label: "GitLab" },
-  { icon: LoomIcon, label: "Loom" },
-  { icon: StripeIcon, label: "Stripe" },
-  { icon: FigmaIcon, label: "Figma" },
+const STACK_TILES: Array<{
+  icon: IconSvgElement | null;
+  label: string;
+  stagger: number;
+}> = [
+  { icon: GithubIcon, label: "GitHub", stagger: 0 },
+  { icon: SlackIcon, label: "Slack", stagger: 1 },
+  { icon: Notion01Icon, label: "Notion", stagger: 2 },
+  { icon: DiscordIcon, label: "Discord", stagger: 3 },
+  { icon: null, label: "Produktive", stagger: 8 },
+  { icon: GitlabIcon, label: "GitLab", stagger: 4 },
+  { icon: LoomIcon, label: "Loom", stagger: 5 },
+  { icon: StripeIcon, label: "Stripe", stagger: 6 },
+  { icon: FigmaIcon, label: "Figma", stagger: 7 },
 ];
 
 function StackSection({
@@ -216,77 +225,89 @@ function StackSection({
   sectionRef: RefObject<HTMLDivElement | null>;
 }) {
   return (
-    <section ref={sectionRef} className="relative h-[200vh]">
-      <div className="sticky top-0 flex h-screen items-center justify-center overflow-hidden">
+    <section
+      ref={sectionRef}
+      className="relative flex min-h-screen items-center justify-center overflow-hidden py-32"
+    >
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10"
+        style={{
+          opacity: "calc(min(max((var(--p, 0) - 0.1) * 3, 0), 1))",
+        }}
+      >
         <div
-          aria-hidden
-          className="absolute inset-0 -z-10"
+          className="absolute inset-0"
           style={{
+            backgroundImage:
+              "radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)",
+            backgroundSize: "26px 26px",
+            maskImage:
+              "radial-gradient(ellipse 70% 60% at 50% 50%, black 0%, transparent 75%)",
+            WebkitMaskImage:
+              "radial-gradient(ellipse 70% 60% at 50% 50%, black 0%, transparent 75%)",
+          }}
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 60% 55% at 50% 60%, rgba(217,154,120,0.22) 0%, transparent 70%)",
             transform:
-              "translateY(calc(40px - var(--p, 0) * 80px)) scale(calc(0.95 + var(--p, 0) * 0.1))",
+              "scale(calc(0.7 + var(--p, 0) * 0.6)) translateY(calc(60px - var(--p, 0) * 120px))",
+          }}
+        />
+      </div>
+
+      <div className="relative z-10 mx-auto flex w-full max-w-[1100px] flex-col items-center px-6">
+        <span
+          className="font-mono text-[10.5px] uppercase tracking-[0.2em] text-fg/45"
+          style={{
+            opacity: "calc(min(max((var(--p, 0) - 0.18) * 5, 0), 1))",
+            transform:
+              "translateY(calc((1 - min(max((var(--p, 0) - 0.18) * 5, 0), 1)) * 20px))",
           }}
         >
-          <div
-            className="absolute inset-0"
-            style={{
-              backgroundImage:
-                "radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)",
-              backgroundSize: "26px 26px",
-              maskImage:
-                "radial-gradient(ellipse 70% 60% at 50% 50%, black 0%, transparent 75%)",
-              WebkitMaskImage:
-                "radial-gradient(ellipse 70% 60% at 50% 50%, black 0%, transparent 75%)",
-            }}
-          />
-          <div
-            className="absolute inset-0"
-            style={{
-              background:
-                "radial-gradient(ellipse 60% 55% at 50% 60%, rgba(217,154,120,0.18) 0%, transparent 70%)",
-            }}
-          />
-        </div>
+          Built to fit in
+        </span>
+        <h2
+          className="mt-5 text-balance text-center text-[clamp(40px,6.5vw,76px)] font-semibold leading-[1.02] tracking-[-0.035em] text-fg"
+          style={{
+            opacity: "calc(min(max((var(--p, 0) - 0.2) * 5, 0), 1))",
+            transform:
+              "translateY(calc((1 - min(max((var(--p, 0) - 0.2) * 5, 0), 1)) * 80px))",
+          }}
+        >
+          At the center of your stack
+        </h2>
+        <p
+          className="mx-auto mt-5 max-w-[440px] text-center text-[15px] leading-[1.55] text-fg/65"
+          style={{
+            opacity: "calc(min(max((var(--p, 0) - 0.26) * 5, 0), 1))",
+            transform:
+              "translateY(calc((1 - min(max((var(--p, 0) - 0.26) * 5, 0), 1)) * 50px))",
+          }}
+        >
+          Two-way sync with the tools your team already uses.
+        </p>
 
-        <div className="relative z-10 mx-auto flex w-full max-w-[1100px] flex-col items-center px-6">
-          <h2
-            className="text-balance text-center text-[clamp(36px,6vw,72px)] font-semibold leading-[1.05] tracking-[-0.03em] text-fg"
-            style={{
-              transform: "translateY(calc(40px - var(--p, 0) * 60px))",
-              opacity: "calc(min(var(--p, 0) * 2.4 - 0.2, 1))",
-            }}
-          >
-            Works with your stack
-          </h2>
-          <p
-            className="mx-auto mt-5 max-w-[440px] text-center text-[15px] leading-[1.55] text-fg/65"
-            style={{
-              transform: "translateY(calc(30px - var(--p, 0) * 45px))",
-              opacity: "calc(min(var(--p, 0) * 2.2 - 0.4, 1))",
-            }}
-          >
-            Two-way sync with the tools your team already lives in.
-          </p>
-
+        <div className="mt-16 sm:mt-20" style={{ perspective: "1400px" }}>
           <div
-            className="mt-16 sm:mt-20"
-            style={{ perspective: "1400px" }}
+            className="grid grid-cols-3 gap-7 sm:gap-10"
+            style={{
+              transformStyle: "preserve-3d",
+              transform:
+                "rotateX(calc(86deg - var(--p, 0) * 32deg)) rotateZ(-45deg) scale(calc(0.62 + var(--p, 0) * 0.42))",
+            }}
           >
-            <div
-              className="grid grid-cols-3 gap-7 sm:gap-10"
-              style={{
-                transformStyle: "preserve-3d",
-                transform:
-                  "rotateX(calc(72deg - var(--p, 0) * 18deg)) rotateZ(-45deg) scale(calc(0.88 + var(--p, 0) * 0.14))",
-              }}
-            >
-              {STACK_TILES.map((tile) => (
-                <StackTile
-                  key={tile.label}
-                  icon={tile.icon}
-                  label={tile.label}
-                />
-              ))}
-            </div>
+            {STACK_TILES.map((tile) => (
+              <StackTile
+                key={tile.label}
+                icon={tile.icon}
+                label={tile.label}
+                stagger={tile.stagger}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -297,15 +318,24 @@ function StackSection({
 function StackTile({
   icon,
   label,
+  stagger,
 }: {
   icon: IconSvgElement | null;
   label: string;
+  stagger: number;
 }) {
   const isCenter = icon === null;
+  const threshold = 0.22 + stagger * 0.025;
+  const reveal = `min(max((var(--p, 0) - ${threshold}) * 7, 0), 1)`;
+
   return (
     <div
       className="relative size-[88px] sm:size-[104px]"
-      style={{ transformStyle: "preserve-3d" }}
+      style={{
+        transformStyle: "preserve-3d",
+        opacity: `calc(${reveal})`,
+        transform: `scale(calc(0.85 + ${reveal} * 0.15))`,
+      }}
       aria-label={label}
     >
       {Array.from({ length: 8 }).map((_, i) => (
@@ -340,5 +370,116 @@ function StackTile({
         )}
       </div>
     </div>
+  );
+}
+
+function ClosingCTA({
+  sectionRef,
+  isLoggedIn,
+}: {
+  sectionRef: RefObject<HTMLDivElement | null>;
+  isLoggedIn: boolean;
+}) {
+  return (
+    <section
+      ref={sectionRef}
+      className="relative flex min-h-screen items-center justify-center overflow-hidden py-32"
+    >
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10"
+        style={{
+          opacity: "calc(min(max((var(--p, 0) - 0.1) * 3, 0), 1))",
+        }}
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(ellipse 55% 45% at 50% 55%, rgba(217,154,120,0.2) 0%, transparent 70%)",
+            transform:
+              "translateY(calc(60px - var(--p, 0) * 100px)) scale(calc(0.85 + var(--p, 0) * 0.25))",
+          }}
+        />
+        <div
+          className="absolute inset-x-[12%] top-1/2 h-px"
+          style={{
+            background:
+              "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.18) 50%, transparent 100%)",
+            opacity: "calc(min(max((var(--p, 0) - 0.2) * 4, 0), 1))",
+          }}
+        />
+      </div>
+
+      <div className="relative z-10 mx-auto flex w-full max-w-[760px] flex-col items-center px-6 text-center">
+        <span
+          className="font-mono text-[10.5px] uppercase tracking-[0.2em] text-fg/45"
+          style={{
+            opacity: "calc(min(max((var(--p, 0) - 0.18) * 5, 0), 1))",
+            transform:
+              "translateY(calc((1 - min(max((var(--p, 0) - 0.18) * 5, 0), 1)) * 16px))",
+          }}
+        >
+          Get started
+        </span>
+
+        <h2 className="mt-5 text-balance text-[clamp(44px,8vw,96px)] font-semibold leading-[0.98] tracking-[-0.04em] text-fg">
+          <span
+            className="block"
+            style={{
+              opacity: "calc(min(max((var(--p, 0) - 0.2) * 5, 0), 1))",
+              transform:
+                "translateY(calc((1 - min(max((var(--p, 0) - 0.2) * 5, 0), 1)) * 60px))",
+            }}
+          >
+            Stop tracking.
+          </span>
+          <span
+            className="block bg-[linear-gradient(180deg,#ffffff_0%,#f0c5a8_70%,#d99a78_100%)] bg-clip-text text-transparent"
+            style={{
+              opacity: "calc(min(max((var(--p, 0) - 0.28) * 5, 0), 1))",
+              transform:
+                "translateY(calc((1 - min(max((var(--p, 0) - 0.28) * 5, 0), 1)) * 60px))",
+            }}
+          >
+            Start shipping.
+          </span>
+        </h2>
+
+        <div
+          className="mt-10 flex flex-wrap items-center justify-center gap-2"
+          style={{
+            opacity: "calc(min(max((var(--p, 0) - 0.36) * 5, 0), 1))",
+            transform:
+              "translateY(calc((1 - min(max((var(--p, 0) - 0.36) * 5, 0), 1)) * 40px))",
+          }}
+        >
+          <Link
+            to={isLoggedIn ? "/workspace" : "/login"}
+            className={cn(
+              "group inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-[10px] bg-fg px-6 text-[13px] font-medium text-bg transition-colors",
+              "hover:bg-white",
+            )}
+          >
+            {isLoggedIn ? "Open app" : "Get started"}
+            <span
+              aria-hidden
+              className="transition-transform duration-200 group-hover:translate-x-0.5"
+            >
+              →
+            </span>
+          </Link>
+        </div>
+
+        <p
+          className="mt-8 font-mono text-[10.5px] uppercase tracking-[0.16em] text-fg/40"
+          style={{
+            opacity: "calc(min(max((var(--p, 0) - 0.42) * 5, 0), 1))",
+          }}
+        >
+          It takes 30 seconds
+        </p>
+      </div>
+    </section>
   );
 }
