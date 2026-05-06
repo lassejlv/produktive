@@ -45,6 +45,11 @@ if [ -z "$INSTALL_DIR" ] || [ -z "$BRANCH" ]; then
   exit 1
 fi
 
+if [ ! -r /dev/tty ]; then
+  echo "This setup script needs an interactive terminal for env prompts." >&2
+  exit 1
+fi
+
 if [ "$(id -u)" -eq 0 ]; then
   SUDO=""
   OWNER_USER="${SUDO_USER:-root}"
@@ -158,16 +163,18 @@ prompt_value() {
 
   while true; do
     if [ "$secret" = "true" ]; then
-      read -r -s -p "$prompt" value
-      printf '\n'
+      printf '%s' "$prompt" >/dev/tty
+      IFS= read -r -s value </dev/tty
+      printf '\n' >/dev/tty
     else
-      read -r -p "$prompt" value
+      printf '%s' "$prompt" >/dev/tty
+      IFS= read -r value </dev/tty
     fi
     if [ -z "$value" ]; then
       value="$default_value"
     fi
     if [ "$required" = "true" ] && [ -z "$value" ]; then
-      echo "$key is required."
+      echo "$key is required." >/dev/tty
       continue
     fi
     printf '%s' "$value"
@@ -185,12 +192,13 @@ prompt_yes_no() {
   fi
 
   while true; do
-    read -r -p "$prompt $suffix: " value
+    printf '%s %s: ' "$prompt" "$suffix" >/dev/tty
+    IFS= read -r value </dev/tty
     value="${value:-$default_answer}"
     case "$value" in
       y|Y|yes|YES) return 0 ;;
       n|N|no|NO) return 1 ;;
-      *) echo "Answer yes or no." ;;
+      *) echo "Answer yes or no." >/dev/tty ;;
     esac
   done
 }
