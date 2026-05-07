@@ -18,8 +18,6 @@ export const Route = createFileRoute("/")({
   component: LandingPage,
 });
 
-export { LandingPage };
-
 function useScrollVar(ref: RefObject<HTMLElement | null>) {
   useEffect(() => {
     let raf = 0;
@@ -46,7 +44,7 @@ function useScrollVar(ref: RefObject<HTMLElement | null>) {
   }, [ref]);
 }
 
-function LandingPage() {
+export function LandingPage() {
   const session = useSession();
   const isLoggedIn = Boolean(session.data);
   const heroRef = useRef<HTMLDivElement>(null);
@@ -71,9 +69,7 @@ function LandingPage() {
             <div className="grid size-6 place-items-center rounded-md bg-fg text-[11px] font-semibold tracking-tight text-bg">
               P
             </div>
-            <span className="text-[13px] font-medium tracking-tight text-fg">
-              Produktive
-            </span>
+            <span className="text-[13px] font-medium tracking-tight text-fg">Produktive</span>
           </div>
           <div className="flex items-center gap-1">
             <Link
@@ -98,8 +94,7 @@ function LandingPage() {
             fetchPriority="high"
             className="animate-ken-burns absolute inset-0 h-full w-full object-cover object-[center_65%]"
             style={{
-              transform:
-                "translateY(calc(var(--p, 0) * 80px)) scale(calc(1 + var(--p, 0) * 0.06))",
+              transform: "translateY(calc(var(--p, 0) * 80px)) scale(calc(1 + var(--p, 0) * 0.06))",
               willChange: "transform",
             }}
           />
@@ -134,10 +129,7 @@ function LandingPage() {
             </div>
 
             <h1 className="text-balance text-[clamp(48px,8.5vw,108px)] font-semibold leading-[0.95] tracking-[-0.04em] text-fg">
-              <span
-                className="animate-fade-up block"
-                style={{ animationDelay: "80ms" }}
-              >
+              <span className="animate-fade-up block" style={{ animationDelay: "80ms" }}>
                 Ship faster.
               </span>
               <span
@@ -251,11 +243,7 @@ const FEATURES: Feature[] = [
   },
 ];
 
-function FeaturesSection({
-  sectionRef,
-}: {
-  sectionRef: RefObject<HTMLDivElement | null>;
-}) {
+function FeaturesSection({ sectionRef }: { sectionRef: RefObject<HTMLDivElement | null> }) {
   return (
     <section
       ref={sectionRef}
@@ -269,11 +257,9 @@ function FeaturesSection({
         <div
           className="absolute inset-0"
           style={{
-            backgroundImage:
-              "radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px)",
+            backgroundImage: "radial-gradient(rgba(255,255,255,0.05) 1px, transparent 1px)",
             backgroundSize: "32px 32px",
-            maskImage:
-              "radial-gradient(ellipse 70% 70% at 50% 45%, black 0%, transparent 80%)",
+            maskImage: "radial-gradient(ellipse 70% 70% at 50% 45%, black 0%, transparent 80%)",
             WebkitMaskImage:
               "radial-gradient(ellipse 70% 70% at 50% 45%, black 0%, transparent 80%)",
           }}
@@ -286,8 +272,7 @@ function FeaturesSection({
             className="font-mono text-[10.5px] uppercase tracking-[0.2em] text-fg/45"
             style={{
               opacity: "calc(min(max((var(--p, 0) - 0.16) * 5, 0), 1))",
-              transform:
-                "translateY(calc((1 - min(max((var(--p, 0) - 0.16) * 5, 0), 1)) * 18px))",
+              transform: "translateY(calc((1 - min(max((var(--p, 0) - 0.16) * 5, 0), 1)) * 18px))",
             }}
           >
             Inside the workspace
@@ -296,8 +281,7 @@ function FeaturesSection({
             className="mt-5 text-balance text-[clamp(40px,6.2vw,68px)] font-semibold leading-[1.02] tracking-[-0.035em] text-fg"
             style={{
               opacity: "calc(min(max((var(--p, 0) - 0.2) * 5, 0), 1))",
-              transform:
-                "translateY(calc((1 - min(max((var(--p, 0) - 0.2) * 5, 0), 1)) * 60px))",
+              transform: "translateY(calc((1 - min(max((var(--p, 0) - 0.2) * 5, 0), 1)) * 60px))",
             }}
           >
             Everything for shipping fast
@@ -353,11 +337,7 @@ const STACK_TILES: Array<{
   { icon: FigmaIcon, label: "Figma", stagger: 7 },
 ];
 
-function StackSection({
-  sectionRef,
-}: {
-  sectionRef: RefObject<HTMLDivElement | null>;
-}) {
+function StackSection({ sectionRef }: { sectionRef: RefObject<HTMLDivElement | null> }) {
   return (
     <section
       ref={sectionRef}
@@ -373,11 +353,9 @@ function StackSection({
         <div
           className="absolute inset-0"
           style={{
-            backgroundImage:
-              "radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)",
+            backgroundImage: "radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)",
             backgroundSize: "26px 26px",
-            maskImage:
-              "radial-gradient(ellipse 70% 60% at 50% 50%, black 0%, transparent 75%)",
+            maskImage: "radial-gradient(ellipse 70% 60% at 50% 50%, black 0%, transparent 75%)",
             WebkitMaskImage:
               "radial-gradient(ellipse 70% 60% at 50% 50%, black 0%, transparent 75%)",
           }}
@@ -398,8 +376,7 @@ function StackSection({
           className="font-mono text-[10.5px] uppercase tracking-[0.2em] text-fg/45"
           style={{
             opacity: "calc(min(max((var(--p, 0) - 0.18) * 5, 0), 1))",
-            transform:
-              "translateY(calc((1 - min(max((var(--p, 0) - 0.18) * 5, 0), 1)) * 20px))",
+            transform: "translateY(calc((1 - min(max((var(--p, 0) - 0.18) * 5, 0), 1)) * 20px))",
           }}
         >
           Built to fit in
@@ -408,8 +385,7 @@ function StackSection({
           className="mt-5 text-balance text-center text-[clamp(40px,6.5vw,76px)] font-semibold leading-[1.02] tracking-[-0.035em] text-fg"
           style={{
             opacity: "calc(min(max((var(--p, 0) - 0.2) * 5, 0), 1))",
-            transform:
-              "translateY(calc((1 - min(max((var(--p, 0) - 0.2) * 5, 0), 1)) * 80px))",
+            transform: "translateY(calc((1 - min(max((var(--p, 0) - 0.2) * 5, 0), 1)) * 80px))",
           }}
         >
           At the center of your stack
@@ -418,8 +394,7 @@ function StackSection({
           className="mx-auto mt-5 max-w-[440px] text-center text-[15px] leading-[1.55] text-fg/65"
           style={{
             opacity: "calc(min(max((var(--p, 0) - 0.26) * 5, 0), 1))",
-            transform:
-              "translateY(calc((1 - min(max((var(--p, 0) - 0.26) * 5, 0), 1)) * 50px))",
+            transform: "translateY(calc((1 - min(max((var(--p, 0) - 0.26) * 5, 0), 1)) * 50px))",
           }}
         >
           Two-way sync with the tools your team already uses.
@@ -495,12 +470,7 @@ function StackTile({
             P
           </span>
         ) : (
-          <HugeiconsIcon
-            icon={icon}
-            size={36}
-            strokeWidth={1.5}
-            className="text-fg/85"
-          />
+          <HugeiconsIcon icon={icon} size={36} strokeWidth={1.5} className="text-fg/85" />
         )}
       </div>
     </div>
@@ -550,8 +520,7 @@ function ClosingCTA({
           className="font-mono text-[10.5px] uppercase tracking-[0.2em] text-fg/45"
           style={{
             opacity: "calc(min(max((var(--p, 0) - 0.18) * 5, 0), 1))",
-            transform:
-              "translateY(calc((1 - min(max((var(--p, 0) - 0.18) * 5, 0), 1)) * 16px))",
+            transform: "translateY(calc((1 - min(max((var(--p, 0) - 0.18) * 5, 0), 1)) * 16px))",
           }}
         >
           Get started
@@ -562,8 +531,7 @@ function ClosingCTA({
             className="block"
             style={{
               opacity: "calc(min(max((var(--p, 0) - 0.2) * 5, 0), 1))",
-              transform:
-                "translateY(calc((1 - min(max((var(--p, 0) - 0.2) * 5, 0), 1)) * 60px))",
+              transform: "translateY(calc((1 - min(max((var(--p, 0) - 0.2) * 5, 0), 1)) * 60px))",
             }}
           >
             Stop tracking.
@@ -572,8 +540,7 @@ function ClosingCTA({
             className="block bg-[linear-gradient(180deg,#ffffff_0%,#f0c5a8_70%,#d99a78_100%)] bg-clip-text text-transparent"
             style={{
               opacity: "calc(min(max((var(--p, 0) - 0.28) * 5, 0), 1))",
-              transform:
-                "translateY(calc((1 - min(max((var(--p, 0) - 0.28) * 5, 0), 1)) * 60px))",
+              transform: "translateY(calc((1 - min(max((var(--p, 0) - 0.28) * 5, 0), 1)) * 60px))",
             }}
           >
             Start shipping.
@@ -584,8 +551,7 @@ function ClosingCTA({
           className="mt-10 flex flex-wrap items-center justify-center gap-2"
           style={{
             opacity: "calc(min(max((var(--p, 0) - 0.36) * 5, 0), 1))",
-            transform:
-              "translateY(calc((1 - min(max((var(--p, 0) - 0.36) * 5, 0), 1)) * 40px))",
+            transform: "translateY(calc((1 - min(max((var(--p, 0) - 0.36) * 5, 0), 1)) * 40px))",
           }}
         >
           <Link
