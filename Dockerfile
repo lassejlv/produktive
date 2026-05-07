@@ -16,7 +16,7 @@ FROM rust:1.95.0-slim-bookworm AS api-builder
 
 WORKDIR /app
 
-COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY Cargo.toml Cargo.lock rust-toolchain.toml pricing.json ./
 COPY crates ./crates
 RUN cargo build --release -p produktive-api
 
