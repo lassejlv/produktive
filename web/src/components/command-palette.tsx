@@ -4,7 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { signOut } from "@/lib/auth-client";
-import { issuesQueryOptions } from "@/lib/queries/issues";
+import {
+  issuesInfiniteQueryOptions,
+  useIssuesInfiniteQuery,
+} from "@/lib/queries/issues";
+import { flattenIssues } from "@/lib/queries/issues-cache";
 import { projectsQueryOptions } from "@/lib/queries/projects";
 import { applyTheme } from "@/lib/theme";
 import { useWorkspaceSlug } from "@/lib/use-workspace-slug";
@@ -35,9 +39,9 @@ export function CommandPalette() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const issuesQuery = useQuery(issuesQueryOptions());
+  const issuesQuery = useIssuesInfiniteQuery();
   const projectsQuery = useQuery(projectsQueryOptions(false));
-  const issues = issuesQuery.data ?? [];
+  const issues = flattenIssues(issuesQuery.data);
   const projects = projectsQuery.data ?? [];
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -75,7 +79,7 @@ export function CommandPalette() {
     setQuery("");
     setActiveIndex(0);
     requestAnimationFrame(() => inputRef.current?.focus());
-    void qc.prefetchQuery(issuesQueryOptions());
+    void qc.prefetchInfiniteQuery(issuesInfiniteQueryOptions());
     void qc.prefetchQuery(projectsQueryOptions(false));
   }, [open, qc]);
 

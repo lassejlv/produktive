@@ -3,7 +3,14 @@ import {
   useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { toast } from "sonner";
 import { IssuesIcon } from "@/components/chat/icons";
 import { EmptyState } from "@/components/empty-state";
@@ -38,9 +45,10 @@ import {
   viewLabels,
 } from "@/lib/issue-constants";
 import { useDisplayOptions } from "@/lib/issue-display";
-import { issuesQueryOptions } from "@/lib/queries/issues";
+import { issuesInfiniteQueryOptions } from "@/lib/queries/issues";
 import { useSession } from "@/lib/auth-client";
 import { useFavorites } from "@/lib/use-favorites";
+import { useIntersection } from "@/lib/use-intersection";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { useIssues } from "@/lib/use-issues";
 import { useMediaQuery } from "@/lib/use-media-query";
@@ -59,7 +67,7 @@ export const Route = createFileRoute("/_app/$workspaceSlug/issues")({
     activeId: typeof search.activeId === "string" && search.activeId.length > 0 ? search.activeId : undefined,
   }),
   loader: ({ context }) =>
-    context.queryClient.ensureQueryData(issuesQueryOptions()),
+    context.queryClient.ensureInfiniteQueryData(issuesInfiniteQueryOptions()),
   component: IssuesPage,
 });
 
@@ -78,7 +86,21 @@ function IssuesPage() {
   const issueId = pathname.startsWith(issuePrefix)
     ? decodeURIComponent(pathname.slice(issuePrefix.length))
     : null;
-  const { issues, isLoading, error, dismissError, addIssue } = useIssues();
+  const {
+    issues,
+    isLoading,
+    error,
+    dismissError,
+    addIssue,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useIssues();
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+  useIntersection(sentinelRef, loadMore, hasNextPage && !isFetchingNextPage);
   const createIssueMutation = useCreateIssue();
   const updateIssueMutation = useUpdateIssue();
   const deleteIssueMutation = useDeleteIssue();
@@ -447,6 +469,7 @@ function IssuesPage() {
           <h1 className="text-sm font-medium text-fg">Issues</h1>
           <span className="text-xs text-fg-muted tabular-nums">
             {filteredIssues.length}
+            {hasNextPage ? "+" : ""}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -520,6 +543,7 @@ function IssuesPage() {
                 )}
               >
                 {counts[key]}
+                {hasNextPage ? "+" : ""}
               </span>
             </button>
           );
@@ -605,6 +629,19 @@ function IssuesPage() {
             />
           )
         )}
+        {hasNextPage ? (
+          <div className="flex items-center justify-center px-5 py-6">
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={isFetchingNextPage}
+              className="inline-flex h-7 items-center rounded-md border border-border-subtle px-3 text-xs text-fg-muted transition-colors hover:border-border hover:bg-surface hover:text-fg disabled:opacity-50"
+            >
+              {isFetchingNextPage ? "Loading…" : "Load more"}
+            </button>
+            <div ref={sentinelRef} aria-hidden className="h-px w-px" />
+          </div>
+        ) : null}
       </section>
       {selectedIds.size > 0 ? (
         <BulkActionBar

@@ -1,32 +1,37 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { type Issue } from "@/lib/api";
 import {
-  issuesQueryOptions,
-  useIssuesQuery,
+  issuesInfiniteQueryOptions,
+  useIssuesInfiniteQuery,
 } from "@/lib/queries/issues";
+import {
+  type IssuesCache,
+  flattenIssues,
+  patchIssue,
+  prependIssue,
+  removeIssue,
+} from "@/lib/queries/issues-cache";
 import { queryKeys } from "@/lib/queries/keys";
 
 export function useIssues() {
   const qc = useQueryClient();
-  const query = useIssuesQuery();
+  const query = useIssuesInfiniteQuery();
 
   const addIssue = (issue: Issue) => {
-    qc.setQueryData<Issue[]>(queryKeys.issues.list(), (old) =>
-      old ? [issue, ...old] : [issue],
+    qc.setQueryData<IssuesCache>(queryKeys.issues.list(), (old) =>
+      prependIssue(old, issue),
     );
   };
 
   const updateIssueLocal = (id: string, patch: Partial<Issue>) => {
-    qc.setQueryData<Issue[]>(queryKeys.issues.list(), (old) =>
-      old?.map((issue) =>
-        issue.id === id ? { ...issue, ...patch } : issue,
-      ),
+    qc.setQueryData<IssuesCache>(queryKeys.issues.list(), (old) =>
+      patchIssue(old, id, patch),
     );
   };
 
   const removeIssueLocal = (id: string) => {
-    qc.setQueryData<Issue[]>(queryKeys.issues.list(), (old) =>
-      old?.filter((issue) => issue.id !== id),
+    qc.setQueryData<IssuesCache>(queryKeys.issues.list(), (old) =>
+      removeIssue(old, id),
     );
   };
 
@@ -35,9 +40,12 @@ export function useIssues() {
   };
 
   return {
-    issues: query.data ?? [],
+    issues: flattenIssues(query.data),
     isLoading: query.isPending,
     error: query.error?.message ?? null,
+    fetchNextPage: query.fetchNextPage,
+    hasNextPage: query.hasNextPage,
+    isFetchingNextPage: query.isFetchingNextPage,
     dismissError,
     addIssue,
     updateIssueLocal,
@@ -45,4 +53,4 @@ export function useIssues() {
   };
 }
 
-export { issuesQueryOptions };
+export { issuesInfiniteQueryOptions };

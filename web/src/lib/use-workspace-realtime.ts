@@ -9,6 +9,11 @@ import {
   type Label,
   type Project,
 } from "@/lib/api";
+import {
+  type IssuesCache,
+  removeIssue,
+  upsertIssue,
+} from "@/lib/queries/issues-cache";
 import { queryKeys } from "@/lib/queries/keys";
 
 type WorkspaceRealtimeEvent = {
@@ -87,8 +92,8 @@ export function useWorkspaceRealtime(enabled: boolean) {
 
     const applyIssueEvent = (message: WorkspaceRealtimeEvent) => {
       if (message.action === "deleted") {
-        queryClient.setQueryData<Issue[]>(queryKeys.issues.list(), (old) =>
-          old?.filter((issue) => issue.id !== message.entityId),
+        queryClient.setQueryData<IssuesCache>(queryKeys.issues.list(), (old) =>
+          removeIssue(old, message.entityId),
         );
         queryClient.removeQueries({ queryKey: queryKeys.issues.detail(message.entityId) });
         window.dispatchEvent(
@@ -108,12 +113,8 @@ export function useWorkspaceRealtime(enabled: boolean) {
       }
 
       const issue = message.payload;
-      queryClient.setQueryData<Issue[]>(queryKeys.issues.list(), (old) =>
-        upsertById<Issue>(
-          old,
-          issue,
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-        ),
+      queryClient.setQueryData<IssuesCache>(queryKeys.issues.list(), (old) =>
+        upsertIssue(old, issue),
       );
       queryClient.setQueryData(queryKeys.issues.detail(issue.id), issue);
       void queryClient.invalidateQueries({ queryKey: queryKeys.issues.history(issue.id) });

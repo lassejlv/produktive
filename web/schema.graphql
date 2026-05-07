@@ -2,7 +2,7 @@ scalar JSON
 
 type Query {
   me: JSON!
-  issues(status: String, projectId: String, labelIds: [String!]): JSON!
+  issues(status: String, projectId: String, labelIds: [String!], limit: Int, cursor: String): JSON!
   issue(id: String!): JSON!
   projects(includeArchived: Boolean): JSON!
   project(id: String!): JSON!

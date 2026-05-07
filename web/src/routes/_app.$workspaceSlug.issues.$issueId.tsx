@@ -38,8 +38,9 @@ import {
   useIssueDetailQuery,
   useIssueHistoryQuery,
   useIssueSubscribersQuery,
-  useIssuesQuery,
+  useIssuesInfiniteQuery,
 } from "@/lib/queries/issues";
+import { flattenIssues } from "@/lib/queries/issues-cache";
 import { queryKeys } from "@/lib/queries/keys";
 import { useCreateIssue, useDeleteIssue, useUpdateIssue } from "@/lib/mutations/issues";
 import { useLabelsQuery } from "@/lib/queries/labels";
@@ -533,11 +534,12 @@ export function IssueDetail({
 function SubIssuesSection({ parentId }: { parentId: string }) {
   const workspaceSlug = useWorkspaceSlug();
   const navigate = useNavigate();
-  const issuesQuery = useIssuesQuery();
+  const issuesQuery = useIssuesInfiniteQuery();
   const { statuses } = useIssueStatuses();
+  const issues = useMemo(() => flattenIssues(issuesQuery.data), [issuesQuery.data]);
   const children = useMemo(
-    () => (issuesQuery.data ?? []).filter((issue) => issue.parentId === parentId),
-    [issuesQuery.data, parentId],
+    () => issues.filter((issue) => issue.parentId === parentId),
+    [issues, parentId],
   );
   const loading = issuesQuery.isPending;
   const createIssueMutation = useCreateIssue();

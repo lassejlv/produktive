@@ -5,6 +5,13 @@ import {
   deleteIssue,
   updateIssue,
 } from "@/lib/api";
+import {
+  type IssuesCache,
+  patchIssue,
+  prependIssue,
+  removeIssue,
+  replaceIssue,
+} from "@/lib/queries/issues-cache";
 import { queryKeys } from "@/lib/queries/keys";
 
 type UpdateVars = { id: string; patch: Parameters<typeof updateIssue>[1] };
@@ -16,8 +23,8 @@ export function useCreateIssue() {
     mutationFn: (input: CreateVars) =>
       createIssue(input).then((r) => r.issue),
     onSuccess: (issue) => {
-      qc.setQueryData<Issue[]>(queryKeys.issues.list(), (old) =>
-        old ? [issue, ...old] : [issue],
+      qc.setQueryData<IssuesCache>(queryKeys.issues.list(), (old) =>
+        prependIssue(old, issue),
       );
     },
   });
@@ -31,10 +38,10 @@ export function useUpdateIssue() {
 
     onMutate: async ({ id, patch }) => {
       await qc.cancelQueries({ queryKey: queryKeys.issues.all });
-      const prevList = qc.getQueryData<Issue[]>(queryKeys.issues.list());
+      const prevList = qc.getQueryData<IssuesCache>(queryKeys.issues.list());
       const prevDetail = qc.getQueryData<Issue>(queryKeys.issues.detail(id));
-      qc.setQueryData<Issue[]>(queryKeys.issues.list(), (old) =>
-        old?.map((i) => (i.id === id ? { ...i, ...patch } as Issue : i)),
+      qc.setQueryData<IssuesCache>(queryKeys.issues.list(), (old) =>
+        patchIssue(old, id, patch),
       );
       qc.setQueryData<Issue>(queryKeys.issues.detail(id), (old) =>
         old ? ({ ...old, ...patch } as Issue) : old,
@@ -50,8 +57,8 @@ export function useUpdateIssue() {
     },
 
     onSuccess: (issue) => {
-      qc.setQueryData<Issue[]>(queryKeys.issues.list(), (old) =>
-        old?.map((i) => (i.id === issue.id ? issue : i)),
+      qc.setQueryData<IssuesCache>(queryKeys.issues.list(), (old) =>
+        replaceIssue(old, issue),
       );
       qc.setQueryData(queryKeys.issues.detail(issue.id), issue);
     },
@@ -65,9 +72,9 @@ export function useDeleteIssue() {
 
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: queryKeys.issues.list() });
-      const prev = qc.getQueryData<Issue[]>(queryKeys.issues.list());
-      qc.setQueryData<Issue[]>(queryKeys.issues.list(), (old) =>
-        old?.filter((i) => i.id !== id),
+      const prev = qc.getQueryData<IssuesCache>(queryKeys.issues.list());
+      qc.setQueryData<IssuesCache>(queryKeys.issues.list(), (old) =>
+        removeIssue(old, id),
       );
       return { prev };
     },

@@ -40,6 +40,8 @@ use std::sync::{
 };
 use uuid::Uuid;
 
+mod cursor;
+
 pub type AppSchema = Schema<QueryRoot, MutationRoot, EmptySubscription>;
 const MAX_INTERNAL_BRIDGE_CALLS_PER_OPERATION: usize = 4;
 
@@ -321,12 +323,16 @@ impl QueryRoot {
         status: Option<String>,
         project_id: Option<String>,
         label_ids: Option<Vec<String>>,
+        #[graphql(default = 50)] limit: i32,
+        cursor: Option<String>,
     ) -> async_graphql::Result<Json<Value>> {
         let state = state(ctx)?;
         let auth = auth(ctx)?;
+        let limit = limit.clamp(1, 100) as u64;
         let mut select = issue::Entity::find()
             .filter(issue::Column::OrganizationId.eq(&auth.organization.id))
-            .order_by_desc(issue::Column::CreatedAt);
+            .order_by_desc(issue::Column::CreatedAt)
+            .order_by_desc(issue::Column::Id);
 
         if let Some(status) = status
             .as_deref()
@@ -358,24 +364,57 @@ impl QueryRoot {
                 let issue_ids: Vec<String> =
                     join_rows.into_iter().map(|row| row.issue_id).collect();
                 if issue_ids.is_empty() {
-                    return to_json(json!({ "issues": [] }));
+                    return to_json(
+                        json!({ "issues": [], "nextCursor": Value::Null, "hasMore": false }),
+                    );
                 }
                 select = select.filter(issue::Column::Id.is_in(issue_ids));
             }
         }
 
-        let rows = select
+        if let Some(raw) = cursor.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            let (cursor_at, cursor_id) =
+                cursor::decode(raw)
+                    .map_err(|_| graphql_error(ApiError::BadRequest("invalid cursor".into())))?;
+            select = select.filter(
+                Condition::any()
+                    .add(issue::Column::CreatedAt.lt(cursor_at))
+                    .add(
+                        Condition::all()
+                            .add(issue::Column::CreatedAt.eq(cursor_at))
+                            .add(issue::Column::Id.lt(cursor_id)),
+                    ),
+            );
+        }
+
+        let mut rows = select
+            .limit(limit + 1)
             .all(&state.db)
             .await
             .map_err(ApiError::from)
             .map_err(graphql_error)?;
+
+        let has_more = rows.len() as u64 > limit;
+        if has_more {
+            rows.truncate(limit as usize);
+        }
+        let next_cursor = if has_more {
+            rows.last()
+                .map(|row| cursor::encode(row.created_at, &row.id))
+        } else {
+            None
+        };
         let mut issues = Vec::with_capacity(rows.len());
         for row in rows {
             issues.push(map_api(
                 crate::http::issues::issue_response(state, row).await,
             )?);
         }
-        to_json(json!({ "issues": issues }))
+        to_json(json!({
+            "issues": issues,
+            "nextCursor": next_cursor,
+            "hasMore": has_more,
+        }))
     }
 
     async fn issue(&self, ctx: &Context<'_>, id: String) -> async_graphql::Result<Json<Value>> {

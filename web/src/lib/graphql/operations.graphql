@@ -1,5 +1,17 @@
-query Issues($status: String, $projectId: String, $labelIds: [String!]) {
-  issues(status: $status, projectId: $projectId, labelIds: $labelIds)
+query Issues(
+  $status: String
+  $projectId: String
+  $labelIds: [String!]
+  $limit: Int
+  $cursor: String
+) {
+  issues(
+    status: $status
+    projectId: $projectId
+    labelIds: $labelIds
+    limit: $limit
+    cursor: $cursor
+  )
 }
 
 query Issue($id: String!) {

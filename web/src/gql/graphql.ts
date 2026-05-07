@@ -104,6 +104,8 @@ export type IssuesQueryVariables = Exact<{
   status?: string | null | undefined;
   projectId?: string | null | undefined;
   labelIds?: Array<string> | string | null | undefined;
+  limit?: number | null | undefined;
+  cursor?: string | null | undefined;
 }>;
 
 export type IssuesQuery = { issues: unknown };
@@ -363,6 +365,16 @@ export const IssuesDocument = {
             },
           },
         },
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "limit" } },
+          type: { kind: "NamedType", name: { kind: "Name", value: "Int" } },
+        },
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "cursor" } },
+          type: { kind: "NamedType", name: { kind: "Name", value: "String" } },
+        },
       ],
       selectionSet: {
         kind: "SelectionSet",
@@ -385,6 +397,16 @@ export const IssuesDocument = {
                 kind: "Argument",
                 name: { kind: "Name", value: "labelIds" },
                 value: { kind: "Variable", name: { kind: "Name", value: "labelIds" } },
+              },
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "limit" },
+                value: { kind: "Variable", name: { kind: "Name", value: "limit" } },
+              },
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "cursor" },
+                value: { kind: "Variable", name: { kind: "Name", value: "cursor" } },
               },
             ],
           },

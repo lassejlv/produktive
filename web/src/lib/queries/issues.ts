@@ -1,9 +1,15 @@
-import { queryOptions, useQuery } from "@tanstack/react-query";
+import {
+  infiniteQueryOptions,
+  queryOptions,
+  useInfiniteQuery,
+  useQuery,
+} from "@tanstack/react-query";
 import {
   type Issue,
   type IssueComment,
   type IssueHistoryEvent,
   type IssueSubscribersResponse,
+  type IssuesPage,
   getIssue,
   getIssueHistory,
   listIssueComments,
@@ -12,12 +18,19 @@ import {
 } from "../api";
 import { queryKeys } from "./keys";
 
-export const issuesQueryOptions = () =>
-  queryOptions({
+export const ISSUES_PAGE_SIZE = 50;
+
+export const issuesInfiniteQueryOptions = () =>
+  infiniteQueryOptions({
     queryKey: queryKeys.issues.list(),
-    queryFn: () => listIssues().then((r) => r.issues),
+    queryFn: ({ pageParam }) => listIssues(ISSUES_PAGE_SIZE, pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => (last.hasMore ? last.nextCursor : undefined),
     staleTime: 60_000,
   });
+
+export const useIssuesInfiniteQuery = () =>
+  useInfiniteQuery(issuesInfiniteQueryOptions());
 
 export const issueDetailQueryOptions = (id: string) =>
   queryOptions({
@@ -47,7 +60,6 @@ export const issueSubscribersQueryOptions = (id: string) =>
     staleTime: 60_000,
   });
 
-export const useIssuesQuery = () => useQuery(issuesQueryOptions());
 export const useIssueDetailQuery = (id: string) =>
   useQuery(issueDetailQueryOptions(id));
 export const useIssueHistoryQuery = (id: string) =>
@@ -62,4 +74,5 @@ export type {
   IssueComment,
   IssueHistoryEvent,
   IssueSubscribersResponse,
+  IssuesPage,
 };

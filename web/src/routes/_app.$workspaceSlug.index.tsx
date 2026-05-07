@@ -6,7 +6,11 @@ import { ProjectIcon } from "@/components/project/project-icon";
 import { useSession } from "@/lib/auth-client";
 import { sortedStatuses, statusCategory } from "@/lib/issue-constants";
 import { inboxQueryOptions } from "@/lib/queries/inbox";
-import { issuesQueryOptions, useIssuesQuery } from "@/lib/queries/issues";
+import {
+  issuesInfiniteQueryOptions,
+  useIssuesInfiniteQuery,
+} from "@/lib/queries/issues";
+import { flattenIssues } from "@/lib/queries/issues-cache";
 import { projectsQueryOptions, useProjectsQuery } from "@/lib/queries/projects";
 import { useInbox } from "@/lib/use-inbox";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
@@ -14,7 +18,7 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/$workspaceSlug/")({
   loader: ({ context }) => {
-    void context.queryClient.prefetchQuery(issuesQueryOptions());
+    void context.queryClient.prefetchInfiniteQuery(issuesInfiniteQueryOptions());
     void context.queryClient.prefetchQuery(projectsQueryOptions());
     void context.queryClient.prefetchQuery(inboxQueryOptions());
   },
@@ -122,12 +126,12 @@ function useShimmerOnce(ready: boolean) {
 function WorkspaceOverview() {
   const { workspaceSlug } = Route.useParams();
   const session = useSession();
-  const issuesQuery = useIssuesQuery();
+  const issuesQuery = useIssuesInfiniteQuery();
   const projectsQuery = useProjectsQuery();
   const { statuses } = useIssueStatuses();
   const { unreadCount: inboxUnread } = useInbox();
 
-  const issues = issuesQuery.data ?? [];
+  const issues = flattenIssues(issuesQuery.data);
   const projects = projectsQuery.data ?? [];
   const userId = session.data?.user?.id ?? null;
   const orgName = session.data?.organization?.name ?? "Workspace";
