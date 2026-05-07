@@ -15,7 +15,12 @@ export const apiPath = (path: string) => {
 };
 
 export const apiWebSocketPath = (path: string) => {
-  const url = new URL(apiPath(path));
+  const target = apiPath(path);
+  const base =
+    typeof window !== "undefined" && window.location?.href
+      ? window.location.href
+      : "http://localhost";
+  const url = new URL(target, base);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 
   return url.toString();
