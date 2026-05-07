@@ -34,7 +34,7 @@ pub fn routes() -> Router<AppState> {
 
 fn schema() -> PublicSchema {
     Schema::build(QueryRoot, MutationRoot, EmptySubscription)
-        .limit_depth(10)
+        .limit_depth(32)
         .limit_complexity(256)
         .finish()
 }
