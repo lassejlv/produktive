@@ -44,13 +44,13 @@ async fn graphiql_handler() -> Html<String> {
         .endpoint("/api/v1/graphql")
         .title("Produktive Public GraphQL API")
         .finish();
-    let default_headers =
+    let initial_headers =
         serde_json::to_string_pretty(&json!({ "Authorization": "Bearer <api_key>" }))
             .unwrap_or_default();
     Html(source.replace(
         "defaultEditorToolsVisibility: true,",
         &format!(
-            "defaultEditorToolsVisibility: true,\n          defaultHeaders: {default_headers},"
+            "defaultEditorToolsVisibility: 'headers',\n          isHeadersEditorEnabled: true,\n          initialHeaders: {initial_headers},"
         ),
     ))
 }
