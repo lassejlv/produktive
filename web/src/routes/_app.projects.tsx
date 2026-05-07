@@ -1,11 +1,11 @@
 import { Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ProjectsIcon } from "@/components/chat/icons";
 import { Avatar } from "@/components/issue/avatar";
-import { NewProjectDialog } from "@/components/project/new-project-dialog";
+import { NewProjectSheet } from "@/components/project/new-project-sheet";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { ProjectStatusIcon } from "@/components/project/project-status-icon";
+import { Spinner } from "@/components/ui/spinner";
 import { type Project } from "@/lib/api";
 import { projectColorHex, projectStatusLabel } from "@/lib/project-constants";
 import { useUpdateProject } from "@/lib/mutations/projects";
@@ -73,22 +73,19 @@ function ProjectsPage() {
         patch: { archived: next },
       });
       toast.success(next ? "Project archived" : "Project restored");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update project");
+    } catch (archiveError) {
+      toast.error(archiveError instanceof Error ? archiveError.message : "Failed to update project");
     }
   };
 
+  const total = counts.all;
+  const heroLabel = total === 1 ? "1 project" : `${total} projects`;
+
   return (
     <main className="min-h-full bg-bg">
-      <header className="sticky top-0 z-10 flex h-11 items-center justify-between gap-3 border-b border-border-subtle bg-bg px-4">
-        <div className="flex items-center gap-2">
-          <span className="text-fg-muted">
-            <ProjectsIcon />
-          </span>
-          <h1 className="text-sm font-medium text-fg">Projects</h1>
-          <span className="text-xs tabular-nums text-fg-muted">{filtered.length}</span>
-        </div>
-        <NewProjectDialog
+      <header className="sticky top-0 z-10 flex h-11 items-center justify-between gap-3 border-b border-border-subtle bg-bg/85 px-4 backdrop-blur">
+        <h1 className="text-sm font-medium text-fg">Projects</h1>
+        <NewProjectSheet
           onCreated={(project) => {
             addProject(project);
             void navigate({
@@ -99,8 +96,31 @@ function ProjectsPage() {
         />
       </header>
 
-      <section className="mx-auto w-full max-w-3xl px-4 pb-16 pt-5">
-        <nav className="flex flex-wrap gap-1">
+      <section className="mx-auto w-full max-w-3xl animate-fade-up px-4 pb-16 pt-12">
+        {error ? (
+          <p className="mb-4 rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-sm text-danger">
+            {error}
+          </p>
+        ) : null}
+
+        <div>
+          <h2 className="text-4xl font-light leading-[1.05] tracking-tight text-fg sm:text-5xl">
+            {heroLabel}
+          </h2>
+          <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-1 text-[12px] text-fg-faint">
+            <span>
+              <span className="tabular-nums text-fg-muted">{counts.active}</span> active
+            </span>
+            <span>
+              <span className="tabular-nums text-fg-muted">{counts.completed}</span> completed
+            </span>
+            <span>
+              <span className="tabular-nums text-fg-muted">{counts.archived}</span> archived
+            </span>
+          </div>
+        </div>
+
+        <nav className="mt-8 flex flex-wrap gap-1">
           {(Object.keys(viewLabels) as ViewKey[]).map((key) => {
             const isActive = view === key;
             return (
@@ -109,7 +129,7 @@ function ProjectsPage() {
                 type="button"
                 onClick={() => setView(key)}
                 className={cn(
-                  "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors",
+                  "inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-xs transition-colors",
                   isActive
                     ? "bg-surface text-fg"
                     : "text-fg-muted hover:bg-surface/60 hover:text-fg",
@@ -129,15 +149,17 @@ function ProjectsPage() {
           })}
         </nav>
 
-        {error ? (
-          <p className="mt-4 rounded-md border border-danger/25 bg-danger/5 px-3 py-2 text-sm text-danger">
-            {error}
-          </p>
-        ) : null}
+        <section className="mt-10">
+          <div className="hairline-top mb-3" />
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <h3 className="text-xs font-medium text-fg-muted">{viewLabels[view]}</h3>
+            <span className="text-[11px] tabular-nums text-fg-faint">{filtered.length}</span>
+          </div>
 
-        <div className="mt-4">
           {isLoading ? (
-            <ProjectListSkeleton />
+            <div className="flex justify-center py-10 text-fg-faint">
+              <Spinner size={14} />
+            </div>
           ) : projects.length === 0 ? (
             <EmptyState
               onCreate={(suggestedName) => {
@@ -149,27 +171,28 @@ function ProjectsPage() {
               }}
             />
           ) : filtered.length === 0 ? (
-            <p className="text-sm text-fg-faint">
+            <p className="py-4 text-sm text-fg-faint">
               No projects in {viewLabels[view].toLowerCase()}.
             </p>
           ) : (
-            <div className="divide-y divide-border-subtle">
-              {filtered.map((project) => (
-                <ProjectRow
-                  key={project.id}
-                  project={project}
-                  onOpen={() =>
-                    void navigate({
-                      to: "/projects/$projectId",
-                      params: { projectId: project.id },
-                    })
-                  }
-                  onArchiveToggle={() => void handleArchiveToggle(project)}
-                />
+            <ul className="-mx-2 flex flex-col animate-stagger">
+              {filtered.map((project, idx) => (
+                <li key={project.id} style={{ "--i": idx } as React.CSSProperties}>
+                  <ProjectRow
+                    project={project}
+                    onOpen={() =>
+                      void navigate({
+                        to: "/projects/$projectId",
+                        params: { projectId: project.id },
+                      })
+                    }
+                    onArchiveToggle={() => void handleArchiveToggle(project)}
+                  />
+                </li>
               ))}
-            </div>
+            </ul>
           )}
-        </div>
+        </section>
       </section>
     </main>
   );
@@ -199,7 +222,7 @@ function ProjectRow({
         onOpen();
       }}
       className={cn(
-        "group grid w-full cursor-pointer grid-cols-1 gap-3 py-3 text-left transition-colors hover:bg-surface/30 focus-visible:bg-surface/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent md:grid-cols-[minmax(0,1fr)_200px_72px] md:gap-4 md:px-0",
+        "row-hover-shift group grid w-full cursor-pointer grid-cols-1 gap-3 rounded-md px-2 py-2.5 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent md:grid-cols-[minmax(0,1fr)_180px_72px] md:gap-4",
         isArchived && "opacity-65",
       )}
     >
@@ -207,9 +230,9 @@ function ProjectRow({
         <ProjectIcon color={project.color} icon={project.icon} name={project.name} size="lg" />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
-            <h3 className="truncate text-sm font-medium text-fg">{project.name}</h3>
+            <h3 className="truncate text-sm text-fg">{project.name}</h3>
             {isArchived ? (
-              <span className="shrink-0 rounded bg-surface px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-fg-faint">
+              <span className="shrink-0 rounded-[5px] border border-border-subtle px-1.5 py-px text-[10px] text-fg-faint">
                 Archived
               </span>
             ) : null}
@@ -241,7 +264,7 @@ function ProjectRow({
         </div>
       </div>
 
-      <div>
+      <div className="self-center">
         <div className="flex items-center justify-between gap-2 text-xs text-fg-muted">
           <span className="tabular-nums">
             {project.doneCount} / {project.issueCount}
@@ -275,45 +298,11 @@ function ProjectRow({
   );
 }
 
-function ProjectListSkeleton() {
-  return (
-    <div className="divide-y divide-border-subtle">
-      {Array.from({ length: 5 }).map((_, index) => (
-        <div
-          key={index}
-          className="grid grid-cols-1 gap-3 py-3 md:grid-cols-[minmax(0,1fr)_200px_72px] md:gap-4"
-        >
-          <div className="flex items-start gap-2.5">
-            <div className="size-8 rounded-lg bg-surface/70" />
-            <div className="min-w-0 flex-1">
-              <div className="h-3.5 w-36 rounded-full bg-surface/80" />
-              <div className="mt-2 h-2.5 w-48 max-w-full rounded-full bg-surface/50" />
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <div className="h-2.5 w-10 rounded-full bg-surface/60" />
-              <div className="h-2.5 w-7 rounded-full bg-surface/40" />
-            </div>
-            <div className="mt-1.5 h-1 rounded-full bg-surface/60" />
-          </div>
-          <div className="hidden md:block">
-            <div className="ml-auto h-5 w-12 rounded-md bg-surface/40" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function EmptyState({ onCreate }: { onCreate: (name?: string) => void }) {
   const suggestions = ["Q2 launch", "Onboarding revamp", "Bug bash"];
   return (
     <div className="flex flex-col items-center py-16 text-center">
-      <div className="mb-3 text-fg-muted">
-        <ProjectsIcon size={22} />
-      </div>
-      <h2 className="text-sm font-medium text-fg">No projects yet</h2>
+      <h2 className="text-sm text-fg">No projects yet</h2>
       <p className="mt-1 max-w-sm text-sm text-fg-muted">
         Group issues into initiatives. Start from a template or create your own.
       </p>
@@ -323,7 +312,7 @@ function EmptyState({ onCreate }: { onCreate: (name?: string) => void }) {
             key={suggestion}
             type="button"
             onClick={() => onCreate(suggestion)}
-            className="rounded-full border border-border-subtle px-3 py-1 text-xs text-fg-muted transition-colors hover:border-border hover:text-fg"
+            className="rounded-full border border-border-subtle px-3 py-1 text-xs text-fg-muted transition-colors hover:border-border hover:bg-surface/40 hover:text-fg"
           >
             {suggestion}
           </button>
@@ -332,9 +321,9 @@ function EmptyState({ onCreate }: { onCreate: (name?: string) => void }) {
       <button
         type="button"
         onClick={() => onCreate()}
-        className="mt-4 rounded-md bg-fg px-3 py-1.5 text-xs font-medium text-bg hover:bg-white"
+        className="mt-4 text-xs text-fg-muted transition-colors hover:text-fg"
       >
-        Create project
+        Create project →
       </button>
     </div>
   );

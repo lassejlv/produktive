@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { NewLabelDialog } from "@/components/label/new-label-dialog";
+import { NewLabelSheet } from "@/components/label/new-label-sheet";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
@@ -31,7 +31,7 @@ export const Route = createFileRoute("/_app/labels")({
 });
 
 function LabelsPage() {
-  const navigate = useNavigate();
+  const _navigate = useNavigate();
   const [view, setView] = useState<ViewKey>("active");
   const includeArchived = view === "archived" || view === "all";
   const { labels, isLoading, refresh, addLabel, updateLabelLocal, removeLabelLocal } =
@@ -113,113 +113,152 @@ function LabelsPage() {
     }
   };
 
+  const total = counts.all;
+  const heroLabel = total === 1 ? "1 label" : `${total} labels`;
+
   return (
     <main className="min-h-full bg-bg">
       {dialog}
-      <header className="sticky top-0 z-10 flex h-12 items-center justify-between gap-3 border-b border-border-subtle bg-bg/85 px-5 backdrop-blur">
-        <div className="flex items-center gap-2">
-          <span className="text-fg-muted">
-            <LabelsHeaderIcon />
-          </span>
-          <h1 className="text-sm font-medium text-fg">Labels</h1>
-          <span className="text-xs text-fg-muted tabular-nums">{filtered.length}</span>
-        </div>
-        <NewLabelDialog onCreated={(label) => addLabel(label)} />
+      <header className="sticky top-0 z-10 flex h-11 items-center justify-between gap-3 border-b border-border-subtle bg-bg/85 px-4 backdrop-blur">
+        <h1 className="text-sm font-medium text-fg">Labels</h1>
+        <NewLabelSheet onCreated={(label) => addLabel(label)} />
       </header>
 
-      <nav className="flex items-center gap-1 border-b border-border-subtle bg-bg px-5 py-2">
-        {(Object.keys(viewLabels) as ViewKey[]).map((key) => {
-          const isActive = view === key;
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setView(key)}
-              className={cn(
-                "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors",
-                isActive ? "bg-surface text-fg" : "text-fg-muted hover:bg-surface hover:text-fg",
-              )}
-            >
-              <span>{viewLabels[key]}</span>
-              <span
-                className={cn(
-                  "text-[11px] tabular-nums",
-                  isActive ? "text-fg-muted" : "text-fg-faint",
-                )}
-              >
-                {counts[key]}
-              </span>
-            </button>
-          );
-        })}
-      </nav>
-
-      <section className="mx-auto w-full max-w-[760px] px-5 py-6">
-        {isLoading ? (
-          <div className="flex justify-center py-8 text-fg-faint">
-            <Spinner size={14} />
+      <section className="mx-auto w-full max-w-2xl animate-fade-up px-4 pb-16 pt-12">
+        <div>
+          <h2 className="text-4xl font-light leading-[1.05] tracking-tight text-fg sm:text-5xl">
+            {heroLabel}
+          </h2>
+          <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-1 text-[12px] text-fg-faint">
+            <span>
+              <span className="tabular-nums text-fg-muted">{counts.active}</span> active
+            </span>
+            <span>
+              <span className="tabular-nums text-fg-muted">{counts.archived}</span> archived
+            </span>
           </div>
-        ) : labels.length === 0 ? (
-          <EmptyState
-            onCreate={(name) => {
-              window.dispatchEvent(
-                new CustomEvent("produktive:new-label", {
-                  detail: { name },
-                }),
-              );
-            }}
-          />
-        ) : filtered.length === 0 ? (
-          <p className="text-[13px] text-fg-faint">
-            No labels in {viewLabels[view].toLowerCase()}.
-          </p>
-        ) : (
-          <ul className="overflow-hidden rounded-[10px] border border-border-subtle">
-            {filtered.map((label, index) => (
-              <li
-                key={label.id}
+        </div>
+
+        <nav className="mt-8 flex flex-wrap gap-1">
+          {(Object.keys(viewLabels) as ViewKey[]).map((key) => {
+            const isActive = view === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setView(key)}
                 className={cn(
-                  "group flex items-center gap-3 px-4 py-2.5 text-[13px] transition-colors",
-                  index !== filtered.length - 1 && "border-b border-border-subtle",
-                  label.archivedAt !== null && "opacity-60",
+                  "inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-xs transition-colors",
+                  isActive
+                    ? "bg-surface text-fg"
+                    : "text-fg-muted hover:bg-surface/60 hover:text-fg",
                 )}
               >
-                <ColorMenu
-                  color={label.color}
-                  onChange={(color) => void handleColorChange(label, color)}
-                />
-                <RenameField
-                  initialValue={label.name}
-                  onCommit={(name) => void handleRename(label, name)}
-                />
-                <span className="hidden min-w-0 flex-1 truncate text-[12px] text-fg-faint sm:inline">
-                  {label.description ?? ""}
+                <span>{viewLabels[key]}</span>
+                <span
+                  className={cn(
+                    "tabular-nums",
+                    isActive ? "text-fg-muted" : "text-fg-faint",
+                  )}
+                >
+                  {counts[key]}
                 </span>
-                <span className="text-[11.5px] tabular-nums text-fg-faint">
-                  {label.issueCount} issue{label.issueCount === 1 ? "" : "s"}
-                </span>
-                <div className="flex items-center gap-1 opacity-60 transition-opacity group-hover:opacity-100">
-                  <button
-                    type="button"
-                    onClick={() => void handleArchiveToggle(label)}
-                    className="rounded-md px-2 py-0.5 text-[11.5px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
-                  >
-                    {label.archivedAt === null ? "Archive" : "Restore"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(label)}
-                    className="rounded-md px-2 py-0.5 text-[11.5px] text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+              </button>
+            );
+          })}
+        </nav>
+
+        <section className="mt-10">
+          <div className="hairline-top mb-3" />
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <h3 className="text-xs font-medium text-fg-muted">{viewLabels[view]}</h3>
+            <span className="text-[11px] tabular-nums text-fg-faint">{filtered.length}</span>
+          </div>
+
+          {isLoading ? (
+            <div className="flex justify-center py-10 text-fg-faint">
+              <Spinner size={14} />
+            </div>
+          ) : labels.length === 0 ? (
+            <EmptyState
+              onCreate={(name) => {
+                window.dispatchEvent(
+                  new CustomEvent("produktive:new-label", {
+                    detail: { name },
+                  }),
+                );
+              }}
+            />
+          ) : filtered.length === 0 ? (
+            <p className="py-4 text-sm text-fg-faint">
+              No labels in {viewLabels[view].toLowerCase()}.
+            </p>
+          ) : (
+            <ul className="-mx-2 flex flex-col animate-stagger">
+              {filtered.map((label, idx) => (
+                <li key={label.id} style={{ "--i": idx } as React.CSSProperties}>
+                  <LabelRow
+                    label={label}
+                    onColorChange={(color) => void handleColorChange(label, color)}
+                    onRename={(name) => void handleRename(label, name)}
+                    onArchiveToggle={() => void handleArchiveToggle(label)}
+                    onDelete={() => handleDelete(label)}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </section>
     </main>
+  );
+}
+
+function LabelRow({
+  label,
+  onColorChange,
+  onRename,
+  onArchiveToggle,
+  onDelete,
+}: {
+  label: Label;
+  onColorChange: (color: string) => void;
+  onRename: (name: string) => void;
+  onArchiveToggle: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "row-hover-shift group flex items-center gap-3 rounded-md px-2 py-2 text-[13px]",
+        label.archivedAt !== null && "opacity-60",
+      )}
+    >
+      <ColorMenu color={label.color} onChange={onColorChange} />
+      <RenameField initialValue={label.name} onCommit={onRename} />
+      <span className="hidden min-w-0 flex-1 truncate text-[12px] text-fg-faint sm:inline">
+        {label.description ?? ""}
+      </span>
+      <span className="shrink-0 text-[11.5px] tabular-nums text-fg-faint">
+        {label.issueCount} issue{label.issueCount === 1 ? "" : "s"}
+      </span>
+      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        <button
+          type="button"
+          onClick={onArchiveToggle}
+          className="rounded-md px-2 py-0.5 text-[11.5px] text-fg-muted transition-colors hover:bg-surface/60 hover:text-fg"
+        >
+          {label.archivedAt === null ? "Archive" : "Restore"}
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="rounded-md px-2 py-0.5 text-[11.5px] text-fg-muted transition-colors hover:bg-danger/10 hover:text-danger"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -228,7 +267,7 @@ function ColorMenu({ color, onChange }: { color: string; onChange: (next: string
     <Select value={color} onValueChange={onChange}>
       <SelectTrigger
         aria-label="Color"
-        className="size-6 justify-center rounded-full border-0 bg-transparent p-0 hover:border-transparent hover:bg-surface [&>svg]:hidden"
+        className="size-6 justify-center rounded-full border-0 bg-transparent p-0 hover:border-transparent hover:bg-surface/60 [&>svg]:hidden"
       >
         <span
           aria-hidden
@@ -288,7 +327,7 @@ function RenameField({
             setValue(initialValue);
           }
         }}
-        className="w-44 rounded-md border border-border bg-bg px-2 py-0.5 text-[13px] text-fg outline-none focus:border-fg-muted"
+        className="w-44 rounded-md border border-border-subtle bg-surface/40 px-2 py-0.5 text-[13px] text-fg outline-none transition-colors focus:border-accent/60 focus:bg-surface focus:ring-2 focus:ring-accent/30"
       />
     );
   }
@@ -306,13 +345,10 @@ function RenameField({
 function EmptyState({ onCreate }: { onCreate: (name?: string) => void }) {
   return (
     <div className="flex flex-col items-center py-16 text-center">
-      <div className="mb-4 grid size-12 place-items-center rounded-xl bg-surface/60 text-fg-muted">
-        <LabelsHeaderIcon size={22} />
-      </div>
-      <h2 className="text-[15px] font-medium text-fg">Tag issues with labels</h2>
+      <h2 className="text-sm text-fg">Tag issues with labels</h2>
       <p className="mt-1 max-w-[360px] text-[13px] text-fg-muted">
-        Lightweight, free-form tags. Filter by them, attach as many as you want. Try one of these to
-        get started:
+        Lightweight, free-form tags. Filter by them, attach as many as you want. Try one of these
+        to get started:
       </p>
       <div className="mt-5 flex flex-wrap items-center justify-center gap-1.5">
         {exampleLabels.map((example) => (
@@ -336,24 +372,10 @@ function EmptyState({ onCreate }: { onCreate: (name?: string) => void }) {
       <button
         type="button"
         onClick={() => onCreate()}
-        className="mt-5 rounded-md bg-fg px-3 py-1.5 text-[12.5px] font-medium text-bg transition-colors hover:bg-white"
+        className="mt-5 text-xs text-fg-muted transition-colors hover:text-fg"
       >
-        + Create label
+        Create label →
       </button>
     </div>
-  );
-}
-
-function LabelsHeaderIcon({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path
-        d="M7.5 1.5h4a1 1 0 011 1v4l-6 6a1 1 0 01-1.4 0L1.5 8.4a1 1 0 010-1.4l6-6z"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <circle cx="9.5" cy="4.5" r="0.9" fill="currentColor" />
-    </svg>
   );
 }

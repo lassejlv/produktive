@@ -27,8 +27,8 @@ import { LoadingTip } from "@/components/ui/loading-tip";
 import { recordTwoFactorEnforcementBlocked } from "@/lib/api";
 import { signOut, useSession } from "@/lib/auth-client";
 import { parseMessageWithAttachments } from "@/lib/chat-attachments";
-import { NewLabelDialog } from "@/components/label/new-label-dialog";
-import { NewProjectDialog } from "@/components/project/new-project-dialog";
+import { NewLabelSheet } from "@/components/label/new-label-sheet";
+import { NewProjectSheet } from "@/components/project/new-project-sheet";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { TabBar } from "@/components/workspace/tab-bar";
 import { findStaticPage } from "@/lib/tab-pages";
@@ -183,7 +183,7 @@ function AppLayout() {
     <SidebarProvider>
       <CommandPalette />
       <KeyboardHelp />
-      <NewProjectDialog
+      <NewProjectSheet
         headless
         onCreated={(project) => {
           void navigate({
@@ -192,7 +192,7 @@ function AppLayout() {
           });
         }}
       />
-      <NewLabelDialog headless />
+      <NewLabelSheet headless />
       <Sidebar className="bg-sidebar/95" data-tour="sidebar">
         <SidebarHeader>
           <div className="flex items-center gap-1">

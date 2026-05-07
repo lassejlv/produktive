@@ -1,5 +1,5 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/issue/avatar";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -10,6 +10,7 @@ import { MemberPicker } from "@/components/issue/member-picker";
 import { ProjectIcon } from "@/components/project/project-icon";
 import { ProjectStatusIcon } from "@/components/project/project-status-icon";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { AiBriefPanel } from "@/components/workspace/ai-brief-panel";
 import { generateProjectHealth, type AiBrief, type UpdateProjectInput } from "@/lib/api";
 import { sortedStatuses, statusName } from "@/lib/issue-constants";
@@ -34,6 +35,7 @@ function ProjectDetailPage() {
   const projectQuery = useProjectDetailQuery(projectId);
   const project = projectQuery.data ?? null;
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const { issues } = useIssues();
   const { statuses } = useIssueStatuses();
   const updateProjectMutation = useUpdateProject();
@@ -69,6 +71,24 @@ function ProjectDetailPage() {
     enabled: tabsEnabled,
   });
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
   const updateField = async (patch: UpdateProjectInput) => {
     if (!project) return;
     try {
@@ -79,7 +99,6 @@ function ProjectDetailPage() {
   };
 
   const handleStatus = (next: string) => void updateField({ status: next });
-
   const handleLead = (leadId: string | null) => void updateField({ leadId });
 
   const handleArchiveToggle = async () => {
@@ -150,23 +169,25 @@ function ProjectDetailPage() {
 
   if (projectQuery.isPending || !project) {
     return (
-      <main className="min-h-full bg-bg px-4 py-6">
-        <p className="text-sm text-fg-faint">Loading project…</p>
+      <main className="flex min-h-full items-center justify-center bg-bg text-fg-faint">
+        <Spinner size={16} />
       </main>
     );
   }
 
   const progress = project.issueCount === 0 ? 0 : project.doneCount / project.issueCount;
+  const isArchived = project.archivedAt !== null;
+  const accentColor = projectColorHex[project.color] ?? "#5b8cff";
 
   return (
     <main className="min-h-full bg-bg">
       {dialog}
-      <header className="flex items-center justify-between gap-3 px-4 pt-4">
+      <header className="sticky top-0 z-10 flex h-11 items-center justify-between gap-3 border-b border-border-subtle bg-bg/85 px-4 backdrop-blur">
         <Link
           to="/projects"
-          className="inline-flex items-center gap-1 text-xs text-fg-muted transition-colors hover:text-fg"
+          className="inline-flex items-center gap-1.5 text-xs text-fg-muted transition-colors hover:text-fg"
         >
-          <svg width="10" height="10" viewBox="0 0 14 14" fill="none" aria-hidden>
+          <svg width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden>
             <path
               d="M9 3l-4 4 4 4"
               stroke="currentColor"
@@ -177,21 +198,28 @@ function ProjectDetailPage() {
           </svg>
           Back to projects
         </Link>
-        <div className="relative">
+        <div ref={menuRef} className="relative">
           <button
             type="button"
             onClick={() => setMenuOpen((value) => !value)}
             aria-expanded={menuOpen}
             aria-haspopup="menu"
-            className="grid size-7 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+            className={cn(
+              "grid size-7 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface/60 hover:text-fg",
+              menuOpen && "bg-surface text-fg",
+            )}
           >
-            ⋯
+            <DotsGlyph />
           </button>
           {menuOpen ? (
             <div
-              className="absolute right-0 top-8 z-30 w-40 overflow-hidden rounded-md border border-border bg-surface py-0.5 shadow-sm"
               role="menu"
+              className="absolute right-0 top-9 z-30 w-44 overflow-hidden rounded-[10px] border border-border-subtle/80 bg-bg/85 backdrop-blur-2xl widget-panel-shadow animate-modal-pop"
             >
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-fg-muted/40 to-transparent"
+              />
               <MenuItem
                 onClick={() => {
                   setMenuOpen(false);
@@ -200,7 +228,12 @@ function ProjectDetailPage() {
               >
                 {project.archivedAt === null ? "Archive" : "Restore"}
               </MenuItem>
-              <div className="my-0.5 h-px bg-border-subtle" />
+              <div className="relative h-px">
+                <div
+                  aria-hidden
+                  className="absolute inset-x-3 h-px bg-gradient-to-r from-border-subtle via-border-subtle/60 to-transparent"
+                />
+              </div>
               <MenuItem
                 danger
                 onClick={() => {
@@ -215,11 +248,11 @@ function ProjectDetailPage() {
         </div>
       </header>
 
-      <article className="mx-auto w-full max-w-2xl px-4 pb-20 pt-8">
+      <article className="mx-auto w-full max-w-2xl animate-fade-up px-4 pb-20 pt-12">
         <div className="flex items-center gap-3">
           <ProjectIcon color={project.color} icon={project.icon} name={project.name} size="lg" />
-          {project.archivedAt !== null ? (
-            <span className="rounded bg-surface px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-fg-faint">
+          {isArchived ? (
+            <span className="rounded-[5px] border border-border-subtle px-1.5 py-px text-[10px] text-fg-faint">
               Archived
             </span>
           ) : null}
@@ -233,7 +266,7 @@ function ProjectDetailPage() {
           />
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-fg-muted">
+        <div className="mt-4 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-fg-muted">
           <InlineStatusSelect status={project.status} progress={progress} onChange={handleStatus} />
           <Sep />
           <MemberPicker
@@ -279,43 +312,53 @@ function ProjectDetailPage() {
           />
         </div>
 
-        <section className="mt-10">
-          <div className="mb-2 flex items-center justify-between gap-3">
+        <section className="mt-12">
+          <div className="hairline-top mb-3" />
+          <div className="mb-3 flex items-baseline justify-between gap-3">
             <h2 className="text-xs font-medium text-fg-muted">Progress</h2>
-            <Link to="/issues" className="text-xs text-fg-faint transition-colors hover:text-fg-muted">
-              All issues
-            </Link>
+            <span className="text-[11px] tabular-nums text-fg-faint">
+              {Math.round(progress * 100)}%
+            </span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-surface">
             <div
               className="h-full transition-all"
-              style={{
-                width: `${Math.round(progress * 100)}%`,
-                backgroundColor: projectColorHex[project.color] ?? "#5b8cff",
-              }}
+              style={{ width: `${Math.round(progress * 100)}%`, backgroundColor: accentColor }}
             />
           </div>
-          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-fg-muted">
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-fg-muted">
             {statusBreakdown.map((item) => (
               <BreakdownPill key={item.key} label={item.name} count={item.count} />
             ))}
           </div>
         </section>
 
-        <AiBriefPanel
-          className="mt-10"
-          title="Health"
-          actionLabel="Generate summary"
-          refreshLabel="Refresh"
-          brief={health}
-          loading={healthLoading}
-          error={healthError}
-          onGenerate={() => void handleGenerateHealth()}
-          emptyDescription="AI summary from this project's issues and recent activity."
-        />
+        <section className="mt-12">
+          <div className="hairline-top mb-3" />
+          <h2 className="mb-3 text-xs font-medium text-fg-muted">Health</h2>
+          <AiBriefPanel
+            title="Health"
+            actionLabel="Generate summary"
+            refreshLabel="Refresh"
+            brief={health}
+            loading={healthLoading}
+            error={healthError}
+            onGenerate={() => void handleGenerateHealth()}
+            emptyDescription="AI summary from this project's issues and recent activity."
+          />
+        </section>
 
-        <section className="mt-10">
-          <h2 className="mb-2 text-xs font-medium text-fg-muted">Issues</h2>
+        <section className="mt-12">
+          <div className="hairline-top mb-3" />
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <h2 className="text-xs font-medium text-fg-muted">Issues</h2>
+            <Link
+              to="/issues"
+              className="text-[11px] text-fg-faint transition-colors hover:text-fg-muted"
+            >
+              All issues →
+            </Link>
+          </div>
           {projectIssues.length === 0 ? (
             <p className="text-sm text-fg-faint">No issues yet. Add one from a status group.</p>
           ) : null}
@@ -395,11 +438,21 @@ function MenuItem({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex h-8 w-full items-center px-2.5 text-left text-xs transition-colors hover:bg-surface-2",
+        "flex h-9 w-full items-center px-3 text-left text-[13px] transition-colors hover:bg-surface/60",
         danger ? "text-danger" : "text-fg",
       )}
     >
       {children}
     </button>
+  );
+}
+
+function DotsGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <circle cx="5" cy="12" r="1.6" />
+      <circle cx="12" cy="12" r="1.6" />
+      <circle cx="19" cy="12" r="1.6" />
+    </svg>
   );
 }
