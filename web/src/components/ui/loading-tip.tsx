@@ -38,8 +38,10 @@ export function LoadingTip({ compact = false, className }: LoadingTipProps) {
           className,
         )}
       >
-        <span className="inline-block size-2.5 shrink-0 animate-spin rounded-full border border-border-subtle border-t-fg-muted" />
-        <span className="min-w-0 truncate">{LOADING_TIPS[tipIndex]}</span>
+        <LoadingPulse size={10} />
+        <span key={tipIndex} className="min-w-0 animate-fade-in truncate">
+          {LOADING_TIPS[tipIndex]}
+        </span>
       </div>
     );
   }
@@ -47,17 +49,46 @@ export function LoadingTip({ compact = false, className }: LoadingTipProps) {
   return (
     <div
       className={cn(
-        "flex w-full max-w-sm flex-col items-center gap-3 text-center",
+        "flex w-full max-w-sm flex-col items-center gap-5 text-center",
         className,
       )}
     >
-      <span className="inline-block size-5 animate-spin rounded-full border-2 border-border-subtle border-t-fg" />
-      <div className="space-y-1">
-        <p className="text-shimmer text-sm tracking-tight">Loading Produktive</p>
-        <p className="text-xs leading-relaxed text-fg-faint">
+      <LoadingPulse size={22} />
+      <div className="space-y-1.5">
+        <p className="text-shimmer text-[13px] tracking-tight">Loading Produktive</p>
+        <p
+          key={tipIndex}
+          className="animate-fade-in text-[11.5px] leading-relaxed text-fg-faint"
+        >
           {LOADING_TIPS[tipIndex]}
         </p>
       </div>
     </div>
+  );
+}
+
+function LoadingPulse({ size }: { size: number }) {
+  const dot = Math.max(2, Math.round(size * 0.45));
+  return (
+    <span
+      aria-hidden
+      className="relative inline-flex shrink-0 items-center justify-center"
+      style={{ width: size, height: size }}
+    >
+      <span
+        aria-hidden
+        className="loading-orbit absolute inset-0 rounded-full bg-fg"
+      />
+      <span
+        aria-hidden
+        className="loading-orbit absolute inset-0 rounded-full bg-fg"
+        style={{ animationDelay: "0.6s" }}
+      />
+      <span
+        aria-hidden
+        className="relative rounded-full bg-fg"
+        style={{ width: dot, height: dot }}
+      />
+    </span>
   );
 }

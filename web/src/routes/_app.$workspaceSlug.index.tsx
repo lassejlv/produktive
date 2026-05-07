@@ -1,4 +1,4 @@
-import { Link, Outlet, createFileRoute, useRouterState } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { StatusIcon } from "@/components/issue/status-icon";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,7 +18,7 @@ export const Route = createFileRoute("/_app/$workspaceSlug/")({
     void context.queryClient.prefetchQuery(projectsQueryOptions());
     void context.queryClient.prefetchQuery(inboxQueryOptions());
   },
-  component: WorkspaceRoute,
+  component: WorkspaceOverview,
 });
 
 const PRIORITY_RANK: Record<string, number> = {
@@ -39,17 +39,6 @@ function greetingFor(hour: number): string {
   return "Good night";
 }
 
-function WorkspaceRoute() {
-  const pathname = useRouterState({
-    select: (state) => state.location.pathname,
-  });
-
-  if (pathname !== "/workspace") {
-    return <Outlet />;
-  }
-
-  return <WorkspaceOverview />;
-}
 
 function OverviewSkeleton() {
   return (

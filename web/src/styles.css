@@ -721,6 +721,30 @@
   animation: sheet-in-left 0.24s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
+@keyframes loading-orbit {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.6);
+  }
+  80%,
+  100% {
+    opacity: 0;
+    transform: scale(2.2);
+  }
+}
+
+.loading-orbit {
+  animation: loading-orbit 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-orbit {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 @keyframes text-shimmer-once {
   from {
     background-position: 200% 0;
