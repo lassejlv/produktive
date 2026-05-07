@@ -47,8 +47,31 @@ pub async fn write_version_body(
     write_body(state, object_key, body_markdown).await
 }
 
+pub fn normalize_body(body_markdown: &str) -> &str {
+    body_markdown.trim_end()
+}
+
 pub fn body_sha256(body_markdown: &str) -> String {
-    hex::encode(Sha256::digest(body_markdown.as_bytes()))
+    hex::encode(Sha256::digest(normalize_body(body_markdown).as_bytes()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::body_sha256;
+
+    #[test]
+    fn ignores_trailing_whitespace() {
+        assert_eq!(body_sha256("Hello"), body_sha256("Hello\n"));
+        assert_eq!(body_sha256("Hello"), body_sha256("Hello \n  "));
+        assert_eq!(body_sha256("Hello"), body_sha256("Hello\r\n"));
+    }
+
+    #[test]
+    fn detects_internal_changes() {
+        assert_ne!(body_sha256("Hello"), body_sha256("Hella"));
+        assert_ne!(body_sha256("a\nb"), body_sha256("a\nc"));
+        assert_ne!(body_sha256("a b"), body_sha256("a  b"));
+    }
 }
 
 pub fn body_snippet(body_markdown: &str) -> String {

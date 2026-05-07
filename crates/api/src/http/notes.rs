@@ -865,16 +865,43 @@ async fn note_response(
         Some(version) => Some(note_version_response(state, version).await?),
         None => None,
     };
-    let has_uncommitted_changes = match current_version.as_ref() {
+    let mut has_uncommitted_changes = match current_version.as_ref() {
         Some(version) => note.body_sha256.as_deref() != Some(version.body_sha256.as_str()),
         None => true,
     };
-    let committed_body_markdown = match current_version.as_ref() {
+    let mut committed_body_markdown = match current_version.as_ref() {
         Some(version) if has_uncommitted_changes => {
             Some(note_storage::read_body_key(state, &version.object_key).await?)
         }
         _ => None,
     };
+
+    let mut note_body_sha256 = note.body_sha256.clone();
+    if has_uncommitted_changes {
+        if let (Some(version), Some(committed)) =
+            (current_version.as_ref(), committed_body_markdown.as_deref())
+        {
+            if note_storage::normalize_body(&body_markdown)
+                == note_storage::normalize_body(committed)
+            {
+                let canonical = note_storage::body_sha256(&body_markdown);
+                let txn = state.db.begin().await?;
+                let mut note_active = note.clone().into_active_model();
+                note_active.body_sha256 = Set(Some(canonical.clone()));
+                note_active.update(&txn).await?;
+                if version.body_sha256 != canonical {
+                    let mut version_active = version.clone().into_active_model();
+                    version_active.body_sha256 = Set(canonical.clone());
+                    version_active.update(&txn).await?;
+                }
+                txn.commit().await?;
+                note_body_sha256 = Some(canonical);
+                has_uncommitted_changes = false;
+                committed_body_markdown = None;
+            }
+        }
+    }
+
     Ok(NoteResponse {
         id: note.id,
         folder_id: note.folder_id,
@@ -882,7 +909,7 @@ async fn note_response(
         body_markdown,
         committed_body_markdown,
         body_snippet: note.body_snippet,
-        body_sha256: note.body_sha256,
+        body_sha256: note_body_sha256,
         current_version_id: note.current_version_id,
         has_uncommitted_changes,
         latest_version: latest_version_response,
