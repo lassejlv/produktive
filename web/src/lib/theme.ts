@@ -7,7 +7,8 @@ export type ThemeName =
   | "tokyo-night"
   | "midnight"
   | "vercel"
-  | "light";
+  | "light"
+  | "paper";
 
 type AppliedThemeName = Exclude<ThemeName, "system">;
 
@@ -77,7 +78,14 @@ export const THEMES: Array<{
   {
     id: "light",
     label: "Light",
-    hint: "Warm paper for daylight.",
+    hint: "Crisp neutral for daylight.",
+    swatchBg: "#ffffff",
+    swatchAccent: "#18181b",
+  },
+  {
+    id: "paper",
+    label: "Paper",
+    hint: "Warm paper with copper accent.",
     swatchBg: "#faf7f2",
     swatchAccent: "#b25624",
   },
@@ -94,7 +102,8 @@ const META_BG: Record<AppliedThemeName, string> = {
   "tokyo-night": "#1a1b26",
   midnight: "#07080d",
   vercel: "#000000",
-  light: "#faf7f2",
+  light: "#ffffff",
+  paper: "#faf7f2",
 };
 
 const VALID = new Set<ThemeName>([
@@ -107,6 +116,7 @@ const VALID = new Set<ThemeName>([
   "midnight",
   "vercel",
   "light",
+  "paper",
 ]);
 
 let systemThemeCleanup: (() => void) | null = null;

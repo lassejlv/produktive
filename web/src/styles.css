@@ -315,8 +315,45 @@
     --color-sidebar-border: #16161c;
   }
 
-  /* Light — warm paper, copper accent */
+  /* Light — neutral cool, monochrome accent (Zinc on light) */
   :root[data-theme="light"] {
+    --color-bg: #ffffff;
+    --color-surface: #f8f8f9;
+    --color-surface-2: #f1f1f3;
+    --color-surface-3: #e7e7eb;
+    --color-border: #d4d4d8;
+    --color-border-subtle: #ececef;
+    --color-fg: #18181b;
+    --color-fg-muted: #52525b;
+    --color-fg-faint: #a1a1aa;
+    --color-accent: #18181b;
+    --color-accent-hover: #27272a;
+    --color-success: #16a34a;
+    --color-warning: #b45309;
+    --color-danger: #dc2626;
+
+    --color-background: #ffffff;
+    --color-foreground: #18181b;
+    --color-card: #ffffff;
+    --color-card-foreground: #18181b;
+    --color-primary: #18181b;
+    --color-primary-foreground: #ffffff;
+    --color-muted: #f1f1f3;
+    --color-muted-foreground: #52525b;
+    --color-accent-foreground: #ffffff;
+    --color-input: #d4d4d8;
+    --color-ring: #a1a1aa;
+    --color-sidebar: #fafafa;
+    --color-sidebar-foreground: #18181b;
+    --color-sidebar-accent: #f1f1f3;
+    --color-sidebar-accent-foreground: #18181b;
+    --color-sidebar-border: #ececef;
+
+    color-scheme: light;
+  }
+
+  /* Paper — warm light with copper accent */
+  :root[data-theme="paper"] {
     --color-bg: #faf7f2;
     --color-surface: #f3eee5;
     --color-surface-2: #ece6da;
