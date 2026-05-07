@@ -18,6 +18,8 @@ export const Route = createFileRoute("/")({
   component: LandingPage,
 });
 
+export { LandingPage };
+
 function useScrollVar(ref: RefObject<HTMLElement | null>) {
   useEffect(() => {
     let raf = 0;
@@ -210,6 +212,45 @@ function LandingPage() {
 /*  Features section                                                            */
 /* -------------------------------------------------------------------------- */
 
+type Feature = {
+  eyebrow: string;
+  title: string;
+  body: string;
+};
+
+const FEATURES: Feature[] = [
+  {
+    eyebrow: "AI agents",
+    title: "Chat that ships work",
+    body: "Wire MCP tools to agents that read issues, draft PRs, and keep the queue moving.",
+  },
+  {
+    eyebrow: "Notes",
+    title: "Docs with a commit log",
+    body: "Roll back any change. Inspect real diffs. Notes that remember every shift.",
+  },
+  {
+    eyebrow: "Issues",
+    title: "A tracker out of the way",
+    body: "Side-pane preview, keyboard nav, real-time updates. A queue you actually want to clear.",
+  },
+  {
+    eyebrow: "Projects",
+    title: "Health written by the model",
+    body: "Briefs that summarize blockers, risk, and momentum across each project.",
+  },
+  {
+    eyebrow: "Realtime",
+    title: "Live across the workspace",
+    body: "Comments, status changes, and edits stream in instantly. No refresh, no stale state.",
+  },
+  {
+    eyebrow: "Integrations",
+    title: "Where your team already is",
+    body: "Two-way sync with GitHub, Slack, Discord, and the rest of the stack.",
+  },
+];
+
 function FeaturesSection({
   sectionRef,
 }: {
@@ -223,9 +264,7 @@ function FeaturesSection({
       <div
         aria-hidden
         className="absolute inset-0 -z-10"
-        style={{
-          opacity: "calc(min(max((var(--p, 0) - 0.05) * 3, 0), 1))",
-        }}
+        style={{ opacity: "calc(min(max((var(--p, 0) - 0.05) * 3, 0), 1))" }}
       >
         <div
           className="absolute inset-0"
@@ -239,19 +278,10 @@ function FeaturesSection({
               "radial-gradient(ellipse 70% 70% at 50% 45%, black 0%, transparent 80%)",
           }}
         />
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(ellipse 55% 45% at 50% 70%, rgba(217,154,120,0.16) 0%, transparent 70%)",
-            transform:
-              "translateY(calc(60px - var(--p, 0) * 110px)) scale(calc(0.7 + var(--p, 0) * 0.5))",
-          }}
-        />
       </div>
 
-      <div className="relative z-10 mx-auto w-full max-w-[1180px] px-6">
-        <div className="mx-auto max-w-[640px] text-center">
+      <div className="relative z-10 mx-auto w-full max-w-[1100px] px-6">
+        <div className="max-w-[640px]">
           <span
             className="font-mono text-[10.5px] uppercase tracking-[0.2em] text-fg/45"
             style={{
@@ -263,353 +293,47 @@ function FeaturesSection({
             Inside the workspace
           </span>
           <h2
-            className="mt-5 text-balance text-[clamp(40px,6.4vw,72px)] font-semibold leading-[1.02] tracking-[-0.035em] text-fg"
+            className="mt-5 text-balance text-[clamp(40px,6.2vw,68px)] font-semibold leading-[1.02] tracking-[-0.035em] text-fg"
             style={{
               opacity: "calc(min(max((var(--p, 0) - 0.2) * 5, 0), 1))",
               transform:
-                "translateY(calc((1 - min(max((var(--p, 0) - 0.2) * 5, 0), 1)) * 70px))",
+                "translateY(calc((1 - min(max((var(--p, 0) - 0.2) * 5, 0), 1)) * 60px))",
             }}
           >
             Everything for shipping fast
           </h2>
-          <p
-            className="mx-auto mt-5 max-w-[480px] text-pretty text-[15px] leading-[1.55] text-fg/65"
-            style={{
-              opacity: "calc(min(max((var(--p, 0) - 0.26) * 5, 0), 1))",
-              transform:
-                "translateY(calc((1 - min(max((var(--p, 0) - 0.26) * 5, 0), 1)) * 40px))",
-            }}
-          >
-            AI agents, version-controlled notes, real-time issues, and project
-            briefs — in one workspace.
-          </p>
         </div>
 
-        <div className="mt-16 grid grid-cols-1 gap-3 md:mt-20 md:grid-cols-12 md:gap-4">
-          <FeatureCard
-            className="md:col-span-7"
-            stagger={0}
-            eyebrow="AI agents"
-            title="Chat that ships work"
-            body="Wire up MCP tools and run agents that read your issues, draft PRs, and keep the queue moving."
-          >
-            <ChatPreview />
-          </FeatureCard>
-          <FeatureCard
-            className="md:col-span-5"
-            stagger={1}
-            eyebrow="Notes"
-            title="Docs with a commit log"
-            body="Roll back any change. Inspect a real diff. Notes that remember every shift."
-          >
-            <DiffPreview />
-          </FeatureCard>
-          <FeatureCard
-            className="md:col-span-5"
-            stagger={2}
-            eyebrow="Issues"
-            title="A tracker out of the way"
-            body="Side-pane preview, keyboard nav, real-time updates. A queue you actually want to clear."
-          >
-            <IssuesPreview />
-          </FeatureCard>
-          <FeatureCard
-            className="md:col-span-7"
-            stagger={3}
-            eyebrow="Projects"
-            title="Health written by the model"
-            body="Briefs that summarize blockers, risk, and momentum across each project. Click generate."
-          >
-            <ProjectsPreview />
-          </FeatureCard>
+        <div className="mt-14 grid grid-cols-1 gap-px rounded-[16px] border border-white/10 bg-white/[0.04] overflow-hidden md:mt-20 md:grid-cols-2 lg:grid-cols-3">
+          {FEATURES.map((feature, idx) => (
+            <FeatureCard key={feature.title} feature={feature} stagger={idx} />
+          ))}
         </div>
       </div>
     </section>
   );
 }
 
-function FeatureCard({
-  eyebrow,
-  title,
-  body,
-  children,
-  className,
-  stagger,
-}: {
-  eyebrow: string;
-  title: string;
-  body: string;
-  children: React.ReactNode;
-  className?: string;
-  stagger: number;
-}) {
-  const threshold = 0.3 + stagger * 0.04;
+function FeatureCard({ feature, stagger }: { feature: Feature; stagger: number }) {
+  const threshold = 0.28 + stagger * 0.03;
   const reveal = `min(max((var(--p, 0) - ${threshold}) * 6, 0), 1)`;
 
   return (
     <article
-      className={cn(
-        "group relative flex flex-col overflow-hidden rounded-[16px] border border-white/10 bg-bg/55 p-6 backdrop-blur-2xl transition-colors",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_24px_50px_-30px_rgba(0,0,0,0.6)]",
-        "hover:border-white/15 hover:bg-bg/70",
-        className,
-      )}
+      className="group relative flex flex-col bg-bg/70 p-7 backdrop-blur-xl transition-colors hover:bg-bg/90"
       style={{
         opacity: `calc(${reveal})`,
-        transform: `translateY(calc((1 - ${reveal}) * 32px))`,
+        transform: `translateY(calc((1 - ${reveal}) * 24px))`,
       }}
     >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-      />
-      <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#d99a78]/85">
-        {eyebrow}
+      <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-[#d99a78]/80">
+        {feature.eyebrow}
       </span>
-      <h3 className="mt-4 text-[22px] font-semibold leading-[1.15] tracking-[-0.02em] text-fg">
-        {title}
+      <h3 className="mt-4 text-[20px] font-semibold leading-[1.2] tracking-[-0.02em] text-fg">
+        {feature.title}
       </h3>
-      <p className="mt-2.5 max-w-[380px] text-[13.5px] leading-[1.6] text-fg/65">
-        {body}
-      </p>
-      <div className="mt-6 flex-1">{children}</div>
+      <p className="mt-3 text-[13.5px] leading-[1.6] text-fg/60">{feature.body}</p>
     </article>
-  );
-}
-
-function ChatPreview() {
-  return (
-    <div className="relative grid gap-2.5 rounded-[12px] border border-white/10 bg-black/35 p-3.5 font-mono text-[11.5px] leading-[1.5] backdrop-blur-sm">
-      <div className="flex items-start gap-2">
-        <span className="grid size-5 shrink-0 place-items-center rounded-md border border-white/10 bg-white/5 text-[10px] text-fg/70">
-          You
-        </span>
-        <span className="text-fg/85">
-          Find issues blocked on review &gt; 3 days, ping owners on Slack.
-        </span>
-      </div>
-      <div className="flex items-start gap-2">
-        <span className="grid size-5 shrink-0 place-items-center rounded-md border border-[#d99a78]/40 bg-[#d99a78]/10 text-[#d99a78]">
-          ✦
-        </span>
-        <div className="min-w-0 flex-1">
-          <span className="text-fg/85">Found 4. Pinging now…</span>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <ToolCall>list_issues</ToolCall>
-            <ToolCall>slack_send</ToolCall>
-            <ToolCall>github_status</ToolCall>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ToolCall({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-[5px] border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-fg/70">
-      <span aria-hidden className="size-1 rounded-full bg-[#d99a78]" />
-      {children}
-    </span>
-  );
-}
-
-function DiffPreview() {
-  return (
-    <div className="relative overflow-hidden rounded-[12px] border border-white/10 bg-black/35 backdrop-blur-sm">
-      <div className="flex items-center justify-between border-b border-white/5 px-3 py-2 font-mono text-[10.5px] tracking-tight text-fg/55">
-        <span>note · onboarding.md</span>
-        <span>
-          <span className="text-[#7ed7a8]">+12</span>{" "}
-          <span className="text-[#e08474]">−4</span>
-        </span>
-      </div>
-      <div className="px-3 py-2.5 font-mono text-[11px] leading-[1.55]">
-        <DiffLine kind="context">## Quick start</DiffLine>
-        <DiffLine kind="remove">- Email someone for keys.</DiffLine>
-        <DiffLine kind="add">+ Click "Connect" in settings.</DiffLine>
-        <DiffLine kind="add">+ Workspace is ready in 30 seconds.</DiffLine>
-        <DiffLine kind="context">&nbsp;</DiffLine>
-      </div>
-    </div>
-  );
-}
-
-function DiffLine({
-  kind,
-  children,
-}: {
-  kind: "add" | "remove" | "context";
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex gap-2 px-1 -mx-1 rounded-[4px] whitespace-pre",
-        kind === "add" && "bg-[#7ed7a8]/10 text-fg/90",
-        kind === "remove" && "bg-[#e08474]/10 text-fg/90",
-        kind === "context" && "text-fg/55",
-      )}
-    >
-      <span
-        aria-hidden
-        className={cn(
-          "w-3 select-none",
-          kind === "add" && "text-[#7ed7a8]",
-          kind === "remove" && "text-[#e08474]",
-        )}
-      >
-        {kind === "add" ? "+" : kind === "remove" ? "−" : " "}
-      </span>
-      <span className="min-w-0 flex-1">{children}</span>
-    </div>
-  );
-}
-
-function IssuesPreview() {
-  return (
-    <div className="rounded-[12px] border border-white/10 bg-black/35 p-3 backdrop-blur-sm">
-      <div className="grid gap-1.5">
-        <IssueRow status="todo" title="Refactor settings page" />
-        <IssueRow status="progress" title="Slug-aware route guard" active />
-        <IssueRow status="todo" title="Audit log retention policy" />
-        <IssueRow status="done" title="Wire up Slack agent" />
-      </div>
-    </div>
-  );
-}
-
-function IssueRow({
-  status,
-  title,
-  active,
-}: {
-  status: "todo" | "progress" | "done";
-  title: string;
-  active?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-2.5 rounded-[7px] px-2 py-1.5 text-[11.5px]",
-        active ? "bg-white/[0.05]" : "hover:bg-white/[0.03]",
-      )}
-    >
-      <StatusGlyph status={status} />
-      <span className="min-w-0 flex-1 truncate text-fg/85">{title}</span>
-      {active ? (
-        <span className="font-mono text-[9.5px] tracking-tight text-[#d99a78]/85">
-          ⌘.
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-function StatusGlyph({ status }: { status: "todo" | "progress" | "done" }) {
-  if (status === "todo") {
-    return (
-      <span aria-hidden className="size-2.5 rounded-full border border-fg/35" />
-    );
-  }
-  if (status === "progress") {
-    return (
-      <span
-        aria-hidden
-        className="relative grid size-2.5 place-items-center rounded-full border border-[#d99a78]/60"
-      >
-        <span className="size-1 rounded-full bg-[#d99a78]" />
-      </span>
-    );
-  }
-  return (
-    <span aria-hidden className="grid size-2.5 place-items-center rounded-full bg-[#7ed7a8]/80">
-      <svg width="6" height="6" viewBox="0 0 8 8" fill="none">
-        <path
-          d="M2 4l1.5 1.5L6 2.5"
-          stroke="#0d0d0f"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </span>
-  );
-}
-
-function ProjectsPreview() {
-  return (
-    <div className="grid gap-3">
-      <ProjectRow
-        name="API gateway"
-        progress={73}
-        labels={["backend"]}
-        accent="#d99a78"
-      />
-      <ProjectRow
-        name="Onboarding revamp"
-        progress={42}
-        labels={["growth", "design"]}
-        accent="#a8c2e8"
-      />
-      <ProjectRow
-        name="Q2 launch"
-        progress={18}
-        labels={["product"]}
-        accent="#7ed7a8"
-      />
-    </div>
-  );
-}
-
-function ProjectRow({
-  name,
-  progress,
-  labels,
-  accent,
-}: {
-  name: string;
-  progress: number;
-  labels: string[];
-  accent: string;
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-[10px] border border-white/10 bg-black/35 px-3 py-2.5 backdrop-blur-sm">
-      <span
-        aria-hidden
-        className="grid size-7 shrink-0 place-items-center rounded-[7px] text-[11px] font-medium"
-        style={{
-          backgroundColor: `${accent}20`,
-          color: accent,
-        }}
-      >
-        {name.charAt(0)}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="truncate text-[12.5px] font-medium text-fg/90">{name}</span>
-          <span className="font-mono text-[10px] tabular-nums text-fg/55">
-            {progress}%
-          </span>
-        </div>
-        <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-white/[0.06]">
-          <div
-            className="h-full rounded-full transition-all"
-            style={{ width: `${progress}%`, backgroundColor: accent }}
-          />
-        </div>
-        <div className="mt-1.5 flex flex-wrap gap-1">
-          {labels.map((label) => (
-            <span
-              key={label}
-              className="rounded-full border border-white/10 bg-white/[0.03] px-1.5 py-0.5 font-mono text-[9.5px] text-fg/55"
-            >
-              {label}
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 }
 

@@ -14,6 +14,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LegalRouteImport } from './routes/legal'
+import { Route as HomeRouteImport } from './routes/home'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
@@ -63,6 +64,11 @@ const LoginRoute = LoginRouteImport.update({
 const LegalRoute = LegalRouteImport.update({
   id: '/legal',
   path: '/legal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HomeRoute = HomeRouteImport.update({
+  id: '/home',
+  path: '/home',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -201,6 +207,7 @@ const AppWorkspaceSlugChatChatIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/home': typeof HomeRoute
   '/legal': typeof LegalRouteWithChildren
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
@@ -232,6 +239,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/home': typeof HomeRoute
   '/legal': typeof LegalRouteWithChildren
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
@@ -264,6 +272,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/admin': typeof AdminRoute
+  '/home': typeof HomeRoute
   '/legal': typeof LegalRouteWithChildren
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
@@ -297,6 +306,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/home'
     | '/legal'
     | '/login'
     | '/pricing'
@@ -328,6 +338,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/admin'
+    | '/home'
     | '/legal'
     | '/login'
     | '/pricing'
@@ -359,6 +370,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_app'
     | '/admin'
+    | '/home'
     | '/legal'
     | '/login'
     | '/pricing'
@@ -392,6 +404,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   AdminRoute: typeof AdminRoute
+  HomeRoute: typeof HomeRoute
   LegalRoute: typeof LegalRouteWithChildren
   LoginRoute: typeof LoginRoute
   PricingRoute: typeof PricingRoute
@@ -438,6 +451,13 @@ declare module '@tanstack/react-router' {
       path: '/legal'
       fullPath: '/legal'
       preLoaderRoute: typeof LegalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/home': {
+      id: '/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof HomeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -728,6 +748,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   AdminRoute: AdminRoute,
+  HomeRoute: HomeRoute,
   LegalRoute: LegalRouteWithChildren,
   LoginRoute: LoginRoute,
   PricingRoute: PricingRoute,
