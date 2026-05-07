@@ -35,6 +35,10 @@ const WIDGET_CHAT_ID_KEY = "produktive:widget-chat-id";
 const MODEL_STORAGE_KEY = "produktive:chat-model";
 const ADD_TO_WIDGET_CHAT_EVENT = "produktive:add-to-widget-chat";
 
+const isMac =
+  typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+const MOD_LABEL = isMac ? "⌘" : "Ctrl";
+
 type AddToWidgetChatEvent = CustomEvent<{
   text: string;
   source?: string;
@@ -87,6 +91,18 @@ export function ChatWidget() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (isChatRoute) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.key !== ".") return;
+      event.preventDefault();
+      setOpen((current) => !current);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isChatRoute]);
 
   useEffect(() => {
     const handleAddToChat = (event: Event) => {
@@ -284,18 +300,40 @@ export function ChatWidget() {
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Open AI assistant"
-          className="fixed bottom-4 right-4 z-40 hidden size-11 place-items-center rounded-full border border-border bg-surface text-fg-muted shadow-md transition-colors hover:text-fg md:grid"
+          className={cn(
+            "group fixed bottom-4 right-4 z-40 hidden h-11 w-[360px] origin-bottom-right items-center gap-2.5 rounded-full border border-border-subtle bg-bg/85 px-4 pr-1.5 text-left backdrop-blur-md transition-all duration-200 hover:-translate-y-px hover:border-border focus-visible:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 md:flex",
+            "widget-dock-shadow animate-widget-bar",
+          )}
         >
-          <SparkleIcon size={16} />
+          <span className="text-fg-muted transition-colors group-hover:text-fg">
+            <SparkleIcon size={13} />
+          </span>
+          <span className="flex-1 truncate text-[13px] text-fg-faint transition-colors group-hover:text-fg-muted">
+            Ask anything…
+          </span>
+          <kbd className="grid h-[22px] shrink-0 select-none place-items-center gap-0.5 rounded-[6px] border border-border-subtle bg-surface px-1.5 font-mono text-[10.5px] tracking-tight text-fg-faint">
+            {MOD_LABEL} .
+          </kbd>
         </button>
       ) : (
         <div
           ref={panelRef}
           role="dialog"
           aria-label="AI assistant"
-          className="fixed bottom-4 right-4 z-40 hidden h-[600px] max-h-[calc(100vh-2rem)] w-[420px] flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg shadow-2xl animate-fade-up md:flex"
+          className={cn(
+            "fixed bottom-4 right-4 z-40 hidden h-[600px] max-h-[calc(100vh-2rem)] w-[420px] origin-bottom-right flex-col overflow-hidden rounded-[14px] border border-border-subtle/80 bg-bg/85 backdrop-blur-2xl md:flex",
+            "widget-panel-shadow animate-widget-pop",
+          )}
         >
-          <header className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-fg-muted/40 to-transparent"
+          />
+          <header className="relative flex h-11 shrink-0 items-center justify-between gap-2 px-3">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-3 bottom-0 h-px bg-gradient-to-r from-border-subtle via-border-subtle/60 to-transparent"
+            />
             <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
               <PopoverTrigger asChild>
                 <button
@@ -379,12 +417,20 @@ export function ChatWidget() {
           </div>
 
           {error ? (
-            <div className="shrink-0 border-t border-border-subtle bg-danger/[0.08] px-3 py-2 text-[11.5px] text-danger">
+            <div className="relative shrink-0 bg-danger/[0.08] px-3 py-2 text-[11.5px] text-danger">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-border-subtle via-border-subtle/60 to-transparent"
+              />
               {error}
             </div>
           ) : null}
 
-          <div className="shrink-0 border-t border-border-subtle">
+          <div className="relative shrink-0">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-3 top-0 h-px bg-gradient-to-r from-border-subtle via-border-subtle/60 to-transparent"
+            />
             <ChatComposer
               busy={busy}
               onSend={(text, attachments) => void handleSend(text, attachments)}

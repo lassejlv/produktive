@@ -2,6 +2,7 @@ export type ThemeName =
   | "system"
   | "ember"
   | "slate"
+  | "obsidian"
   | "tokyo-night"
   | "midnight"
   | "vercel"
@@ -29,6 +30,13 @@ export const THEMES: Array<{
     hint: "The cool dark — default.",
     swatchBg: "#0d0d0f",
     swatchAccent: "#f1c6aa",
+  },
+  {
+    id: "obsidian",
+    label: "Obsidian",
+    hint: "A step darker, warm bone accent.",
+    swatchBg: "#060608",
+    swatchAccent: "#c9b8a3",
   },
   {
     id: "ember",
@@ -73,6 +81,7 @@ const STORAGE_KEY = "produktive-theme";
 const META_BG: Record<AppliedThemeName, string> = {
   ember: "#0b0a0c",
   slate: "#0d0d0f",
+  obsidian: "#060608",
   "tokyo-night": "#1a1b26",
   midnight: "#07080d",
   vercel: "#000000",
@@ -83,6 +92,7 @@ const VALID = new Set<ThemeName>([
   "system",
   "ember",
   "slate",
+  "obsidian",
   "tokyo-night",
   "midnight",
   "vercel",

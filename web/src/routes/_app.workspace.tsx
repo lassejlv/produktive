@@ -1,5 +1,5 @@
 import { Link, Outlet, createFileRoute, useRouterState } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StatusIcon } from "@/components/issue/status-icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProjectIcon } from "@/components/project/project-icon";
@@ -28,6 +28,8 @@ const PRIORITY_RANK: Record<string, number> = {
   none: 4,
 };
 
+const INTRO_SESSION_KEY = "produktive:workspace-overview-intro";
+
 function WorkspaceRoute() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
@@ -42,18 +44,56 @@ function WorkspaceRoute() {
 
 function OverviewSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-8 px-4 py-10">
-      <div className="space-y-2">
-        <Skeleton className="h-7 w-52 max-w-full" />
-        <Skeleton className="h-4 w-72 max-w-full" />
-      </div>
-      <div className="space-y-2 pt-4">
+    <div className="mx-auto w-full max-w-2xl px-4 py-12">
+      <Skeleton className="h-12 w-64 max-w-full" />
+      <Skeleton className="mt-5 h-3 w-72 max-w-full" />
+      <Skeleton className="mt-8 h-7 w-32 rounded-full" />
+      <div className="mt-12 space-y-2">
         {Array.from({ length: 5 }).map((_, index) => (
-          <Skeleton key={index} className="h-8 w-full" />
+          <Skeleton key={index} className="h-9 w-full" />
         ))}
       </div>
     </div>
   );
+}
+
+function useIntroProgress(ready: boolean) {
+  const [progress, setProgress] = useState(() => {
+    if (typeof window === "undefined") return 1;
+    if (window.sessionStorage.getItem(INTRO_SESSION_KEY)) return 1;
+    return 0;
+  });
+
+  useEffect(() => {
+    if (!ready) return;
+    if (typeof window === "undefined") return;
+    if (window.sessionStorage.getItem(INTRO_SESSION_KEY)) {
+      setProgress(1);
+      return;
+    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      window.sessionStorage.setItem(INTRO_SESSION_KEY, "1");
+      setProgress(1);
+      return;
+    }
+    const start = performance.now();
+    const duration = 700;
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - (1 - t) ** 3;
+      setProgress(eased);
+      if (t < 1) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        window.sessionStorage.setItem(INTRO_SESSION_KEY, "1");
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [ready]);
+
+  return progress;
 }
 
 function WorkspaceOverview() {
@@ -140,10 +180,17 @@ function WorkspaceOverview() {
   const isLoading = issuesQuery.isPending || projectsQuery.isPending;
   const empty = !isLoading && issues.length === 0 && projects.length === 0;
 
+  const introProgress = useIntroProgress(!isLoading && !empty);
+  const a = Math.round(counts.active * introProgress);
+  const i = Math.round(counts.inProgress * introProgress);
+  const d = Math.round(counts.done * introProgress);
+
   return (
     <main className="min-h-full bg-bg">
-      <header className="sticky top-0 z-10 flex h-11 items-center justify-between gap-3 border-b border-border-subtle bg-bg px-4">
-        <h1 className="text-sm font-medium text-fg">Overview</h1>
+      <header className="sticky top-0 z-10 flex h-11 items-center justify-between gap-3 border-b border-border-subtle bg-bg/85 px-4 backdrop-blur">
+        <h1 className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-muted">
+          Overview
+        </h1>
         <Link
           to="/issues"
           search={{ new: true }}
@@ -156,7 +203,7 @@ function WorkspaceOverview() {
       {isLoading ? (
         <OverviewSkeleton />
       ) : empty ? (
-        <section className="mx-auto flex w-full max-w-2xl flex-col items-center px-4 py-24 text-center">
+        <section className="mx-auto flex w-full max-w-2xl flex-col items-center px-4 py-24 text-center animate-fade-up">
           <p className="text-sm text-fg">Add your first issue to get started.</p>
           <Link
             to="/issues"
@@ -167,43 +214,50 @@ function WorkspaceOverview() {
           </Link>
         </section>
       ) : (
-        <section className="mx-auto w-full max-w-2xl px-4 py-10">
+        <section className="mx-auto w-full max-w-2xl px-4 py-12 animate-fade-up">
           <div>
-            <h2 className="text-xl font-medium tracking-tight text-fg">{orgName}</h2>
-            <p className="mt-1 text-sm text-fg-muted">
-              <span className="tabular-nums">{counts.active}</span> active
-              <Sep />
-              <span className="tabular-nums">{counts.inProgress}</span> in progress
-              <Sep />
-              <span className="tabular-nums">{counts.done}</span> done
-            </p>
+            <h2 className="text-4xl font-light leading-[1.05] tracking-tight text-fg sm:text-5xl">
+              {orgName}
+            </h2>
+            <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-1 text-[10.5px] font-medium uppercase tracking-[0.14em] text-fg-faint">
+              <span>
+                <span className="tabular-nums text-fg-muted">{a}</span> active
+              </span>
+              <span>
+                <span className="tabular-nums text-fg-muted">{i}</span> in progress
+              </span>
+              <span>
+                <span className="tabular-nums text-fg-muted">{d}</span> done
+              </span>
+            </div>
           </div>
 
-          <Link
-            to="/inbox"
-            className="mt-8 flex items-center justify-between gap-3 border-b border-border-subtle py-2.5 text-sm transition-colors hover:text-fg"
-          >
-            <span className="text-fg">Inbox</span>
-            {inboxUnread > 0 ? (
-              <span className="text-xs tabular-nums text-fg-muted">
-                {inboxUnread > 99 ? "99+" : inboxUnread} unread
+          <div className="mt-8">
+            <Link
+              to="/inbox"
+              className="inline-flex items-center gap-2 rounded-full border border-border-subtle px-3 py-1 text-[11.5px] text-fg-muted transition-colors hover:border-border hover:text-fg"
+            >
+              <span>Inbox</span>
+              <span className="size-1 rounded-full bg-fg-faint" aria-hidden />
+              <span className="tabular-nums">
+                {inboxUnread > 0
+                  ? `${inboxUnread > 99 ? "99+" : inboxUnread} unread`
+                  : "Up to date"}
               </span>
-            ) : (
-              <span className="text-xs text-fg-faint">Up to date</span>
-            )}
-          </Link>
+            </Link>
+          </div>
 
           <Section title="Your focus" actionLabel="All issues" actionTo="/issues">
             {focusIssues.length === 0 ? (
               <p className="text-sm text-fg-faint">Nothing on your plate.</p>
             ) : (
-              <ul className="-mx-2 flex flex-col">
-                {focusIssues.map((issue) => (
-                  <li key={issue.id}>
+              <ul className="-mx-2 flex flex-col animate-stagger">
+                {focusIssues.map((issue, idx) => (
+                  <li key={issue.id} style={{ "--i": idx } as React.CSSProperties}>
                     <Link
                       to="/issues/$issueId"
                       params={{ issueId: issue.id }}
-                      className="group flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-surface/40"
+                      className="row-hover-shift group flex items-center gap-3 rounded-md px-2 py-2"
                     >
                       <StatusIcon status={issue.status} statuses={statuses} />
                       <span className="min-w-0 flex-1 truncate text-sm text-fg">{issue.title}</span>
@@ -221,13 +275,13 @@ function WorkspaceOverview() {
             {activeProjects.length === 0 ? (
               <p className="text-sm text-fg-faint">No projects yet.</p>
             ) : (
-              <ul className="-mx-2 flex flex-col">
-                {activeProjects.map((project) => (
-                  <li key={project.id}>
+              <ul className="-mx-2 flex flex-col animate-stagger">
+                {activeProjects.map((project, idx) => (
+                  <li key={project.id} style={{ "--i": idx } as React.CSSProperties}>
                     <Link
                       to="/projects/$projectId"
                       params={{ projectId: project.id }}
-                      className="group flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-surface/40"
+                      className="row-hover-shift group flex items-center gap-3 rounded-md px-2 py-2"
                     >
                       <ProjectIcon
                         color={project.color}
@@ -250,13 +304,13 @@ function WorkspaceOverview() {
             {upcomingProjects.length === 0 ? (
               <p className="text-sm text-fg-faint">No project targets in the next 30 days.</p>
             ) : (
-              <ul className="-mx-2 flex flex-col">
-                {upcomingProjects.map((project) => (
-                  <li key={project.id}>
+              <ul className="-mx-2 flex flex-col animate-stagger">
+                {upcomingProjects.map((project, idx) => (
+                  <li key={project.id} style={{ "--i": idx } as React.CSSProperties}>
                     <Link
                       to="/projects/$projectId"
                       params={{ projectId: project.id }}
-                      className="group flex items-center gap-3 rounded-md px-2 py-2 transition-colors hover:bg-surface/40"
+                      className="row-hover-shift group flex items-center gap-3 rounded-md px-2 py-2"
                     >
                       <ProjectIcon
                         color={project.color}
@@ -295,12 +349,15 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mt-10">
+    <section className="mt-12">
+      <div className="hairline-top mb-3" />
       <div className="mb-2 flex items-baseline justify-between gap-3">
-        <h3 className="text-xs font-medium text-fg-muted">{title}</h3>
+        <h3 className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-fg-muted">
+          {title}
+        </h3>
         <Link
           to={actionTo}
-          className="text-xs text-fg-faint transition-colors hover:text-fg-muted"
+          className="text-[11px] text-fg-faint transition-colors hover:text-fg-muted"
         >
           {actionLabel} →
         </Link>
@@ -308,8 +365,4 @@ function Section({
       {children}
     </section>
   );
-}
-
-function Sep() {
-  return <span className="px-1.5 text-fg-faint/60">·</span>;
 }

@@ -42,6 +42,7 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: "Chat",
     shortcuts: [
+      { keys: [mod, "."], label: "Toggle assistant widget" },
       { keys: ["↵"], label: "Send message" },
       { keys: ["⇧", "↵"], label: "New line in composer" },
     ],
