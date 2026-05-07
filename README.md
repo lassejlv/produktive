@@ -23,19 +23,3 @@ cd web && bun run dev            # web on :5173
 The API runs migrations on startup. The Vite dev server proxies `/api` to the Rust API.
 
 See [docs/public-api.md](docs/public-api.md) for the public REST API.
-
-## Self-host with Docker
-
-Run the setup script on a fresh Ubuntu/Debian VM:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/lassejlv/produktive/main/docker/setup.sh | bash
-```
-
-To install somewhere other than `/opt/produktive`:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/lassejlv/produktive/main/docker/setup.sh | bash -s -- --dir /opt/produktive
-```
-
-The script installs Docker and the Docker Compose plugin, clones this repository, prompts for the app, MCP, and Discord bot env files, and starts the stack with Caddy. Postgres is not included in the default Compose file; the setup script offers an optional local Postgres service and enables it only when you choose it.
