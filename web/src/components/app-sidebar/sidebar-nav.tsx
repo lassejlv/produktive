@@ -1,5 +1,13 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  type ForwardRefExoticComponent,
+  type HTMLAttributes,
+  type ReactNode,
+  type RefAttributes,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { ISSUE_DRAG_MIME } from "@/components/issue/issue-list";
 import { ProjectIcon } from "@/components/project/project-icon";
@@ -119,10 +127,21 @@ type NavContext = {
   issuesMine: boolean;
 };
 
+export type AnimatedIconHandle = {
+  startAnimation: () => void;
+  stopAnimation: () => void;
+};
+
+type AnimatedIconProps = HTMLAttributes<HTMLDivElement> & { size?: number };
+
+type AnimatedIconComponent = ForwardRefExoticComponent<
+  AnimatedIconProps & RefAttributes<AnimatedIconHandle>
+>;
+
 type NavItemSpec = {
   id: SidebarItemId;
   label: string;
-  icon: ReactNode;
+  Icon: AnimatedIconComponent;
   isActive: (ctx: NavContext) => boolean;
   onNavigate: (navigate: ReturnType<typeof useNavigate>) => void;
 };
@@ -131,28 +150,28 @@ const NAV_ITEM_SPECS: Record<SidebarItemId, NavItemSpec> = {
   inbox: {
     id: "inbox",
     label: "Inbox",
-    icon: <MailboxIcon size={15} />,
+    Icon: MailboxIcon as AnimatedIconComponent,
     isActive: (ctx) => ctx.pathname === "/inbox",
     onNavigate: (n) => void n({ to: "/inbox" }),
   },
   "my-issues": {
     id: "my-issues",
     label: "My issues",
-    icon: <UserIcon size={15} />,
+    Icon: UserIcon as AnimatedIconComponent,
     isActive: (ctx) => ctx.pathname === "/issues" && ctx.issuesMine,
     onNavigate: (n) => void n({ to: "/issues", search: { mine: true } }),
   },
   overview: {
     id: "overview",
     label: "Overview",
-    icon: <LayoutGridIcon size={15} />,
+    Icon: LayoutGridIcon as AnimatedIconComponent,
     isActive: (ctx) => ctx.pathname === "/workspace",
     onNavigate: (n) => void n({ to: "/workspace" }),
   },
   issues: {
     id: "issues",
     label: "Issues",
-    icon: <CircleCheckIcon size={15} />,
+    Icon: CircleCheckIcon as AnimatedIconComponent,
     isActive: (ctx) =>
       (ctx.pathname === "/issues" && !ctx.issuesMine) ||
       (ctx.pathname.startsWith("/issues/") &&
@@ -162,7 +181,7 @@ const NAV_ITEM_SPECS: Record<SidebarItemId, NavItemSpec> = {
   notes: {
     id: "notes",
     label: "Notes (preview)",
-    icon: <FileTextIcon size={15} />,
+    Icon: FileTextIcon as AnimatedIconComponent,
     isActive: (ctx) =>
       ctx.pathname === "/notes" || ctx.pathname.startsWith("/notes/"),
     onNavigate: (n) => void n({ to: "/notes" }),
@@ -170,7 +189,7 @@ const NAV_ITEM_SPECS: Record<SidebarItemId, NavItemSpec> = {
   projects: {
     id: "projects",
     label: "Projects",
-    icon: <FolderKanbanIcon size={15} />,
+    Icon: FolderKanbanIcon as AnimatedIconComponent,
     isActive: (ctx) =>
       ctx.pathname === "/projects" || ctx.pathname.startsWith("/projects/"),
     onNavigate: (n) => void n({ to: "/projects" }),
@@ -178,14 +197,14 @@ const NAV_ITEM_SPECS: Record<SidebarItemId, NavItemSpec> = {
   labels: {
     id: "labels",
     label: "Labels",
-    icon: <BookmarkIcon size={15} />,
+    Icon: BookmarkIcon as AnimatedIconComponent,
     isActive: (ctx) => ctx.pathname === "/labels",
     onNavigate: (n) => void n({ to: "/labels" }),
   },
   chats: {
     id: "chats",
     label: "Chats",
-    icon: <SparklesIcon size={15} />,
+    Icon: SparklesIcon as AnimatedIconComponent,
     isActive: (ctx) =>
       ctx.pathname === "/chats" ||
       ctx.pathname === "/chat" ||
@@ -273,6 +292,8 @@ function SidebarNavRow({
   onDropOnto: (sourceId: string) => void;
 }) {
   const [dropping, setDropping] = useState(false);
+  const iconRef = useRef<AnimatedIconHandle | null>(null);
+  const Icon = spec.Icon;
 
   if (isEditing) {
     return (
@@ -324,7 +345,7 @@ function SidebarNavRow({
         <span
           className={cn("shrink-0", hidden ? "text-fg-faint" : "text-fg-muted")}
         >
-          {spec.icon}
+          <Icon size={15} />
         </span>
         <span className="flex-1 truncate">{spec.label}</span>
         <button
@@ -344,6 +365,10 @@ function SidebarNavRow({
     <button
       type="button"
       onClick={onClick}
+      onMouseEnter={() => iconRef.current?.startAnimation()}
+      onMouseLeave={() => iconRef.current?.stopAnimation()}
+      onFocus={() => iconRef.current?.startAnimation()}
+      onBlur={() => iconRef.current?.stopAnimation()}
       className={cn(
         "flex h-8 w-full items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13px] transition-colors [&_svg]:text-fg-faint",
         active
@@ -351,7 +376,7 @@ function SidebarNavRow({
           : "text-fg-muted hover:bg-surface hover:text-fg",
       )}
     >
-      {spec.icon}
+      <Icon ref={iconRef} size={15} />
       <span className="flex-1 truncate">{spec.label}</span>
       {trailing}
     </button>
