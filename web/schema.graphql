@@ -1,0 +1,124 @@
+scalar JSON
+
+type Query {
+  me: JSON!
+  issues(status: String, projectId: String, labelIds: [String!]): JSON!
+  issue(id: String!): JSON!
+  projects(includeArchived: Boolean): JSON!
+  project(id: String!): JSON!
+  labels(includeArchived: Boolean): JSON!
+  label(id: String!): JSON!
+  issueStatuses: JSON!
+  members: JSON!
+  inbox: JSON!
+  preferences: JSON!
+  tabs: JSON!
+  chats: JSON!
+}
+
+type Mutation {
+  createIssue(input: CreateIssueInput!): JSON!
+  updateIssue(id: String!, input: UpdateIssueInput!): JSON!
+  deleteIssue(id: String!): JSON!
+  createIssueStatus(input: IssueStatusInput!): JSON!
+  updateIssueStatus(id: String!, input: IssueStatusInput!): JSON!
+  deleteIssueStatus(id: String!, input: DeleteIssueStatusInput): Boolean!
+  reorderIssueStatuses(statuses: [ReorderIssueStatusInput!]!): JSON!
+  createProject(input: CreateProjectInput!): JSON!
+  updateProject(id: String!, input: UpdateProjectInput!): JSON!
+  deleteProject(id: String!): Boolean!
+  createLabel(input: CreateLabelInput!): JSON!
+  updateLabel(id: String!, input: UpdateLabelInput!): JSON!
+  deleteLabel(id: String!): Boolean!
+  updatePreferences(input: PreferencesInput!): JSON!
+  openTab(input: OpenTabInput!): JSON!
+  closeTab(id: String!): Boolean!
+  closeAllTabs: Boolean!
+  markNotificationRead(id: String!): JSON!
+  markAllNotificationsRead: JSON!
+}
+
+input CreateIssueInput {
+  title: String!
+  description: String
+  status: String
+  priority: String
+  assignedToId: String
+  parentId: String
+  projectId: String
+  labelIds: [String!]
+}
+
+input UpdateIssueInput {
+  title: String
+  description: String
+  status: String
+  priority: String
+  assignedToId: String
+  projectId: String
+  labelIds: [String!]
+}
+
+input IssueStatusInput {
+  name: String!
+  color: String
+  category: String!
+}
+
+input DeleteIssueStatusInput {
+  replacementStatus: String
+}
+
+input ReorderIssueStatusInput {
+  id: String!
+  sortOrder: Int!
+}
+
+input CreateProjectInput {
+  name: String!
+  description: String
+  status: String
+  color: String
+  icon: String
+  leadId: String
+  targetDate: String
+}
+
+input UpdateProjectInput {
+  name: String
+  description: String
+  status: String
+  color: String
+  icon: String
+  leadId: String
+  targetDate: String
+  archived: Boolean
+}
+
+input CreateLabelInput {
+  name: String!
+  description: String
+  color: String
+}
+
+input UpdateLabelInput {
+  name: String
+  description: String
+  color: String
+  archived: Boolean
+}
+
+input PreferencesInput {
+  emailPaused: Boolean
+  emailAssignments: Boolean
+  emailComments: Boolean
+  emailProgress: Boolean
+  tabsEnabled: Boolean
+  sidebarLayout: JSON
+}
+
+input OpenTabInput {
+  tabType: String!
+  targetId: String!
+  title: String!
+}

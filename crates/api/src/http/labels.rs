@@ -31,7 +31,7 @@ pub fn routes() -> Router<AppState> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LabelResponse {
+pub(crate) struct LabelResponse {
     id: String,
     name: String,
     description: Option<String>,
@@ -50,8 +50,8 @@ struct LabelListResponse {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LabelEnvelope {
-    label: LabelResponse,
+pub(crate) struct LabelEnvelope {
+    pub(crate) label: LabelResponse,
 }
 
 #[derive(Deserialize)]
@@ -83,13 +83,13 @@ async fn list_labels(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateLabelRequest {
-    name: String,
-    description: Option<String>,
-    color: Option<String>,
+pub(crate) struct CreateLabelRequest {
+    pub(crate) name: String,
+    pub(crate) description: Option<String>,
+    pub(crate) color: Option<String>,
 }
 
-async fn create_label(
+pub(crate) async fn create_label(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<CreateLabelRequest>,
@@ -154,14 +154,14 @@ async fn get_label(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct PatchLabelRequest {
-    name: Option<String>,
-    description: Option<String>,
-    color: Option<String>,
-    archived: Option<bool>,
+pub(crate) struct PatchLabelRequest {
+    pub(crate) name: Option<String>,
+    pub(crate) description: Option<String>,
+    pub(crate) color: Option<String>,
+    pub(crate) archived: Option<bool>,
 }
 
-async fn patch_label(
+pub(crate) async fn patch_label(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -216,7 +216,7 @@ async fn patch_label(
     Ok(Json(LabelEnvelope { label: response }))
 }
 
-async fn delete_label(
+pub(crate) async fn delete_label(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -250,7 +250,10 @@ pub async fn find_label(
         .ok_or_else(|| ApiError::NotFound("Label not found".to_owned()))
 }
 
-async fn label_response(state: &AppState, row: label::Model) -> Result<LabelResponse, ApiError> {
+pub(crate) async fn label_response(
+    state: &AppState,
+    row: label::Model,
+) -> Result<LabelResponse, ApiError> {
     let issue_count = issue_label::Entity::find()
         .filter(issue_label::Column::LabelId.eq(&row.id))
         .count(&state.db)

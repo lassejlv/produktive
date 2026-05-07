@@ -31,7 +31,10 @@ impl AppState {
     }
 
     pub fn note_write_lock(&self, note_id: &str) -> NoteWriteLock {
-        let mut locks = self.note_write_locks.lock().expect("note_write_locks poisoned");
+        let mut locks = self
+            .note_write_locks
+            .lock()
+            .expect("note_write_locks poisoned");
         locks
             .entry(note_id.to_owned())
             .or_insert_with(|| Arc::new(AsyncMutex::new(())))

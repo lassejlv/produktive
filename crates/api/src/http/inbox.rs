@@ -28,7 +28,7 @@ pub fn routes() -> Router<AppState> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ActorResponse {
+pub(crate) struct ActorResponse {
     id: String,
     name: String,
     image: Option<String>,
@@ -36,8 +36,8 @@ struct ActorResponse {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct NotificationResponse {
-    id: String,
+pub(crate) struct NotificationResponse {
+    pub(crate) id: String,
     kind: String,
     target_type: String,
     target_id: String,
@@ -50,7 +50,7 @@ struct NotificationResponse {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct InboxResponse {
+pub(crate) struct InboxResponse {
     notifications: Vec<NotificationResponse>,
     unread_count: u64,
 }
@@ -196,7 +196,7 @@ pub async fn enqueue_notification(
     Ok(())
 }
 
-async fn notification_response(
+pub(crate) async fn notification_response(
     state: &AppState,
     row: notification::Model,
 ) -> Result<NotificationResponse, ApiError> {

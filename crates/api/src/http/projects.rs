@@ -34,7 +34,7 @@ pub fn routes() -> Router<AppState> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LeadResponse {
+pub(crate) struct LeadResponse {
     id: String,
     name: String,
     email: String,
@@ -43,7 +43,7 @@ struct LeadResponse {
 
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-struct StatusBreakdown {
+pub(crate) struct StatusBreakdown {
     backlog: u64,
     todo: u64,
     in_progress: u64,
@@ -52,7 +52,7 @@ struct StatusBreakdown {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ProjectResponse {
+pub(crate) struct ProjectResponse {
     id: String,
     name: String,
     description: Option<String>,
@@ -79,8 +79,8 @@ struct ProjectListResponse {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ProjectEnvelope {
-    project: ProjectResponse,
+pub(crate) struct ProjectEnvelope {
+    pub(crate) project: ProjectResponse,
 }
 
 #[derive(Deserialize)]
@@ -116,17 +116,17 @@ async fn list_projects(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateProjectRequest {
-    name: String,
-    description: Option<String>,
-    status: Option<String>,
-    color: Option<String>,
-    icon: Option<String>,
-    lead_id: Option<String>,
-    target_date: Option<String>,
+pub(crate) struct CreateProjectRequest {
+    pub(crate) name: String,
+    pub(crate) description: Option<String>,
+    pub(crate) status: Option<String>,
+    pub(crate) color: Option<String>,
+    pub(crate) icon: Option<String>,
+    pub(crate) lead_id: Option<String>,
+    pub(crate) target_date: Option<String>,
 }
 
-async fn create_project(
+pub(crate) async fn create_project(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<CreateProjectRequest>,
@@ -210,18 +210,18 @@ async fn get_project(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct PatchProjectRequest {
-    name: Option<String>,
-    description: Option<String>,
-    status: Option<String>,
-    color: Option<String>,
-    icon: Option<String>,
-    lead_id: Option<String>,
-    target_date: Option<String>,
-    archived: Option<bool>,
+pub(crate) struct PatchProjectRequest {
+    pub(crate) name: Option<String>,
+    pub(crate) description: Option<String>,
+    pub(crate) status: Option<String>,
+    pub(crate) color: Option<String>,
+    pub(crate) icon: Option<String>,
+    pub(crate) lead_id: Option<String>,
+    pub(crate) target_date: Option<String>,
+    pub(crate) archived: Option<bool>,
 }
 
-async fn patch_project(
+pub(crate) async fn patch_project(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -289,7 +289,7 @@ async fn patch_project(
     Ok(Json(ProjectEnvelope { project: response }))
 }
 
-async fn delete_project(
+pub(crate) async fn delete_project(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -323,7 +323,7 @@ pub async fn find_project(
         .ok_or_else(|| ApiError::NotFound("Project not found".to_owned()))
 }
 
-async fn project_response(
+pub(crate) async fn project_response(
     state: &AppState,
     row: project::Model,
 ) -> Result<ProjectResponse, ApiError> {

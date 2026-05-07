@@ -49,8 +49,8 @@ pub struct IssueStatusResponse {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct StatusesEnvelope {
-    statuses: Vec<IssueStatusResponse>,
+pub(crate) struct StatusesEnvelope {
+    pub(crate) statuses: Vec<IssueStatusResponse>,
 }
 
 pub fn default_statuses() -> Vec<IssueStatusResponse> {
@@ -118,19 +118,19 @@ async fn list_statuses(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct StatusRequest {
-    name: String,
-    color: Option<String>,
-    category: String,
+pub(crate) struct StatusRequest {
+    pub(crate) name: String,
+    pub(crate) color: Option<String>,
+    pub(crate) category: String,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct StatusEnvelope {
-    status: IssueStatusResponse,
+pub(crate) struct StatusEnvelope {
+    pub(crate) status: IssueStatusResponse,
 }
 
-async fn create_status(
+pub(crate) async fn create_status(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<StatusRequest>,
@@ -172,7 +172,7 @@ async fn create_status(
     ))
 }
 
-async fn update_status(
+pub(crate) async fn update_status(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -194,11 +194,11 @@ async fn update_status(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct DeleteStatusRequest {
-    replacement_status: Option<String>,
+pub(crate) struct DeleteStatusRequest {
+    pub(crate) replacement_status: Option<String>,
 }
 
-async fn delete_status(
+pub(crate) async fn delete_status(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -246,18 +246,18 @@ async fn delete_status(
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ReorderRequest {
-    statuses: Vec<ReorderItem>,
+pub(crate) struct ReorderRequest {
+    pub(crate) statuses: Vec<ReorderItem>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ReorderItem {
-    id: String,
-    sort_order: i32,
+pub(crate) struct ReorderItem {
+    pub(crate) id: String,
+    pub(crate) sort_order: i32,
 }
 
-async fn reorder_statuses(
+pub(crate) async fn reorder_statuses(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<ReorderRequest>,

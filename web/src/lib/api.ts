@@ -1,3 +1,38 @@
+import {
+  ChatsDocument,
+  CloseAllTabsDocument,
+  CloseTabDocument,
+  CreateIssueDocument,
+  CreateIssueStatusDocument,
+  CreateLabelDocument,
+  CreateProjectDocument,
+  DeleteIssueDocument,
+  DeleteIssueStatusDocument,
+  DeleteLabelDocument,
+  DeleteProjectDocument,
+  InboxDocument,
+  IssueDocument,
+  IssueStatusesDocument,
+  IssuesDocument,
+  LabelDocument,
+  LabelsDocument,
+  MarkAllNotificationsReadDocument,
+  MarkNotificationReadDocument,
+  MembersDocument,
+  OpenTabDocument,
+  ProjectDocument,
+  PreferencesDocument,
+  ProjectsDocument,
+  ReorderIssueStatusesDocument,
+  TabsDocument,
+  UpdateIssueDocument,
+  UpdateIssueStatusDocument,
+  UpdateLabelDocument,
+  UpdatePreferencesDocument,
+  UpdateProjectDocument,
+} from "@/gql/graphql";
+import { graphqlRequest, unwrapGraphQLJson } from "@/lib/graphql/client";
+
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 
 export const apiUrl = trimTrailingSlash(
@@ -266,42 +301,48 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
-export const listIssues = () => request<{ issues: Issue[] }>("/api/issues");
+export const listIssues = () =>
+  graphqlRequest(IssuesDocument, {}).then((data) =>
+    unwrapGraphQLJson<{ issues: Issue[] }>(data.issues),
+  );
 
-export const listIssueStatuses = () => request<{ statuses: IssueStatus[] }>("/api/issue-statuses");
+export const listIssueStatuses = () =>
+  graphqlRequest(IssueStatusesDocument, {}).then((data) =>
+    unwrapGraphQLJson<{ statuses: IssueStatus[] }>(data.issueStatuses),
+  );
 
 export const createIssueStatus = (input: {
   name: string;
   color?: string;
   category: IssueStatusCategory;
 }) =>
-  request<{ status: IssueStatus }>("/api/issue-statuses", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  graphqlRequest(CreateIssueStatusDocument, { input }).then((data) =>
+    unwrapGraphQLJson<{ status: IssueStatus }>(data.createIssueStatus),
+  );
 
 export const updateIssueStatus = (
   id: string,
   input: { name: string; color?: string; category: IssueStatusCategory },
 ) =>
-  request<{ status: IssueStatus }>(`/api/issue-statuses/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  });
+  graphqlRequest(UpdateIssueStatusDocument, { id, input }).then((data) =>
+    unwrapGraphQLJson<{ status: IssueStatus }>(data.updateIssueStatus),
+  );
 
 export const deleteIssueStatus = (id: string, replacementStatus?: string) =>
-  request<void>(`/api/issue-statuses/${id}`, {
-    method: "DELETE",
-    body: JSON.stringify({ replacementStatus }),
-  });
+  graphqlRequest(DeleteIssueStatusDocument, {
+    id,
+    input: replacementStatus ? { replacementStatus } : null,
+  }).then(() => undefined);
 
 export const reorderIssueStatuses = (statuses: { id: string; sortOrder: number }[]) =>
-  request<{ statuses: IssueStatus[] }>("/api/issue-statuses/reorder", {
-    method: "POST",
-    body: JSON.stringify({ statuses }),
-  });
+  graphqlRequest(ReorderIssueStatusesDocument, { statuses }).then((data) =>
+    unwrapGraphQLJson<{ statuses: IssueStatus[] }>(data.reorderIssueStatuses),
+  );
 
-export const getIssue = (id: string) => request<{ issue: Issue }>(`/api/issues/${id}`);
+export const getIssue = (id: string) =>
+  graphqlRequest(IssueDocument, { id }).then((data) =>
+    unwrapGraphQLJson<{ issue: Issue }>(data.issue),
+  );
 
 export const listNotes = (search?: string) => {
   const params = new URLSearchParams();
@@ -451,13 +492,18 @@ export type InboxResponse = {
   unreadCount: number;
 };
 
-export const listInbox = () => request<InboxResponse>("/api/inbox");
+export const listInbox = () =>
+  graphqlRequest(InboxDocument, {}).then((data) => unwrapGraphQLJson<InboxResponse>(data.inbox));
 
 export const markNotificationRead = (id: string) =>
-  request<InboxResponse>(`/api/inbox/${id}/read`, { method: "POST" });
+  graphqlRequest(MarkNotificationReadDocument, { id }).then((data) =>
+    unwrapGraphQLJson<InboxResponse>(data.markNotificationRead),
+  );
 
 export const markAllNotificationsRead = () =>
-  request<InboxResponse>("/api/inbox/read-all", { method: "POST" });
+  graphqlRequest(MarkAllNotificationsReadDocument, {}).then((data) =>
+    unwrapGraphQLJson<InboxResponse>(data.markAllNotificationsRead),
+  );
 
 export type SidebarLayoutItem = {
   id: string;
@@ -474,13 +520,15 @@ export type NotificationPreferences = {
   sidebarLayout: unknown;
 };
 
-export const getMyPreferences = () => request<NotificationPreferences>("/api/me/preferences");
+export const getMyPreferences = () =>
+  graphqlRequest(PreferencesDocument, {}).then((data) =>
+    unwrapGraphQLJson<NotificationPreferences>(data.preferences),
+  );
 
 export const updateMyPreferences = (patch: Partial<NotificationPreferences>) =>
-  request<NotificationPreferences>("/api/me/preferences", {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
+  graphqlRequest(UpdatePreferencesDocument, { input: patch }).then((data) =>
+    unwrapGraphQLJson<NotificationPreferences>(data.updatePreferences),
+  );
 
 export type TabType = "issue" | "project" | "chat" | "page";
 
@@ -492,17 +540,19 @@ export type WorkspaceTab = {
   openedAt: string;
 };
 
-export const listTabs = () => request<WorkspaceTab[]>("/api/me/tabs");
+export const listTabs = () =>
+  graphqlRequest(TabsDocument, {}).then((data) => unwrapGraphQLJson<WorkspaceTab[]>(data.tabs));
 
 export const openTab = (input: { tabType: TabType; targetId: string; title: string }) =>
-  request<WorkspaceTab>("/api/me/tabs", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  graphqlRequest(OpenTabDocument, { input }).then((data) =>
+    unwrapGraphQLJson<WorkspaceTab>(data.openTab),
+  );
 
-export const closeTab = (id: string) => request<void>(`/api/me/tabs/${id}`, { method: "DELETE" });
+export const closeTab = (id: string) =>
+  graphqlRequest(CloseTabDocument, { id }).then(() => undefined as void);
 
-export const closeAllTabs = () => request<void>("/api/me/tabs", { method: "DELETE" });
+export const closeAllTabs = () =>
+  graphqlRequest(CloseAllTabsDocument, {}).then(() => undefined as void);
 
 export type OnboardingPatch = {
   completed?: boolean;
@@ -930,26 +980,28 @@ export type UpdateProjectInput = Partial<CreateProjectInput> & {
 };
 
 export const listProjects = (includeArchived = false) => {
-  const qs = includeArchived ? "?include_archived=true" : "";
-  return request<{ projects: Project[] }>(`/api/projects${qs}`);
+  return graphqlRequest(ProjectsDocument, { includeArchived }).then((data) =>
+    unwrapGraphQLJson<{ projects: Project[] }>(data.projects),
+  );
 };
 
-export const getProject = (id: string) => request<{ project: Project }>(`/api/projects/${id}`);
+export const getProject = (id: string) =>
+  graphqlRequest(ProjectDocument, { id }).then((data) =>
+    unwrapGraphQLJson<{ project: Project }>(data.project),
+  );
 
 export const createProject = (input: CreateProjectInput) =>
-  request<{ project: Project }>("/api/projects", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  graphqlRequest(CreateProjectDocument, { input }).then((data) =>
+    unwrapGraphQLJson<{ project: Project }>(data.createProject),
+  );
 
 export const updateProject = (id: string, patch: UpdateProjectInput) =>
-  request<{ project: Project }>(`/api/projects/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
+  graphqlRequest(UpdateProjectDocument, { id, input: patch }).then((data) =>
+    unwrapGraphQLJson<{ project: Project }>(data.updateProject),
+  );
 
 export const deleteProject = (id: string) =>
-  request<void>(`/api/projects/${id}`, { method: "DELETE" });
+  graphqlRequest(DeleteProjectDocument, { id }).then(() => undefined as void);
 
 export type Label = {
   id: string;
@@ -973,25 +1025,28 @@ export type UpdateLabelInput = Partial<CreateLabelInput> & {
 };
 
 export const listLabels = (includeArchived = false) => {
-  const qs = includeArchived ? "?include_archived=true" : "";
-  return request<{ labels: Label[] }>(`/api/labels${qs}`);
+  return graphqlRequest(LabelsDocument, { includeArchived }).then((data) =>
+    unwrapGraphQLJson<{ labels: Label[] }>(data.labels),
+  );
 };
 
-export const getLabel = (id: string) => request<{ label: Label }>(`/api/labels/${id}`);
+export const getLabel = (id: string) =>
+  graphqlRequest(LabelDocument, { id }).then((data) =>
+    unwrapGraphQLJson<{ label: Label }>(data.label),
+  );
 
 export const createLabel = (input: CreateLabelInput) =>
-  request<{ label: Label }>("/api/labels", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  graphqlRequest(CreateLabelDocument, { input }).then((data) =>
+    unwrapGraphQLJson<{ label: Label }>(data.createLabel),
+  );
 
 export const updateLabel = (id: string, patch: UpdateLabelInput) =>
-  request<{ label: Label }>(`/api/labels/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
+  graphqlRequest(UpdateLabelDocument, { id, input: patch }).then((data) =>
+    unwrapGraphQLJson<{ label: Label }>(data.updateLabel),
+  );
 
-export const deleteLabel = (id: string) => request<void>(`/api/labels/${id}`, { method: "DELETE" });
+export const deleteLabel = (id: string) =>
+  graphqlRequest(DeleteLabelDocument, { id }).then(() => undefined as void);
 
 export const getMemberProfile = (id: string) =>
   request<{ member: MemberProfile }>(`/api/members/${id}`);
@@ -1006,7 +1061,10 @@ export type Member = {
   activeSessions: number;
 };
 
-export const listMembers = () => request<{ members: Member[] }>("/api/members");
+export const listMembers = () =>
+  graphqlRequest(MembersDocument, {}).then((data) =>
+    unwrapGraphQLJson<{ members: Member[] }>(data.members),
+  );
 
 export type SecurityEventUser = {
   id: string;
@@ -1092,21 +1150,19 @@ export const revokeMemberSessions = (userId: string) =>
   });
 
 export const createIssue = (input: CreateIssueInput) =>
-  request<{ issue: Issue }>("/api/issues", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  graphqlRequest(CreateIssueDocument, { input }).then((data) =>
+    unwrapGraphQLJson<{ issue: Issue }>(data.createIssue),
+  );
 
 export const updateIssue = (id: string, input: UpdateIssueInput) =>
-  request<{ issue: Issue }>(`/api/issues/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  });
+  graphqlRequest(UpdateIssueDocument, { id, input }).then((data) =>
+    unwrapGraphQLJson<{ issue: Issue }>(data.updateIssue),
+  );
 
 export const deleteIssue = (id: string) =>
-  request<{ ok: true }>(`/api/issues/${id}`, {
-    method: "DELETE",
-  });
+  graphqlRequest(DeleteIssueDocument, { id }).then((data) =>
+    unwrapGraphQLJson<{ ok: true }>(data.deleteIssue),
+  );
 
 export const uploadIssueAttachment = async (id: string, file: File) => {
   const form = new FormData();
@@ -1228,7 +1284,10 @@ export type UploadedChatAttachment = {
   url: string;
 };
 
-export const listChats = () => request<{ chats: Chat[] }>("/api/chats");
+export const listChats = () =>
+  graphqlRequest(ChatsDocument, {}).then((data) =>
+    unwrapGraphQLJson<{ chats: Chat[] }>(data.chats),
+  );
 
 export const createChat = () => request<{ chat: Chat }>("/api/chats", { method: "POST" });
 

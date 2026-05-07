@@ -62,29 +62,29 @@ struct ListIssuesQuery {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct CreateIssueRequest {
-    title: String,
-    description: Option<String>,
-    status: Option<String>,
-    priority: Option<String>,
-    assigned_to_id: Option<String>,
-    parent_id: Option<String>,
-    project_id: Option<String>,
-    label_ids: Option<Vec<String>>,
+pub(crate) struct CreateIssueRequest {
+    pub(crate) title: String,
+    pub(crate) description: Option<String>,
+    pub(crate) status: Option<String>,
+    pub(crate) priority: Option<String>,
+    pub(crate) assigned_to_id: Option<String>,
+    pub(crate) parent_id: Option<String>,
+    pub(crate) project_id: Option<String>,
+    pub(crate) label_ids: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct UpdateIssueRequest {
-    title: Option<String>,
-    description: Option<String>,
-    status: Option<String>,
-    priority: Option<String>,
-    assigned_to_id: Option<String>,
+pub(crate) struct UpdateIssueRequest {
+    pub(crate) title: Option<String>,
+    pub(crate) description: Option<String>,
+    pub(crate) status: Option<String>,
+    pub(crate) priority: Option<String>,
+    pub(crate) assigned_to_id: Option<String>,
     /// Empty string clears the assignment.
-    project_id: Option<String>,
+    pub(crate) project_id: Option<String>,
     /// When `Some(...)`, replaces the issue's labels with this exact set.
-    label_ids: Option<Vec<String>>,
+    pub(crate) label_ids: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -99,8 +99,8 @@ struct IssuesResponse {
 }
 
 #[derive(Serialize)]
-struct IssueEnvelope {
-    issue: IssueResponse,
+pub(crate) struct IssueEnvelope {
+    pub(crate) issue: IssueResponse,
 }
 
 #[derive(Serialize)]
@@ -119,13 +119,13 @@ struct IssueCommentEnvelope {
 }
 
 #[derive(Serialize)]
-struct OkResponse {
-    ok: bool,
+pub(crate) struct OkResponse {
+    pub(crate) ok: bool,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct IssueResponse {
+pub(crate) struct IssueResponse {
     id: String,
     title: String,
     description: Option<String>,
@@ -144,7 +144,7 @@ struct IssueResponse {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ProjectSummary {
+pub(crate) struct ProjectSummary {
     id: String,
     name: String,
     color: String,
@@ -153,7 +153,7 @@ struct ProjectSummary {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LabelSummary {
+pub(crate) struct LabelSummary {
     id: String,
     name: String,
     color: String,
@@ -161,7 +161,7 @@ struct LabelSummary {
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct AttachmentResponse {
+pub(crate) struct AttachmentResponse {
     id: String,
     name: String,
     content_type: String,
@@ -173,7 +173,7 @@ struct AttachmentResponse {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct UserResponse {
+pub(crate) struct UserResponse {
     id: String,
     name: String,
     email: String,
@@ -182,7 +182,7 @@ struct UserResponse {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct IssueEventResponse {
+pub(crate) struct IssueEventResponse {
     id: String,
     action: String,
     changes: Vec<IssueChange>,
@@ -192,7 +192,7 @@ struct IssueEventResponse {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct IssueCommentResponse {
+pub(crate) struct IssueCommentResponse {
     id: String,
     body: String,
     created_at: String,
@@ -252,7 +252,7 @@ async fn list_issues(
     Ok(Json(IssuesResponse { issues: response }))
 }
 
-async fn create_issue(
+pub(crate) async fn create_issue(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(payload): Json<CreateIssueRequest>,
@@ -396,7 +396,7 @@ async fn get_issue(
     }))
 }
 
-async fn update_issue(
+pub(crate) async fn update_issue(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -541,7 +541,7 @@ async fn update_issue(
     Ok(Json(IssueEnvelope { issue: response }))
 }
 
-async fn delete_issue(
+pub(crate) async fn delete_issue(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -793,7 +793,7 @@ async fn upload_attachment(
     Err(ApiError::BadRequest("No file was uploaded".to_owned()))
 }
 
-async fn find_issue(
+pub(crate) async fn find_issue(
     state: &AppState,
     organization_id: &str,
     id: &str,
@@ -806,7 +806,10 @@ async fn find_issue(
         .ok_or_else(|| ApiError::NotFound("Issue not found".to_owned()))
 }
 
-async fn issue_response(state: &AppState, issue: issue::Model) -> Result<IssueResponse, ApiError> {
+pub(crate) async fn issue_response(
+    state: &AppState,
+    issue: issue::Model,
+) -> Result<IssueResponse, ApiError> {
     let created_by = match &issue.created_by_id {
         Some(id) => find_user_response(state, id).await?,
         None => None,

@@ -11,7 +11,7 @@ mod github;
 pub mod inbox;
 mod invitations;
 pub mod issue_statuses;
-mod issues;
+pub mod issues;
 pub mod labels;
 mod mcp_keys;
 mod members;
@@ -27,7 +27,7 @@ mod roles;
 mod security;
 mod slack;
 mod support;
-mod tabs;
+pub mod tabs;
 mod unsubscribe;
 mod waitlist;
 

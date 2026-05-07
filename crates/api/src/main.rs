@@ -5,6 +5,7 @@ mod config;
 mod digest;
 mod email;
 mod error;
+mod graphql;
 mod http;
 mod integration_actions;
 mod issue_helpers;
@@ -29,6 +30,7 @@ use axum::{
     Router,
 };
 use config::{Config, DatabaseConfig};
+use graphql::routes as graphql_routes;
 use http::{
     admin_routes, ai_mcp_routes, ai_routes, auth_routes, chat_routes, cors_layer, dev_routes,
     discord_routes, favorite_routes, github_routes, inbox_routes, invitation_routes, issue_routes,
@@ -96,6 +98,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .merge(oauth_metadata_routes())
         .nest("/api/auth", auth_routes())
+        .nest("/api/graphql", graphql_routes())
         .nest("/api/admin", admin_routes())
         .nest("/api/admin/support", support_admin_routes())
         .nest("/api/oauth", oauth_routes())

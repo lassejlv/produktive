@@ -173,6 +173,10 @@ impl Config {
             );
         }
     }
+
+    pub fn is_production_like(&self) -> bool {
+        is_production_like_url_or_env(&self.app_url)
+    }
 }
 
 impl StorageConfig {

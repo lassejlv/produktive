@@ -1,0 +1,123 @@
+query Issues($status: String, $projectId: String, $labelIds: [String!]) {
+  issues(status: $status, projectId: $projectId, labelIds: $labelIds)
+}
+
+query Issue($id: String!) {
+  issue(id: $id)
+}
+
+query Projects($includeArchived: Boolean) {
+  projects(includeArchived: $includeArchived)
+}
+
+query Project($id: String!) {
+  project(id: $id)
+}
+
+query Labels($includeArchived: Boolean) {
+  labels(includeArchived: $includeArchived)
+}
+
+query Label($id: String!) {
+  label(id: $id)
+}
+
+query IssueStatuses {
+  issueStatuses
+}
+
+query Members {
+  members
+}
+
+query Inbox {
+  inbox
+}
+
+query Preferences {
+  preferences
+}
+
+query Tabs {
+  tabs
+}
+
+query Chats {
+  chats
+}
+
+mutation UpdatePreferences($input: PreferencesInput!) {
+  updatePreferences(input: $input)
+}
+
+mutation CreateIssue($input: CreateIssueInput!) {
+  createIssue(input: $input)
+}
+
+mutation UpdateIssue($id: String!, $input: UpdateIssueInput!) {
+  updateIssue(id: $id, input: $input)
+}
+
+mutation DeleteIssue($id: String!) {
+  deleteIssue(id: $id)
+}
+
+mutation CreateIssueStatus($input: IssueStatusInput!) {
+  createIssueStatus(input: $input)
+}
+
+mutation UpdateIssueStatus($id: String!, $input: IssueStatusInput!) {
+  updateIssueStatus(id: $id, input: $input)
+}
+
+mutation DeleteIssueStatus($id: String!, $input: DeleteIssueStatusInput) {
+  deleteIssueStatus(id: $id, input: $input)
+}
+
+mutation ReorderIssueStatuses($statuses: [ReorderIssueStatusInput!]!) {
+  reorderIssueStatuses(statuses: $statuses)
+}
+
+mutation CreateProject($input: CreateProjectInput!) {
+  createProject(input: $input)
+}
+
+mutation UpdateProject($id: String!, $input: UpdateProjectInput!) {
+  updateProject(id: $id, input: $input)
+}
+
+mutation DeleteProject($id: String!) {
+  deleteProject(id: $id)
+}
+
+mutation CreateLabel($input: CreateLabelInput!) {
+  createLabel(input: $input)
+}
+
+mutation UpdateLabel($id: String!, $input: UpdateLabelInput!) {
+  updateLabel(id: $id, input: $input)
+}
+
+mutation DeleteLabel($id: String!) {
+  deleteLabel(id: $id)
+}
+
+mutation OpenTab($input: OpenTabInput!) {
+  openTab(input: $input)
+}
+
+mutation CloseTab($id: String!) {
+  closeTab(id: $id)
+}
+
+mutation CloseAllTabs {
+  closeAllTabs
+}
+
+mutation MarkNotificationRead($id: String!) {
+  markNotificationRead(id: $id)
+}
+
+mutation MarkAllNotificationsRead {
+  markAllNotificationsRead
+}
