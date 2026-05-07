@@ -1810,11 +1810,11 @@ function formatInterval(minutes: number): string {
 }
 
 function getPublicApiUrl() {
-  if (typeof window === "undefined") return "https://produktive.app/api/v1";
+  if (typeof window === "undefined") return "https://produktive.app/api/v1/graphql";
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-    return "http://localhost:3000/api/v1";
+    return "http://localhost:3000/api/v1/graphql";
   }
-  return `${window.location.origin}/api/v1`;
+  return `${window.location.origin}/api/v1/graphql`;
 }
 
 function SectionGroup({ children }: { children: React.ReactNode }) {

@@ -13,6 +13,7 @@ mod issue_history;
 mod mcp;
 mod note_storage;
 mod permissions;
+mod public_graphql;
 mod realtime;
 mod security_events;
 mod state;
@@ -36,11 +37,12 @@ use http::{
     discord_routes, favorite_routes, github_routes, inbox_routes, invitation_routes, issue_routes,
     issue_status_routes, label_routes, mcp_key_routes, member_routes, note_routes,
     oauth_metadata_routes, oauth_routes, onboarding_routes, org_invitation_routes,
-    preferences_routes, pricing_routes, project_routes, public_api_routes, realtime_routes,
-    role_routes, security_routes, slack_routes, spawn_github_auto_importer, support_admin_routes,
+    preferences_routes, pricing_routes, project_routes, realtime_routes, role_routes,
+    security_routes, slack_routes, spawn_github_auto_importer, support_admin_routes,
     support_routes, tabs_routes, unsubscribe_routes, waitlist_routes,
 };
 use produktive_ai::AiClient;
+use public_graphql::routes as public_graphql_routes;
 use sea_orm::Database;
 use sea_orm_migration::MigratorTrait;
 use state::AppState;
@@ -102,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/admin", admin_routes())
         .nest("/api/admin/support", support_admin_routes())
         .nest("/api/oauth", oauth_routes())
-        .nest("/api/v1", public_api_routes())
+        .nest("/api/v1", public_graphql_routes())
         .nest("/api/ai", ai_routes())
         .nest("/api/ai/mcp", ai_mcp_routes())
         .nest("/api/issues", issue_routes())

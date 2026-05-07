@@ -22,4 +22,4 @@ cd web && bun run dev            # web on :5173
 
 The API runs migrations on startup. The Vite dev server proxies `/api` to the Rust API.
 
-See [docs/public-api.md](docs/public-api.md) for the public REST API.
+See [docs/public-api.md](docs/public-api.md) for the public GraphQL API.
