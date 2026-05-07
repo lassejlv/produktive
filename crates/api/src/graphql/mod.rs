@@ -1,8 +1,19 @@
 use crate::{
-    auth::{require_auth, AuthContext},
+    auth::{
+        auth_cookie, create_organization_for_user, ensure_fresh_two_factor,
+        ensure_organization_not_suspended, require_auth_without_two_factor_policy,
+        set_session_active_organization, user_is_member, AuthContext,
+    },
     error::ApiError,
     http::{chats, inbox, issue_statuses, labels, preferences, projects},
+    permissions::{
+        require_permission, ROLE_OWNER, WORKSPACE_DELETE, WORKSPACE_RENAME, WORKSPACE_SECURITY,
+    },
     realtime::{RealtimeAction, RealtimeEntity},
+    security_events::{
+        metadata_empty, record_security_event, SecurityEventInput, EVENT_WORKSPACE_DELETED,
+        EVENT_WORKSPACE_REQUIRE_2FA_DISABLED, EVENT_WORKSPACE_REQUIRE_2FA_ENABLED,
+    },
     state::AppState,
 };
 use async_graphql::{Context, EmptySubscription, InputObject, Json, Object, Schema};
@@ -14,11 +25,12 @@ use axum::{
     Json as AxumJson, Router,
 };
 use produktive_entity::{
-    chat, chat_access, issue, label, member, notification, project, session, user, user_tab,
+    chat, chat_access, issue, label, member, notification, organization, project, session, user,
+    user_tab,
 };
 use sea_orm::{
-    sea_query::OnConflict, ActiveModelTrait, ColumnTrait, Condition, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    sea_query::OnConflict, ActiveModelTrait, ColumnTrait, Condition, EntityTrait, IntoActiveModel,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -56,7 +68,7 @@ async fn graphql_handler(
         .data(state.clone())
         .data(headers.clone())
         .data(InternalBridgeBudget::default());
-    match require_auth(&headers, &state).await {
+    match require_auth_without_two_factor_policy(&headers, &state).await {
         Ok(auth) => {
             request = request.data(auth);
             schema(state.config.is_production_like())
@@ -64,6 +76,10 @@ async fn graphql_handler(
                 .await
                 .into()
         }
+        Err(ApiError::Unauthorized) => schema(state.config.is_production_like())
+            .execute(request)
+            .await
+            .into(),
         Err(error) => async_graphql::Response::from_errors(vec![async_graphql::ServerError::new(
             error.to_string(),
             None,
@@ -77,6 +93,16 @@ fn state<'ctx>(ctx: &'ctx Context<'ctx>) -> async_graphql::Result<&'ctx AppState
 }
 
 fn auth<'ctx>(ctx: &'ctx Context<'ctx>) -> async_graphql::Result<&'ctx AuthContext> {
+    let auth = ctx.data::<AuthContext>()?;
+    if auth.organization.require_two_factor && !auth.user.two_factor_enabled {
+        return Err(graphql_error(ApiError::Forbidden(
+            "Two-factor authentication is required for this workspace".to_owned(),
+        )));
+    }
+    Ok(auth)
+}
+
+fn relaxed_auth<'ctx>(ctx: &'ctx Context<'ctx>) -> async_graphql::Result<&'ctx AuthContext> {
     ctx.data::<AuthContext>()
 }
 
@@ -278,6 +304,13 @@ pub struct QueryRoot;
 
 #[Object]
 impl QueryRoot {
+    async fn session(&self, ctx: &Context<'_>) -> async_graphql::Result<Option<Json<Value>>> {
+        let Some(auth) = ctx.data_opt::<AuthContext>() else {
+            return Ok(None);
+        };
+        to_json(auth.response()).map(Some)
+    }
+
     async fn me(&self, ctx: &Context<'_>) -> async_graphql::Result<Json<Value>> {
         to_json(auth(ctx)?.response())
     }
@@ -546,6 +579,78 @@ impl QueryRoot {
         to_json(json!({ "chats": chats }))
     }
 
+    async fn account_sessions(&self, ctx: &Context<'_>) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?;
+        let auth = relaxed_auth(ctx)?;
+        let now = chrono::Utc::now().fixed_offset();
+        let rows = session::Entity::find()
+            .filter(session::Column::UserId.eq(&auth.user.id))
+            .filter(session::Column::RevokedAt.is_null())
+            .filter(session::Column::ExpiresAt.gt(now))
+            .order_by_desc(session::Column::UpdatedAt)
+            .all(&state.db)
+            .await
+            .map_err(ApiError::from)
+            .map_err(graphql_error)?;
+
+        let mut sessions = Vec::with_capacity(rows.len());
+        for row in rows {
+            let active_organization_name =
+                organization::Entity::find_by_id(&row.active_organization_id)
+                    .one(&state.db)
+                    .await
+                    .map_err(ApiError::from)
+                    .map_err(graphql_error)?
+                    .map(|organization| organization.name);
+            sessions.push(json!({
+                "id": row.id,
+                "current": row.id == auth.session.id,
+                "activeOrganizationId": row.active_organization_id,
+                "activeOrganizationName": active_organization_name,
+                "expiresAt": row.expires_at,
+                "createdAt": row.created_at,
+                "updatedAt": row.updated_at,
+            }));
+        }
+
+        to_json(json!({ "sessions": sessions }))
+    }
+
+    async fn organizations(&self, ctx: &Context<'_>) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?;
+        let auth = relaxed_auth(ctx)?;
+        let memberships = member::Entity::find()
+            .filter(member::Column::UserId.eq(&auth.user.id))
+            .order_by_asc(member::Column::CreatedAt)
+            .all(&state.db)
+            .await
+            .map_err(ApiError::from)
+            .map_err(graphql_error)?;
+
+        let mut organizations = Vec::with_capacity(memberships.len());
+        for membership in memberships {
+            if let Some(org) = organization::Entity::find_by_id(&membership.organization_id)
+                .one(&state.db)
+                .await
+                .map_err(ApiError::from)
+                .map_err(graphql_error)?
+            {
+                organizations.push(json!({
+                    "id": org.id,
+                    "name": org.name,
+                    "slug": org.slug,
+                    "image": org.image,
+                    "role": membership.role,
+                }));
+            }
+        }
+
+        to_json(json!({
+            "organizations": organizations,
+            "activeOrganizationId": auth.organization.id,
+        }))
+    }
+
     async fn internal_json(
         &self,
         ctx: &Context<'_>,
@@ -685,8 +790,385 @@ struct PostChatMessageInput {
     model: Option<String>,
 }
 
+#[derive(InputObject)]
+struct SwitchOrganizationInput {
+    organization_id: String,
+}
+
+#[derive(InputObject)]
+struct CreateOrganizationInput {
+    name: String,
+}
+
+#[derive(InputObject)]
+struct UpdateActiveOrganizationInput {
+    name: Option<String>,
+    require_two_factor: Option<bool>,
+}
+
+#[derive(InputObject)]
+struct DeleteActiveOrganizationInput {
+    confirm: String,
+}
+
 #[Object]
 impl MutationRoot {
+    async fn switch_organization(
+        &self,
+        ctx: &Context<'_>,
+        input: SwitchOrganizationInput,
+    ) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?;
+        let auth = relaxed_auth(ctx)?;
+
+        if !map_api(user_is_member(&state.db, &auth.user.id, &input.organization_id).await)? {
+            return Err(graphql_error(ApiError::NotFound(
+                "Organization not found".to_owned(),
+            )));
+        }
+
+        let organization = organization::Entity::find_by_id(&input.organization_id)
+            .one(&state.db)
+            .await
+            .map_err(ApiError::from)
+            .map_err(graphql_error)?
+            .ok_or_else(|| {
+                graphql_error(ApiError::NotFound("Organization not found".to_owned()))
+            })?;
+        map_api(ensure_organization_not_suspended(&organization))?;
+        if organization.require_two_factor && !auth.user.two_factor_enabled {
+            return Err(graphql_error(ApiError::Forbidden(
+                "Two-factor authentication is required for this workspace".to_owned(),
+            )));
+        }
+
+        let (_, token) = map_api(
+            set_session_active_organization(
+                &state.db,
+                state,
+                auth.session.clone(),
+                organization.id.clone(),
+            )
+            .await,
+        )?;
+        ctx.append_http_header(header::SET_COOKIE, map_api(auth_cookie(state, &token))?);
+        to_json(crate::auth::AuthResponse {
+            user: auth.user.clone().into(),
+            organization: organization.into(),
+        })
+    }
+
+    async fn create_organization(
+        &self,
+        ctx: &Context<'_>,
+        input: CreateOrganizationInput,
+    ) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?;
+        let auth = relaxed_auth(ctx)?;
+        let organization =
+            map_api(create_organization_for_user(&state.db, &auth.user, &input.name).await)?;
+        let (_, token) = map_api(
+            set_session_active_organization(
+                &state.db,
+                state,
+                auth.session.clone(),
+                organization.id.clone(),
+            )
+            .await,
+        )?;
+        ctx.append_http_header(header::SET_COOKIE, map_api(auth_cookie(state, &token))?);
+        to_json(json!({ "organization": crate::auth::OrganizationResponse::from(organization) }))
+    }
+
+    async fn update_active_organization(
+        &self,
+        ctx: &Context<'_>,
+        input: UpdateActiveOrganizationInput,
+    ) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?;
+        let headers = headers(ctx)?;
+        let auth = auth(ctx)?;
+        if input.name.is_some() {
+            map_api(require_permission(state, auth, WORKSPACE_RENAME).await)?;
+        }
+        if input.require_two_factor.is_some() {
+            map_api(require_permission(state, auth, WORKSPACE_SECURITY).await)?;
+            map_api(ensure_fresh_two_factor(auth))?;
+        }
+        if input.require_two_factor == Some(true) && !auth.user.two_factor_enabled {
+            return Err(graphql_error(ApiError::BadRequest(
+                "Enable two-factor authentication on your account before requiring it for the workspace"
+                    .to_owned(),
+            )));
+        }
+
+        let mut active: organization::ActiveModel = auth.organization.clone().into();
+        if let Some(name) = input.name.as_deref() {
+            let name = name.trim();
+            if name.is_empty() {
+                return Err(graphql_error(ApiError::BadRequest(
+                    "Workspace name is required".to_owned(),
+                )));
+            }
+            if name.chars().count() > 64 {
+                return Err(graphql_error(ApiError::BadRequest(
+                    "Workspace name must be 64 characters or fewer".to_owned(),
+                )));
+            }
+            active.name = Set(name.to_owned());
+        }
+        if let Some(require_two_factor) = input.require_two_factor {
+            active.require_two_factor = Set(require_two_factor);
+        }
+        active.updated_at = Set(chrono::Utc::now().fixed_offset());
+        let updated = active
+            .update(&state.db)
+            .await
+            .map_err(ApiError::from)
+            .map_err(graphql_error)?;
+        if let Some(require_two_factor) = input.require_two_factor {
+            map_api(
+                record_security_event(
+                    state,
+                    Some(headers),
+                    SecurityEventInput {
+                        organization_id: Some(updated.id.clone()),
+                        actor_user_id: Some(auth.user.id.clone()),
+                        target_user_id: None,
+                        event_type: if require_two_factor {
+                            EVENT_WORKSPACE_REQUIRE_2FA_ENABLED
+                        } else {
+                            EVENT_WORKSPACE_REQUIRE_2FA_DISABLED
+                        },
+                        metadata: metadata_empty(),
+                    },
+                )
+                .await,
+            )?;
+        }
+
+        to_json(json!({ "organization": crate::auth::OrganizationResponse::from(updated) }))
+    }
+
+    async fn delete_active_organization(
+        &self,
+        ctx: &Context<'_>,
+        input: DeleteActiveOrganizationInput,
+    ) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?;
+        let headers = headers(ctx)?;
+        let auth = auth(ctx)?;
+        map_api(require_permission(state, auth, WORKSPACE_DELETE).await)?;
+        map_api(ensure_fresh_two_factor(auth))?;
+
+        if input.confirm.trim() != auth.organization.name {
+            return Err(graphql_error(ApiError::BadRequest(
+                "Type the workspace name exactly to confirm deletion".to_owned(),
+            )));
+        }
+
+        let other_membership = member::Entity::find()
+            .filter(member::Column::UserId.eq(&auth.user.id))
+            .filter(member::Column::OrganizationId.ne(&auth.organization.id))
+            .order_by_asc(member::Column::CreatedAt)
+            .one(&state.db)
+            .await
+            .map_err(ApiError::from)
+            .map_err(graphql_error)?;
+
+        let next_organization = if let Some(other) = other_membership.as_ref() {
+            organization::Entity::find_by_id(&other.organization_id)
+                .one(&state.db)
+                .await
+                .map_err(ApiError::from)
+                .map_err(graphql_error)?
+        } else {
+            None
+        };
+
+        if next_organization.is_none() {
+            return Err(graphql_error(ApiError::BadRequest(
+                "You can't delete your only workspace. Create another one first.".to_owned(),
+            )));
+        }
+
+        let deleted_org_id = auth.organization.id.clone();
+        map_api(
+            record_security_event(
+                state,
+                Some(headers),
+                SecurityEventInput {
+                    organization_id: Some(deleted_org_id.clone()),
+                    actor_user_id: Some(auth.user.id.clone()),
+                    target_user_id: None,
+                    event_type: EVENT_WORKSPACE_DELETED,
+                    metadata: json!({ "workspaceName": auth.organization.name }),
+                },
+            )
+            .await,
+        )?;
+        organization::Entity::delete_by_id(&deleted_org_id)
+            .exec(&state.db)
+            .await
+            .map_err(ApiError::from)
+            .map_err(graphql_error)?;
+
+        let next_org = next_organization.expect("checked above");
+        let (_, token) = map_api(
+            set_session_active_organization(
+                &state.db,
+                state,
+                auth.session.clone(),
+                next_org.id.clone(),
+            )
+            .await,
+        )?;
+        ctx.append_http_header(header::SET_COOKIE, map_api(auth_cookie(state, &token))?);
+        to_json(json!({
+            "ok": true,
+            "switchedTo": crate::auth::OrganizationResponse::from(next_org),
+        }))
+    }
+
+    async fn leave_active_organization(
+        &self,
+        ctx: &Context<'_>,
+    ) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?;
+        let auth = auth(ctx)?;
+        let membership = member::Entity::find()
+            .filter(member::Column::UserId.eq(&auth.user.id))
+            .filter(member::Column::OrganizationId.eq(&auth.organization.id))
+            .one(&state.db)
+            .await
+            .map_err(ApiError::from)
+            .map_err(graphql_error)?
+            .ok_or_else(|| {
+                graphql_error(ApiError::Forbidden(
+                    "Not a member of this workspace".to_owned(),
+                ))
+            })?;
+
+        if membership.role == ROLE_OWNER {
+            return Err(graphql_error(ApiError::BadRequest(
+                "Owners can't leave. Transfer ownership or delete the workspace.".to_owned(),
+            )));
+        }
+
+        let other_membership = member::Entity::find()
+            .filter(member::Column::UserId.eq(&auth.user.id))
+            .filter(member::Column::OrganizationId.ne(&auth.organization.id))
+            .order_by_asc(member::Column::CreatedAt)
+            .one(&state.db)
+            .await
+            .map_err(ApiError::from)
+            .map_err(graphql_error)?;
+
+        let next_organization = if let Some(other) = other_membership.as_ref() {
+            organization::Entity::find_by_id(&other.organization_id)
+                .one(&state.db)
+                .await
+                .map_err(ApiError::from)
+                .map_err(graphql_error)?
+        } else {
+            None
+        };
+
+        if next_organization.is_none() {
+            return Err(graphql_error(ApiError::BadRequest(
+                "You can't leave your only workspace.".to_owned(),
+            )));
+        }
+
+        member::Entity::delete_by_id(&membership.id)
+            .exec(&state.db)
+            .await
+            .map_err(ApiError::from)
+            .map_err(graphql_error)?;
+
+        let next_org = next_organization.expect("checked above");
+        let (_, token) = map_api(
+            set_session_active_organization(
+                &state.db,
+                state,
+                auth.session.clone(),
+                next_org.id.clone(),
+            )
+            .await,
+        )?;
+        ctx.append_http_header(header::SET_COOKIE, map_api(auth_cookie(state, &token))?);
+        to_json(json!({
+            "ok": true,
+            "switchedTo": crate::auth::OrganizationResponse::from(next_org),
+        }))
+    }
+
+    async fn revoke_account_session(
+        &self,
+        ctx: &Context<'_>,
+        id: String,
+    ) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?;
+        let auth = relaxed_auth(ctx)?;
+        if id == auth.session.id {
+            return Err(graphql_error(ApiError::BadRequest(
+                "Sign out to revoke the current session".to_owned(),
+            )));
+        }
+
+        let row = session::Entity::find_by_id(&id)
+            .filter(session::Column::UserId.eq(&auth.user.id))
+            .one(&state.db)
+            .await
+            .map_err(ApiError::from)
+            .map_err(graphql_error)?
+            .ok_or_else(|| graphql_error(ApiError::NotFound("Session not found".to_owned())))?;
+
+        if row.revoked_at.is_none() {
+            let now = chrono::Utc::now().fixed_offset();
+            let mut active = row.into_active_model();
+            active.revoked_at = Set(Some(now));
+            active.updated_at = Set(now);
+            active
+                .update(&state.db)
+                .await
+                .map_err(ApiError::from)
+                .map_err(graphql_error)?;
+        }
+        to_json(json!({ "ok": true }))
+    }
+
+    async fn revoke_other_account_sessions(
+        &self,
+        ctx: &Context<'_>,
+    ) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?;
+        let auth = relaxed_auth(ctx)?;
+        let now = chrono::Utc::now().fixed_offset();
+        let rows = session::Entity::find()
+            .filter(session::Column::UserId.eq(&auth.user.id))
+            .filter(session::Column::Id.ne(&auth.session.id))
+            .filter(session::Column::RevokedAt.is_null())
+            .filter(session::Column::ExpiresAt.gt(now))
+            .all(&state.db)
+            .await
+            .map_err(ApiError::from)
+            .map_err(graphql_error)?;
+
+        for row in rows {
+            let mut active = row.into_active_model();
+            active.revoked_at = Set(Some(now));
+            active.updated_at = Set(now);
+            active
+                .update(&state.db)
+                .await
+                .map_err(ApiError::from)
+                .map_err(graphql_error)?;
+        }
+
+        to_json(json!({ "ok": true }))
+    }
+
     async fn create_issue(
         &self,
         ctx: &Context<'_>,
