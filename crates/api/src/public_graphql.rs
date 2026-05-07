@@ -40,13 +40,19 @@ fn schema() -> PublicSchema {
 }
 
 async fn graphiql_handler() -> Html<String> {
-    Html(
-        GraphiQLSource::build()
-            .endpoint("/api/v1/graphql")
-            .header("Authorization", "Bearer <API_KEY>")
-            .title("Produktive Public GraphQL API")
-            .finish(),
-    )
+    let source = GraphiQLSource::build()
+        .endpoint("/api/v1/graphql")
+        .title("Produktive Public GraphQL API")
+        .finish();
+    let default_headers =
+        serde_json::to_string_pretty(&json!({ "Authorization": "Bearer <api_key>" }))
+            .unwrap_or_default();
+    Html(source.replace(
+        "defaultEditorToolsVisibility: true,",
+        &format!(
+            "defaultEditorToolsVisibility: true,\n          defaultHeaders: {default_headers},"
+        ),
+    ))
 }
 
 async fn graphql_handler(
