@@ -691,9 +691,6 @@ function AppLayout() {
                 >
                   {currentUser?.name ?? "User"}
                 </p>
-                <p className="truncate text-[11px] text-fg-muted" title={currentUser?.email}>
-                  {currentUser?.email}
-                </p>
               </div>
               <span
                 className={cn(
