@@ -164,7 +164,6 @@ function PricingBody({
   data: PricingResponse;
   isLoggedIn: boolean;
 }) {
-  const enterprise = data.plans.find((plan) => plan.id === "enterprise") ?? null;
   const tiered = data.plans.filter((plan) => plan.id !== "enterprise");
 
   return (
@@ -177,12 +176,6 @@ function PricingBody({
           <PricingCard key={plan.id} plan={plan} isLoggedIn={isLoggedIn} />
         ))}
       </div>
-
-      {enterprise ? (
-        <div className="animate-fade-up mt-4" style={{ animationDelay: "260ms" }}>
-          <EnterpriseCard plan={enterprise} />
-        </div>
-      ) : null}
 
       <section
         className="animate-fade-up mt-24"
@@ -305,42 +298,6 @@ function PricingCard({
         >
           {ctaLabel}
         </Link>
-      </div>
-    </article>
-  );
-}
-
-function EnterpriseCard({ plan }: { plan: PricingPlan }) {
-  return (
-    <article
-      className={cn(
-        "relative overflow-hidden rounded-[14px] border border-white/10 bg-bg/65 p-5 text-fg backdrop-blur-2xl",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_36px_-20px_rgba(0,0,0,0.6)]",
-      )}
-    >
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent"
-      />
-      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-        <div className="min-w-0">
-          <div className="flex items-baseline gap-3">
-            <p className="text-[13px] font-medium text-fg">{plan.name}</p>
-            <span className="text-[11.5px] text-fg/55">{cadenceLabel(plan)}</span>
-          </div>
-          <h3 className="mt-2 max-w-[640px] text-[16px] leading-[1.45] text-fg/85">
-            {plan.description}
-          </h3>
-        </div>
-        <a
-          href="mailto:hello@produktive.app?subject=Enterprise%20inquiry"
-          className={cn(
-            "inline-flex h-10 items-center justify-center rounded-[9px] border border-white/15 px-5 text-[12.5px] font-medium text-fg transition-colors",
-            "hover:border-white/30 hover:bg-white/5",
-          )}
-        >
-          Talk to us →
-        </a>
       </div>
     </article>
   );
