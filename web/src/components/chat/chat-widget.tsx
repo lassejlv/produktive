@@ -50,6 +50,7 @@ export function ChatWidget() {
 
   const navigate = useNavigate();
   const session = useSession();
+  const workspaceSlug = session.data?.organization.slug ?? "";
   const userName = session.data?.user?.name ?? null;
   const { chats, prependChat, refresh: refreshChats } = useChats();
 
@@ -257,9 +258,12 @@ export function ChatWidget() {
   const handleOpenInFullChat = () => {
     setOpen(false);
     if (chatId) {
-      void navigate({ to: "/chat/$chatId", params: { chatId } });
+      void navigate({
+        to: "/$workspaceSlug/chat/$chatId",
+        params: { workspaceSlug, chatId },
+      });
     } else {
-      void navigate({ to: "/chat" });
+      void navigate({ to: "/$workspaceSlug/chat", params: { workspaceSlug } });
     }
   };
 

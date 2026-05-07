@@ -22,22 +22,23 @@ import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as LegalTypeRouteImport } from './routes/legal.$type'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as DiscordLinkRouteImport } from './routes/discord.link'
-import { Route as AppWorkspaceRouteImport } from './routes/_app.workspace'
-import { Route as AppProjectsRouteImport } from './routes/_app.projects'
-import { Route as AppNotesRouteImport } from './routes/_app.notes'
-import { Route as AppLabelsRouteImport } from './routes/_app.labels'
-import { Route as AppIssuesRouteImport } from './routes/_app.issues'
-import { Route as AppInboxRouteImport } from './routes/_app.inbox'
-import { Route as AppFavoritesRouteImport } from './routes/_app.favorites'
-import { Route as AppChatsRouteImport } from './routes/_app.chats'
-import { Route as AppChatRouteImport } from './routes/_app.chat'
-import { Route as AppAccountRouteImport } from './routes/_app.account'
-import { Route as AppWorkspaceSettingsRouteImport } from './routes/_app.workspace.settings'
-import { Route as AppProjectsProjectIdRouteImport } from './routes/_app.projects.$projectId'
-import { Route as AppNotesNoteIdRouteImport } from './routes/_app.notes.$noteId'
-import { Route as AppMembersMemberIdRouteImport } from './routes/_app.members.$memberId'
-import { Route as AppIssuesIssueIdRouteImport } from './routes/_app.issues.$issueId'
-import { Route as AppChatChatIdRouteImport } from './routes/_app.chat.$chatId'
+import { Route as AppWorkspaceSlugRouteImport } from './routes/_app.$workspaceSlug'
+import { Route as AppWorkspaceSlugIndexRouteImport } from './routes/_app.$workspaceSlug.index'
+import { Route as AppWorkspaceSlugSettingsRouteImport } from './routes/_app.$workspaceSlug.settings'
+import { Route as AppWorkspaceSlugProjectsRouteImport } from './routes/_app.$workspaceSlug.projects'
+import { Route as AppWorkspaceSlugNotesRouteImport } from './routes/_app.$workspaceSlug.notes'
+import { Route as AppWorkspaceSlugLabelsRouteImport } from './routes/_app.$workspaceSlug.labels'
+import { Route as AppWorkspaceSlugIssuesRouteImport } from './routes/_app.$workspaceSlug.issues'
+import { Route as AppWorkspaceSlugInboxRouteImport } from './routes/_app.$workspaceSlug.inbox'
+import { Route as AppWorkspaceSlugFavoritesRouteImport } from './routes/_app.$workspaceSlug.favorites'
+import { Route as AppWorkspaceSlugChatsRouteImport } from './routes/_app.$workspaceSlug.chats'
+import { Route as AppWorkspaceSlugChatRouteImport } from './routes/_app.$workspaceSlug.chat'
+import { Route as AppWorkspaceSlugAccountRouteImport } from './routes/_app.$workspaceSlug.account'
+import { Route as AppWorkspaceSlugProjectsProjectIdRouteImport } from './routes/_app.$workspaceSlug.projects.$projectId'
+import { Route as AppWorkspaceSlugNotesNoteIdRouteImport } from './routes/_app.$workspaceSlug.notes.$noteId'
+import { Route as AppWorkspaceSlugMembersMemberIdRouteImport } from './routes/_app.$workspaceSlug.members.$memberId'
+import { Route as AppWorkspaceSlugIssuesIssueIdRouteImport } from './routes/_app.$workspaceSlug.issues.$issueId'
+import { Route as AppWorkspaceSlugChatChatIdRouteImport } from './routes/_app.$workspaceSlug.chat.$chatId'
 
 const VerifyEmailRoute = VerifyEmailRouteImport.update({
   id: '/verify-email',
@@ -103,86 +104,99 @@ const DiscordLinkRoute = DiscordLinkRouteImport.update({
   path: '/discord/link',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AppWorkspaceRoute = AppWorkspaceRouteImport.update({
-  id: '/workspace',
-  path: '/workspace',
+const AppWorkspaceSlugRoute = AppWorkspaceSlugRouteImport.update({
+  id: '/$workspaceSlug',
+  path: '/$workspaceSlug',
   getParentRoute: () => AppRoute,
 } as any)
-const AppProjectsRoute = AppProjectsRouteImport.update({
-  id: '/projects',
-  path: '/projects',
-  getParentRoute: () => AppRoute,
+const AppWorkspaceSlugIndexRoute = AppWorkspaceSlugIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppWorkspaceSlugRoute,
 } as any)
-const AppNotesRoute = AppNotesRouteImport.update({
+const AppWorkspaceSlugSettingsRoute =
+  AppWorkspaceSlugSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AppWorkspaceSlugRoute,
+  } as any)
+const AppWorkspaceSlugProjectsRoute =
+  AppWorkspaceSlugProjectsRouteImport.update({
+    id: '/projects',
+    path: '/projects',
+    getParentRoute: () => AppWorkspaceSlugRoute,
+  } as any)
+const AppWorkspaceSlugNotesRoute = AppWorkspaceSlugNotesRouteImport.update({
   id: '/notes',
   path: '/notes',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => AppWorkspaceSlugRoute,
 } as any)
-const AppLabelsRoute = AppLabelsRouteImport.update({
+const AppWorkspaceSlugLabelsRoute = AppWorkspaceSlugLabelsRouteImport.update({
   id: '/labels',
   path: '/labels',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => AppWorkspaceSlugRoute,
 } as any)
-const AppIssuesRoute = AppIssuesRouteImport.update({
+const AppWorkspaceSlugIssuesRoute = AppWorkspaceSlugIssuesRouteImport.update({
   id: '/issues',
   path: '/issues',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => AppWorkspaceSlugRoute,
 } as any)
-const AppInboxRoute = AppInboxRouteImport.update({
+const AppWorkspaceSlugInboxRoute = AppWorkspaceSlugInboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => AppWorkspaceSlugRoute,
 } as any)
-const AppFavoritesRoute = AppFavoritesRouteImport.update({
-  id: '/favorites',
-  path: '/favorites',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppChatsRoute = AppChatsRouteImport.update({
+const AppWorkspaceSlugFavoritesRoute =
+  AppWorkspaceSlugFavoritesRouteImport.update({
+    id: '/favorites',
+    path: '/favorites',
+    getParentRoute: () => AppWorkspaceSlugRoute,
+  } as any)
+const AppWorkspaceSlugChatsRoute = AppWorkspaceSlugChatsRouteImport.update({
   id: '/chats',
   path: '/chats',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => AppWorkspaceSlugRoute,
 } as any)
-const AppChatRoute = AppChatRouteImport.update({
+const AppWorkspaceSlugChatRoute = AppWorkspaceSlugChatRouteImport.update({
   id: '/chat',
   path: '/chat',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => AppWorkspaceSlugRoute,
 } as any)
-const AppAccountRoute = AppAccountRouteImport.update({
+const AppWorkspaceSlugAccountRoute = AppWorkspaceSlugAccountRouteImport.update({
   id: '/account',
   path: '/account',
-  getParentRoute: () => AppRoute,
+  getParentRoute: () => AppWorkspaceSlugRoute,
 } as any)
-const AppWorkspaceSettingsRoute = AppWorkspaceSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => AppWorkspaceRoute,
-} as any)
-const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
-  id: '/$projectId',
-  path: '/$projectId',
-  getParentRoute: () => AppProjectsRoute,
-} as any)
-const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
-  id: '/$noteId',
-  path: '/$noteId',
-  getParentRoute: () => AppNotesRoute,
-} as any)
-const AppMembersMemberIdRoute = AppMembersMemberIdRouteImport.update({
-  id: '/members/$memberId',
-  path: '/members/$memberId',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppIssuesIssueIdRoute = AppIssuesIssueIdRouteImport.update({
-  id: '/$issueId',
-  path: '/$issueId',
-  getParentRoute: () => AppIssuesRoute,
-} as any)
-const AppChatChatIdRoute = AppChatChatIdRouteImport.update({
-  id: '/$chatId',
-  path: '/$chatId',
-  getParentRoute: () => AppChatRoute,
-} as any)
+const AppWorkspaceSlugProjectsProjectIdRoute =
+  AppWorkspaceSlugProjectsProjectIdRouteImport.update({
+    id: '/$projectId',
+    path: '/$projectId',
+    getParentRoute: () => AppWorkspaceSlugProjectsRoute,
+  } as any)
+const AppWorkspaceSlugNotesNoteIdRoute =
+  AppWorkspaceSlugNotesNoteIdRouteImport.update({
+    id: '/$noteId',
+    path: '/$noteId',
+    getParentRoute: () => AppWorkspaceSlugNotesRoute,
+  } as any)
+const AppWorkspaceSlugMembersMemberIdRoute =
+  AppWorkspaceSlugMembersMemberIdRouteImport.update({
+    id: '/members/$memberId',
+    path: '/members/$memberId',
+    getParentRoute: () => AppWorkspaceSlugRoute,
+  } as any)
+const AppWorkspaceSlugIssuesIssueIdRoute =
+  AppWorkspaceSlugIssuesIssueIdRouteImport.update({
+    id: '/$issueId',
+    path: '/$issueId',
+    getParentRoute: () => AppWorkspaceSlugIssuesRoute,
+  } as any)
+const AppWorkspaceSlugChatChatIdRoute =
+  AppWorkspaceSlugChatChatIdRouteImport.update({
+    id: '/$chatId',
+    path: '/$chatId',
+    getParentRoute: () => AppWorkspaceSlugChatRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -192,27 +206,28 @@ export interface FileRoutesByFullPath {
   '/pricing': typeof PricingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/verify-email': typeof VerifyEmailRoute
-  '/account': typeof AppAccountRoute
-  '/chat': typeof AppChatRouteWithChildren
-  '/chats': typeof AppChatsRoute
-  '/favorites': typeof AppFavoritesRoute
-  '/inbox': typeof AppInboxRoute
-  '/issues': typeof AppIssuesRouteWithChildren
-  '/labels': typeof AppLabelsRoute
-  '/notes': typeof AppNotesRouteWithChildren
-  '/projects': typeof AppProjectsRouteWithChildren
-  '/workspace': typeof AppWorkspaceRouteWithChildren
+  '/$workspaceSlug': typeof AppWorkspaceSlugRouteWithChildren
   '/discord/link': typeof DiscordLinkRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$type': typeof LegalTypeRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/slack/link': typeof SlackLinkRoute
-  '/chat/$chatId': typeof AppChatChatIdRoute
-  '/issues/$issueId': typeof AppIssuesIssueIdRoute
-  '/members/$memberId': typeof AppMembersMemberIdRoute
-  '/notes/$noteId': typeof AppNotesNoteIdRoute
-  '/projects/$projectId': typeof AppProjectsProjectIdRoute
-  '/workspace/settings': typeof AppWorkspaceSettingsRoute
+  '/$workspaceSlug/account': typeof AppWorkspaceSlugAccountRoute
+  '/$workspaceSlug/chat': typeof AppWorkspaceSlugChatRouteWithChildren
+  '/$workspaceSlug/chats': typeof AppWorkspaceSlugChatsRoute
+  '/$workspaceSlug/favorites': typeof AppWorkspaceSlugFavoritesRoute
+  '/$workspaceSlug/inbox': typeof AppWorkspaceSlugInboxRoute
+  '/$workspaceSlug/issues': typeof AppWorkspaceSlugIssuesRouteWithChildren
+  '/$workspaceSlug/labels': typeof AppWorkspaceSlugLabelsRoute
+  '/$workspaceSlug/notes': typeof AppWorkspaceSlugNotesRouteWithChildren
+  '/$workspaceSlug/projects': typeof AppWorkspaceSlugProjectsRouteWithChildren
+  '/$workspaceSlug/settings': typeof AppWorkspaceSlugSettingsRoute
+  '/$workspaceSlug/': typeof AppWorkspaceSlugIndexRoute
+  '/$workspaceSlug/chat/$chatId': typeof AppWorkspaceSlugChatChatIdRoute
+  '/$workspaceSlug/issues/$issueId': typeof AppWorkspaceSlugIssuesIssueIdRoute
+  '/$workspaceSlug/members/$memberId': typeof AppWorkspaceSlugMembersMemberIdRoute
+  '/$workspaceSlug/notes/$noteId': typeof AppWorkspaceSlugNotesNoteIdRoute
+  '/$workspaceSlug/projects/$projectId': typeof AppWorkspaceSlugProjectsProjectIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -222,27 +237,27 @@ export interface FileRoutesByTo {
   '/pricing': typeof PricingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/verify-email': typeof VerifyEmailRoute
-  '/account': typeof AppAccountRoute
-  '/chat': typeof AppChatRouteWithChildren
-  '/chats': typeof AppChatsRoute
-  '/favorites': typeof AppFavoritesRoute
-  '/inbox': typeof AppInboxRoute
-  '/issues': typeof AppIssuesRouteWithChildren
-  '/labels': typeof AppLabelsRoute
-  '/notes': typeof AppNotesRouteWithChildren
-  '/projects': typeof AppProjectsRouteWithChildren
-  '/workspace': typeof AppWorkspaceRouteWithChildren
   '/discord/link': typeof DiscordLinkRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$type': typeof LegalTypeRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/slack/link': typeof SlackLinkRoute
-  '/chat/$chatId': typeof AppChatChatIdRoute
-  '/issues/$issueId': typeof AppIssuesIssueIdRoute
-  '/members/$memberId': typeof AppMembersMemberIdRoute
-  '/notes/$noteId': typeof AppNotesNoteIdRoute
-  '/projects/$projectId': typeof AppProjectsProjectIdRoute
-  '/workspace/settings': typeof AppWorkspaceSettingsRoute
+  '/$workspaceSlug/account': typeof AppWorkspaceSlugAccountRoute
+  '/$workspaceSlug/chat': typeof AppWorkspaceSlugChatRouteWithChildren
+  '/$workspaceSlug/chats': typeof AppWorkspaceSlugChatsRoute
+  '/$workspaceSlug/favorites': typeof AppWorkspaceSlugFavoritesRoute
+  '/$workspaceSlug/inbox': typeof AppWorkspaceSlugInboxRoute
+  '/$workspaceSlug/issues': typeof AppWorkspaceSlugIssuesRouteWithChildren
+  '/$workspaceSlug/labels': typeof AppWorkspaceSlugLabelsRoute
+  '/$workspaceSlug/notes': typeof AppWorkspaceSlugNotesRouteWithChildren
+  '/$workspaceSlug/projects': typeof AppWorkspaceSlugProjectsRouteWithChildren
+  '/$workspaceSlug/settings': typeof AppWorkspaceSlugSettingsRoute
+  '/$workspaceSlug': typeof AppWorkspaceSlugIndexRoute
+  '/$workspaceSlug/chat/$chatId': typeof AppWorkspaceSlugChatChatIdRoute
+  '/$workspaceSlug/issues/$issueId': typeof AppWorkspaceSlugIssuesIssueIdRoute
+  '/$workspaceSlug/members/$memberId': typeof AppWorkspaceSlugMembersMemberIdRoute
+  '/$workspaceSlug/notes/$noteId': typeof AppWorkspaceSlugNotesNoteIdRoute
+  '/$workspaceSlug/projects/$projectId': typeof AppWorkspaceSlugProjectsProjectIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -254,27 +269,28 @@ export interface FileRoutesById {
   '/pricing': typeof PricingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/verify-email': typeof VerifyEmailRoute
-  '/_app/account': typeof AppAccountRoute
-  '/_app/chat': typeof AppChatRouteWithChildren
-  '/_app/chats': typeof AppChatsRoute
-  '/_app/favorites': typeof AppFavoritesRoute
-  '/_app/inbox': typeof AppInboxRoute
-  '/_app/issues': typeof AppIssuesRouteWithChildren
-  '/_app/labels': typeof AppLabelsRoute
-  '/_app/notes': typeof AppNotesRouteWithChildren
-  '/_app/projects': typeof AppProjectsRouteWithChildren
-  '/_app/workspace': typeof AppWorkspaceRouteWithChildren
+  '/_app/$workspaceSlug': typeof AppWorkspaceSlugRouteWithChildren
   '/discord/link': typeof DiscordLinkRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$type': typeof LegalTypeRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/slack/link': typeof SlackLinkRoute
-  '/_app/chat/$chatId': typeof AppChatChatIdRoute
-  '/_app/issues/$issueId': typeof AppIssuesIssueIdRoute
-  '/_app/members/$memberId': typeof AppMembersMemberIdRoute
-  '/_app/notes/$noteId': typeof AppNotesNoteIdRoute
-  '/_app/projects/$projectId': typeof AppProjectsProjectIdRoute
-  '/_app/workspace/settings': typeof AppWorkspaceSettingsRoute
+  '/_app/$workspaceSlug/account': typeof AppWorkspaceSlugAccountRoute
+  '/_app/$workspaceSlug/chat': typeof AppWorkspaceSlugChatRouteWithChildren
+  '/_app/$workspaceSlug/chats': typeof AppWorkspaceSlugChatsRoute
+  '/_app/$workspaceSlug/favorites': typeof AppWorkspaceSlugFavoritesRoute
+  '/_app/$workspaceSlug/inbox': typeof AppWorkspaceSlugInboxRoute
+  '/_app/$workspaceSlug/issues': typeof AppWorkspaceSlugIssuesRouteWithChildren
+  '/_app/$workspaceSlug/labels': typeof AppWorkspaceSlugLabelsRoute
+  '/_app/$workspaceSlug/notes': typeof AppWorkspaceSlugNotesRouteWithChildren
+  '/_app/$workspaceSlug/projects': typeof AppWorkspaceSlugProjectsRouteWithChildren
+  '/_app/$workspaceSlug/settings': typeof AppWorkspaceSlugSettingsRoute
+  '/_app/$workspaceSlug/': typeof AppWorkspaceSlugIndexRoute
+  '/_app/$workspaceSlug/chat/$chatId': typeof AppWorkspaceSlugChatChatIdRoute
+  '/_app/$workspaceSlug/issues/$issueId': typeof AppWorkspaceSlugIssuesIssueIdRoute
+  '/_app/$workspaceSlug/members/$memberId': typeof AppWorkspaceSlugMembersMemberIdRoute
+  '/_app/$workspaceSlug/notes/$noteId': typeof AppWorkspaceSlugNotesNoteIdRoute
+  '/_app/$workspaceSlug/projects/$projectId': typeof AppWorkspaceSlugProjectsProjectIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -286,27 +302,28 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/reset-password'
     | '/verify-email'
-    | '/account'
-    | '/chat'
-    | '/chats'
-    | '/favorites'
-    | '/inbox'
-    | '/issues'
-    | '/labels'
-    | '/notes'
-    | '/projects'
-    | '/workspace'
+    | '/$workspaceSlug'
     | '/discord/link'
     | '/invite/$token'
     | '/legal/$type'
     | '/oauth/authorize'
     | '/slack/link'
-    | '/chat/$chatId'
-    | '/issues/$issueId'
-    | '/members/$memberId'
-    | '/notes/$noteId'
-    | '/projects/$projectId'
-    | '/workspace/settings'
+    | '/$workspaceSlug/account'
+    | '/$workspaceSlug/chat'
+    | '/$workspaceSlug/chats'
+    | '/$workspaceSlug/favorites'
+    | '/$workspaceSlug/inbox'
+    | '/$workspaceSlug/issues'
+    | '/$workspaceSlug/labels'
+    | '/$workspaceSlug/notes'
+    | '/$workspaceSlug/projects'
+    | '/$workspaceSlug/settings'
+    | '/$workspaceSlug/'
+    | '/$workspaceSlug/chat/$chatId'
+    | '/$workspaceSlug/issues/$issueId'
+    | '/$workspaceSlug/members/$memberId'
+    | '/$workspaceSlug/notes/$noteId'
+    | '/$workspaceSlug/projects/$projectId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -316,27 +333,27 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/reset-password'
     | '/verify-email'
-    | '/account'
-    | '/chat'
-    | '/chats'
-    | '/favorites'
-    | '/inbox'
-    | '/issues'
-    | '/labels'
-    | '/notes'
-    | '/projects'
-    | '/workspace'
     | '/discord/link'
     | '/invite/$token'
     | '/legal/$type'
     | '/oauth/authorize'
     | '/slack/link'
-    | '/chat/$chatId'
-    | '/issues/$issueId'
-    | '/members/$memberId'
-    | '/notes/$noteId'
-    | '/projects/$projectId'
-    | '/workspace/settings'
+    | '/$workspaceSlug/account'
+    | '/$workspaceSlug/chat'
+    | '/$workspaceSlug/chats'
+    | '/$workspaceSlug/favorites'
+    | '/$workspaceSlug/inbox'
+    | '/$workspaceSlug/issues'
+    | '/$workspaceSlug/labels'
+    | '/$workspaceSlug/notes'
+    | '/$workspaceSlug/projects'
+    | '/$workspaceSlug/settings'
+    | '/$workspaceSlug'
+    | '/$workspaceSlug/chat/$chatId'
+    | '/$workspaceSlug/issues/$issueId'
+    | '/$workspaceSlug/members/$memberId'
+    | '/$workspaceSlug/notes/$noteId'
+    | '/$workspaceSlug/projects/$projectId'
   id:
     | '__root__'
     | '/'
@@ -347,27 +364,28 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/reset-password'
     | '/verify-email'
-    | '/_app/account'
-    | '/_app/chat'
-    | '/_app/chats'
-    | '/_app/favorites'
-    | '/_app/inbox'
-    | '/_app/issues'
-    | '/_app/labels'
-    | '/_app/notes'
-    | '/_app/projects'
-    | '/_app/workspace'
+    | '/_app/$workspaceSlug'
     | '/discord/link'
     | '/invite/$token'
     | '/legal/$type'
     | '/oauth/authorize'
     | '/slack/link'
-    | '/_app/chat/$chatId'
-    | '/_app/issues/$issueId'
-    | '/_app/members/$memberId'
-    | '/_app/notes/$noteId'
-    | '/_app/projects/$projectId'
-    | '/_app/workspace/settings'
+    | '/_app/$workspaceSlug/account'
+    | '/_app/$workspaceSlug/chat'
+    | '/_app/$workspaceSlug/chats'
+    | '/_app/$workspaceSlug/favorites'
+    | '/_app/$workspaceSlug/inbox'
+    | '/_app/$workspaceSlug/issues'
+    | '/_app/$workspaceSlug/labels'
+    | '/_app/$workspaceSlug/notes'
+    | '/_app/$workspaceSlug/projects'
+    | '/_app/$workspaceSlug/settings'
+    | '/_app/$workspaceSlug/'
+    | '/_app/$workspaceSlug/chat/$chatId'
+    | '/_app/$workspaceSlug/issues/$issueId'
+    | '/_app/$workspaceSlug/members/$memberId'
+    | '/_app/$workspaceSlug/notes/$noteId'
+    | '/_app/$workspaceSlug/projects/$projectId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -478,206 +496,220 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DiscordLinkRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_app/workspace': {
-      id: '/_app/workspace'
-      path: '/workspace'
-      fullPath: '/workspace'
-      preLoaderRoute: typeof AppWorkspaceRouteImport
+    '/_app/$workspaceSlug': {
+      id: '/_app/$workspaceSlug'
+      path: '/$workspaceSlug'
+      fullPath: '/$workspaceSlug'
+      preLoaderRoute: typeof AppWorkspaceSlugRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/projects': {
-      id: '/_app/projects'
-      path: '/projects'
-      fullPath: '/projects'
-      preLoaderRoute: typeof AppProjectsRouteImport
-      parentRoute: typeof AppRoute
+    '/_app/$workspaceSlug/': {
+      id: '/_app/$workspaceSlug/'
+      path: '/'
+      fullPath: '/$workspaceSlug/'
+      preLoaderRoute: typeof AppWorkspaceSlugIndexRouteImport
+      parentRoute: typeof AppWorkspaceSlugRoute
     }
-    '/_app/notes': {
-      id: '/_app/notes'
-      path: '/notes'
-      fullPath: '/notes'
-      preLoaderRoute: typeof AppNotesRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/labels': {
-      id: '/_app/labels'
-      path: '/labels'
-      fullPath: '/labels'
-      preLoaderRoute: typeof AppLabelsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/issues': {
-      id: '/_app/issues'
-      path: '/issues'
-      fullPath: '/issues'
-      preLoaderRoute: typeof AppIssuesRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/inbox': {
-      id: '/_app/inbox'
-      path: '/inbox'
-      fullPath: '/inbox'
-      preLoaderRoute: typeof AppInboxRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/favorites': {
-      id: '/_app/favorites'
-      path: '/favorites'
-      fullPath: '/favorites'
-      preLoaderRoute: typeof AppFavoritesRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/chats': {
-      id: '/_app/chats'
-      path: '/chats'
-      fullPath: '/chats'
-      preLoaderRoute: typeof AppChatsRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/chat': {
-      id: '/_app/chat'
-      path: '/chat'
-      fullPath: '/chat'
-      preLoaderRoute: typeof AppChatRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/account': {
-      id: '/_app/account'
-      path: '/account'
-      fullPath: '/account'
-      preLoaderRoute: typeof AppAccountRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/workspace/settings': {
-      id: '/_app/workspace/settings'
+    '/_app/$workspaceSlug/settings': {
+      id: '/_app/$workspaceSlug/settings'
       path: '/settings'
-      fullPath: '/workspace/settings'
-      preLoaderRoute: typeof AppWorkspaceSettingsRouteImport
-      parentRoute: typeof AppWorkspaceRoute
+      fullPath: '/$workspaceSlug/settings'
+      preLoaderRoute: typeof AppWorkspaceSlugSettingsRouteImport
+      parentRoute: typeof AppWorkspaceSlugRoute
     }
-    '/_app/projects/$projectId': {
-      id: '/_app/projects/$projectId'
+    '/_app/$workspaceSlug/projects': {
+      id: '/_app/$workspaceSlug/projects'
+      path: '/projects'
+      fullPath: '/$workspaceSlug/projects'
+      preLoaderRoute: typeof AppWorkspaceSlugProjectsRouteImport
+      parentRoute: typeof AppWorkspaceSlugRoute
+    }
+    '/_app/$workspaceSlug/notes': {
+      id: '/_app/$workspaceSlug/notes'
+      path: '/notes'
+      fullPath: '/$workspaceSlug/notes'
+      preLoaderRoute: typeof AppWorkspaceSlugNotesRouteImport
+      parentRoute: typeof AppWorkspaceSlugRoute
+    }
+    '/_app/$workspaceSlug/labels': {
+      id: '/_app/$workspaceSlug/labels'
+      path: '/labels'
+      fullPath: '/$workspaceSlug/labels'
+      preLoaderRoute: typeof AppWorkspaceSlugLabelsRouteImport
+      parentRoute: typeof AppWorkspaceSlugRoute
+    }
+    '/_app/$workspaceSlug/issues': {
+      id: '/_app/$workspaceSlug/issues'
+      path: '/issues'
+      fullPath: '/$workspaceSlug/issues'
+      preLoaderRoute: typeof AppWorkspaceSlugIssuesRouteImport
+      parentRoute: typeof AppWorkspaceSlugRoute
+    }
+    '/_app/$workspaceSlug/inbox': {
+      id: '/_app/$workspaceSlug/inbox'
+      path: '/inbox'
+      fullPath: '/$workspaceSlug/inbox'
+      preLoaderRoute: typeof AppWorkspaceSlugInboxRouteImport
+      parentRoute: typeof AppWorkspaceSlugRoute
+    }
+    '/_app/$workspaceSlug/favorites': {
+      id: '/_app/$workspaceSlug/favorites'
+      path: '/favorites'
+      fullPath: '/$workspaceSlug/favorites'
+      preLoaderRoute: typeof AppWorkspaceSlugFavoritesRouteImport
+      parentRoute: typeof AppWorkspaceSlugRoute
+    }
+    '/_app/$workspaceSlug/chats': {
+      id: '/_app/$workspaceSlug/chats'
+      path: '/chats'
+      fullPath: '/$workspaceSlug/chats'
+      preLoaderRoute: typeof AppWorkspaceSlugChatsRouteImport
+      parentRoute: typeof AppWorkspaceSlugRoute
+    }
+    '/_app/$workspaceSlug/chat': {
+      id: '/_app/$workspaceSlug/chat'
+      path: '/chat'
+      fullPath: '/$workspaceSlug/chat'
+      preLoaderRoute: typeof AppWorkspaceSlugChatRouteImport
+      parentRoute: typeof AppWorkspaceSlugRoute
+    }
+    '/_app/$workspaceSlug/account': {
+      id: '/_app/$workspaceSlug/account'
+      path: '/account'
+      fullPath: '/$workspaceSlug/account'
+      preLoaderRoute: typeof AppWorkspaceSlugAccountRouteImport
+      parentRoute: typeof AppWorkspaceSlugRoute
+    }
+    '/_app/$workspaceSlug/projects/$projectId': {
+      id: '/_app/$workspaceSlug/projects/$projectId'
       path: '/$projectId'
-      fullPath: '/projects/$projectId'
-      preLoaderRoute: typeof AppProjectsProjectIdRouteImport
-      parentRoute: typeof AppProjectsRoute
+      fullPath: '/$workspaceSlug/projects/$projectId'
+      preLoaderRoute: typeof AppWorkspaceSlugProjectsProjectIdRouteImport
+      parentRoute: typeof AppWorkspaceSlugProjectsRoute
     }
-    '/_app/notes/$noteId': {
-      id: '/_app/notes/$noteId'
+    '/_app/$workspaceSlug/notes/$noteId': {
+      id: '/_app/$workspaceSlug/notes/$noteId'
       path: '/$noteId'
-      fullPath: '/notes/$noteId'
-      preLoaderRoute: typeof AppNotesNoteIdRouteImport
-      parentRoute: typeof AppNotesRoute
+      fullPath: '/$workspaceSlug/notes/$noteId'
+      preLoaderRoute: typeof AppWorkspaceSlugNotesNoteIdRouteImport
+      parentRoute: typeof AppWorkspaceSlugNotesRoute
     }
-    '/_app/members/$memberId': {
-      id: '/_app/members/$memberId'
+    '/_app/$workspaceSlug/members/$memberId': {
+      id: '/_app/$workspaceSlug/members/$memberId'
       path: '/members/$memberId'
-      fullPath: '/members/$memberId'
-      preLoaderRoute: typeof AppMembersMemberIdRouteImport
-      parentRoute: typeof AppRoute
+      fullPath: '/$workspaceSlug/members/$memberId'
+      preLoaderRoute: typeof AppWorkspaceSlugMembersMemberIdRouteImport
+      parentRoute: typeof AppWorkspaceSlugRoute
     }
-    '/_app/issues/$issueId': {
-      id: '/_app/issues/$issueId'
+    '/_app/$workspaceSlug/issues/$issueId': {
+      id: '/_app/$workspaceSlug/issues/$issueId'
       path: '/$issueId'
-      fullPath: '/issues/$issueId'
-      preLoaderRoute: typeof AppIssuesIssueIdRouteImport
-      parentRoute: typeof AppIssuesRoute
+      fullPath: '/$workspaceSlug/issues/$issueId'
+      preLoaderRoute: typeof AppWorkspaceSlugIssuesIssueIdRouteImport
+      parentRoute: typeof AppWorkspaceSlugIssuesRoute
     }
-    '/_app/chat/$chatId': {
-      id: '/_app/chat/$chatId'
+    '/_app/$workspaceSlug/chat/$chatId': {
+      id: '/_app/$workspaceSlug/chat/$chatId'
       path: '/$chatId'
-      fullPath: '/chat/$chatId'
-      preLoaderRoute: typeof AppChatChatIdRouteImport
-      parentRoute: typeof AppChatRoute
+      fullPath: '/$workspaceSlug/chat/$chatId'
+      preLoaderRoute: typeof AppWorkspaceSlugChatChatIdRouteImport
+      parentRoute: typeof AppWorkspaceSlugChatRoute
     }
   }
 }
 
-interface AppChatRouteChildren {
-  AppChatChatIdRoute: typeof AppChatChatIdRoute
+interface AppWorkspaceSlugChatRouteChildren {
+  AppWorkspaceSlugChatChatIdRoute: typeof AppWorkspaceSlugChatChatIdRoute
 }
 
-const AppChatRouteChildren: AppChatRouteChildren = {
-  AppChatChatIdRoute: AppChatChatIdRoute,
+const AppWorkspaceSlugChatRouteChildren: AppWorkspaceSlugChatRouteChildren = {
+  AppWorkspaceSlugChatChatIdRoute: AppWorkspaceSlugChatChatIdRoute,
 }
 
-const AppChatRouteWithChildren =
-  AppChatRoute._addFileChildren(AppChatRouteChildren)
+const AppWorkspaceSlugChatRouteWithChildren =
+  AppWorkspaceSlugChatRoute._addFileChildren(AppWorkspaceSlugChatRouteChildren)
 
-interface AppIssuesRouteChildren {
-  AppIssuesIssueIdRoute: typeof AppIssuesIssueIdRoute
+interface AppWorkspaceSlugIssuesRouteChildren {
+  AppWorkspaceSlugIssuesIssueIdRoute: typeof AppWorkspaceSlugIssuesIssueIdRoute
 }
 
-const AppIssuesRouteChildren: AppIssuesRouteChildren = {
-  AppIssuesIssueIdRoute: AppIssuesIssueIdRoute,
+const AppWorkspaceSlugIssuesRouteChildren: AppWorkspaceSlugIssuesRouteChildren =
+  {
+    AppWorkspaceSlugIssuesIssueIdRoute: AppWorkspaceSlugIssuesIssueIdRoute,
+  }
+
+const AppWorkspaceSlugIssuesRouteWithChildren =
+  AppWorkspaceSlugIssuesRoute._addFileChildren(
+    AppWorkspaceSlugIssuesRouteChildren,
+  )
+
+interface AppWorkspaceSlugNotesRouteChildren {
+  AppWorkspaceSlugNotesNoteIdRoute: typeof AppWorkspaceSlugNotesNoteIdRoute
 }
 
-const AppIssuesRouteWithChildren = AppIssuesRoute._addFileChildren(
-  AppIssuesRouteChildren,
-)
-
-interface AppNotesRouteChildren {
-  AppNotesNoteIdRoute: typeof AppNotesNoteIdRoute
+const AppWorkspaceSlugNotesRouteChildren: AppWorkspaceSlugNotesRouteChildren = {
+  AppWorkspaceSlugNotesNoteIdRoute: AppWorkspaceSlugNotesNoteIdRoute,
 }
 
-const AppNotesRouteChildren: AppNotesRouteChildren = {
-  AppNotesNoteIdRoute: AppNotesNoteIdRoute,
+const AppWorkspaceSlugNotesRouteWithChildren =
+  AppWorkspaceSlugNotesRoute._addFileChildren(
+    AppWorkspaceSlugNotesRouteChildren,
+  )
+
+interface AppWorkspaceSlugProjectsRouteChildren {
+  AppWorkspaceSlugProjectsProjectIdRoute: typeof AppWorkspaceSlugProjectsProjectIdRoute
 }
 
-const AppNotesRouteWithChildren = AppNotesRoute._addFileChildren(
-  AppNotesRouteChildren,
-)
+const AppWorkspaceSlugProjectsRouteChildren: AppWorkspaceSlugProjectsRouteChildren =
+  {
+    AppWorkspaceSlugProjectsProjectIdRoute:
+      AppWorkspaceSlugProjectsProjectIdRoute,
+  }
 
-interface AppProjectsRouteChildren {
-  AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRoute
+const AppWorkspaceSlugProjectsRouteWithChildren =
+  AppWorkspaceSlugProjectsRoute._addFileChildren(
+    AppWorkspaceSlugProjectsRouteChildren,
+  )
+
+interface AppWorkspaceSlugRouteChildren {
+  AppWorkspaceSlugAccountRoute: typeof AppWorkspaceSlugAccountRoute
+  AppWorkspaceSlugChatRoute: typeof AppWorkspaceSlugChatRouteWithChildren
+  AppWorkspaceSlugChatsRoute: typeof AppWorkspaceSlugChatsRoute
+  AppWorkspaceSlugFavoritesRoute: typeof AppWorkspaceSlugFavoritesRoute
+  AppWorkspaceSlugInboxRoute: typeof AppWorkspaceSlugInboxRoute
+  AppWorkspaceSlugIssuesRoute: typeof AppWorkspaceSlugIssuesRouteWithChildren
+  AppWorkspaceSlugLabelsRoute: typeof AppWorkspaceSlugLabelsRoute
+  AppWorkspaceSlugNotesRoute: typeof AppWorkspaceSlugNotesRouteWithChildren
+  AppWorkspaceSlugProjectsRoute: typeof AppWorkspaceSlugProjectsRouteWithChildren
+  AppWorkspaceSlugSettingsRoute: typeof AppWorkspaceSlugSettingsRoute
+  AppWorkspaceSlugIndexRoute: typeof AppWorkspaceSlugIndexRoute
+  AppWorkspaceSlugMembersMemberIdRoute: typeof AppWorkspaceSlugMembersMemberIdRoute
 }
 
-const AppProjectsRouteChildren: AppProjectsRouteChildren = {
-  AppProjectsProjectIdRoute: AppProjectsProjectIdRoute,
+const AppWorkspaceSlugRouteChildren: AppWorkspaceSlugRouteChildren = {
+  AppWorkspaceSlugAccountRoute: AppWorkspaceSlugAccountRoute,
+  AppWorkspaceSlugChatRoute: AppWorkspaceSlugChatRouteWithChildren,
+  AppWorkspaceSlugChatsRoute: AppWorkspaceSlugChatsRoute,
+  AppWorkspaceSlugFavoritesRoute: AppWorkspaceSlugFavoritesRoute,
+  AppWorkspaceSlugInboxRoute: AppWorkspaceSlugInboxRoute,
+  AppWorkspaceSlugIssuesRoute: AppWorkspaceSlugIssuesRouteWithChildren,
+  AppWorkspaceSlugLabelsRoute: AppWorkspaceSlugLabelsRoute,
+  AppWorkspaceSlugNotesRoute: AppWorkspaceSlugNotesRouteWithChildren,
+  AppWorkspaceSlugProjectsRoute: AppWorkspaceSlugProjectsRouteWithChildren,
+  AppWorkspaceSlugSettingsRoute: AppWorkspaceSlugSettingsRoute,
+  AppWorkspaceSlugIndexRoute: AppWorkspaceSlugIndexRoute,
+  AppWorkspaceSlugMembersMemberIdRoute: AppWorkspaceSlugMembersMemberIdRoute,
 }
 
-const AppProjectsRouteWithChildren = AppProjectsRoute._addFileChildren(
-  AppProjectsRouteChildren,
-)
-
-interface AppWorkspaceRouteChildren {
-  AppWorkspaceSettingsRoute: typeof AppWorkspaceSettingsRoute
-}
-
-const AppWorkspaceRouteChildren: AppWorkspaceRouteChildren = {
-  AppWorkspaceSettingsRoute: AppWorkspaceSettingsRoute,
-}
-
-const AppWorkspaceRouteWithChildren = AppWorkspaceRoute._addFileChildren(
-  AppWorkspaceRouteChildren,
-)
+const AppWorkspaceSlugRouteWithChildren =
+  AppWorkspaceSlugRoute._addFileChildren(AppWorkspaceSlugRouteChildren)
 
 interface AppRouteChildren {
-  AppAccountRoute: typeof AppAccountRoute
-  AppChatRoute: typeof AppChatRouteWithChildren
-  AppChatsRoute: typeof AppChatsRoute
-  AppFavoritesRoute: typeof AppFavoritesRoute
-  AppInboxRoute: typeof AppInboxRoute
-  AppIssuesRoute: typeof AppIssuesRouteWithChildren
-  AppLabelsRoute: typeof AppLabelsRoute
-  AppNotesRoute: typeof AppNotesRouteWithChildren
-  AppProjectsRoute: typeof AppProjectsRouteWithChildren
-  AppWorkspaceRoute: typeof AppWorkspaceRouteWithChildren
-  AppMembersMemberIdRoute: typeof AppMembersMemberIdRoute
+  AppWorkspaceSlugRoute: typeof AppWorkspaceSlugRouteWithChildren
 }
 
 const AppRouteChildren: AppRouteChildren = {
-  AppAccountRoute: AppAccountRoute,
-  AppChatRoute: AppChatRouteWithChildren,
-  AppChatsRoute: AppChatsRoute,
-  AppFavoritesRoute: AppFavoritesRoute,
-  AppInboxRoute: AppInboxRoute,
-  AppIssuesRoute: AppIssuesRouteWithChildren,
-  AppLabelsRoute: AppLabelsRoute,
-  AppNotesRoute: AppNotesRouteWithChildren,
-  AppProjectsRoute: AppProjectsRouteWithChildren,
-  AppWorkspaceRoute: AppWorkspaceRouteWithChildren,
-  AppMembersMemberIdRoute: AppMembersMemberIdRoute,
+  AppWorkspaceSlugRoute: AppWorkspaceSlugRouteWithChildren,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

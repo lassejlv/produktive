@@ -195,7 +195,7 @@ function Body({
             Sign out
           </button>
           <Link
-            to="/issues"
+            to="/"
             className="inline-flex h-10 items-center justify-center rounded-md border border-border-subtle bg-transparent px-4 text-[13px] text-fg-muted transition-colors hover:border-border hover:text-fg"
           >
             Back to my workspace

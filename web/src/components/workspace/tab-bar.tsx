@@ -13,6 +13,7 @@ import { useProjectsQuery } from "@/lib/queries/projects";
 import { findStaticPage, type StaticPageGlyph } from "@/lib/tab-pages";
 import { useTabs } from "@/lib/use-tabs";
 import { type WorkspaceTab } from "@/lib/api";
+import { useWorkspaceSlug } from "@/lib/use-workspace-slug";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -27,6 +28,7 @@ type Position = { x: number; y: number };
 export function TabBar({ enabled }: Props) {
   const { tabs, close } = useTabs();
   const navigate = useNavigate();
+  const workspaceSlug = useWorkspaceSlug();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -155,21 +157,21 @@ export function TabBar({ enabled }: Props) {
             onSelect={() => {
               if (tab.tabType === "issue") {
                 void navigate({
-                  to: "/issues/$issueId",
-                  params: { issueId: tab.targetId },
+                  to: "/$workspaceSlug/issues/$issueId",
+                  params: { workspaceSlug, issueId: tab.targetId },
                 });
               } else if (tab.tabType === "project") {
                 void navigate({
-                  to: "/projects/$projectId",
-                  params: { projectId: tab.targetId },
+                  to: "/$workspaceSlug/projects/$projectId",
+                  params: { workspaceSlug, projectId: tab.targetId },
                 });
               } else if (tab.tabType === "chat") {
                 void navigate({
-                  to: "/chat/$chatId",
-                  params: { chatId: tab.targetId },
+                  to: "/$workspaceSlug/chat/$chatId",
+                  params: { workspaceSlug, chatId: tab.targetId },
                 });
               } else if (tab.tabType === "page") {
-                void navigateToPage(navigate, tab.targetId);
+                void navigateToPage(navigate, workspaceSlug, tab.targetId);
               }
             }}
             onClose={() => close(tab.id)}
@@ -285,24 +287,30 @@ function GridGlyph() {
   );
 }
 
-function navigateToPage(navigate: ReturnType<typeof useNavigate>, path: string): Promise<void> {
+function navigateToPage(
+  navigate: ReturnType<typeof useNavigate>,
+  workspaceSlug: string,
+  path: string,
+): Promise<void> {
   switch (path) {
+    case "/":
     case "/workspace":
-      return navigate({ to: "/workspace" });
+      return navigate({ to: "/$workspaceSlug", params: { workspaceSlug } });
     case "/issues":
-      return navigate({ to: "/issues" });
+      return navigate({ to: "/$workspaceSlug/issues", params: { workspaceSlug } });
     case "/projects":
-      return navigate({ to: "/projects" });
+      return navigate({ to: "/$workspaceSlug/projects", params: { workspaceSlug } });
     case "/inbox":
-      return navigate({ to: "/inbox" });
+      return navigate({ to: "/$workspaceSlug/inbox", params: { workspaceSlug } });
     case "/notes":
-      return navigate({ to: "/notes" });
+      return navigate({ to: "/$workspaceSlug/notes", params: { workspaceSlug } });
     case "/labels":
-      return navigate({ to: "/labels" });
+      return navigate({ to: "/$workspaceSlug/labels", params: { workspaceSlug } });
     case "/account":
-      return navigate({ to: "/account" });
+      return navigate({ to: "/$workspaceSlug/account", params: { workspaceSlug } });
+    case "/settings":
     case "/workspace/settings":
-      return navigate({ to: "/workspace/settings" });
+      return navigate({ to: "/$workspaceSlug/settings", params: { workspaceSlug } });
     default:
       return Promise.resolve();
   }

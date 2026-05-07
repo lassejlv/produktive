@@ -37,7 +37,7 @@ import { type ThemeName, THEMES, applyTheme, readStoredTheme } from "@/lib/theme
 import { useUserPreferences } from "@/lib/use-user-preferences";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/_app/account")({
+export const Route = createFileRoute("/_app/$workspaceSlug/account")({
   component: AccountPage,
 });
 
@@ -176,10 +176,12 @@ function AccountPage() {
     }
   }, []);
 
+  const { workspaceSlug } = Route.useParams();
   const onSelectSection = (id: AccountSectionId) => {
     setActiveSection(id);
     void navigate({
-      to: "/account",
+      to: "/$workspaceSlug/account",
+      params: { workspaceSlug },
       search: {
         section: id,
         ...(enforcementRequired ? { twoFactorRequired: "1" } : {}),
@@ -194,7 +196,7 @@ function AccountPage() {
       window.history.back();
       return;
     }
-    void navigate({ to: "/issues" });
+    void navigate({ to: "/$workspaceSlug/issues", params: { workspaceSlug } });
   };
 
   const canDelete = !!user && confirm.trim() === user.email && !busy;
@@ -1112,6 +1114,7 @@ function sessionIdShort(id: string) {
 
 function ProductTourSectionBody() {
   const navigate = useNavigate();
+  const { workspaceSlug } = Route.useParams();
   const onboarding = useOnboarding();
   const [busy, setBusy] = useState(false);
 
@@ -1123,7 +1126,7 @@ function ProductTourSectionBody() {
       if (typeof window !== "undefined") {
         window.sessionStorage.removeItem(ONBOARDING_SKIP_FLAG);
       }
-      await navigate({ to: "/issues" });
+      await navigate({ to: "/$workspaceSlug/issues", params: { workspaceSlug } });
       onboarding.start("welcome");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to restart tour");

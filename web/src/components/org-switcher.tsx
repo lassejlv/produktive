@@ -20,6 +20,7 @@ import {
   switchOrganization,
   useOrganizations,
 } from "@/lib/auth-client";
+import { useWorkspaceSlug } from "@/lib/use-workspace-slug";
 import { cn } from "@/lib/utils";
 
 type OrgSwitcherProps = {
@@ -28,6 +29,7 @@ type OrgSwitcherProps = {
 
 export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
   const navigate = useNavigate();
+  const workspaceSlug = useWorkspaceSlug();
   const [menuOpen, setMenuOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -140,7 +142,10 @@ export function OrgSwitcher({ activeOrganization }: OrgSwitcherProps) {
                 disabled={busy}
                 onClick={() => {
                   setMenuOpen(false);
-                  void navigate({ to: "/workspace/settings" });
+                  void navigate({
+                    to: "/$workspaceSlug/settings",
+                    params: { workspaceSlug },
+                  });
                 }}
                 className="flex h-9 w-full items-center gap-2.5 px-3 text-left text-[13px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-60"
               >

@@ -6,6 +6,7 @@ import type { PickableIssue } from "@/components/chat/issue-picker";
 import { StatusIcon } from "@/components/issue/status-icon";
 import type { Chat, Note } from "@/lib/api";
 import type { MentionableTool } from "@/lib/use-mcp-tools";
+import { useWorkspaceSlug } from "@/lib/use-workspace-slug";
 import { cn } from "@/lib/utils";
 
 const POPOVER_WIDTH = 320;
@@ -366,11 +367,13 @@ function itemHaystack(item: MentionItem): string {
 }
 
 function EmptyState({ onClose }: { onClose: () => void }) {
+  const workspaceSlug = useWorkspaceSlug();
   return (
     <div className="px-3 py-3 leading-relaxed text-fg-muted">
       <p className="m-0">Nothing to mention yet.</p>
       <Link
-        to="/workspace/settings"
+        to="/$workspaceSlug/settings"
+        params={{ workspaceSlug }}
         search={{ section: "ai" }}
         onClick={onClose}
         className="mt-1.5 inline-flex text-accent transition-colors hover:underline"

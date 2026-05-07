@@ -22,7 +22,7 @@ type ChatsSearch = {
   q?: string;
 };
 
-export const Route = createFileRoute("/_app/chats")({
+export const Route = createFileRoute("/_app/$workspaceSlug/chats")({
   validateSearch: (search: Record<string, unknown>): ChatsSearch => ({
     q: typeof search.q === "string" && search.q.length > 0 ? search.q : undefined,
   }),
@@ -52,6 +52,7 @@ const bucketLabels: Record<Bucket, string> = {
 function ChatsPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
+  const { workspaceSlug } = Route.useParams();
   const { chats, isLoading, removeChat } = useChats();
   const { isFavorite, toggleFavorite } = useFavorites();
   const { confirm, dialog } = useConfirmDialog();
@@ -177,7 +178,7 @@ function ChatsPage() {
         </div>
         <button
           type="button"
-          onClick={() => void navigate({ to: "/chat" })}
+          onClick={() => void navigate({ to: "/$workspaceSlug/chat", params: { workspaceSlug } })}
           className="inline-flex h-7 items-center gap-1.5 rounded-md bg-fg px-2.5 text-[12px] font-medium text-bg transition-colors hover:bg-white"
         >
           <PlusIcon />
@@ -198,7 +199,8 @@ function ChatsPage() {
               const next = event.target.value;
               setQuery(next);
               void navigate({
-                to: "/chats",
+                to: "/$workspaceSlug/chats",
+                params: { workspaceSlug },
                 search: next.trim() ? { q: next.trim() } : {},
                 replace: true,
               });
@@ -215,7 +217,11 @@ function ChatsPage() {
             <Spinner size={14} />
           </div>
         ) : chats.length === 0 ? (
-          <ChatsEmptyState onNewChat={() => void navigate({ to: "/chat" })} />
+          <ChatsEmptyState
+            onNewChat={() =>
+              void navigate({ to: "/$workspaceSlug/chat", params: { workspaceSlug } })
+            }
+          />
         ) : filtered.length === 0 ? (
           <div className="px-2 py-12 text-center">
             <p className="text-[13px] text-fg">No matches for "{query}".</p>
@@ -223,7 +229,12 @@ function ChatsPage() {
               type="button"
               onClick={() => {
                 setQuery("");
-                void navigate({ to: "/chats", search: {}, replace: true });
+                void navigate({
+                  to: "/$workspaceSlug/chats",
+                  params: { workspaceSlug },
+                  search: {},
+                  replace: true,
+                });
               }}
               className="mt-2 text-[12px] text-fg-muted transition-colors hover:text-fg"
             >
@@ -259,8 +270,8 @@ function ChatsPage() {
                           type="button"
                           onClick={() =>
                             void navigate({
-                              to: "/chat/$chatId",
-                              params: { chatId: chat.id },
+                              to: "/$workspaceSlug/chat/$chatId",
+                              params: { workspaceSlug, chatId: chat.id },
                             })
                           }
                           className="flex min-w-0 flex-1 items-center gap-3 text-left"

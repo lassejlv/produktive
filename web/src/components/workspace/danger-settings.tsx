@@ -54,7 +54,7 @@ function DeleteWorkspace({
       await deleteActiveOrganization({ confirm: confirmName.trim() });
       await refreshSession();
       toast.success("Workspace deleted");
-      void navigate({ to: "/issues" });
+      void navigate({ to: "/" });
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Failed to delete workspace",
@@ -124,7 +124,7 @@ function LeaveWorkspace({
           await leaveActiveOrganization();
           await refreshSession();
           toast.success("Left workspace");
-          void navigate({ to: "/issues" });
+          void navigate({ to: "/" });
         } catch (error) {
           toast.error(
             error instanceof Error ? error.message : "Failed to leave workspace",

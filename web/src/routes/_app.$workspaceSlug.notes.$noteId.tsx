@@ -6,7 +6,7 @@ import {
   notesQueryOptions,
 } from "@/lib/queries/notes";
 
-export const Route = createFileRoute("/_app/notes/$noteId")({
+export const Route = createFileRoute("/_app/$workspaceSlug/notes/$noteId")({
   loader: ({ context, params }) => {
     void context.queryClient.ensureQueryData(notesQueryOptions());
     void context.queryClient.ensureQueryData(noteFoldersQueryOptions());

@@ -85,7 +85,7 @@ function OAuthAuthorizePage() {
 
             <div className="flex items-center justify-end gap-2 border-t border-border-subtle pt-4">
               <Button asChild variant="ghost" size="sm">
-                <Link to="/chat">Cancel</Link>
+                <Link to="/">Cancel</Link>
               </Button>
               <Button
                 type="button"

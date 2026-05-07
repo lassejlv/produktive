@@ -4,12 +4,13 @@ import { Spinner } from "@/components/ui/spinner";
 import { useInbox } from "@/lib/use-inbox";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/_app/inbox")({
+export const Route = createFileRoute("/_app/$workspaceSlug/inbox")({
   component: InboxPage,
 });
 
 function InboxPage() {
   const navigate = useNavigate();
+  const { workspaceSlug } = Route.useParams();
   const { notifications, unreadCount, isLoading, markRead, markAll } =
     useInbox();
 
@@ -24,22 +25,22 @@ function InboxPage() {
     }
     if (targetType === "issue") {
       await navigate({
-        to: "/issues/$issueId",
-        params: { issueId: targetId },
+        to: "/$workspaceSlug/issues/$issueId",
+        params: { workspaceSlug, issueId: targetId },
       });
       return;
     }
     if (targetType === "project") {
       await navigate({
-        to: "/projects/$projectId",
-        params: { projectId: targetId },
+        to: "/$workspaceSlug/projects/$projectId",
+        params: { workspaceSlug, projectId: targetId },
       });
       return;
     }
     if (targetType === "chat") {
       await navigate({
-        to: "/chat/$chatId",
-        params: { chatId: targetId },
+        to: "/$workspaceSlug/chat/$chatId",
+        params: { workspaceSlug, chatId: targetId },
       });
       return;
     }

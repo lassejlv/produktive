@@ -22,7 +22,7 @@ type FavoritesSearch = {
 const isType = (value: unknown): value is TypeFilter =>
   value === "all" || value === "issue" || value === "project" || value === "chat";
 
-export const Route = createFileRoute("/_app/favorites")({
+export const Route = createFileRoute("/_app/$workspaceSlug/favorites")({
   validateSearch: (search: Record<string, unknown>): FavoritesSearch => ({
     q: typeof search.q === "string" && search.q.length > 0 ? search.q : undefined,
     type: isType(search.type) ? search.type : undefined,
@@ -111,14 +111,24 @@ function FavoritesPage() {
     setFavoritesOrder(next);
   };
 
+  const { workspaceSlug } = Route.useParams();
   const goTo = (fav: Favorite) => {
     if (fav.type === "chat") {
-      return navigate({ to: "/chat/$chatId", params: { chatId: fav.id } });
+      return navigate({
+        to: "/$workspaceSlug/chat/$chatId",
+        params: { workspaceSlug, chatId: fav.id },
+      });
     }
     if (fav.type === "project") {
-      return navigate({ to: "/projects/$projectId", params: { projectId: fav.id } });
+      return navigate({
+        to: "/$workspaceSlug/projects/$projectId",
+        params: { workspaceSlug, projectId: fav.id },
+      });
     }
-    return navigate({ to: "/issues/$issueId", params: { issueId: fav.id } });
+    return navigate({
+      to: "/$workspaceSlug/issues/$issueId",
+      params: { workspaceSlug, issueId: fav.id },
+    });
   };
 
   const handleUnpin = async (fav: Favorite) => {
@@ -132,7 +142,8 @@ function FavoritesPage() {
 
   const updateSearch = (next: FavoritesSearch) => {
     void navigate({
-      to: "/favorites",
+      to: "/$workspaceSlug/favorites",
+      params: { workspaceSlug },
       search: (prev) => ({ ...prev, ...next }),
       replace: true,
     });

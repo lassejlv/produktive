@@ -12,7 +12,7 @@ import { useInbox } from "@/lib/use-inbox";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/_app/workspace")({
+export const Route = createFileRoute("/_app/$workspaceSlug/")({
   loader: ({ context }) => {
     void context.queryClient.prefetchQuery(issuesQueryOptions());
     void context.queryClient.prefetchQuery(projectsQueryOptions());
@@ -131,6 +131,7 @@ function useShimmerOnce(ready: boolean) {
 }
 
 function WorkspaceOverview() {
+  const { workspaceSlug } = Route.useParams();
   const session = useSession();
   const issuesQuery = useIssuesQuery();
   const projectsQuery = useProjectsQuery();
@@ -233,7 +234,8 @@ function WorkspaceOverview() {
       <header className="sticky top-0 z-10 flex h-11 items-center justify-between gap-3 border-b border-border-subtle bg-bg/85 px-4 backdrop-blur">
         <h1 className="text-sm font-medium text-fg">Overview</h1>
         <Link
-          to="/issues"
+          to="/$workspaceSlug/issues"
+          params={{ workspaceSlug }}
           search={{ new: true }}
           className="text-xs text-fg-muted transition-colors hover:text-fg"
         >
@@ -247,7 +249,8 @@ function WorkspaceOverview() {
         <section className="mx-auto flex w-full max-w-2xl flex-col items-center px-4 py-24 text-center animate-fade-up">
           <p className="text-sm text-fg">Add your first issue to get started.</p>
           <Link
-            to="/issues"
+            to="/$workspaceSlug/issues"
+            params={{ workspaceSlug }}
             search={{ new: true }}
             className="mt-4 text-xs text-fg-muted transition-colors hover:text-fg"
           >
@@ -291,7 +294,8 @@ function WorkspaceOverview() {
 
           <div className="mt-8">
             <Link
-              to="/inbox"
+              to="/$workspaceSlug/inbox"
+              params={{ workspaceSlug }}
               className="inline-flex items-center gap-2 rounded-full border border-border-subtle px-3 py-1 text-[11.5px] text-fg-muted transition-colors hover:border-border hover:text-fg"
             >
               <span>Inbox</span>
@@ -304,7 +308,12 @@ function WorkspaceOverview() {
             </Link>
           </div>
 
-          <Section title="Your focus" actionLabel="All issues" actionTo="/issues">
+          <Section
+            title="Your focus"
+            actionLabel="All issues"
+            actionTo="/$workspaceSlug/issues"
+            actionParams={{ workspaceSlug }}
+          >
             {focusIssues.length === 0 ? (
               <p className="text-sm text-fg-faint">Nothing on your plate.</p>
             ) : (
@@ -312,8 +321,8 @@ function WorkspaceOverview() {
                 {focusIssues.map((issue, idx) => (
                   <li key={issue.id} style={{ "--i": idx } as React.CSSProperties}>
                     <Link
-                      to="/issues/$issueId"
-                      params={{ issueId: issue.id }}
+                      to="/$workspaceSlug/issues/$issueId"
+                      params={{ workspaceSlug, issueId: issue.id }}
                       className="row-hover-shift group flex items-center gap-3 rounded-md px-2 py-2"
                     >
                       <StatusIcon status={issue.status} statuses={statuses} />
@@ -335,7 +344,12 @@ function WorkspaceOverview() {
             )}
           </Section>
 
-          <Section title="Projects" actionLabel="All projects" actionTo="/projects">
+          <Section
+            title="Projects"
+            actionLabel="All projects"
+            actionTo="/$workspaceSlug/projects"
+            actionParams={{ workspaceSlug }}
+          >
             {activeProjects.length === 0 ? (
               <p className="text-sm text-fg-faint">No projects yet.</p>
             ) : (
@@ -343,8 +357,8 @@ function WorkspaceOverview() {
                 {activeProjects.map((project, idx) => (
                   <li key={project.id} style={{ "--i": idx } as React.CSSProperties}>
                     <Link
-                      to="/projects/$projectId"
-                      params={{ projectId: project.id }}
+                      to="/$workspaceSlug/projects/$projectId"
+                      params={{ workspaceSlug, projectId: project.id }}
                       className="row-hover-shift group flex items-center gap-3 rounded-md px-2 py-2"
                     >
                       <ProjectIcon
@@ -364,7 +378,12 @@ function WorkspaceOverview() {
             )}
           </Section>
 
-          <Section title="Upcoming deadlines" actionLabel="Projects" actionTo="/projects">
+          <Section
+            title="Upcoming deadlines"
+            actionLabel="Projects"
+            actionTo="/$workspaceSlug/projects"
+            actionParams={{ workspaceSlug }}
+          >
             {upcomingProjects.length === 0 ? (
               <p className="text-sm text-fg-faint">No project targets in the next 30 days.</p>
             ) : (
@@ -372,8 +391,8 @@ function WorkspaceOverview() {
                 {upcomingProjects.map((project, idx) => (
                   <li key={project.id} style={{ "--i": idx } as React.CSSProperties}>
                     <Link
-                      to="/projects/$projectId"
-                      params={{ projectId: project.id }}
+                      to="/$workspaceSlug/projects/$projectId"
+                      params={{ workspaceSlug, projectId: project.id }}
                       className="row-hover-shift group flex items-center gap-3 rounded-md px-2 py-2"
                     >
                       <ProjectIcon
@@ -405,11 +424,13 @@ function Section({
   title,
   actionLabel,
   actionTo,
+  actionParams,
   children,
 }: {
   title: string;
   actionLabel: string;
-  actionTo: "/issues" | "/projects";
+  actionTo: "/$workspaceSlug/issues" | "/$workspaceSlug/projects";
+  actionParams: { workspaceSlug: string };
   children: React.ReactNode;
 }) {
   return (
@@ -419,6 +440,7 @@ function Section({
         <h3 className="text-xs font-medium text-fg-muted">{title}</h3>
         <Link
           to={actionTo}
+          params={actionParams}
           className="text-[11px] text-fg-faint transition-colors hover:text-fg-muted"
         >
           {actionLabel} →

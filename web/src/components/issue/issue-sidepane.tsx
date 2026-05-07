@@ -35,6 +35,7 @@ import { useUpdateIssue } from "@/lib/mutations/issues";
 import { useLabelsQuery } from "@/lib/queries/labels";
 import { useProjectsQuery } from "@/lib/queries/projects";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
+import { useWorkspaceSlug } from "@/lib/use-workspace-slug";
 import { cn } from "@/lib/utils";
 
 type Lookups = {
@@ -65,6 +66,7 @@ function IssueSidepaneContent({
   onClose: () => void;
 }) {
   const navigate = useNavigate();
+  const workspaceSlug = useWorkspaceSlug();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -264,8 +266,8 @@ function IssueSidepaneContent({
             {isUploading ? <Spinner size={12} /> : <AttachIcon size={11} />}
           </SidePaneIconButton>
           <Link
-            to="/issues/$issueId"
-            params={{ issueId }}
+            to="/$workspaceSlug/issues/$issueId"
+            params={{ workspaceSlug, issueId }}
             title="Open full view"
             className="grid size-7 place-items-center rounded-md text-fg-muted transition-colors hover:bg-surface/60 hover:text-fg"
             aria-label="Open full view"
@@ -374,8 +376,8 @@ function IssueSidepaneContent({
                 </ul>
                 {comments.length + history.length > recentComments.length + recentHistory.length ? (
                   <Link
-                    to="/issues/$issueId"
-                    params={{ issueId }}
+                    to="/$workspaceSlug/issues/$issueId"
+                    params={{ workspaceSlug, issueId }}
                     className="mt-3 inline-block text-[11.5px] text-fg-muted transition-colors hover:text-fg"
                   >
                     View full timeline →
@@ -428,7 +430,10 @@ function IssueSidepaneContent({
               <button
                 type="button"
                 onClick={() =>
-                  void navigate({ to: "/issues/$issueId", params: { issueId } })
+                  void navigate({
+                    to: "/$workspaceSlug/issues/$issueId",
+                    params: { workspaceSlug, issueId },
+                  })
                 }
                 className="text-[11.5px] text-fg-muted transition-colors hover:text-fg"
               >

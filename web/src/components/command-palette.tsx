@@ -7,6 +7,7 @@ import { signOut } from "@/lib/auth-client";
 import { issuesQueryOptions } from "@/lib/queries/issues";
 import { projectsQueryOptions } from "@/lib/queries/projects";
 import { applyTheme } from "@/lib/theme";
+import { useWorkspaceSlug } from "@/lib/use-workspace-slug";
 import { cn } from "@/lib/utils";
 
 type CommandResult =
@@ -30,6 +31,7 @@ type CommandResult =
 
 export function CommandPalette() {
   const navigate = useNavigate();
+  const workspaceSlug = useWorkspaceSlug();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -114,7 +116,7 @@ export function CommandPalette() {
         type: "action" as const,
         key: "go-projects",
         label: "Go to Projects",
-        run: () => navigate({ to: "/projects" }),
+        run: () => navigate({ to: "/$workspaceSlug/projects", params: { workspaceSlug } }),
       },
       {
         type: "action" as const,
@@ -129,33 +131,33 @@ export function CommandPalette() {
         key: "go-overview",
         label: "Go to Overview",
         hint: "G O",
-        run: () => navigate({ to: "/workspace" }),
+        run: () => navigate({ to: "/$workspaceSlug", params: { workspaceSlug } }),
       },
       {
         type: "action" as const,
         key: "go-issues",
         label: "Go to Issues",
         hint: "G I",
-        run: () => navigate({ to: "/issues" }),
+        run: () => navigate({ to: "/$workspaceSlug/issues", params: { workspaceSlug } }),
       },
       {
         type: "action" as const,
         key: "go-chat",
         label: "Go to Chat",
         hint: "G C",
-        run: () => navigate({ to: "/chat" }),
+        run: () => navigate({ to: "/$workspaceSlug/chat", params: { workspaceSlug } }),
       },
       {
         type: "action" as const,
         key: "go-account",
         label: "Account settings",
-        run: () => navigate({ to: "/account" }),
+        run: () => navigate({ to: "/$workspaceSlug/account", params: { workspaceSlug } }),
       },
       {
         type: "action" as const,
         key: "go-workspace-settings",
         label: "Settings",
-        run: () => navigate({ to: "/workspace/settings" }),
+        run: () => navigate({ to: "/$workspaceSlug/settings", params: { workspaceSlug } }),
       },
       {
         type: "action" as const,
@@ -226,7 +228,11 @@ export function CommandPalette() {
         label: "New issue",
         hint: "C",
         run: () =>
-          navigate({ to: "/issues", search: { new: true } }),
+          navigate({
+            to: "/$workspaceSlug/issues",
+            params: { workspaceSlug },
+            search: { new: true },
+          }),
       },
       {
         type: "action" as const,
@@ -256,13 +262,13 @@ export function CommandPalette() {
     setOpen(false);
     if (result.type === "issue") {
       await navigate({
-        to: "/issues/$issueId",
-        params: { issueId: result.id },
+        to: "/$workspaceSlug/issues/$issueId",
+        params: { workspaceSlug, issueId: result.id },
       });
     } else if (result.type === "project") {
       await navigate({
-        to: "/projects/$projectId",
-        params: { projectId: result.id },
+        to: "/$workspaceSlug/projects/$projectId",
+        params: { workspaceSlug, projectId: result.id },
       });
     } else {
       try {

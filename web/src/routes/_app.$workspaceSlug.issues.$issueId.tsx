@@ -47,9 +47,10 @@ import { useProjectsQuery } from "@/lib/queries/projects";
 import { useRegisterTab } from "@/lib/use-tabs";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { useUserPreferences } from "@/lib/use-user-preferences";
+import { useWorkspaceSlug } from "@/lib/use-workspace-slug";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/_app/issues/$issueId")({
+export const Route = createFileRoute("/_app/$workspaceSlug/issues/$issueId")({
   loader: ({ context, params }) => {
     void context.queryClient.prefetchQuery(issueHistoryQueryOptions(params.issueId));
     void context.queryClient.prefetchQuery(issueCommentsQueryOptions(params.issueId));
@@ -78,6 +79,7 @@ export function IssueDetail({
   siblings?: IssueDetailSiblings;
 }) {
   const navigate = useNavigate();
+  const workspaceSlug = useWorkspaceSlug();
   const qc = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -164,20 +166,20 @@ export function IssueDetail({
       if ((event.key === "j" || event.key === "ArrowDown") && siblings.nextId) {
         event.preventDefault();
         void navigate({
-          to: "/issues/$issueId",
-          params: { issueId: siblings.nextId },
+          to: "/$workspaceSlug/issues/$issueId",
+          params: { workspaceSlug, issueId: siblings.nextId },
         });
       } else if ((event.key === "k" || event.key === "ArrowUp") && siblings.prevId) {
         event.preventDefault();
         void navigate({
-          to: "/issues/$issueId",
-          params: { issueId: siblings.prevId },
+          to: "/$workspaceSlug/issues/$issueId",
+          params: { workspaceSlug, issueId: siblings.prevId },
         });
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [siblings, navigate]);
+  }, [siblings, navigate, workspaceSlug]);
 
   const reloadAfterChange = async () => {
     await Promise.all([
@@ -192,12 +194,12 @@ export function IssueDetail({
       const issueDeleted = event as CustomEvent<{ issueId?: string }>;
       if (issueDeleted.detail?.issueId !== issueId) return;
       toast.message("Issue was deleted");
-      void navigate({ to: "/issues" });
+      void navigate({ to: "/$workspaceSlug/issues", params: { workspaceSlug } });
     };
 
     window.addEventListener("produktive:issue-deleted", handleIssueDeleted);
     return () => window.removeEventListener("produktive:issue-deleted", handleIssueDeleted);
-  }, [issueId, navigate]);
+  }, [issueId, navigate, workspaceSlug]);
 
   const timeline = useMemo(() => buildTimeline(history, comments), [history, comments]);
 
@@ -263,7 +265,7 @@ export function IssueDetail({
       onConfirm: async () => {
         try {
           await deleteIssueMutation.mutateAsync(issue.id);
-          void navigate({ to: "/issues" });
+          void navigate({ to: "/$workspaceSlug/issues", params: { workspaceSlug } });
         } catch (deleteError) {
           const message =
             deleteError instanceof Error ? deleteError.message : "Failed to delete issue";
@@ -343,7 +345,8 @@ export function IssueDetail({
       <header className="flex items-center justify-between gap-3 px-6 pt-5">
         <div className="flex items-center gap-3">
           <Link
-            to="/issues"
+            to="/$workspaceSlug/issues"
+            params={{ workspaceSlug }}
             className="inline-flex items-center gap-1.5 text-[12px] text-fg-faint transition-colors hover:text-fg-muted"
           >
             <svg width="11" height="11" viewBox="0 0 14 14" fill="none">
@@ -362,8 +365,8 @@ export function IssueDetail({
               siblings={siblings}
               onNavigate={(id) =>
                 void navigate({
-                  to: "/issues/$issueId",
-                  params: { issueId: id },
+                  to: "/$workspaceSlug/issues/$issueId",
+                  params: { workspaceSlug, issueId: id },
                 })
               }
             />
@@ -438,7 +441,8 @@ export function IssueDetail({
         <div className="flex flex-col items-center justify-center px-6 py-24 text-center">
           <p className="text-sm text-fg">Issue not found.</p>
           <Link
-            to="/issues"
+            to="/$workspaceSlug/issues"
+            params={{ workspaceSlug }}
             className="mt-3 inline-flex items-center gap-1 text-[12px] text-fg-muted transition-colors hover:text-fg"
           >
             ← Back to issues
@@ -527,6 +531,7 @@ export function IssueDetail({
 }
 
 function SubIssuesSection({ parentId }: { parentId: string }) {
+  const workspaceSlug = useWorkspaceSlug();
   const navigate = useNavigate();
   const issuesQuery = useIssuesQuery();
   const { statuses } = useIssueStatuses();
@@ -594,8 +599,8 @@ function SubIssuesSection({ parentId }: { parentId: string }) {
                 type="button"
                 onClick={() =>
                   void navigate({
-                    to: "/issues/$issueId",
-                    params: { issueId: child.id },
+                    to: "/$workspaceSlug/issues/$issueId",
+                    params: { workspaceSlug, issueId: child.id },
                   })
                 }
                 className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-surface/40"

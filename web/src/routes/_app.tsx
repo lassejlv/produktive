@@ -68,7 +68,8 @@ function AppLayout() {
   const rawMine = (search as Record<string, unknown>).mine;
   const issuesMine =
     pathname === "/issues" && (rawMine === true || rawMine === "1" || rawMine === "true");
-  const staticPage = findStaticPage(pathname);
+  const activeOrgSlug = session.data?.organization.slug ?? "";
+  const staticPage = findStaticPage(pathname, activeOrgSlug);
   useRegisterTab({
     tabType: "page",
     targetId: staticPage?.path ?? "",
@@ -112,10 +113,11 @@ function AppLayout() {
     }
     toast.message("This workspace requires two-factor authentication.");
     void navigate({
-      to: "/account",
+      to: "/$workspaceSlug/account",
+      params: { workspaceSlug: activeOrgSlug },
       search: { section: "security", twoFactorRequired: "1", redirect },
     });
-  }, [navigate, pathname, session.data]);
+  }, [navigate, pathname, session.data, activeOrgSlug]);
 
   useEffect(() => {
     const user = session.data?.user;
@@ -187,8 +189,8 @@ function AppLayout() {
         headless
         onCreated={(project) => {
           void navigate({
-            to: "/projects/$projectId",
-            params: { projectId: project.id },
+            to: "/$workspaceSlug/projects/$projectId",
+            params: { workspaceSlug: activeOrgSlug, projectId: project.id },
           });
         }}
       />
@@ -227,29 +229,29 @@ function AppLayout() {
                     </div>
                   ) : (
                     favorites.map((fav) => {
-                      let targetPath = `/issues/${fav.id}`;
+                      let targetPath = `/${activeOrgSlug}/issues/${fav.id}`;
                       if (fav.type === "chat") {
-                        targetPath = `/chat/${fav.id}`;
+                        targetPath = `/${activeOrgSlug}/chat/${fav.id}`;
                       } else if (fav.type === "project") {
-                        targetPath = `/projects/${fav.id}`;
+                        targetPath = `/${activeOrgSlug}/projects/${fav.id}`;
                       }
                       const isActive = pathname === targetPath;
                       const goTo = () => {
                         if (fav.type === "chat") {
                           return navigate({
-                            to: "/chat/$chatId",
-                            params: { chatId: fav.id },
+                            to: "/$workspaceSlug/chat/$chatId",
+                            params: { workspaceSlug: activeOrgSlug, chatId: fav.id },
                           });
                         }
                         if (fav.type === "project") {
                           return navigate({
-                            to: "/projects/$projectId",
-                            params: { projectId: fav.id },
+                            to: "/$workspaceSlug/projects/$projectId",
+                            params: { workspaceSlug: activeOrgSlug, projectId: fav.id },
                           });
                         }
                         return navigate({
-                          to: "/issues/$issueId",
-                          params: { issueId: fav.id },
+                          to: "/$workspaceSlug/issues/$issueId",
+                          params: { workspaceSlug: activeOrgSlug, issueId: fav.id },
                         });
                       };
                       const onUnpin = async () => {
@@ -371,7 +373,10 @@ function AppLayout() {
                   <AccountMenuItem
                     onClick={async () => {
                       setAccountMenuOpen(false);
-                      await navigate({ to: "/account" });
+                      await navigate({
+                        to: "/$workspaceSlug/account",
+                        params: { workspaceSlug: activeOrgSlug },
+                      });
                     }}
                     icon={<SettingsIcon size={13} />}
                   >

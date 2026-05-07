@@ -68,7 +68,7 @@ import { requestFreshTwoFactorIfNeeded } from "@/lib/fresh-two-factor";
 import { cn } from "@/lib/utils";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
 
-export const Route = createFileRoute("/_app/workspace/settings")({
+export const Route = createFileRoute("/_app/$workspaceSlug/settings")({
   component: WorkspaceSettingsPage,
 });
 
@@ -160,6 +160,7 @@ function settingsSectionMeta(id: SettingsSectionId): SettingsSection {
 function WorkspaceSettingsPage() {
   const session = useSession();
   const navigate = useNavigate();
+  const { workspaceSlug } = Route.useParams();
   const organization = session.data?.organization;
   const currentUserEmail = session.data?.user.email ?? null;
   const currentUserTwoFactorEnabled = session.data?.user.twoFactorEnabled ?? false;
@@ -177,7 +178,8 @@ function WorkspaceSettingsPage() {
     if (raw && LEGACY_SECTION_TO_INTEGRATIONS.has(raw)) {
       setActiveSection("integrations");
       void navigate({
-        to: "/workspace/settings",
+        to: "/$workspaceSlug/settings",
+        params: { workspaceSlug },
         search: { section: "integrations" },
         replace: true,
       });
@@ -225,7 +227,8 @@ function WorkspaceSettingsPage() {
   const onSelectSection = (id: SettingsSectionId) => {
     setActiveSection(id);
     void navigate({
-      to: "/workspace/settings",
+      to: "/$workspaceSlug/settings",
+      params: { workspaceSlug },
       search: { section: id },
       replace: true,
     });
@@ -236,7 +239,7 @@ function WorkspaceSettingsPage() {
       window.history.back();
       return;
     }
-    void navigate({ to: "/issues" });
+    void navigate({ to: "/$workspaceSlug/issues", params: { workspaceSlug } });
   };
 
   const currentRole = useMemo(() => {

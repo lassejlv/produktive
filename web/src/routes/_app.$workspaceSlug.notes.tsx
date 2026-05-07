@@ -2,7 +2,7 @@ import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { NotesPage } from "@/components/notes/notes-page";
 import { noteFoldersQueryOptions, notesQueryOptions } from "@/lib/queries/notes";
 
-export const Route = createFileRoute("/_app/notes")({
+export const Route = createFileRoute("/_app/$workspaceSlug/notes")({
   loader: ({ context }) => {
     void context.queryClient.ensureQueryData(noteFoldersQueryOptions());
     return context.queryClient.ensureQueryData(notesQueryOptions());
@@ -11,11 +11,13 @@ export const Route = createFileRoute("/_app/notes")({
 });
 
 function NotesIndex() {
+  const { workspaceSlug } = Route.useParams();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const noteId = pathname.startsWith("/notes/")
-    ? decodeURIComponent(pathname.slice("/notes/".length))
+  const prefix = `/${workspaceSlug}/notes/`;
+  const noteId = pathname.startsWith(prefix)
+    ? decodeURIComponent(pathname.slice(prefix.length))
     : undefined;
 
   return <NotesPage noteId={noteId} />;

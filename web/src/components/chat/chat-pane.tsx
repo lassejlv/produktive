@@ -33,6 +33,7 @@ import { firstName, greetingForNow } from "@/lib/chat-history";
 import { useAiModels } from "@/lib/use-ai-models";
 import { useRegisterTab } from "@/lib/use-tabs";
 import { useUserPreferences } from "@/lib/use-user-preferences";
+import { useWorkspaceSlug } from "@/lib/use-workspace-slug";
 import { cn } from "@/lib/utils";
 
 const LazyMultiFileDiff = lazy(() =>
@@ -45,6 +46,7 @@ const MODEL_STORAGE_KEY = "produktive:chat-model";
 
 export function ChatPane({ chatId }: { chatId: string | null }) {
   const navigate = useNavigate();
+  const workspaceSlug = useWorkspaceSlug();
   const session = useSession();
   const userName = session.data?.user?.name ?? "there";
 
@@ -167,8 +169,8 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
         setChatTitle(created.chat.title);
         setChatCreatedById(created.chat.createdById ?? null);
         await navigate({
-          to: "/chat/$chatId",
-          params: { chatId: created.chat.id },
+          to: "/$workspaceSlug/chat/$chatId",
+          params: { workspaceSlug, chatId: created.chat.id },
           replace: true,
         });
       }
@@ -266,8 +268,8 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
 
           if (createdChatId) {
             await navigate({
-              to: "/chat/$chatId",
-              params: { chatId: createdChatId },
+              to: "/$workspaceSlug/chat/$chatId",
+              params: { workspaceSlug, chatId: createdChatId },
               replace: true,
             });
           }
@@ -482,6 +484,7 @@ function ChatChangesPanel({
   changes: ChatChange[];
   onClose: () => void;
 }) {
+  const workspaceSlug = useWorkspaceSlug();
   return (
     <aside
       className={cn(
@@ -539,8 +542,8 @@ function ChatChangesPanel({
                   </div>
                   {change.issueId ? (
                     <Link
-                      to="/issues/$issueId"
-                      params={{ issueId: change.issueId }}
+                      to="/$workspaceSlug/issues/$issueId"
+                      params={{ workspaceSlug, issueId: change.issueId }}
                       className="shrink-0 text-[11px] text-fg-muted opacity-0 transition-opacity hover:text-fg group-hover:opacity-100 focus-visible:opacity-100"
                       onClick={onClose}
                     >

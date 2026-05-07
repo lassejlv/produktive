@@ -11,6 +11,7 @@ import {
 import { toast } from "sonner";
 import { ISSUE_DRAG_MIME } from "@/components/issue/issue-list";
 import { ProjectIcon } from "@/components/project/project-icon";
+import { useWorkspaceSlug } from "@/lib/use-workspace-slug";
 import { BookmarkIcon } from "@/components/ui/bookmark";
 import { CircleCheckIcon } from "@/components/ui/circle-check";
 import { FileTextIcon } from "@/components/ui/file-text";
@@ -32,6 +33,7 @@ import { useProjects } from "@/lib/use-projects";
 
 function SidebarRecentProjects({ pathname }: { pathname: string }) {
   const navigate = useNavigate();
+  const workspaceSlug = useWorkspaceSlug();
   const { projects } = useProjects(false);
   const recent = projects
     .filter((p) => p.archivedAt === null && p.status !== "cancelled")
@@ -42,9 +44,8 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
   return (
     <div className="ml-3 mt-0.5 flex flex-col gap-px border-l border-border-subtle/60 pl-2">
       {recent.map((project) => {
-        const isActive =
-          pathname === `/projects/${project.id}` ||
-          pathname.startsWith(`/projects/${project.id}`);
+        const projectPath = `/${workspaceSlug}/projects/${project.id}`;
+        const isActive = pathname === projectPath || pathname.startsWith(projectPath);
         return (
           <button
             key={project.id}
@@ -52,8 +53,8 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
             title={project.name}
             onClick={() =>
               void navigate({
-                to: "/projects/$projectId",
-                params: { projectId: project.id },
+                to: "/$workspaceSlug/projects/$projectId",
+                params: { workspaceSlug, projectId: project.id },
               })
             }
             onDragOver={(event) => {
@@ -125,6 +126,7 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
 type NavContext = {
   pathname: string;
   issuesMine: boolean;
+  workspaceSlug: string;
 };
 
 export type AnimatedIconHandle = {
@@ -143,73 +145,98 @@ type NavItemSpec = {
   label: string;
   Icon: AnimatedIconComponent;
   isActive: (ctx: NavContext) => boolean;
-  onNavigate: (navigate: ReturnType<typeof useNavigate>) => void;
+  onNavigate: (navigate: ReturnType<typeof useNavigate>, ctx: NavContext) => void;
 };
+
+function workspaceSubpath(pathname: string, workspaceSlug: string): string {
+  const prefix = `/${workspaceSlug}`;
+  if (!workspaceSlug) return pathname;
+  if (pathname === prefix) return "/";
+  if (pathname.startsWith(`${prefix}/`)) return pathname.slice(prefix.length) || "/";
+  return pathname;
+}
 
 const NAV_ITEM_SPECS: Record<SidebarItemId, NavItemSpec> = {
   inbox: {
     id: "inbox",
     label: "Inbox",
     Icon: MailboxIcon as AnimatedIconComponent,
-    isActive: (ctx) => ctx.pathname === "/inbox",
-    onNavigate: (n) => void n({ to: "/inbox" }),
+    isActive: (ctx) => workspaceSubpath(ctx.pathname, ctx.workspaceSlug) === "/inbox",
+    onNavigate: (n, ctx) =>
+      void n({ to: "/$workspaceSlug/inbox", params: { workspaceSlug: ctx.workspaceSlug } }),
   },
   "my-issues": {
     id: "my-issues",
     label: "My issues",
     Icon: UserIcon as AnimatedIconComponent,
-    isActive: (ctx) => ctx.pathname === "/issues" && ctx.issuesMine,
-    onNavigate: (n) => void n({ to: "/issues", search: { mine: true } }),
+    isActive: (ctx) =>
+      workspaceSubpath(ctx.pathname, ctx.workspaceSlug) === "/issues" && ctx.issuesMine,
+    onNavigate: (n, ctx) =>
+      void n({
+        to: "/$workspaceSlug/issues",
+        params: { workspaceSlug: ctx.workspaceSlug },
+        search: { mine: true },
+      }),
   },
   overview: {
     id: "overview",
     label: "Overview",
     Icon: LayoutGridIcon as AnimatedIconComponent,
-    isActive: (ctx) => ctx.pathname === "/workspace",
-    onNavigate: (n) => void n({ to: "/workspace" }),
+    isActive: (ctx) => workspaceSubpath(ctx.pathname, ctx.workspaceSlug) === "/",
+    onNavigate: (n, ctx) =>
+      void n({ to: "/$workspaceSlug", params: { workspaceSlug: ctx.workspaceSlug } }),
   },
   issues: {
     id: "issues",
     label: "Issues",
     Icon: CircleCheckIcon as AnimatedIconComponent,
-    isActive: (ctx) =>
-      (ctx.pathname === "/issues" && !ctx.issuesMine) ||
-      (ctx.pathname.startsWith("/issues/") &&
-        ctx.pathname.length > "/issues/".length),
-    onNavigate: (n) => void n({ to: "/issues" }),
+    isActive: (ctx) => {
+      const sub = workspaceSubpath(ctx.pathname, ctx.workspaceSlug);
+      return (sub === "/issues" && !ctx.issuesMine) || sub.startsWith("/issues/");
+    },
+    onNavigate: (n, ctx) =>
+      void n({ to: "/$workspaceSlug/issues", params: { workspaceSlug: ctx.workspaceSlug } }),
   },
   notes: {
     id: "notes",
     label: "Notes (preview)",
     Icon: FileTextIcon as AnimatedIconComponent,
-    isActive: (ctx) =>
-      ctx.pathname === "/notes" || ctx.pathname.startsWith("/notes/"),
-    onNavigate: (n) => void n({ to: "/notes" }),
+    isActive: (ctx) => {
+      const sub = workspaceSubpath(ctx.pathname, ctx.workspaceSlug);
+      return sub === "/notes" || sub.startsWith("/notes/");
+    },
+    onNavigate: (n, ctx) =>
+      void n({ to: "/$workspaceSlug/notes", params: { workspaceSlug: ctx.workspaceSlug } }),
   },
   projects: {
     id: "projects",
     label: "Projects",
     Icon: FolderKanbanIcon as AnimatedIconComponent,
-    isActive: (ctx) =>
-      ctx.pathname === "/projects" || ctx.pathname.startsWith("/projects/"),
-    onNavigate: (n) => void n({ to: "/projects" }),
+    isActive: (ctx) => {
+      const sub = workspaceSubpath(ctx.pathname, ctx.workspaceSlug);
+      return sub === "/projects" || sub.startsWith("/projects/");
+    },
+    onNavigate: (n, ctx) =>
+      void n({ to: "/$workspaceSlug/projects", params: { workspaceSlug: ctx.workspaceSlug } }),
   },
   labels: {
     id: "labels",
     label: "Labels",
     Icon: BookmarkIcon as AnimatedIconComponent,
-    isActive: (ctx) => ctx.pathname === "/labels",
-    onNavigate: (n) => void n({ to: "/labels" }),
+    isActive: (ctx) => workspaceSubpath(ctx.pathname, ctx.workspaceSlug) === "/labels",
+    onNavigate: (n, ctx) =>
+      void n({ to: "/$workspaceSlug/labels", params: { workspaceSlug: ctx.workspaceSlug } }),
   },
   chats: {
     id: "chats",
     label: "Chats",
     Icon: SparklesIcon as AnimatedIconComponent,
-    isActive: (ctx) =>
-      ctx.pathname === "/chats" ||
-      ctx.pathname === "/chat" ||
-      ctx.pathname.startsWith("/chat/"),
-    onNavigate: (n) => void n({ to: "/chats" }),
+    isActive: (ctx) => {
+      const sub = workspaceSubpath(ctx.pathname, ctx.workspaceSlug);
+      return sub === "/chats" || sub === "/chat" || sub.startsWith("/chat/");
+    },
+    onNavigate: (n, ctx) =>
+      void n({ to: "/$workspaceSlug/chats", params: { workspaceSlug: ctx.workspaceSlug } }),
   },
 };
 
@@ -397,7 +424,8 @@ export function SidebarNav({
   onExitEditing: () => void;
 }) {
   const navigate = useNavigate();
-  const navCtx: NavContext = { pathname, issuesMine };
+  const workspaceSlug = useWorkspaceSlug();
+  const navCtx: NavContext = { pathname, issuesMine, workspaceSlug };
   const { layout, saveItems, isSaving } = useSidebarLayout();
   const savedItems = layout.items;
   const [draft, setDraft] = useState<SidebarLayoutItem[]>(savedItems);
@@ -465,7 +493,7 @@ export function SidebarNav({
               hidden={hidden}
               active={active}
               isDragging={dragId === entry.id}
-              onClick={() => spec.onNavigate(navigate)}
+              onClick={() => spec.onNavigate(navigate, navCtx)}
               onToggleHidden={() => toggleHidden(entry.id)}
               onDragStart={() => setDragId(entry.id)}
               onDragEnd={() => setDragId(null)}

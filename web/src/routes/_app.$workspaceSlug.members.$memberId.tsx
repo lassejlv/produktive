@@ -13,12 +13,12 @@ import { formatDate, statusName } from "@/lib/issue-constants";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/_app/members/$memberId")({
+export const Route = createFileRoute("/_app/$workspaceSlug/members/$memberId")({
   component: MemberProfilePage,
 });
 
 function MemberProfilePage() {
-  const { memberId } = Route.useParams();
+  const { memberId, workspaceSlug } = Route.useParams();
   const navigate = useNavigate();
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -146,8 +146,8 @@ function MemberProfilePage() {
                     onClick={() =>
                       event.issue &&
                       void navigate({
-                        to: "/issues/$issueId",
-                        params: { issueId: event.issue.id },
+                        to: "/$workspaceSlug/issues/$issueId",
+                        params: { workspaceSlug, issueId: event.issue.id },
                       })
                     }
                     className="block w-full border-b border-border-subtle px-4 py-3 text-left last:border-b-0 transition-colors hover:bg-surface"
@@ -179,8 +179,8 @@ function MemberProfilePage() {
               statuses={statuses}
               onOpen={(issueId) =>
                 void navigate({
-                  to: "/issues/$issueId",
-                  params: { issueId },
+                  to: "/$workspaceSlug/issues/$issueId",
+                  params: { workspaceSlug, issueId },
                 })
               }
             />
@@ -190,8 +190,8 @@ function MemberProfilePage() {
               statuses={statuses}
               onOpen={(issueId) =>
                 void navigate({
-                  to: "/issues/$issueId",
-                  params: { issueId },
+                  to: "/$workspaceSlug/issues/$issueId",
+                  params: { workspaceSlug, issueId },
                 })
               }
             />

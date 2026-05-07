@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
+import { useWorkspaceSlug } from "@/lib/use-workspace-slug";
 import {
   useArchiveNote,
   useCommitNote,
@@ -42,6 +43,7 @@ const SIDEBAR_PREF_KEY = "produktive.notes.sidebar";
 
 export function NotesPage({ noteId }: Props) {
   const navigate = useNavigate();
+  const workspaceSlug = useWorkspaceSlug();
   const [search, setSearch] = useState("");
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -81,7 +83,10 @@ export function NotesPage({ noteId }: Props) {
         folderId: selectedFolderId,
         visibility: selectedFolder?.visibility === "private" ? "private" : "workspace",
       });
-      await navigate({ to: "/notes/$noteId", params: { noteId: note.id } });
+      await navigate({
+        to: "/$workspaceSlug/notes/$noteId",
+        params: { workspaceSlug, noteId: note.id },
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create note");
     }
@@ -305,11 +310,12 @@ function FolderRow({
 }
 
 function NoteRow({ note, selected }: { note: Note; selected: boolean }) {
+  const workspaceSlug = useWorkspaceSlug();
   return (
     <li>
       <Link
-        to="/notes/$noteId"
-        params={{ noteId: note.id }}
+        to="/$workspaceSlug/notes/$noteId"
+        params={{ workspaceSlug, noteId: note.id }}
         className={cn(
           "relative flex flex-col gap-0.5 px-4 py-2 transition-colors",
           selected ? "bg-surface text-fg" : "text-fg-muted hover:bg-surface/50",
@@ -359,6 +365,7 @@ function NoteWorkspace({
   onToggleCommits: () => void;
 }) {
   const navigate = useNavigate();
+  const workspaceSlug = useWorkspaceSlug();
   const { data: note, isLoading, error } = useNoteDetailQuery(noteId);
   const updateMutation = useUpdateNote();
   const archiveMutation = useArchiveNote();
@@ -456,7 +463,7 @@ function NoteWorkspace({
         try {
           await archiveMutation.mutateAsync(note.id);
           toast.success("Note archived");
-          await navigate({ to: "/notes" });
+          await navigate({ to: "/$workspaceSlug/notes", params: { workspaceSlug } });
         } catch (archiveError) {
           toast.error(
             archiveError instanceof Error ? archiveError.message : "Failed to archive note",

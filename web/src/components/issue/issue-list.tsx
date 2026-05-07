@@ -21,6 +21,7 @@ import {
   groupIssues,
   sortIssues,
 } from "@/lib/issue-display";
+import { useWorkspaceSlug } from "@/lib/use-workspace-slug";
 import { cn } from "@/lib/utils";
 
 export const ISSUE_DRAG_MIME = "application/x-produktive-issue";
@@ -68,6 +69,7 @@ export function IssueList({
   onCreateInGroup,
 }: IssueListProps) {
   const navigate = useNavigate();
+  const workspaceSlug = useWorkspaceSlug();
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(
@@ -416,8 +418,9 @@ export function IssueList({
                               stats={memberStats(issues, issue.assignedTo.id)}
                               onOpen={() =>
                                 void navigate({
-                                  to: "/members/$memberId",
+                                  to: "/$workspaceSlug/members/$memberId",
                                   params: {
+                                    workspaceSlug,
                                     memberId: issue.assignedTo!.id,
                                   },
                                 })

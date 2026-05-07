@@ -25,12 +25,12 @@ import { useRegisterTab } from "@/lib/use-tabs";
 import { useUserPreferences } from "@/lib/use-user-preferences";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/_app/projects/$projectId")({
+export const Route = createFileRoute("/_app/$workspaceSlug/projects/$projectId")({
   component: ProjectDetailPage,
 });
 
 function ProjectDetailPage() {
-  const { projectId } = Route.useParams();
+  const { projectId, workspaceSlug } = Route.useParams();
   const navigate = useNavigate();
   const projectQuery = useProjectDetailQuery(projectId);
   const project = projectQuery.data ?? null;
@@ -120,7 +120,7 @@ function ProjectDetailPage() {
         try {
           await deleteProjectMutation.mutateAsync(projectId);
           toast.success("Project deleted");
-          await navigate({ to: "/projects" });
+          await navigate({ to: "/$workspaceSlug/projects", params: { workspaceSlug } });
         } catch (error) {
           toast.error(error instanceof Error ? error.message : "Failed to delete");
         }
@@ -184,7 +184,8 @@ function ProjectDetailPage() {
       {dialog}
       <header className="sticky top-0 z-10 flex h-11 items-center justify-between gap-3 border-b border-border-subtle bg-bg/85 px-4 backdrop-blur">
         <Link
-          to="/projects"
+          to="/$workspaceSlug/projects"
+          params={{ workspaceSlug }}
           className="inline-flex items-center gap-1.5 text-xs text-fg-muted transition-colors hover:text-fg"
         >
           <svg width="11" height="11" viewBox="0 0 14 14" fill="none" aria-hidden>
@@ -353,7 +354,8 @@ function ProjectDetailPage() {
           <div className="mb-3 flex items-baseline justify-between gap-3">
             <h2 className="text-xs font-medium text-fg-muted">Issues</h2>
             <Link
-              to="/issues"
+              to="/$workspaceSlug/issues"
+              params={{ workspaceSlug }}
               className="text-[11px] text-fg-faint transition-colors hover:text-fg-muted"
             >
               All issues →
@@ -368,8 +370,8 @@ function ProjectDetailPage() {
             selectedId={null}
             onSelect={(id) =>
               void navigate({
-                to: "/issues/$issueId",
-                params: { issueId: id },
+                to: "/$workspaceSlug/issues/$issueId",
+                params: { workspaceSlug, issueId: id },
               })
             }
             onMoveToStatus={handleMoveToStatus}

@@ -10,7 +10,7 @@ type PricingPlan = {
   description: string;
   features: string[];
   cta: string;
-  to: "/login" | "/workspace";
+  to: "/login" | "/";
   featured?: boolean;
 };
 
@@ -81,7 +81,7 @@ function PricingPage() {
           </Link>
           <div className="flex items-center gap-1">
             <Link
-              to={isLoggedIn ? "/workspace" : "/login"}
+              to={isLoggedIn ? "/" : "/login"}
               className="rounded-full px-3 py-1 text-[12.5px] text-fg/70 transition-colors hover:text-fg"
             >
               {isLoggedIn ? "Open app" : "Sign in"}
@@ -111,7 +111,7 @@ function PricingPage() {
             {plans.map((plan) => (
               <PricingCard
                 key={plan.id}
-                plan={{ ...plan, to: isLoggedIn ? "/workspace" : plan.to }}
+                plan={{ ...plan, to: isLoggedIn ? "/" : plan.to }}
               />
             ))}
           </div>

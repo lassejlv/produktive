@@ -28,12 +28,13 @@ function isActiveProject(project: Project) {
   );
 }
 
-export const Route = createFileRoute("/_app/projects")({
+export const Route = createFileRoute("/_app/$workspaceSlug/projects")({
   component: ProjectsPage,
 });
 
 function ProjectsPage() {
   const navigate = useNavigate();
+  const { workspaceSlug } = Route.useParams();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -89,8 +90,8 @@ function ProjectsPage() {
           onCreated={(project) => {
             addProject(project);
             void navigate({
-              to: "/projects/$projectId",
-              params: { projectId: project.id },
+              to: "/$workspaceSlug/projects/$projectId",
+              params: { workspaceSlug, projectId: project.id },
             });
           }}
         />
@@ -182,8 +183,8 @@ function ProjectsPage() {
                     project={project}
                     onOpen={() =>
                       void navigate({
-                        to: "/projects/$projectId",
-                        params: { projectId: project.id },
+                        to: "/$workspaceSlug/projects/$projectId",
+                        params: { workspaceSlug, projectId: project.id },
                       })
                     }
                     onArchiveToggle={() => void handleArchiveToggle(project)}

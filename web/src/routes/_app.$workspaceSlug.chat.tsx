@@ -1,7 +1,7 @@
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { ChatPane } from "@/components/chat/chat-pane";
 
-export const Route = createFileRoute("/_app/chat")({
+export const Route = createFileRoute("/_app/$workspaceSlug/chat")({
   component: ChatIndex,
 });
 

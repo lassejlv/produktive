@@ -226,7 +226,7 @@ function AdminDashboard() {
       >
         <button
           type="button"
-          onClick={() => void navigate({ to: "/workspace" })}
+          onClick={() => void navigate({ to: "/" })}
           className="h-9 rounded-[6px] border border-border px-3 text-[13px] text-fg hover:bg-surface"
         >
           Back to app
@@ -384,7 +384,7 @@ function AdminDashboard() {
           ) : null}
           <button
             type="button"
-            onClick={() => void navigate({ to: "/workspace" })}
+            onClick={() => void navigate({ to: "/" })}
             className="grid h-8 place-items-center rounded-[6px] border border-border-subtle bg-surface px-3 text-[12px] text-fg-muted hover:text-fg"
           >
             Back to app

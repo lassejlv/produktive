@@ -26,7 +26,7 @@ const exampleLabels = [
   { name: "P1", color: "yellow" },
 ] as const;
 
-export const Route = createFileRoute("/_app/labels")({
+export const Route = createFileRoute("/_app/$workspaceSlug/labels")({
   component: LabelsPage,
 });
 

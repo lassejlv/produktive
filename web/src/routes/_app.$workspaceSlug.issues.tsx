@@ -24,7 +24,7 @@ import { NewIssueSheet } from "@/components/issue/new-issue-sheet";
 import { useOnboarding } from "@/components/onboarding/onboarding-context";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DashboardSkeleton } from "@/components/issue-skeleton";
-import { IssueDetail } from "@/routes/_app.issues.$issueId";
+import { IssueDetail } from "@/routes/_app.$workspaceSlug.issues.$issueId";
 import {
   useCreateIssue,
   useDeleteIssue,
@@ -52,7 +52,7 @@ type IssuesSearch = {
   activeId?: string;
 };
 
-export const Route = createFileRoute("/_app/issues")({
+export const Route = createFileRoute("/_app/$workspaceSlug/issues")({
   validateSearch: (search: Record<string, unknown>): IssuesSearch => ({
     mine: search.mine === true || search.mine === "1" || search.mine === "true" ? true : undefined,
     new: search.new === true || search.new === "1" || search.new === "true" ? true : undefined,
@@ -68,13 +68,15 @@ const viewKeys = Object.keys(viewLabels) as View[];
 function IssuesPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
+  const { workspaceSlug } = Route.useParams();
   const session = useSession();
   const currentUserId = session.data?.user?.id ?? null;
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const issueId = pathname.startsWith("/issues/")
-    ? decodeURIComponent(pathname.slice("/issues/".length))
+  const issuePrefix = `/${workspaceSlug}/issues/`;
+  const issueId = pathname.startsWith(issuePrefix)
+    ? decodeURIComponent(pathname.slice(issuePrefix.length))
     : null;
   const { issues, isLoading, error, dismissError, addIssue } = useIssues();
   const createIssueMutation = useCreateIssue();
@@ -125,7 +127,8 @@ function IssuesPage() {
   const previewIssueId = search.activeId ?? null;
   const setPreviewIssueId = (next: string | null) => {
     void navigate({
-      to: "/issues",
+      to: "/$workspaceSlug/issues",
+      params: { workspaceSlug },
       search: (prev) => ({ ...prev, activeId: next ?? undefined }),
       replace: true,
     });
@@ -175,21 +178,23 @@ function IssuesPage() {
         : { ...current, assigneeIds: [...current.assigneeIds, currentUserId] },
     );
     void navigate({
-      to: "/issues",
+      to: "/$workspaceSlug/issues",
+      params: { workspaceSlug },
       search: (prev) => ({ ...prev, mine: undefined }),
       replace: true,
     });
-  }, [search.mine, currentUserId, navigate]);
+  }, [search.mine, currentUserId, navigate, workspaceSlug]);
 
   useEffect(() => {
     if (!search.new) return;
     window.dispatchEvent(new CustomEvent("produktive:new-issue"));
     void navigate({
-      to: "/issues",
+      to: "/$workspaceSlug/issues",
+      params: { workspaceSlug },
       search: (prev) => ({ ...prev, new: undefined }),
       replace: true,
     });
-  }, [search.new, navigate]);
+  }, [search.new, navigate, workspaceSlug]);
 
   const counts = useMemo(
     () => ({

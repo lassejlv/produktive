@@ -38,7 +38,7 @@ function VerifyEmailPage() {
       setStatus("success");
       setMessage("Email verified. Redirecting…");
       window.setTimeout(() => {
-        void navigate({ to: "/chat" });
+        void navigate({ to: "/" });
       }, 800);
     };
 
