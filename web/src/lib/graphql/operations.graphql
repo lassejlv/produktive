@@ -46,6 +46,18 @@ query Chats {
   chats
 }
 
+query Chat($id: String!) {
+  chat(id: $id)
+}
+
+query ChatAccess($id: String!) {
+  chatAccess(id: $id)
+}
+
+query InternalJson($path: String!) {
+  internalJson(path: $path)
+}
+
 mutation UpdatePreferences($input: PreferencesInput!) {
   updatePreferences(input: $input)
 }
@@ -120,4 +132,28 @@ mutation MarkNotificationRead($id: String!) {
 
 mutation MarkAllNotificationsRead {
   markAllNotificationsRead
+}
+
+mutation CreateChat {
+  createChat
+}
+
+mutation DeleteChat($id: String!) {
+  deleteChat(id: $id)
+}
+
+mutation GrantChatAccess($id: String!, $input: GrantChatAccessInput!) {
+  grantChatAccess(id: $id, input: $input)
+}
+
+mutation RevokeChatAccess($id: String!, $userId: String!) {
+  revokeChatAccess(id: $id, userId: $userId)
+}
+
+mutation PostChatMessage($id: String!, $input: PostChatMessageInput!) {
+  postChatMessage(id: $id, input: $input)
+}
+
+mutation InternalJsonMutation($method: String!, $path: String!, $body: JSON) {
+  internalJson(method: $method, path: $path, body: $body)
 }

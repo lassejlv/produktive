@@ -1,16 +1,23 @@
 import {
+  ChatAccessDocument,
+  ChatDocument,
   ChatsDocument,
   CloseAllTabsDocument,
   CloseTabDocument,
+  CreateChatDocument,
   CreateIssueDocument,
   CreateIssueStatusDocument,
   CreateLabelDocument,
   CreateProjectDocument,
+  DeleteChatDocument,
   DeleteIssueDocument,
   DeleteIssueStatusDocument,
   DeleteLabelDocument,
   DeleteProjectDocument,
+  GrantChatAccessDocument,
   InboxDocument,
+  InternalJsonDocument,
+  InternalJsonMutationDocument,
   IssueDocument,
   IssueStatusesDocument,
   IssuesDocument,
@@ -22,8 +29,10 @@ import {
   OpenTabDocument,
   ProjectDocument,
   PreferencesDocument,
+  PostChatMessageDocument,
   ProjectsDocument,
   ReorderIssueStatusesDocument,
+  RevokeChatAccessDocument,
   TabsDocument,
   UpdateIssueDocument,
   UpdateIssueStatusDocument,
@@ -301,6 +310,22 @@ const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
   return response.json() as Promise<T>;
 };
 
+const internalGraphQLGet = <T>(path: string) =>
+  graphqlRequest(InternalJsonDocument, { path }).then((data) =>
+    unwrapGraphQLJson<T>(data.internalJson),
+  );
+
+const internalGraphQLMutation = <T>(
+  method: "POST" | "PATCH" | "PUT" | "DELETE",
+  path: string,
+  body?: unknown,
+) =>
+  graphqlRequest(InternalJsonMutationDocument, {
+    method,
+    path,
+    body: body ?? null,
+  }).then((data) => unwrapGraphQLJson<T>(data.internalJson));
+
 export const listIssues = () =>
   graphqlRequest(IssuesDocument, {}).then((data) =>
     unwrapGraphQLJson<{ issues: Issue[] }>(data.issues),
@@ -348,7 +373,7 @@ export const listNotes = (search?: string) => {
   const params = new URLSearchParams();
   if (search?.trim()) params.set("search", search.trim());
   const suffix = params.toString() ? `?${params.toString()}` : "";
-  return request<{ notes: Note[] }>(`/api/notes${suffix}`);
+  return internalGraphQLGet<{ notes: Note[] }>(`/api/notes${suffix}`);
 };
 
 export const createNote = (input?: {
@@ -356,13 +381,9 @@ export const createNote = (input?: {
   bodyMarkdown?: string;
   folderId?: string | null;
   visibility?: "workspace" | "private";
-}) =>
-  request<{ note: Note }>("/api/notes", {
-    method: "POST",
-    body: JSON.stringify(input ?? {}),
-  });
+}) => internalGraphQLMutation<{ note: Note }>("POST", "/api/notes", input ?? {});
 
-export const getNote = (id: string) => request<{ note: Note }>(`/api/notes/${id}`);
+export const getNote = (id: string) => internalGraphQLGet<{ note: Note }>(`/api/notes/${id}`);
 
 export const updateNote = (
   id: string,
@@ -372,28 +393,23 @@ export const updateNote = (
     folderId?: string | null;
     visibility?: "workspace" | "private";
   },
-) =>
-  request<{ note: Note }>(`/api/notes/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
+) => internalGraphQLMutation<{ note: Note }>("PATCH", `/api/notes/${id}`, patch);
 
-export const archiveNote = (id: string) => request<void>(`/api/notes/${id}`, { method: "DELETE" });
+export const archiveNote = (id: string) =>
+  internalGraphQLMutation<void>("DELETE", `/api/notes/${id}`);
 
 export const listNoteVersions = (id: string) =>
-  request<{ versions: NoteVersion[] }>(`/api/notes/${id}/versions`);
+  internalGraphQLGet<{ versions: NoteVersion[] }>(`/api/notes/${id}/versions`);
 
 export const commitNote = (id: string, input?: { message?: string }) =>
-  request<{ version: NoteVersion }>(`/api/notes/${id}/commit`, {
-    method: "POST",
-    body: JSON.stringify(input ?? {}),
-  });
+  internalGraphQLMutation<{ version: NoteVersion }>("POST", `/api/notes/${id}/commit`, input ?? {});
 
 export const restoreNoteVersion = (id: string, versionId: string) =>
-  request<{ note: Note }>(`/api/notes/${id}/versions/${versionId}/restore`, {
-    method: "POST",
-    body: JSON.stringify({}),
-  });
+  internalGraphQLMutation<{ note: Note }>(
+    "POST",
+    `/api/notes/${id}/versions/${versionId}/restore`,
+    {},
+  );
 
 export const proposeNoteAiEdit = (
   id: string,
@@ -404,46 +420,40 @@ export const proposeNoteAiEdit = (
     bodyMarkdown?: string;
   },
 ) =>
-  request<{ replacementMarkdown: string }>(`/api/notes/${id}/ai/edit`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  internalGraphQLMutation<{ replacementMarkdown: string }>(
+    "POST",
+    `/api/notes/${id}/ai/edit`,
+    input,
+  );
 
-export const listNoteFolders = () => request<{ folders: NoteFolder[] }>("/api/notes/folders");
+export const listNoteFolders = () =>
+  internalGraphQLGet<{ folders: NoteFolder[] }>("/api/notes/folders");
 
 export const createNoteFolder = (input: { name: string; visibility?: "workspace" | "private" }) =>
-  request<{ folder: NoteFolder }>("/api/notes/folders", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  internalGraphQLMutation<{ folder: NoteFolder }>("POST", "/api/notes/folders", input);
 
 export const updateNoteFolder = (
   id: string,
   patch: { name?: string; visibility?: "workspace" | "private" },
-) =>
-  request<{ folder: NoteFolder }>(`/api/notes/folders/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
+) => internalGraphQLMutation<{ folder: NoteFolder }>("PATCH", `/api/notes/folders/${id}`, patch);
 
 export const archiveNoteFolder = (id: string) =>
-  request<void>(`/api/notes/folders/${id}`, { method: "DELETE" });
+  internalGraphQLMutation<void>("DELETE", `/api/notes/folders/${id}`);
 
 export const searchNoteMentions = (q: string) =>
-  request<{ mentions: NoteMentionSearchResult[] }>(
+  internalGraphQLGet<{ mentions: NoteMentionSearchResult[] }>(
     `/api/notes/mentions?q=${encodeURIComponent(q)}`,
   );
 
 export const getIssueHistory = (id: string) =>
-  request<{ events: IssueHistoryEvent[] }>(`/api/issues/${id}/history`);
+  internalGraphQLGet<{ events: IssueHistoryEvent[] }>(`/api/issues/${id}/history`);
 
 export const listIssueComments = (id: string) =>
-  request<{ comments: IssueComment[] }>(`/api/issues/${id}/comments`);
+  internalGraphQLGet<{ comments: IssueComment[] }>(`/api/issues/${id}/comments`);
 
 export const createIssueComment = (id: string, body: string) =>
-  request<{ comment: IssueComment }>(`/api/issues/${id}/comments`, {
-    method: "POST",
-    body: JSON.stringify({ body }),
+  internalGraphQLMutation<{ comment: IssueComment }>("POST", `/api/issues/${id}/comments`, {
+    body,
   });
 
 export type IssueSubscriberUser = {
@@ -459,17 +469,13 @@ export type IssueSubscribersResponse = {
 };
 
 export const listIssueSubscribers = (id: string) =>
-  request<IssueSubscribersResponse>(`/api/issues/${id}/subscribers`);
+  internalGraphQLGet<IssueSubscribersResponse>(`/api/issues/${id}/subscribers`);
 
 export const subscribeToIssue = (id: string) =>
-  request<IssueSubscribersResponse>(`/api/issues/${id}/subscribers`, {
-    method: "POST",
-  });
+  internalGraphQLMutation<IssueSubscribersResponse>("POST", `/api/issues/${id}/subscribers`);
 
 export const unsubscribeFromIssue = (id: string) =>
-  request<IssueSubscribersResponse>(`/api/issues/${id}/subscribers`, {
-    method: "DELETE",
-  });
+  internalGraphQLMutation<IssueSubscribersResponse>("DELETE", `/api/issues/${id}/subscribers`);
 
 export type InboxNotification = {
   id: string;
@@ -570,10 +576,7 @@ export type OnboardingUserResponse = {
 };
 
 export const markOnboarding = (patch: OnboardingPatch) =>
-  request<OnboardingUserResponse>("/api/me/onboarding", {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
+  internalGraphQLMutation<OnboardingUserResponse>("PATCH", "/api/me/onboarding", patch);
 
 export type OAuthAuthorizePreview = {
   clientName: string;
@@ -639,7 +642,8 @@ export type McpServerEnvelope = {
   oauthUrl: string | null;
 };
 
-export const listMcpServers = () => request<{ servers: McpServer[] }>("/api/ai/mcp/servers");
+export const listMcpServers = () =>
+  internalGraphQLGet<{ servers: McpServer[] }>("/api/ai/mcp/servers");
 
 export type AiModel = {
   id: string;
@@ -652,7 +656,7 @@ export type AiModelsResponse = {
   defaultId: string;
 };
 
-export const listAiModels = () => request<AiModelsResponse>("/api/ai/models");
+export const listAiModels = () => internalGraphQLGet<AiModelsResponse>("/api/ai/models");
 
 export type AiBrief = {
   summary: string;
@@ -663,14 +667,10 @@ export type AiBrief = {
 };
 
 export const generateWorkspaceBrief = () =>
-  request<AiBrief>("/api/ai/workspace-brief", {
-    method: "POST",
-  });
+  internalGraphQLMutation<AiBrief>("POST", "/api/ai/workspace-brief");
 
 export const generateProjectHealth = (projectId: string) =>
-  request<AiBrief>(`/api/ai/projects/${projectId}/health`, {
-    method: "POST",
-  });
+  internalGraphQLMutation<AiBrief>("POST", `/api/ai/projects/${projectId}/health`);
 
 export type IssueDraft = {
   title: string;
@@ -680,33 +680,21 @@ export type IssueDraft = {
 };
 
 export const generateIssueDraft = (input: { title: string; description?: string }) =>
-  request<IssueDraft>("/api/ai/issue-draft", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  internalGraphQLMutation<IssueDraft>("POST", "/api/ai/issue-draft", input);
 
 export const createMcpServer = (input: { name?: string; url: string; accessToken?: string }) =>
-  request<McpServerEnvelope>("/api/ai/mcp/servers", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  internalGraphQLMutation<McpServerEnvelope>("POST", "/api/ai/mcp/servers", input);
 
 export const updateMcpServer = (
   id: string,
   patch: { name?: string; enabled?: boolean; accessToken?: string },
-) =>
-  request<McpServerEnvelope>(`/api/ai/mcp/servers/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
+) => internalGraphQLMutation<McpServerEnvelope>("PATCH", `/api/ai/mcp/servers/${id}`, patch);
 
 export const deleteMcpServer = (id: string) =>
-  request<void>(`/api/ai/mcp/servers/${id}`, { method: "DELETE" });
+  internalGraphQLMutation<void>("DELETE", `/api/ai/mcp/servers/${id}`);
 
 export const refreshMcpServerTools = (id: string) =>
-  request<McpServerEnvelope>(`/api/ai/mcp/servers/${id}/refresh-tools`, {
-    method: "POST",
-  });
+  internalGraphQLMutation<McpServerEnvelope>("POST", `/api/ai/mcp/servers/${id}/refresh-tools`);
 
 export const startMcpServerOAuth = (id: string) =>
   request<{ url: string }>(`/api/ai/mcp/servers/${id}/oauth/start`, {
@@ -725,19 +713,16 @@ export type McpApiKey = {
   updatedAt: string;
 };
 
-export const listMcpApiKeys = () => request<{ keys: McpApiKey[] }>("/api/api-keys/keys");
+export const listMcpApiKeys = () => internalGraphQLGet<{ keys: McpApiKey[] }>("/api/api-keys/keys");
 
 export const createMcpApiKey = (input: { name?: string; expiresInDays?: number }) =>
-  request<{ key: McpApiKey; token: string }>("/api/api-keys/keys", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  internalGraphQLMutation<{ key: McpApiKey; token: string }>("POST", "/api/api-keys/keys", input);
 
 export const revokeMcpApiKey = (id: string) =>
-  request<void>(`/api/api-keys/keys/${id}`, { method: "DELETE" });
+  internalGraphQLMutation<void>("DELETE", `/api/api-keys/keys/${id}`);
 
 export const deleteMcpApiKey = (id: string) =>
-  request<void>(`/api/api-keys/keys/${id}/delete`, { method: "DELETE" });
+  internalGraphQLMutation<void>("DELETE", `/api/api-keys/keys/${id}/delete`);
 
 export type GithubConnection = {
   connected: boolean;
@@ -797,57 +782,51 @@ export type GithubRepositoryOption = {
   fork: boolean;
 };
 
-export const getGithubConnection = () => request<GithubConnection>("/api/github/connection");
+export const getGithubConnection = () =>
+  internalGraphQLGet<GithubConnection>("/api/github/connection");
 
 export const startGithubOAuth = () =>
   request<{ url: string }>("/api/github/oauth/start", { method: "POST" });
 
-export const disconnectGithub = () => request<void>("/api/github/connection", { method: "DELETE" });
+export const disconnectGithub = () =>
+  internalGraphQLMutation<void>("DELETE", "/api/github/connection");
 
 export const listGithubRepositories = () =>
-  request<{ repositories: GithubRepository[] }>("/api/github/repositories");
+  internalGraphQLGet<{ repositories: GithubRepository[] }>("/api/github/repositories");
 
 export const searchGithubRepositories = (params: { q: string }) =>
-  request<{ repositories: GithubRepositoryOption[] }>(
+  internalGraphQLGet<{ repositories: GithubRepositoryOption[] }>(
     `/api/github/repository-search?q=${encodeURIComponent(params.q)}`,
   );
 
 export const createGithubRepository = (input: GithubRepositoryInput) =>
-  request<{ repository: GithubRepository }>("/api/github/repositories", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  internalGraphQLMutation<{ repository: GithubRepository }>(
+    "POST",
+    "/api/github/repositories",
+    input,
+  );
 
 export const updateGithubRepository = (id: string, patch: Partial<GithubRepositoryInput>) =>
-  request<{ repository: GithubRepository }>(`/api/github/repositories/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
+  internalGraphQLMutation<{ repository: GithubRepository }>(
+    "PATCH",
+    `/api/github/repositories/${id}`,
+    patch,
+  );
 
 export const deleteGithubRepository = (id: string) =>
-  request<void>(`/api/github/repositories/${id}`, { method: "DELETE" });
+  internalGraphQLMutation<void>("DELETE", `/api/github/repositories/${id}`);
 
 export const previewGithubRepositoryImport = (id: string) =>
-  request<GithubImportPreview>(`/api/github/repositories/${id}/preview`, {
-    method: "POST",
-  });
+  internalGraphQLMutation<GithubImportPreview>("POST", `/api/github/repositories/${id}/preview`);
 
 export const importGithubRepositoryIssues = (id: string) =>
-  request<GithubImportResult>(`/api/github/repositories/${id}/import`, {
-    method: "POST",
-  });
+  internalGraphQLMutation<GithubImportResult>("POST", `/api/github/repositories/${id}/import`);
 
 export const previewGithubImport = (input: { owner: string; repo: string }) =>
-  request<GithubImportPreview>("/api/github/import/preview", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  internalGraphQLMutation<GithubImportPreview>("POST", "/api/github/import/preview", input);
 
 export const importGithubIssues = (input: { owner: string; repo: string }) =>
-  request<GithubImportResult>("/api/github/import", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  internalGraphQLMutation<GithubImportResult>("POST", "/api/github/import", input);
 
 export type SlackConnection = {
   connected: boolean;
@@ -859,18 +838,17 @@ export type SlackConnection = {
   connectedAt: string | null;
 };
 
-export const getSlackConnection = () => request<SlackConnection>("/api/slack/connection");
+export const getSlackConnection = () =>
+  internalGraphQLGet<SlackConnection>("/api/slack/connection");
 
 export const startSlackOAuth = () =>
   request<{ url: string }>("/api/slack/oauth/start", { method: "POST" });
 
 export const updateSlackConnection = (patch: { agentEnabled?: boolean }) =>
-  request<SlackConnection>("/api/slack/connection", {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
+  internalGraphQLMutation<SlackConnection>("PATCH", "/api/slack/connection", patch);
 
-export const disconnectSlack = () => request<void>("/api/slack/connection", { method: "DELETE" });
+export const disconnectSlack = () =>
+  internalGraphQLMutation<void>("DELETE", "/api/slack/connection");
 
 export type Invitation = {
   id: string;
@@ -882,21 +860,19 @@ export type Invitation = {
 };
 
 export const listInvitations = () =>
-  request<{ invitations: Invitation[] }>("/api/organizations/me/invitations");
+  internalGraphQLGet<{ invitations: Invitation[] }>("/api/organizations/me/invitations");
 
 export const createInvitation = (email: string, role?: string) =>
-  request<Invitation>("/api/organizations/me/invitations", {
-    method: "POST",
-    body: JSON.stringify({ email, role }),
-  });
+  internalGraphQLMutation<Invitation>("POST", "/api/organizations/me/invitations", { email, role });
 
 export const revokeInvitation = (id: string) =>
-  request<{ invitations: Invitation[] }>(`/api/organizations/me/invitations/${id}`, {
-    method: "DELETE",
-  });
+  internalGraphQLMutation<{ invitations: Invitation[] }>(
+    "DELETE",
+    `/api/organizations/me/invitations/${id}`,
+  );
 
 export const resendInvitation = (id: string) =>
-  request<Invitation>(`/api/organizations/me/invitations/${id}/resend`, { method: "POST" });
+  internalGraphQLMutation<Invitation>("POST", `/api/organizations/me/invitations/${id}/resend`);
 
 export type InvitationLookup = {
   valid: boolean;
@@ -1049,7 +1025,7 @@ export const deleteLabel = (id: string) =>
   graphqlRequest(DeleteLabelDocument, { id }).then(() => undefined as void);
 
 export const getMemberProfile = (id: string) =>
-  request<{ member: MemberProfile }>(`/api/members/${id}`);
+  internalGraphQLGet<{ member: MemberProfile }>(`/api/members/${id}`);
 
 export type Member = {
   id: string;
@@ -1084,13 +1060,13 @@ export type SecurityEvent = {
 };
 
 export const listSecurityEvents = () =>
-  request<{ events: SecurityEvent[] }>("/api/security/events");
+  internalGraphQLGet<{ events: SecurityEvent[] }>("/api/security/events");
 
 export const sendTwoFactorNudges = () =>
-  request<{ sent: number }>("/api/security/two-factor-nudges", { method: "POST" });
+  internalGraphQLMutation<{ sent: number }>("POST", "/api/security/two-factor-nudges");
 
 export const recordTwoFactorEnforcementBlocked = () =>
-  request<{ ok: true }>("/api/security/two-factor-enforcement/blocked", { method: "POST" });
+  internalGraphQLMutation<{ ok: true }>("POST", "/api/security/two-factor-enforcement/blocked");
 
 export type PermissionInfo = {
   key: string;
@@ -1109,44 +1085,31 @@ export type Role = {
 };
 
 export const listRoles = () =>
-  request<{ roles: Role[]; permissions: PermissionInfo[] }>("/api/roles");
+  internalGraphQLGet<{ roles: Role[]; permissions: PermissionInfo[] }>("/api/roles");
 
 export const createRole = (input: { name: string; description?: string; permissions: string[] }) =>
-  request<{ role: Role }>("/api/roles", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  internalGraphQLMutation<{ role: Role }>("POST", "/api/roles", input);
 
 export const updateRole = (
   id: string,
   input: { name: string; description?: string; permissions: string[] },
-) =>
-  request<{ role: Role }>(`/api/roles/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  });
+) => internalGraphQLMutation<{ role: Role }>("PATCH", `/api/roles/${id}`, input);
 
-export const deleteRole = (id: string) => request<void>(`/api/roles/${id}`, { method: "DELETE" });
+export const deleteRole = (id: string) =>
+  internalGraphQLMutation<void>("DELETE", `/api/roles/${id}`);
 
 export const updateMemberRole = (id: string, role: string) =>
-  request<void>(`/api/members/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ role }),
-  });
+  internalGraphQLMutation<void>("PATCH", `/api/members/${id}`, { role });
 
 export const removeMember = (id: string) =>
-  request<void>(`/api/members/${id}`, { method: "DELETE" });
+  internalGraphQLMutation<void>("DELETE", `/api/members/${id}`);
 
 export const resetMemberTwoFactor = (userId: string) =>
-  request<void>("/api/security/two-factor-recovery/reset", {
-    method: "POST",
-    body: JSON.stringify({ userId }),
-  });
+  internalGraphQLMutation<void>("POST", "/api/security/two-factor-recovery/reset", { userId });
 
 export const revokeMemberSessions = (userId: string) =>
-  request<{ revoked: number }>("/api/security/member-sessions/revoke", {
-    method: "POST",
-    body: JSON.stringify({ userId }),
+  internalGraphQLMutation<{ revoked: number }>("POST", "/api/security/member-sessions/revoke", {
+    userId,
   });
 
 export const createIssue = (input: CreateIssueInput) =>
@@ -1218,31 +1181,26 @@ export type Favorite =
       position: number;
     };
 
-export const listFavorites = () => request<{ favorites: Favorite[] }>("/api/favorites");
+export const listFavorites = () => internalGraphQLGet<{ favorites: Favorite[] }>("/api/favorites");
 
 export const addFavorite = (targetType: FavoriteTarget, targetId: string) =>
-  request<{
+  internalGraphQLMutation<{
     favorite: {
       id: string;
       targetType: FavoriteTarget;
       targetId: string;
       position: number;
     };
-  }>("/api/favorites", {
-    method: "POST",
-    body: JSON.stringify({ targetType, targetId }),
-  });
+  }>("POST", "/api/favorites", { targetType, targetId });
 
 export const removeFavorite = (targetType: FavoriteTarget, targetId: string) =>
-  request<{ ok: true }>(`/api/favorites/by/${targetType}/${encodeURIComponent(targetId)}`, {
-    method: "DELETE",
-  });
+  internalGraphQLMutation<{ ok: true }>(
+    "DELETE",
+    `/api/favorites/by/${targetType}/${encodeURIComponent(targetId)}`,
+  );
 
 export const reorderFavorites = (favoriteIds: string[]) =>
-  request<{ ok: true }>("/api/favorites/reorder", {
-    method: "POST",
-    body: JSON.stringify({ favoriteIds }),
-  });
+  internalGraphQLMutation<{ ok: true }>("POST", "/api/favorites/reorder", { favoriteIds });
 
 export type Chat = {
   id: string;
@@ -1289,33 +1247,40 @@ export const listChats = () =>
     unwrapGraphQLJson<{ chats: Chat[] }>(data.chats),
   );
 
-export const createChat = () => request<{ chat: Chat }>("/api/chats", { method: "POST" });
+export const createChat = () =>
+  graphqlRequest(CreateChatDocument, {}).then((data) =>
+    unwrapGraphQLJson<{ chat: Chat }>(data.createChat),
+  );
 
 export const getChat = (id: string) =>
-  request<{ chat: Chat; messages: ChatMessageRecord[] }>(`/api/chats/${id}`);
+  graphqlRequest(ChatDocument, { id }).then((data) =>
+    unwrapGraphQLJson<{ chat: Chat; messages: ChatMessageRecord[] }>(data.chat),
+  );
 
 export const deleteChat = (id: string) =>
-  request<{ ok: true }>(`/api/chats/${id}`, { method: "DELETE" });
+  graphqlRequest(DeleteChatDocument, { id }).then((data) =>
+    unwrapGraphQLJson<{ ok: true }>(data.deleteChat),
+  );
 
 export const listChatAccess = (id: string) =>
-  request<{ access: ChatAccessEntry[] }>(`/api/chats/${id}/access`);
+  graphqlRequest(ChatAccessDocument, { id }).then((data) =>
+    unwrapGraphQLJson<{ access: ChatAccessEntry[] }>(data.chatAccess),
+  );
 
 export const grantChatAccess = (id: string, userId: string) =>
-  request<{ access: ChatAccessEntry }>(`/api/chats/${id}/access`, {
-    method: "POST",
-    body: JSON.stringify({ userId }),
-  });
+  graphqlRequest(GrantChatAccessDocument, { id, input: { userId } }).then((data) =>
+    unwrapGraphQLJson<{ access: ChatAccessEntry }>(data.grantChatAccess),
+  );
 
 export const revokeChatAccess = (id: string, userId: string) =>
-  request<{ ok: true }>(`/api/chats/${id}/access/${userId}`, {
-    method: "DELETE",
-  });
+  graphqlRequest(RevokeChatAccessDocument, { id, userId }).then((data) =>
+    unwrapGraphQLJson<{ ok: true }>(data.revokeChatAccess),
+  );
 
 export const postChatMessage = (id: string, content: string) =>
-  request<{ messages: ChatMessageRecord[] }>(`/api/chats/${id}/messages`, {
-    method: "POST",
-    body: JSON.stringify({ content }),
-  });
+  graphqlRequest(PostChatMessageDocument, { id, input: { content } }).then((data) =>
+    unwrapGraphQLJson<{ messages: ChatMessageRecord[] }>(data.postChatMessage),
+  );
 
 export const uploadChatAttachment = async (id: string, file: File) => {
   const form = new FormData();

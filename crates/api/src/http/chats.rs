@@ -48,7 +48,7 @@ pub fn routes() -> Router<AppState> {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ChatSummary {
+pub(crate) struct ChatSummary {
     id: String,
     title: String,
     created_by_id: Option<String>,
@@ -70,7 +70,7 @@ impl From<&chat::Model> for ChatSummary {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct WireMessage {
+pub(crate) struct WireMessage {
     id: String,
     role: String,
     content: String,
@@ -93,7 +93,7 @@ impl From<&chat_message::Model> for WireMessage {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct WireToolCall {
+pub(crate) struct WireToolCall {
     id: String,
     name: String,
     arguments: String,
@@ -101,24 +101,24 @@ struct WireToolCall {
 }
 
 #[derive(Serialize)]
-struct ChatsResponse {
-    chats: Vec<ChatSummary>,
+pub(crate) struct ChatsResponse {
+    pub(crate) chats: Vec<ChatSummary>,
 }
 
 #[derive(Serialize)]
-struct ChatEnvelope {
-    chat: ChatSummary,
+pub(crate) struct ChatEnvelope {
+    pub(crate) chat: ChatSummary,
 }
 
 #[derive(Serialize)]
-struct ChatWithMessages {
-    chat: ChatSummary,
-    messages: Vec<WireMessage>,
+pub(crate) struct ChatWithMessages {
+    pub(crate) chat: ChatSummary,
+    pub(crate) messages: Vec<WireMessage>,
 }
 
 #[derive(Serialize)]
-struct MessagesResponse {
-    messages: Vec<WireMessage>,
+pub(crate) struct MessagesResponse {
+    pub(crate) messages: Vec<WireMessage>,
 }
 
 #[derive(Serialize)]
@@ -151,8 +151,8 @@ enum StreamEvent {
 }
 
 #[derive(Serialize)]
-struct OkResponse {
-    ok: bool,
+pub(crate) struct OkResponse {
+    pub(crate) ok: bool,
 }
 
 async fn list_chats(
@@ -188,7 +188,7 @@ async fn accessible_chat_ids(
     Ok(rows.into_iter().map(|r| r.chat_id).collect())
 }
 
-async fn create_chat(
+pub(crate) async fn create_chat(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<(StatusCode, Json<ChatEnvelope>), ApiError> {
@@ -236,7 +236,7 @@ async fn create_chat(
     Ok((StatusCode::CREATED, Json(ChatEnvelope { chat: summary })))
 }
 
-async fn get_chat_with_messages(
+pub(crate) async fn get_chat_with_messages(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -257,7 +257,7 @@ async fn get_chat_with_messages(
     }))
 }
 
-async fn delete_chat(
+pub(crate) async fn delete_chat(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(id): Path<String>,
@@ -354,10 +354,10 @@ async fn upload_attachment(
 }
 
 #[derive(Deserialize)]
-struct PostMessageRequest {
-    content: String,
+pub(crate) struct PostMessageRequest {
+    pub(crate) content: String,
     #[serde(default)]
-    model: Option<String>,
+    pub(crate) model: Option<String>,
 }
 
 async fn resolve_model(
@@ -381,7 +381,7 @@ async fn resolve_model(
     Ok(value.to_owned())
 }
 
-async fn post_message(
+pub(crate) async fn post_message(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(chat_id): Path<String>,
@@ -722,33 +722,33 @@ async fn find_chat(
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ChatAccessEntry {
-    user_id: String,
-    name: String,
-    email: String,
-    image: Option<String>,
-    is_creator: bool,
+pub(crate) struct ChatAccessEntry {
+    pub(crate) user_id: String,
+    pub(crate) name: String,
+    pub(crate) email: String,
+    pub(crate) image: Option<String>,
+    pub(crate) is_creator: bool,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ChatAccessListResponse {
-    access: Vec<ChatAccessEntry>,
+pub(crate) struct ChatAccessListResponse {
+    pub(crate) access: Vec<ChatAccessEntry>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ChatAccessSingleResponse {
-    access: ChatAccessEntry,
+pub(crate) struct ChatAccessSingleResponse {
+    pub(crate) access: ChatAccessEntry,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct GrantAccessRequest {
-    user_id: String,
+pub(crate) struct GrantAccessRequest {
+    pub(crate) user_id: String,
 }
 
-async fn list_access(
+pub(crate) async fn list_access(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(chat_id): Path<String>,
@@ -782,7 +782,7 @@ async fn list_access(
     Ok(Json(ChatAccessListResponse { access: entries }))
 }
 
-async fn grant_access(
+pub(crate) async fn grant_access(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(chat_id): Path<String>,
@@ -854,7 +854,7 @@ async fn grant_access(
     Ok(Json(ChatAccessSingleResponse { access }))
 }
 
-async fn revoke_access(
+pub(crate) async fn revoke_access(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((chat_id, user_id)): Path<(String, String)>,

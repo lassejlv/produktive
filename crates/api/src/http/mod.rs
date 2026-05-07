@@ -2,7 +2,7 @@ mod admin;
 mod ai;
 mod ai_mcp;
 mod auth;
-mod chats;
+pub mod chats;
 mod cors;
 mod dev;
 mod discord;

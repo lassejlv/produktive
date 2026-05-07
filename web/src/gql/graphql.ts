@@ -37,6 +37,10 @@ export type DeleteIssueStatusInput = {
   replacementStatus?: string | null | undefined;
 };
 
+export type GrantChatAccessInput = {
+  userId: string;
+};
+
 export type IssueStatusInput = {
   category: string;
   color?: string | null | undefined;
@@ -47,6 +51,11 @@ export type OpenTabInput = {
   tabType: string;
   targetId: string;
   title: string;
+};
+
+export type PostChatMessageInput = {
+  content: string;
+  model?: string | null | undefined;
 };
 
 export type PreferencesInput = {
@@ -152,6 +161,24 @@ export type TabsQuery = { tabs: unknown };
 export type ChatsQueryVariables = Exact<{ [key: string]: never }>;
 
 export type ChatsQuery = { chats: unknown };
+
+export type ChatQueryVariables = Exact<{
+  id: string;
+}>;
+
+export type ChatQuery = { chat: unknown };
+
+export type ChatAccessQueryVariables = Exact<{
+  id: string;
+}>;
+
+export type ChatAccessQuery = { chatAccess: unknown };
+
+export type InternalJsonQueryVariables = Exact<{
+  path: string;
+}>;
+
+export type InternalJsonQuery = { internalJson: unknown };
 
 export type UpdatePreferencesMutationVariables = Exact<{
   input: PreferencesInput;
@@ -267,6 +294,45 @@ export type MarkNotificationReadMutation = { markNotificationRead: unknown };
 export type MarkAllNotificationsReadMutationVariables = Exact<{ [key: string]: never }>;
 
 export type MarkAllNotificationsReadMutation = { markAllNotificationsRead: unknown };
+
+export type CreateChatMutationVariables = Exact<{ [key: string]: never }>;
+
+export type CreateChatMutation = { createChat: unknown };
+
+export type DeleteChatMutationVariables = Exact<{
+  id: string;
+}>;
+
+export type DeleteChatMutation = { deleteChat: unknown };
+
+export type GrantChatAccessMutationVariables = Exact<{
+  id: string;
+  input: GrantChatAccessInput;
+}>;
+
+export type GrantChatAccessMutation = { grantChatAccess: unknown };
+
+export type RevokeChatAccessMutationVariables = Exact<{
+  id: string;
+  userId: string;
+}>;
+
+export type RevokeChatAccessMutation = { revokeChatAccess: unknown };
+
+export type PostChatMessageMutationVariables = Exact<{
+  id: string;
+  input: PostChatMessageInput;
+}>;
+
+export type PostChatMessageMutation = { postChatMessage: unknown };
+
+export type InternalJsonMutationMutationVariables = Exact<{
+  method: string;
+  path: string;
+  body?: unknown;
+}>;
+
+export type InternalJsonMutationMutation = { internalJson: unknown };
 
 export const IssuesDocument = {
   kind: "Document",
@@ -585,6 +651,114 @@ export const ChatsDocument = {
     },
   ],
 } as unknown as DocumentNode<ChatsQuery, ChatsQueryVariables>;
+export const ChatDocument = {
+  kind: "Document",
+  definitions: [
+    {
+      kind: "OperationDefinition",
+      operation: "query",
+      name: { kind: "Name", value: "Chat" },
+      variableDefinitions: [
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "id" } },
+          type: {
+            kind: "NonNullType",
+            type: { kind: "NamedType", name: { kind: "Name", value: "String" } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: "SelectionSet",
+        selections: [
+          {
+            kind: "Field",
+            name: { kind: "Name", value: "chat" },
+            arguments: [
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "id" },
+                value: { kind: "Variable", name: { kind: "Name", value: "id" } },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<ChatQuery, ChatQueryVariables>;
+export const ChatAccessDocument = {
+  kind: "Document",
+  definitions: [
+    {
+      kind: "OperationDefinition",
+      operation: "query",
+      name: { kind: "Name", value: "ChatAccess" },
+      variableDefinitions: [
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "id" } },
+          type: {
+            kind: "NonNullType",
+            type: { kind: "NamedType", name: { kind: "Name", value: "String" } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: "SelectionSet",
+        selections: [
+          {
+            kind: "Field",
+            name: { kind: "Name", value: "chatAccess" },
+            arguments: [
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "id" },
+                value: { kind: "Variable", name: { kind: "Name", value: "id" } },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<ChatAccessQuery, ChatAccessQueryVariables>;
+export const InternalJsonDocument = {
+  kind: "Document",
+  definitions: [
+    {
+      kind: "OperationDefinition",
+      operation: "query",
+      name: { kind: "Name", value: "InternalJson" },
+      variableDefinitions: [
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "path" } },
+          type: {
+            kind: "NonNullType",
+            type: { kind: "NamedType", name: { kind: "Name", value: "String" } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: "SelectionSet",
+        selections: [
+          {
+            kind: "Field",
+            name: { kind: "Name", value: "internalJson" },
+            arguments: [
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "path" },
+                value: { kind: "Variable", name: { kind: "Name", value: "path" } },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<InternalJsonQuery, InternalJsonQueryVariables>;
 export const UpdatePreferencesDocument = {
   kind: "Document",
   definitions: [
@@ -1299,3 +1473,259 @@ export const MarkAllNotificationsReadDocument = {
   MarkAllNotificationsReadMutation,
   MarkAllNotificationsReadMutationVariables
 >;
+export const CreateChatDocument = {
+  kind: "Document",
+  definitions: [
+    {
+      kind: "OperationDefinition",
+      operation: "mutation",
+      name: { kind: "Name", value: "CreateChat" },
+      selectionSet: {
+        kind: "SelectionSet",
+        selections: [{ kind: "Field", name: { kind: "Name", value: "createChat" } }],
+      },
+    },
+  ],
+} as unknown as DocumentNode<CreateChatMutation, CreateChatMutationVariables>;
+export const DeleteChatDocument = {
+  kind: "Document",
+  definitions: [
+    {
+      kind: "OperationDefinition",
+      operation: "mutation",
+      name: { kind: "Name", value: "DeleteChat" },
+      variableDefinitions: [
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "id" } },
+          type: {
+            kind: "NonNullType",
+            type: { kind: "NamedType", name: { kind: "Name", value: "String" } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: "SelectionSet",
+        selections: [
+          {
+            kind: "Field",
+            name: { kind: "Name", value: "deleteChat" },
+            arguments: [
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "id" },
+                value: { kind: "Variable", name: { kind: "Name", value: "id" } },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<DeleteChatMutation, DeleteChatMutationVariables>;
+export const GrantChatAccessDocument = {
+  kind: "Document",
+  definitions: [
+    {
+      kind: "OperationDefinition",
+      operation: "mutation",
+      name: { kind: "Name", value: "GrantChatAccess" },
+      variableDefinitions: [
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "id" } },
+          type: {
+            kind: "NonNullType",
+            type: { kind: "NamedType", name: { kind: "Name", value: "String" } },
+          },
+        },
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "input" } },
+          type: {
+            kind: "NonNullType",
+            type: { kind: "NamedType", name: { kind: "Name", value: "GrantChatAccessInput" } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: "SelectionSet",
+        selections: [
+          {
+            kind: "Field",
+            name: { kind: "Name", value: "grantChatAccess" },
+            arguments: [
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "id" },
+                value: { kind: "Variable", name: { kind: "Name", value: "id" } },
+              },
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "input" },
+                value: { kind: "Variable", name: { kind: "Name", value: "input" } },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<GrantChatAccessMutation, GrantChatAccessMutationVariables>;
+export const RevokeChatAccessDocument = {
+  kind: "Document",
+  definitions: [
+    {
+      kind: "OperationDefinition",
+      operation: "mutation",
+      name: { kind: "Name", value: "RevokeChatAccess" },
+      variableDefinitions: [
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "id" } },
+          type: {
+            kind: "NonNullType",
+            type: { kind: "NamedType", name: { kind: "Name", value: "String" } },
+          },
+        },
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "userId" } },
+          type: {
+            kind: "NonNullType",
+            type: { kind: "NamedType", name: { kind: "Name", value: "String" } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: "SelectionSet",
+        selections: [
+          {
+            kind: "Field",
+            name: { kind: "Name", value: "revokeChatAccess" },
+            arguments: [
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "id" },
+                value: { kind: "Variable", name: { kind: "Name", value: "id" } },
+              },
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "userId" },
+                value: { kind: "Variable", name: { kind: "Name", value: "userId" } },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<RevokeChatAccessMutation, RevokeChatAccessMutationVariables>;
+export const PostChatMessageDocument = {
+  kind: "Document",
+  definitions: [
+    {
+      kind: "OperationDefinition",
+      operation: "mutation",
+      name: { kind: "Name", value: "PostChatMessage" },
+      variableDefinitions: [
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "id" } },
+          type: {
+            kind: "NonNullType",
+            type: { kind: "NamedType", name: { kind: "Name", value: "String" } },
+          },
+        },
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "input" } },
+          type: {
+            kind: "NonNullType",
+            type: { kind: "NamedType", name: { kind: "Name", value: "PostChatMessageInput" } },
+          },
+        },
+      ],
+      selectionSet: {
+        kind: "SelectionSet",
+        selections: [
+          {
+            kind: "Field",
+            name: { kind: "Name", value: "postChatMessage" },
+            arguments: [
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "id" },
+                value: { kind: "Variable", name: { kind: "Name", value: "id" } },
+              },
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "input" },
+                value: { kind: "Variable", name: { kind: "Name", value: "input" } },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<PostChatMessageMutation, PostChatMessageMutationVariables>;
+export const InternalJsonMutationDocument = {
+  kind: "Document",
+  definitions: [
+    {
+      kind: "OperationDefinition",
+      operation: "mutation",
+      name: { kind: "Name", value: "InternalJsonMutation" },
+      variableDefinitions: [
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "method" } },
+          type: {
+            kind: "NonNullType",
+            type: { kind: "NamedType", name: { kind: "Name", value: "String" } },
+          },
+        },
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "path" } },
+          type: {
+            kind: "NonNullType",
+            type: { kind: "NamedType", name: { kind: "Name", value: "String" } },
+          },
+        },
+        {
+          kind: "VariableDefinition",
+          variable: { kind: "Variable", name: { kind: "Name", value: "body" } },
+          type: { kind: "NamedType", name: { kind: "Name", value: "JSON" } },
+        },
+      ],
+      selectionSet: {
+        kind: "SelectionSet",
+        selections: [
+          {
+            kind: "Field",
+            name: { kind: "Name", value: "internalJson" },
+            arguments: [
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "method" },
+                value: { kind: "Variable", name: { kind: "Name", value: "method" } },
+              },
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "path" },
+                value: { kind: "Variable", name: { kind: "Name", value: "path" } },
+              },
+              {
+                kind: "Argument",
+                name: { kind: "Name", value: "body" },
+                value: { kind: "Variable", name: { kind: "Name", value: "body" } },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  ],
+} as unknown as DocumentNode<InternalJsonMutationMutation, InternalJsonMutationMutationVariables>;

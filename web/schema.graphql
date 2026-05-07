@@ -14,6 +14,9 @@ type Query {
   preferences: JSON!
   tabs: JSON!
   chats: JSON!
+  chat(id: String!): JSON!
+  chatAccess(id: String!): JSON!
+  internalJson(path: String!): JSON!
 }
 
 type Mutation {
@@ -36,6 +39,12 @@ type Mutation {
   closeAllTabs: Boolean!
   markNotificationRead(id: String!): JSON!
   markAllNotificationsRead: JSON!
+  createChat: JSON!
+  deleteChat(id: String!): JSON!
+  grantChatAccess(id: String!, input: GrantChatAccessInput!): JSON!
+  revokeChatAccess(id: String!, userId: String!): JSON!
+  postChatMessage(id: String!, input: PostChatMessageInput!): JSON!
+  internalJson(method: String!, path: String!, body: JSON): JSON!
 }
 
 input CreateIssueInput {
@@ -121,4 +130,13 @@ input OpenTabInput {
   tabType: String!
   targetId: String!
   title: String!
+}
+
+input GrantChatAccessInput {
+  userId: String!
+}
+
+input PostChatMessageInput {
+  content: String!
+  model: String
 }

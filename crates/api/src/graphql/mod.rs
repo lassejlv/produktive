@@ -1,7 +1,7 @@
 use crate::{
     auth::{require_auth, AuthContext},
     error::ApiError,
-    http::{inbox, issue_statuses, labels, preferences, projects},
+    http::{chats, inbox, issue_statuses, labels, preferences, projects},
     realtime::{RealtimeAction, RealtimeEntity},
     state::AppState,
 };
@@ -9,7 +9,7 @@ use async_graphql::{Context, EmptySubscription, InputObject, Json, Object, Schem
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
     extract::{Path, State},
-    http::HeaderMap,
+    http::{header, HeaderMap, Method},
     routing::post,
     Json as AxumJson, Router,
 };
@@ -22,9 +22,14 @@ use sea_orm::{
 };
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use uuid::Uuid;
 
 pub type AppSchema = Schema<QueryRoot, MutationRoot, EmptySubscription>;
+const MAX_INTERNAL_BRIDGE_CALLS_PER_OPERATION: usize = 4;
 
 pub fn routes() -> Router<AppState> {
     Router::new().route("/", post(graphql_handler))
@@ -49,7 +54,8 @@ async fn graphql_handler(
     let mut request = request
         .into_inner()
         .data(state.clone())
-        .data(headers.clone());
+        .data(headers.clone())
+        .data(InternalBridgeBudget::default());
     match require_auth(&headers, &state).await {
         Ok(auth) => {
             request = request.data(auth);
@@ -90,6 +96,182 @@ fn to_json<T: Serialize>(value: T) -> async_graphql::Result<Json<Value>> {
 
 fn map_api<T>(result: Result<T, ApiError>) -> async_graphql::Result<T> {
     result.map_err(graphql_error)
+}
+
+#[derive(Clone, Default)]
+struct InternalBridgeBudget(Arc<AtomicUsize>);
+
+impl InternalBridgeBudget {
+    fn take(&self) -> async_graphql::Result<()> {
+        let previous = self.0.fetch_add(1, Ordering::Relaxed);
+        if previous >= MAX_INTERNAL_BRIDGE_CALLS_PER_OPERATION {
+            return Err(async_graphql::Error::new(
+                "Too many internal GraphQL bridge calls",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn bridge_budget<'ctx>(
+    ctx: &'ctx Context<'ctx>,
+) -> async_graphql::Result<&'ctx InternalBridgeBudget> {
+    ctx.data::<InternalBridgeBudget>()
+}
+
+fn internal_api_url(
+    state: &AppState,
+    method: &Method,
+    path: &str,
+) -> async_graphql::Result<String> {
+    let path = normalize_internal_api_path(method, path)?;
+    Ok(format!("http://127.0.0.1:{}{}", state.config.port, path))
+}
+
+fn normalize_internal_api_path<'a>(
+    method: &Method,
+    path: &'a str,
+) -> async_graphql::Result<&'a str> {
+    let path = path.trim();
+    if !path.starts_with("/api/") {
+        return Err(async_graphql::Error::new(
+            "Internal GraphQL bridge path must start with /api/",
+        ));
+    }
+    if !is_internal_graphql_bridge_path(method, path) {
+        return Err(async_graphql::Error::new(
+            "Path is not available through the internal GraphQL API",
+        ));
+    }
+    Ok(path)
+}
+
+fn is_internal_graphql_bridge_path(method: &Method, path: &str) -> bool {
+    let path = path.split('#').next().unwrap_or(path);
+    let path_only = path.split('?').next().unwrap_or(path);
+    matches!(
+        (method.as_str(), path_only),
+        ("GET", "/api/notes")
+            | ("POST", "/api/notes")
+            | ("GET", "/api/notes/folders")
+            | ("POST", "/api/notes/folders")
+            | ("GET", "/api/notes/mentions")
+            | ("GET", "/api/ai/models")
+            | ("POST", "/api/ai/workspace-brief")
+            | ("POST", "/api/ai/issue-draft")
+            | ("GET", "/api/ai/mcp/servers")
+            | ("POST", "/api/ai/mcp/servers")
+            | ("GET", "/api/api-keys/keys")
+            | ("POST", "/api/api-keys/keys")
+            | ("GET", "/api/github/connection")
+            | ("DELETE", "/api/github/connection")
+            | ("GET", "/api/github/repositories")
+            | ("POST", "/api/github/repositories")
+            | ("GET", "/api/github/repository-search")
+            | ("POST", "/api/github/import/preview")
+            | ("POST", "/api/github/import")
+            | ("GET", "/api/slack/connection")
+            | ("PATCH", "/api/slack/connection")
+            | ("DELETE", "/api/slack/connection")
+            | ("GET", "/api/organizations/me/invitations")
+            | ("POST", "/api/organizations/me/invitations")
+            | ("GET", "/api/security/events")
+            | ("POST", "/api/security/two-factor-nudges")
+            | ("POST", "/api/security/two-factor-enforcement/blocked")
+            | ("POST", "/api/security/two-factor-recovery/reset")
+            | ("POST", "/api/security/member-sessions/revoke")
+            | ("GET", "/api/roles")
+            | ("POST", "/api/roles")
+            | ("GET", "/api/favorites")
+            | ("POST", "/api/favorites")
+            | ("POST", "/api/favorites/reorder")
+    ) || matches!(method.as_str(), "GET" | "PATCH" | "DELETE" | "POST")
+        && matches_dynamic_internal_graphql_bridge_path(method, path_only)
+}
+
+fn matches_dynamic_internal_graphql_bridge_path(method: &Method, path: &str) -> bool {
+    let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
+    match (method.as_str(), parts.as_slice()) {
+        ("GET" | "PATCH" | "DELETE", ["api", "notes", id]) => !id.is_empty(),
+        ("GET", ["api", "notes", id, "versions"]) => !id.is_empty(),
+        ("POST", ["api", "notes", id, "commit"]) => !id.is_empty(),
+        ("POST", ["api", "notes", id, "versions", version_id, "restore"]) => {
+            !id.is_empty() && !version_id.is_empty()
+        }
+        ("POST", ["api", "notes", id, "ai", "edit"]) => !id.is_empty(),
+        ("PATCH" | "DELETE", ["api", "notes", "folders", id]) => !id.is_empty(),
+        ("GET", ["api", "issues", id, "history"])
+        | ("GET", ["api", "issues", id, "comments"])
+        | ("POST", ["api", "issues", id, "comments"])
+        | ("GET", ["api", "issues", id, "subscribers"])
+        | ("POST", ["api", "issues", id, "subscribers"])
+        | ("DELETE", ["api", "issues", id, "subscribers"]) => !id.is_empty(),
+        ("PATCH", ["api", "me", "onboarding"]) => true,
+        ("POST", ["api", "ai", "projects", project_id, "health"]) => !project_id.is_empty(),
+        ("PATCH" | "DELETE", ["api", "ai", "mcp", "servers", id]) => !id.is_empty(),
+        ("POST", ["api", "ai", "mcp", "servers", id, "refresh-tools"]) => !id.is_empty(),
+        ("DELETE", ["api", "api-keys", "keys", id])
+        | ("DELETE", ["api", "api-keys", "keys", id, "delete"]) => !id.is_empty(),
+        ("PATCH" | "DELETE", ["api", "github", "repositories", id]) => !id.is_empty(),
+        ("POST", ["api", "github", "repositories", id, "preview"])
+        | ("POST", ["api", "github", "repositories", id, "import"]) => !id.is_empty(),
+        ("DELETE", ["api", "organizations", "me", "invitations", id]) => !id.is_empty(),
+        ("POST", ["api", "organizations", "me", "invitations", id, "resend"]) => !id.is_empty(),
+        ("GET" | "PATCH" | "DELETE", ["api", "members", id]) => !id.is_empty(),
+        ("PATCH" | "DELETE", ["api", "roles", id]) => !id.is_empty(),
+        ("DELETE", ["api", "favorites", "by", target_type, target_id]) => {
+            matches!(*target_type, "chat" | "issue" | "project") && !target_id.is_empty()
+        }
+        _ => false,
+    }
+}
+
+async fn execute_internal_api_request(
+    state: &AppState,
+    headers: &HeaderMap,
+    method: Method,
+    path: &str,
+    body: Option<Value>,
+) -> async_graphql::Result<Json<Value>> {
+    let url = internal_api_url(state, &method, path)?;
+    let client = reqwest::Client::new();
+    let mut request = client.request(method, url);
+    if let Some(cookie) = headers
+        .get(header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+    {
+        request = request.header(reqwest::header::COOKIE, cookie);
+    }
+    if let Some(authorization) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+    {
+        request = request.header(reqwest::header::AUTHORIZATION, authorization);
+    }
+    if let Some(body) = body {
+        request = request.json(&body);
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+    let status = response.status();
+    if status == reqwest::StatusCode::NO_CONTENT {
+        return Ok(Json(json!(null)));
+    }
+    let payload = response
+        .json::<Value>()
+        .await
+        .map_err(|error| async_graphql::Error::new(error.to_string()))?;
+    if !status.is_success() {
+        let message = payload
+            .get("error")
+            .and_then(Value::as_str)
+            .unwrap_or("Internal API request failed");
+        return Err(async_graphql::Error::new(message));
+    }
+    Ok(Json(payload))
 }
 
 pub struct QueryRoot;
@@ -363,6 +545,35 @@ impl QueryRoot {
             .collect();
         to_json(json!({ "chats": chats }))
     }
+
+    async fn internal_json(
+        &self,
+        ctx: &Context<'_>,
+        path: String,
+    ) -> async_graphql::Result<Json<Value>> {
+        bridge_budget(ctx)?.take()?;
+        execute_internal_api_request(state(ctx)?, headers(ctx)?, Method::GET, &path, None).await
+    }
+
+    async fn chat(&self, ctx: &Context<'_>, id: String) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?.clone();
+        let headers = headers(ctx)?.clone();
+        let AxumJson(envelope) =
+            map_api(chats::get_chat_with_messages(State(state), headers, Path(id)).await)?;
+        to_json(envelope)
+    }
+
+    async fn chat_access(
+        &self,
+        ctx: &Context<'_>,
+        id: String,
+    ) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?.clone();
+        let headers = headers(ctx)?.clone();
+        let AxumJson(envelope) =
+            map_api(chats::list_access(State(state), headers, Path(id)).await)?;
+        to_json(envelope)
+    }
 }
 
 pub struct MutationRoot;
@@ -461,6 +672,17 @@ struct DeleteIssueStatusInput {
 struct ReorderIssueStatusInput {
     id: String,
     sort_order: i32,
+}
+
+#[derive(InputObject)]
+struct GrantChatAccessInput {
+    user_id: String,
+}
+
+#[derive(InputObject)]
+struct PostChatMessageInput {
+    content: String,
+    model: Option<String>,
 }
 
 #[Object]
@@ -943,6 +1165,107 @@ impl MutationRoot {
             )
             .await;
         QueryRoot.inbox(ctx).await
+    }
+
+    async fn create_chat(&self, ctx: &Context<'_>) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?.clone();
+        let headers = headers(ctx)?.clone();
+        let (_, AxumJson(envelope)) = map_api(chats::create_chat(State(state), headers).await)?;
+        to_json(envelope)
+    }
+
+    async fn delete_chat(
+        &self,
+        ctx: &Context<'_>,
+        id: String,
+    ) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?.clone();
+        let headers = headers(ctx)?.clone();
+        let AxumJson(ok) = map_api(chats::delete_chat(State(state), headers, Path(id)).await)?;
+        to_json(ok)
+    }
+
+    async fn grant_chat_access(
+        &self,
+        ctx: &Context<'_>,
+        id: String,
+        input: GrantChatAccessInput,
+    ) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?.clone();
+        let headers = headers(ctx)?.clone();
+        let AxumJson(envelope) = map_api(
+            chats::grant_access(
+                State(state),
+                headers,
+                Path(id),
+                AxumJson(chats::GrantAccessRequest {
+                    user_id: input.user_id,
+                }),
+            )
+            .await,
+        )?;
+        to_json(envelope)
+    }
+
+    async fn revoke_chat_access(
+        &self,
+        ctx: &Context<'_>,
+        id: String,
+        user_id: String,
+    ) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?.clone();
+        let headers = headers(ctx)?.clone();
+        let AxumJson(ok) =
+            map_api(chats::revoke_access(State(state), headers, Path((id, user_id))).await)?;
+        to_json(ok)
+    }
+
+    async fn post_chat_message(
+        &self,
+        ctx: &Context<'_>,
+        id: String,
+        input: PostChatMessageInput,
+    ) -> async_graphql::Result<Json<Value>> {
+        let state = state(ctx)?.clone();
+        let headers = headers(ctx)?.clone();
+        let AxumJson(envelope) = map_api(
+            chats::post_message(
+                State(state),
+                headers,
+                Path(id),
+                AxumJson(chats::PostMessageRequest {
+                    content: input.content,
+                    model: input.model,
+                }),
+            )
+            .await,
+        )?;
+        to_json(envelope)
+    }
+
+    async fn internal_json(
+        &self,
+        ctx: &Context<'_>,
+        method: String,
+        path: String,
+        body: Option<Json<Value>>,
+    ) -> async_graphql::Result<Json<Value>> {
+        bridge_budget(ctx)?.take()?;
+        let method = match method.trim().to_ascii_uppercase().as_str() {
+            "POST" => Method::POST,
+            "PATCH" => Method::PATCH,
+            "PUT" => Method::PUT,
+            "DELETE" => Method::DELETE,
+            _ => return Err(async_graphql::Error::new("Unsupported internal API method")),
+        };
+        execute_internal_api_request(
+            state(ctx)?,
+            headers(ctx)?,
+            method,
+            &path,
+            body.map(|value| value.0),
+        )
+        .await
     }
 }
 
