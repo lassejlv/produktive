@@ -14,6 +14,13 @@ export const apiPath = (path: string) => {
   return `${apiUrl}${normalizedPath}`;
 };
 
+export const apiWebSocketPath = (path: string) => {
+  const url = new URL(apiPath(path));
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+
+  return url.toString();
+};
+
 export type ProjectSummary = {
   id: string;
   name: string;

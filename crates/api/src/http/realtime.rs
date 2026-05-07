@@ -4,18 +4,17 @@ use crate::{
     realtime::{RealtimeAction, RealtimeEntity},
     state::AppState,
 };
-use async_stream::stream;
 use axum::{
+    extract::ws::{Message, WebSocket, WebSocketUpgrade},
     extract::{Query, State},
     http::HeaderMap,
-    response::sse::{Event, KeepAlive, Sse},
+    response::Response,
     routing::get,
     Router,
 };
 use produktive_entity::issue;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::Deserialize;
-use std::convert::Infallible;
 use tokio::sync::broadcast;
 
 pub fn routes() -> Router<AppState> {
@@ -30,10 +29,11 @@ struct RealtimeQuery {
 }
 
 async fn realtime(
+    ws: WebSocketUpgrade,
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<RealtimeQuery>,
-) -> Result<Sse<impl futures_core::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+) -> Result<Response, ApiError> {
     let auth = require_auth(&headers, &state).await?;
     if query.channel != "workspace" && query.channel != "issueSystem" {
         return Err(ApiError::BadRequest(
@@ -60,44 +60,99 @@ async fn realtime(
     let user_id = auth.user.id;
     let mut receiver = state.realtime.subscribe();
 
-    let updates = stream! {
-        yield Ok(Event::default().event("ready").data("subscribed"));
+    Ok(ws.on_upgrade(move |socket| async move {
+        realtime_socket(
+            socket,
+            org_id,
+            user_id,
+            entity_filter,
+            entity_id,
+            &mut receiver,
+        )
+        .await;
+    }))
+}
 
-        loop {
-            match receiver.recv().await {
-                Ok(event) => {
-                    if event.organization_id != org_id {
-                        continue;
-                    }
-                    if event.user_id.as_deref().is_some_and(|id| id != user_id) {
-                        continue;
-                    }
-                    if entity_filter.as_ref().is_some_and(|entity| entity != &event.entity) {
-                        continue;
-                    }
-                    if entity_id.as_deref().is_some_and(|id| id != event.entity_id) {
-                        continue;
-                    }
+async fn realtime_socket(
+    mut socket: WebSocket,
+    org_id: String,
+    user_id: String,
+    entity_filter: Option<RealtimeEntity>,
+    entity_id: Option<String>,
+    receiver: &mut broadcast::Receiver<crate::realtime::RealtimeEvent>,
+) {
+    if socket
+        .send(Message::Text(
+            r#"{"type":"ready","data":"subscribed"}"#.into(),
+        ))
+        .await
+        .is_err()
+    {
+        return;
+    }
 
-                    yield Ok(Event::default().event("workspace").data(event.sse_data()));
-
-                    if event.action == RealtimeAction::Deleted && entity_id.is_some() {
+    loop {
+        tokio::select! {
+            incoming = socket.recv() => {
+                match incoming {
+                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Ok(_)) => {}
+                    Some(Err(error)) => {
+                        tracing::debug!(%error, "realtime websocket receive failed");
                         break;
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                    tracing::warn!(skipped, "realtime subscriber lagged");
-                    yield Ok(Event::default().event("syncRequired").data("lagged"));
-                }
-                Err(broadcast::error::RecvError::Closed) => {
-                    yield Ok(Event::default().event("error").data("realtime closed"));
-                    break;
+            }
+            update = receiver.recv() => {
+                match update {
+                    Ok(event) => {
+                        if event.organization_id != org_id {
+                            continue;
+                        }
+                        if event.user_id.as_deref().is_some_and(|id| id != user_id) {
+                            continue;
+                        }
+                        if entity_filter.as_ref().is_some_and(|entity| entity != &event.entity) {
+                            continue;
+                        }
+                        if entity_id.as_deref().is_some_and(|id| id != event.entity_id) {
+                            continue;
+                        }
+
+                        let should_close = event.action == RealtimeAction::Deleted && entity_id.is_some();
+                        if socket.send(Message::Text(event.sse_data().into())).await.is_err() {
+                            break;
+                        }
+
+                        if should_close {
+                            let _ = socket.send(Message::Close(None)).await;
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                        tracing::warn!(skipped, "realtime subscriber lagged");
+                        if socket
+                            .send(Message::Text(
+                                r#"{"type":"syncRequired","reason":"lagged"}"#.into(),
+                            ))
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        let _ = socket
+                            .send(Message::Text(
+                                r#"{"type":"error","reason":"realtime closed"}"#.into(),
+                            ))
+                            .await;
+                        break;
+                    }
                 }
             }
         }
-    };
-
-    Ok(Sse::new(updates).keep_alive(KeepAlive::default()))
+    }
 }
 
 fn realtime_entity_filter(query: &RealtimeQuery) -> Result<Option<RealtimeEntity>, ApiError> {

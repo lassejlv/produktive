@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import {
-  apiPath,
+  apiWebSocketPath,
   type Chat,
   type InboxNotification,
   type InboxResponse,
@@ -18,13 +18,38 @@ type WorkspaceRealtimeEvent = {
   payload?: unknown;
 };
 
-const parseWorkspaceEvent = (event: MessageEvent<string>) => {
+type WorkspaceRealtimeControlEvent =
+  | {
+      type: "ready";
+      data: "subscribed";
+    }
+  | {
+      type: "syncRequired";
+      reason: string;
+    }
+  | {
+      type: "error";
+      reason: string;
+    };
+
+const parseWorkspaceMessage = (
+  event: MessageEvent<string>,
+): WorkspaceRealtimeEvent | WorkspaceRealtimeControlEvent | null => {
   try {
-    return JSON.parse(event.data) as WorkspaceRealtimeEvent;
+    return JSON.parse(event.data) as WorkspaceRealtimeEvent | WorkspaceRealtimeControlEvent;
   } catch {
     return null;
   }
 };
+
+const isWorkspaceRealtimeEvent = (message: unknown): message is WorkspaceRealtimeEvent =>
+  Boolean(
+    message &&
+    typeof message === "object" &&
+    "entity" in message &&
+    "action" in message &&
+    "entityId" in message,
+  );
 
 const isIssue = (payload: unknown): payload is Issue =>
   Boolean(payload && typeof payload === "object" && "id" in payload && "title" in payload);
@@ -59,10 +84,6 @@ export function useWorkspaceRealtime(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return;
-
-    const source = new EventSource(apiPath("/api/realtime?channel=workspace"), {
-      withCredentials: true,
-    });
 
     const applyIssueEvent = (message: WorkspaceRealtimeEvent) => {
       if (message.action === "deleted") {
@@ -202,17 +223,6 @@ export function useWorkspaceRealtime(enabled: boolean) {
       );
     };
 
-    const handleWorkspaceEvent = (event: MessageEvent<string>) => {
-      const message = parseWorkspaceEvent(event);
-      if (!message) return;
-
-      if (message.entity === "issue") applyIssueEvent(message);
-      if (message.entity === "project") applyProjectEvent(message);
-      if (message.entity === "label") applyLabelEvent(message);
-      if (message.entity === "notification") applyNotificationEvent(message);
-      if (message.entity === "chat") applyChatEvent(message);
-    };
-
     const handleSyncRequired = () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.issues.all });
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
@@ -221,9 +231,59 @@ export function useWorkspaceRealtime(enabled: boolean) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.chats });
     };
 
-    source.addEventListener("workspace", handleWorkspaceEvent);
-    source.addEventListener("syncRequired", handleSyncRequired);
+    const handleSocketMessage = (event: MessageEvent<string>) => {
+      const message = parseWorkspaceMessage(event);
+      if (!message) return;
 
-    return () => source.close();
+      if ("type" in message) {
+        if (message.type === "syncRequired") handleSyncRequired();
+        return;
+      }
+
+      if (!isWorkspaceRealtimeEvent(message)) return;
+
+      if (message.entity === "issue") applyIssueEvent(message);
+      if (message.entity === "project") applyProjectEvent(message);
+      if (message.entity === "label") applyLabelEvent(message);
+      if (message.entity === "notification") applyNotificationEvent(message);
+      if (message.entity === "chat") applyChatEvent(message);
+    };
+
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | undefined;
+    let reconnectAttempts = 0;
+    let disposed = false;
+
+    const scheduleReconnect = () => {
+      if (disposed) return;
+
+      reconnectAttempts += 1;
+      const delay = Math.min(1000 * 2 ** (reconnectAttempts - 1), 10000);
+      reconnectTimer = window.setTimeout(connect, delay);
+    };
+
+    const connect = () => {
+      if (disposed) return;
+
+      socket = new WebSocket(apiWebSocketPath("/api/realtime?channel=workspace"));
+      socket.onopen = () => {
+        reconnectAttempts = 0;
+      };
+      socket.onmessage = handleSocketMessage;
+      socket.onerror = () => {
+        socket?.close();
+      };
+      socket.onclose = () => {
+        scheduleReconnect();
+      };
+    };
+
+    connect();
+
+    return () => {
+      disposed = true;
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
   }, [enabled, queryClient]);
 }
