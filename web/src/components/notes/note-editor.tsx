@@ -5,11 +5,18 @@ import TaskList from "@tiptap/extension-task-list";
 import { Markdown } from "@tiptap/markdown";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import { proposeNoteAiEdit, searchNoteMentions, type NoteMentionSearchResult } from "@/lib/api";
+import {
+  getIssue,
+  proposeNoteAiEdit,
+  searchNoteMentions,
+  type Issue,
+  type NoteMentionSearchResult,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -170,6 +177,8 @@ export function NoteEditor({ noteId, title, value, onChange, className }: Props)
   const [selectionState, setSelectionState] = useState<SelectionState | null>(null);
   const [aiProposal, setAiProposal] = useState<AiProposal | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  const mentionHover = useMentionHoverPreview(shellRef);
 
   const filteredSlashItems = useMemo(() => {
     if (!slashState) return SLASH_ITEMS;
@@ -463,7 +472,7 @@ export function NoteEditor({ noteId, title, value, onChange, className }: Props)
   }, [filteredSlashItems, slashActiveIndex, slashState, selectSlashItem]);
 
   return (
-    <div className={cn("note-editor-shell h-full", className)}>
+    <div ref={shellRef} className={cn("note-editor-shell h-full", className)}>
       <EditorContent editor={editor} className="h-full" />
       <MentionPopup
         state={mentionState}
@@ -488,6 +497,7 @@ export function NoteEditor({ noteId, title, value, onChange, className }: Props)
         onApprove={approveAiProposal}
         onReject={() => setAiProposal(null)}
       />
+      <MentionHoverCard hover={mentionHover} />
     </div>
   );
 }
@@ -673,8 +683,8 @@ function MentionPopup({
 }) {
   if (!state) return null;
 
-  const width = 280;
-  const maxHeight = 280;
+  const width = 320;
+  const maxHeight = 320;
   const left = Math.min(Math.max(state.coords.left, 12), window.innerWidth - width - 12);
   const top =
     state.coords.top + maxHeight > window.innerHeight - 12
@@ -692,7 +702,7 @@ function MentionPopup({
       {items.length === 0 ? (
         <div className="px-3 pb-2.5 text-[12px] text-fg-faint">No matches</div>
       ) : (
-        <div className="max-h-[252px] overflow-y-auto px-1 pb-1">
+        <div className="max-h-[292px] overflow-y-auto px-1 pb-1">
           {items.map((item, index) => (
             <button
               key={`${item.targetType}-${item.targetId}`}
@@ -702,7 +712,7 @@ function MentionPopup({
                 onSelect(item);
               }}
               className={cn(
-                "flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left transition-colors",
+                "flex w-full items-start gap-2.5 rounded-[6px] px-2 py-1.5 text-left transition-colors",
                 index === activeIndex
                   ? "bg-[#242428] text-fg"
                   : "text-fg-muted hover:bg-[#202024] hover:text-fg",
@@ -710,20 +720,21 @@ function MentionPopup({
             >
               <span
                 className={cn(
-                  "grid size-5 shrink-0 place-items-center rounded-[4px] text-[10px] font-semibold",
+                  "mt-0.5 grid size-7 shrink-0 place-items-center rounded-[6px] border text-[11px] font-semibold",
                   mentionTypeClass(item.targetType),
                 )}
               >
                 {mentionTypeShortLabel(item.targetType)}
               </span>
-              <span className="min-w-0 flex-1 truncate text-[12.5px] text-fg">
-                @{item.label}
-              </span>
-              {item.subtitle ? (
-                <span className="shrink-0 truncate text-[11px] text-fg-faint">
-                  {item.subtitle}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12.5px] font-medium text-fg">
+                  {item.label}
                 </span>
-              ) : null}
+                <span className="mt-0.5 block truncate text-[10.5px] text-fg-faint">
+                  {mentionTypeName(item.targetType)}
+                  {item.subtitle ? ` · ${item.subtitle}` : ""}
+                </span>
+              </span>
             </button>
           ))}
         </div>
@@ -731,6 +742,12 @@ function MentionPopup({
     </div>,
     document.body,
   );
+}
+
+function mentionTypeName(type: NoteMentionSearchResult["targetType"]) {
+  if (type === "issue") return "Issue";
+  if (type === "user") return "User";
+  return "Chat";
 }
 
 function SlashMenu({
@@ -813,6 +830,130 @@ function mentionTypeShortLabel(type: NoteMentionSearchResult["targetType"]) {
   if (type === "issue") return "#";
   if (type === "user") return "@";
   return "C";
+}
+
+type MentionHover = {
+  type: string;
+  id: string;
+  rect: DOMRect;
+};
+
+function useMentionHoverPreview(ref: { current: HTMLElement | null }) {
+  const [hover, setHover] = useState<MentionHover | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let openTimer: number | null = null;
+    let closeTimer: number | null = null;
+
+    const onMouseOver = (event: MouseEvent) => {
+      const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(
+        ".note-mention-link",
+      );
+      if (!target) return;
+      const href = target.getAttribute("href") ?? "";
+      const m = /^produktive:\/\/([^/]+)\/(.+)$/.exec(href);
+      if (!m) return;
+      if (closeTimer !== null) {
+        window.clearTimeout(closeTimer);
+        closeTimer = null;
+      }
+      if (openTimer !== null) window.clearTimeout(openTimer);
+      openTimer = window.setTimeout(() => {
+        setHover({
+          type: m[1],
+          id: decodeURIComponent(m[2]),
+          rect: target.getBoundingClientRect(),
+        });
+      }, 220);
+    };
+
+    const onMouseOut = (event: MouseEvent) => {
+      const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(
+        ".note-mention-link",
+      );
+      if (!target) return;
+      if (openTimer !== null) {
+        window.clearTimeout(openTimer);
+        openTimer = null;
+      }
+      if (closeTimer !== null) window.clearTimeout(closeTimer);
+      closeTimer = window.setTimeout(() => setHover(null), 180);
+    };
+
+    el.addEventListener("mouseover", onMouseOver);
+    el.addEventListener("mouseout", onMouseOut);
+    return () => {
+      el.removeEventListener("mouseover", onMouseOver);
+      el.removeEventListener("mouseout", onMouseOut);
+      if (openTimer !== null) window.clearTimeout(openTimer);
+      if (closeTimer !== null) window.clearTimeout(closeTimer);
+    };
+  }, [ref]);
+
+  return hover;
+}
+
+function MentionHoverCard({ hover }: { hover: MentionHover | null }) {
+  const issueQuery = useQuery({
+    queryKey: ["mention-hover", "issue", hover?.id],
+    queryFn: () => getIssue(hover!.id).then((r) => r.issue),
+    enabled: hover?.type === "issue",
+    staleTime: 60_000,
+  });
+
+  if (!hover) return null;
+
+  const width = 280;
+  const left = Math.min(Math.max(hover.rect.left, 12), window.innerWidth - width - 12);
+  const top = hover.rect.bottom + 8;
+
+  return createPortal(
+    <div
+      style={{ left, top, width }}
+      className="fixed z-50 overflow-hidden rounded-[10px] border border-border bg-[#171719]/98 text-[12px] shadow-[0_14px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+    >
+      <div className="px-3 py-2.5">
+        {hover.type === "issue" ? (
+          <IssueHoverContent issue={issueQuery.data ?? null} loading={issueQuery.isPending} />
+        ) : (
+          <div className="text-[12px] text-fg-muted">
+            {hover.type === "user" ? "User" : hover.type === "chat" ? "Chat" : "Mention"}
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function IssueHoverContent({ issue, loading }: { issue: Issue | null; loading: boolean }) {
+  if (loading) {
+    return <div className="text-[12px] text-fg-faint">Loading…</div>;
+  }
+  if (!issue) {
+    return <div className="text-[12px] text-fg-faint">Issue not found</div>;
+  }
+  return (
+    <>
+      <div className="text-[12.5px] font-medium text-fg">{issue.title}</div>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-fg-muted">
+        <span className="rounded-[4px] border border-border-subtle px-1.5 py-0.5 capitalize">
+          {issue.status}
+        </span>
+        <span className="rounded-[4px] border border-border-subtle px-1.5 py-0.5 capitalize">
+          {issue.priority}
+        </span>
+        {issue.project ? (
+          <span className="text-fg-faint">in {issue.project.name}</span>
+        ) : null}
+        {issue.assignedTo ? (
+          <span className="text-fg-faint">· {issue.assignedTo.name}</span>
+        ) : null}
+      </div>
+    </>
+  );
 }
 
 function mentionTypeClass(type: NoteMentionSearchResult["targetType"]) {

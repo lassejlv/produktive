@@ -149,7 +149,7 @@ function NotesSidebar({
             aria-label="Hide notes sidebar"
             className="grid h-7 w-7 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface/60 hover:text-fg"
           >
-            <EllipsisIcon />
+            <ChevronLeftIcon />
           </button>
         </div>
       </div>
@@ -398,6 +398,14 @@ function NoteWorkspace({
               </PopoverTrigger>
               <PopoverContent align="end" className="w-48 p-1">
                 <MenuItem
+                  onSelect={() => {
+                    setActionsOpen(false);
+                    setVisibility(visibility === "private" ? "workspace" : "private");
+                  }}
+                >
+                  {visibility === "private" ? "Make workspace" : "Make private"}
+                </MenuItem>
+                <MenuItem
                   tone="danger"
                   onSelect={() => {
                     setActionsOpen(false);
@@ -409,28 +417,6 @@ function NoteWorkspace({
               </PopoverContent>
             </Popover>
           </div>
-
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-7 pb-3 text-[12px] text-fg-muted">
-            <MetaSelect
-              value={visibility}
-              onChange={(value) => setVisibility(value as Note["visibility"])}
-              options={[
-                { value: "workspace", label: "Workspace" },
-                { value: "private", label: "Private" },
-              ]}
-            />
-            <span aria-hidden className="text-fg-faint/60">
-              ·
-            </span>
-            <span className={cn("text-[11.5px]", uncommitted ? "text-warning" : "text-fg-faint")}>
-              {uncommitted ? "Uncommitted changes" : "All changes committed"}
-            </span>
-          </div>
-
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-x-7 bottom-0 h-px bg-gradient-to-r from-border-subtle via-border-subtle/60 to-transparent"
-          />
         </header>
 
         <div className="min-h-0 flex-1">
@@ -523,17 +509,9 @@ function CommitsPane({
 
   return (
     <>
-      <aside className="relative flex w-[380px] shrink-0 flex-col overflow-hidden border-l border-border-subtle/70 bg-sidebar/40">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-fg-muted/30 to-transparent"
-        />
-
-        <header className="flex h-11 shrink-0 items-center justify-between gap-2 px-4">
-          <div className="flex items-center gap-2 text-[13px] font-medium text-fg">
-            <BranchIcon />
-            <span>Changes &amp; history</span>
-          </div>
+      <aside className="flex w-[340px] shrink-0 flex-col overflow-hidden border-l border-border-subtle/70 bg-sidebar/40">
+        <header className="flex h-10 shrink-0 items-center justify-between gap-2 px-4">
+          <span className="text-[12px] font-medium text-fg">Commits</span>
           <button
             type="button"
             onClick={onClose}
@@ -546,29 +524,23 @@ function CommitsPane({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <section className="relative px-4 pb-5 pt-3">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-border-subtle via-border-subtle/60 to-transparent"
-            />
-            <div className="mb-2 flex items-baseline justify-between gap-3">
-              <h3 className="text-[11.5px] font-medium text-fg-muted">Working changes</h3>
-              {hasDiff ? (
+          {hasDiff ? (
+            <section className="px-4 pb-4 pt-1">
+              <div className="mb-2 flex items-baseline justify-between gap-3">
+                <span className="text-[11px] text-fg-faint">Working changes</span>
                 <span className="font-mono text-[10.5px] tabular-nums text-fg-faint">
                   <span className="text-success">+{adds}</span>{" "}
                   <span className="text-danger">−{removes}</span>
                 </span>
-              ) : null}
-            </div>
+              </div>
 
-            <DiffView rows={diff} />
+              <DiffView rows={diff} />
 
-            {hasDiff ? (
-              <form onSubmit={submitCommit} className="mt-3 space-y-2">
+              <form onSubmit={submitCommit} className="mt-2 space-y-2">
                 <Input
                   value={message}
                   onChange={(event) => setMessage(event.target.value)}
-                  placeholder="Commit message (optional)"
+                  placeholder="Commit message"
                   className="h-8 text-[12.5px]"
                 />
                 <div className="flex justify-end">
@@ -582,22 +554,19 @@ function CommitsPane({
                   </Button>
                 </div>
               </form>
+            </section>
+          ) : null}
+
+          <section className="px-4 pb-5 pt-2">
+            {hasDiff ? (
+              <span className="mb-2 block text-[11px] text-fg-faint">History</span>
             ) : null}
-          </section>
-
-          <section className="relative px-4 pb-6 pt-3">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-border-subtle via-border-subtle/60 to-transparent"
-            />
-            <h3 className="mb-2 text-[11.5px] font-medium text-fg-muted">History</h3>
-
             {isLoading ? (
               <div className="flex justify-center py-6 text-fg-faint">
                 <Spinner size={12} />
               </div>
             ) : versions.length === 0 ? (
-              <p className="px-1 py-1 text-[12px] text-fg-faint">No commits yet.</p>
+              <p className="py-1 text-[12px] text-fg-faint">No commits yet.</p>
             ) : (
               <ol className="m-0 flex list-none flex-col p-0">
                 {versions.map((version, index) => (
@@ -748,33 +717,6 @@ function CommitsToggle({
         <span>{open ? "Changes" : uncommitted ? "Changes" : "History"}</span>
       )}
     </button>
-  );
-}
-
-function MetaSelect({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <span className="relative inline-flex items-center">
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="appearance-none bg-transparent pr-4 text-[12px] text-fg-muted outline-none transition-colors hover:text-fg"
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDownIcon className="pointer-events-none absolute right-0 text-fg-faint" />
-    </span>
   );
 }
 
@@ -998,21 +940,20 @@ function ChevronRightIcon() {
   );
 }
 
-function ChevronDownIcon({ className }: { className?: string }) {
+function ChevronLeftIcon() {
   return (
     <svg
-      width="10"
-      height="10"
+      width="14"
+      height="14"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className={className}
       aria-hidden
     >
-      <path d="m6 9 6 6 6-6" />
+      <path d="m15 18-6-6 6-6" />
     </svg>
   );
 }
