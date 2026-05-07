@@ -4,13 +4,6 @@ import { toast } from "sonner";
 import { NoteEditor } from "@/components/notes/note-editor";
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
@@ -19,16 +12,13 @@ import {
   useArchiveNote,
   useCommitNote,
   useCreateNote,
-  useCreateNoteFolder,
   useRestoreNoteVersion,
   useUpdateNote,
 } from "@/lib/mutations/notes";
 import {
   type Note,
-  type NoteFolder,
   type NoteVersion,
   useNoteDetailQuery,
-  useNoteFoldersQuery,
   useNoteVersionsQuery,
   useNotesQuery,
 } from "@/lib/queries/notes";
@@ -45,7 +35,6 @@ export function NotesPage({ noteId }: Props) {
   const navigate = useNavigate();
   const workspaceSlug = useWorkspaceSlug();
   const [search, setSearch] = useState("");
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === "undefined") return true;
     return window.localStorage.getItem(SIDEBAR_PREF_KEY) !== "hidden";
@@ -54,18 +43,11 @@ export function NotesPage({ noteId }: Props) {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(COMMITS_PREF_KEY) === "open";
   });
-  const [createFolderOpen, setCreateFolderOpen] = useState(false);
 
   const { data: notes = [], isLoading } = useNotesQuery(search);
-  const { data: folders = [] } = useNoteFoldersQuery();
   const createMutation = useCreateNote();
-  const createFolderMutation = useCreateNoteFolder();
 
   const selectedNoteId = noteId ?? null;
-  const selectedFolder = folders.find((folder) => folder.id === selectedFolderId) ?? null;
-  const filteredNotes = selectedFolderId
-    ? notes.filter((note) => note.folderId === selectedFolderId)
-    : notes;
 
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_PREF_KEY, sidebarOpen ? "visible" : "hidden");
@@ -80,8 +62,7 @@ export function NotesPage({ noteId }: Props) {
       const note = await createMutation.mutateAsync({
         title: "Untitled",
         bodyMarkdown: "",
-        folderId: selectedFolderId,
-        visibility: selectedFolder?.visibility === "private" ? "private" : "workspace",
+        visibility: "workspace",
       });
       await navigate({
         to: "/$workspaceSlug/notes/$noteId",
@@ -92,12 +73,6 @@ export function NotesPage({ noteId }: Props) {
     }
   };
 
-  const submitCreateFolder = async (name: string, visibility: NoteFolder["visibility"]) => {
-    const folder = await createFolderMutation.mutateAsync({ name, visibility });
-    setSelectedFolderId(folder.id);
-    setCreateFolderOpen(false);
-  };
-
   return (
     <main className="flex h-[calc(100vh-49px)] min-h-0 bg-bg">
       {sidebarOpen ? (
@@ -105,15 +80,10 @@ export function NotesPage({ noteId }: Props) {
           search={search}
           onSearch={setSearch}
           notes={notes}
-          folders={folders}
-          filteredNotes={filteredNotes}
           isLoading={isLoading}
           selectedNoteId={selectedNoteId}
-          selectedFolderId={selectedFolderId}
-          onSelectFolder={setSelectedFolderId}
           onCollapse={() => setSidebarOpen(false)}
           onNewNote={() => void createNewNote()}
-          onNewFolder={() => setCreateFolderOpen(true)}
           newNoteBusy={createMutation.isPending}
         />
       ) : (
@@ -131,7 +101,6 @@ export function NotesPage({ noteId }: Props) {
         {selectedNoteId ? (
           <NoteWorkspace
             noteId={selectedNoteId}
-            folders={folders}
             commitsOpen={commitsOpen}
             onToggleCommits={() => setCommitsOpen((open) => !open)}
           />
@@ -139,14 +108,6 @@ export function NotesPage({ noteId }: Props) {
           <NotesEmptyState busy={createMutation.isPending} onNewNote={() => void createNewNote()} />
         )}
       </section>
-
-      {createFolderOpen ? (
-        <CreateFolderDialog
-          busy={createFolderMutation.isPending}
-          onClose={() => setCreateFolderOpen(false)}
-          onSubmit={submitCreateFolder}
-        />
-      ) : null}
     </main>
   );
 }
@@ -159,33 +120,21 @@ function NotesSidebar({
   search,
   onSearch,
   notes,
-  folders,
-  filteredNotes,
   isLoading,
   selectedNoteId,
-  selectedFolderId,
-  onSelectFolder,
   onCollapse,
   onNewNote,
-  onNewFolder,
   newNoteBusy,
 }: {
   search: string;
   onSearch: (value: string) => void;
   notes: Note[];
-  folders: NoteFolder[];
-  filteredNotes: Note[];
   isLoading: boolean;
   selectedNoteId: string | null;
-  selectedFolderId: string | null;
-  onSelectFolder: (id: string | null) => void;
   onCollapse: () => void;
   onNewNote: () => void;
-  onNewFolder: () => void;
   newNoteBusy: boolean;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-
   return (
     <aside className="relative flex w-[290px] shrink-0 flex-col border-r border-border-subtle/70 bg-sidebar/40">
       <div className="flex items-center justify-between gap-2 px-4 pt-4">
@@ -194,35 +143,14 @@ function NotesSidebar({
           <Button size="sm" onClick={onNewNote} disabled={newNoteBusy} className="h-7 px-2.5">
             {newNoteBusy ? <Spinner size={11} /> : "New"}
           </Button>
-          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                aria-label="More notes actions"
-                className="grid h-7 w-7 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface/60 hover:text-fg"
-              >
-                <EllipsisIcon />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-44 p-1">
-              <MenuItem
-                onSelect={() => {
-                  setMenuOpen(false);
-                  onNewFolder();
-                }}
-              >
-                New folder
-              </MenuItem>
-              <MenuItem
-                onSelect={() => {
-                  setMenuOpen(false);
-                  onCollapse();
-                }}
-              >
-                Hide sidebar
-              </MenuItem>
-            </PopoverContent>
-          </Popover>
+          <button
+            type="button"
+            onClick={onCollapse}
+            aria-label="Hide notes sidebar"
+            className="grid h-7 w-7 place-items-center rounded-[6px] text-fg-faint transition-colors hover:bg-surface/60 hover:text-fg"
+          >
+            <EllipsisIcon />
+          </button>
         </div>
       </div>
 
@@ -235,28 +163,6 @@ function NotesSidebar({
         />
       </div>
 
-      <div className="px-2 pt-3">
-        <FolderRow
-          active={selectedFolderId === null}
-          label="All notes"
-          count={notes.length}
-          onClick={() => onSelectFolder(null)}
-        />
-        {folders.length ? (
-          <p className="mt-3 px-2 pb-1 text-[11.5px] font-medium text-fg-muted">Folders</p>
-        ) : null}
-        {folders.map((folder) => (
-          <FolderRow
-            key={folder.id}
-            active={selectedFolderId === folder.id}
-            label={folder.name}
-            count={notes.filter((note) => note.folderId === folder.id).length}
-            visibility={folder.visibility}
-            onClick={() => onSelectFolder(folder.id)}
-          />
-        ))}
-      </div>
-
       <div className="relative mt-3 min-h-0 flex-1 overflow-y-auto">
         <div
           aria-hidden
@@ -266,46 +172,17 @@ function NotesSidebar({
           <div className="flex justify-center py-8 text-fg-faint">
             <Spinner size={14} />
           </div>
-        ) : filteredNotes.length === 0 ? (
+        ) : notes.length === 0 ? (
           <p className="px-4 py-3 text-[12px] text-fg-faint">No notes here yet.</p>
         ) : (
           <ul className="flex flex-col">
-            {filteredNotes.map((note) => (
+            {notes.map((note) => (
               <NoteRow key={note.id} note={note} selected={selectedNoteId === note.id} />
             ))}
           </ul>
         )}
       </div>
     </aside>
-  );
-}
-
-function FolderRow({
-  active,
-  label,
-  count,
-  visibility,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  count: number;
-  visibility?: NoteFolder["visibility"];
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[13px] transition-colors",
-        active ? "bg-surface text-fg" : "text-fg-muted hover:bg-surface/50 hover:text-fg",
-      )}
-    >
-      <span className="truncate">{label}</span>
-      {visibility === "private" ? <LockIcon className="text-fg-faint" /> : null}
-      <span className="ml-auto font-mono text-[10.5px] tabular-nums text-fg-faint">{count}</span>
-    </button>
   );
 }
 
@@ -349,18 +226,15 @@ type SaveState = "saved" | "saving" | "error";
 type Snapshot = {
   title: string;
   bodyMarkdown: string;
-  folderId: string | null;
   visibility: Note["visibility"];
 };
 
 function NoteWorkspace({
   noteId,
-  folders,
   commitsOpen,
   onToggleCommits,
 }: {
   noteId: string;
-  folders: NoteFolder[];
   commitsOpen: boolean;
   onToggleCommits: () => void;
 }) {
@@ -373,15 +247,14 @@ function NoteWorkspace({
 
   const [title, setTitle] = useState("");
   const [bodyMarkdown, setBodyMarkdown] = useState("");
-  const [folderId, setFolderId] = useState<string | null>(null);
   const [visibility, setVisibility] = useState<Note["visibility"]>("workspace");
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [actionsOpen, setActionsOpen] = useState(false);
 
   const lastSavedRef = useRef<Snapshot | null>(null);
   const savingRef = useRef(false);
-  const localRef = useRef<Snapshot>({ title, bodyMarkdown, folderId, visibility });
-  localRef.current = { title, bodyMarkdown, folderId, visibility };
+  const localRef = useRef<Snapshot>({ title, bodyMarkdown, visibility });
+  localRef.current = { title, bodyMarkdown, visibility };
   const updateMutationRef = useRef(updateMutation);
   updateMutationRef.current = updateMutation;
 
@@ -389,13 +262,11 @@ function NoteWorkspace({
     if (!note) return;
     setTitle(note.title);
     setBodyMarkdown(note.bodyMarkdown);
-    setFolderId(note.folderId);
     setVisibility(note.visibility);
     setSaveState("saved");
     lastSavedRef.current = {
       title: note.title,
       bodyMarkdown: note.bodyMarkdown,
-      folderId: note.folderId,
       visibility: note.visibility,
     };
   }, [note?.id]);
@@ -404,14 +275,12 @@ function NoteWorkspace({
     lastSavedRef.current &&
       (title !== lastSavedRef.current.title ||
         bodyMarkdown !== lastSavedRef.current.bodyMarkdown ||
-        folderId !== lastSavedRef.current.folderId ||
         visibility !== lastSavedRef.current.visibility),
   );
 
   const isSnapshotDirty = (a: Snapshot, b: Snapshot) =>
     a.title !== b.title ||
     a.bodyMarkdown !== b.bodyMarkdown ||
-    a.folderId !== b.folderId ||
     a.visibility !== b.visibility;
 
   const runSave = useCallback((id: string) => {
@@ -450,7 +319,7 @@ function NoteWorkspace({
     setSaveState("saving");
     const timeout = window.setTimeout(() => runSave(noteId), 650);
     return () => window.clearTimeout(timeout);
-  }, [noteId, title, bodyMarkdown, folderId, visibility, dirty, runSave]);
+  }, [noteId, title, bodyMarkdown, visibility, dirty, runSave]);
 
   const archive = () => {
     if (!note) return;
@@ -496,7 +365,6 @@ function NoteWorkspace({
   const onRestoredVersion = (restored: Note) => {
     setTitle(restored.title);
     setBodyMarkdown(restored.bodyMarkdown);
-    setFolderId(restored.folderId);
     setVisibility(restored.visibility);
   };
 
@@ -543,17 +411,6 @@ function NoteWorkspace({
           </div>
 
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-7 pb-3 text-[12px] text-fg-muted">
-            <MetaSelect
-              value={folderId ?? ""}
-              onChange={(value) => setFolderId(value || null)}
-              options={[
-                { value: "", label: "No folder" },
-                ...folders.map((folder) => ({ value: folder.id, label: folder.name })),
-              ]}
-            />
-            <span aria-hidden className="text-fg-faint/60">
-              ·
-            </span>
             <MetaSelect
               value={visibility}
               onChange={(value) => setVisibility(value as Note["visibility"])}
@@ -945,7 +802,7 @@ function MenuItem({
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Empty state + folder dialog                                                */
+/*  Empty state                                                               */
 /* -------------------------------------------------------------------------- */
 
 function NotesEmptyState({ busy, onNewNote }: { busy: boolean; onNewNote: () => void }) {
@@ -962,68 +819,6 @@ function NotesEmptyState({ busy, onNewNote }: { busy: boolean; onNewNote: () => 
         </Button>
       </div>
     </div>
-  );
-}
-
-function CreateFolderDialog({
-  busy,
-  onClose,
-  onSubmit,
-}: {
-  busy: boolean;
-  onClose: () => void;
-  onSubmit: (name: string, visibility: NoteFolder["visibility"]) => Promise<void>;
-}) {
-  const [name, setName] = useState("");
-  const [visibility, setVisibility] = useState<NoteFolder["visibility"]>("workspace");
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!name.trim() || busy) return;
-    try {
-      await onSubmit(name.trim(), visibility);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create folder");
-    }
-  };
-
-  return (
-    <Dialog open onClose={onClose} className="max-w-md">
-      <form onSubmit={submit}>
-        <DialogHeader>
-          <DialogTitle>New folder</DialogTitle>
-        </DialogHeader>
-        <DialogContent className="space-y-3">
-          <label className="block">
-            <span className="mb-1 block text-[12px] text-fg-muted">Name</span>
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="e.g. Onboarding"
-              autoFocus
-            />
-          </label>
-          <label className="flex items-center gap-2 text-[13px] text-fg-muted">
-            <input
-              type="checkbox"
-              checked={visibility === "private"}
-              onChange={(event) =>
-                setVisibility(event.target.checked ? "private" : "workspace")
-              }
-            />
-            Private folder (only you)
-          </label>
-        </DialogContent>
-        <DialogFooter>
-          <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button type="submit" size="sm" disabled={!name.trim() || busy}>
-            {busy ? <Spinner size={11} /> : "Create"}
-          </Button>
-        </DialogFooter>
-      </form>
-    </Dialog>
   );
 }
 

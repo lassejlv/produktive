@@ -1,12 +1,10 @@
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { NotesPage } from "@/components/notes/notes-page";
-import { noteFoldersQueryOptions, notesQueryOptions } from "@/lib/queries/notes";
+import { notesQueryOptions } from "@/lib/queries/notes";
 
 export const Route = createFileRoute("/_app/$workspaceSlug/notes")({
-  loader: ({ context }) => {
-    void context.queryClient.ensureQueryData(noteFoldersQueryOptions());
-    return context.queryClient.ensureQueryData(notesQueryOptions());
-  },
+  loader: ({ context }) =>
+    context.queryClient.ensureQueryData(notesQueryOptions()),
   component: NotesIndex,
 });
 
