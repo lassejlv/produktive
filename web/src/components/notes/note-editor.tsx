@@ -54,6 +54,8 @@ export function NoteEditor({ noteId, title, value, onChange, className }: Props)
     onChangeRef.current = onChange;
   }, [onChange]);
 
+  const lastSyncedValueRef = useRef(value);
+
   const extensions = useMemo(
     () => [
       StarterKit.configure({
@@ -121,6 +123,17 @@ export function NoteEditor({ noteId, title, value, onChange, className }: Props)
       }, 120);
     },
   });
+
+  useEffect(() => {
+    if (!editor) return;
+    if (lastSyncedValueRef.current === value) return;
+    lastSyncedValueRef.current = value;
+    if (editor.getMarkdown() === value) return;
+    editor.commands.setContent(value, {
+      contentType: "markdown",
+      emitUpdate: false,
+    });
+  }, [editor, value]);
 
   useEffect(() => {
     if (!mentionState) return;
