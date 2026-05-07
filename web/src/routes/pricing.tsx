@@ -207,10 +207,8 @@ function PricingBody({
             title="When you need more"
             subtitle="Buy capacity explicitly. No surprise bills."
           />
-          <div className="mt-6 grid gap-3 md:grid-cols-3">
-            {data.overageTiers.map((tier) => (
-              <BoostCard key={tier.id} tier={tier} />
-            ))}
+          <div className="mt-6">
+            <BoostsTable tiers={data.overageTiers} />
           </div>
         </section>
       ) : null}
@@ -546,14 +544,7 @@ function ComparisonTable({ plans }: { plans: PricingPlan[] }) {
                   plan.recommended ? "text-fg" : "text-fg/85",
                 )}
               >
-                <span className="inline-flex items-center gap-1.5">
-                  {plan.name}
-                  {plan.recommended ? (
-                    <span className="rounded-full border border-fg/25 bg-fg/10 px-1.5 py-px text-[9.5px] text-fg/70">
-                      Pro
-                    </span>
-                  ) : null}
-                </span>
+                {plan.name}
               </th>
             ))}
           </tr>
@@ -644,32 +635,55 @@ function CellValue({ value }: { value: Cell }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Boost cards                                                                */
+/*  Boosts table                                                               */
 /* -------------------------------------------------------------------------- */
 
-function BoostCard({ tier }: { tier: OverageTier }) {
+function BoostsTable({ tiers }: { tiers: OverageTier[] }) {
   return (
-    <article
-      className={cn(
-        "relative flex flex-col gap-3 rounded-[12px] border border-white/10 bg-bg/55 p-4 backdrop-blur-2xl",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
-      )}
-    >
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-[12.5px] font-medium text-fg">{tier.name}</p>
-        <span className="font-mono text-[11px] tabular-nums text-fg/55">
-          {tier.renews ? "Recurring" : "One-time"}
-        </span>
-      </div>
-      <div className="flex items-end gap-1.5">
-        <span className="text-[28px] font-light leading-none tracking-[-0.03em] text-fg">
-          ${tier.price}
-        </span>
-        <span className="pb-0.5 text-[11.5px] text-fg/55">{boostUnit(tier)}</span>
-      </div>
-      <p className="text-[12.5px] leading-[1.55] text-fg/70">{tier.description}</p>
-      <p className="mt-auto text-[11px] text-fg-faint">For {humanList(tier.appliesTo)}</p>
-    </article>
+    <div className="overflow-x-auto rounded-[14px] border border-white/10 bg-bg/55 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+      <table className="w-full min-w-[640px] table-fixed text-[12.5px]">
+        <thead>
+          <tr className="border-b border-white/10">
+            <th className="w-[46%] px-4 py-3 text-left text-[11.5px] font-medium text-fg/55">
+              Boost
+            </th>
+            <th className="px-3 py-3 text-left text-[11.5px] font-medium text-fg/55">
+              Price
+            </th>
+            <th className="px-3 py-3 text-left text-[11.5px] font-medium text-fg/55">
+              Type
+            </th>
+            <th className="px-3 py-3 text-left text-[11.5px] font-medium text-fg/55">
+              Available on
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {tiers.map((tier) => (
+            <tr key={tier.id} className="border-t border-white/5">
+              <td className="px-4 py-3 align-top">
+                <p className="text-[12.5px] font-medium text-fg">{tier.name}</p>
+                <p className="mt-1 text-[11.5px] leading-[1.55] text-fg/65">
+                  {tier.description}
+                </p>
+              </td>
+              <td className="px-3 py-3 align-top">
+                <span className="text-[14px] font-light tracking-[-0.02em] text-fg">
+                  ${tier.price}
+                </span>
+                <span className="ml-1 text-[11px] text-fg/55">{boostUnit(tier)}</span>
+              </td>
+              <td className="px-3 py-3 align-top font-mono text-[11.5px] tabular-nums text-fg/70">
+                {tier.renews ? "Recurring" : "One-time"}
+              </td>
+              <td className="px-3 py-3 align-top text-[12px] text-fg/75">
+                {humanList(tier.appliesTo)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
