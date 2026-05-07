@@ -501,11 +501,16 @@ function readMentionState(editor: NonNullable<ReturnType<typeof useEditor>>): Me
   const match = /(^|\s)@([\p{L}\p{N}\s._-]{0,80})$/u.exec(textBefore);
   if (!match) return null;
   const rawQuery = match[2] ?? "";
+  const atPos = from - rawQuery.length - 1;
+  const linkMark = state.schema.marks.link;
+  if (linkMark && state.doc.rangeHasMark(atPos, atPos + 1, linkMark)) {
+    return null;
+  }
   const coords = view.coordsAtPos(from);
 
   return {
     query: rawQuery.trim(),
-    from: from - rawQuery.length - 1,
+    from: atPos,
     to: from,
     coords: {
       left: coords.left,
