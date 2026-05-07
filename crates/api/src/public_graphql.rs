@@ -11,10 +11,11 @@ use crate::{
     state::AppState,
 };
 use async_graphql::{
-    Context, EmptySubscription, InputObject, Json, Object, Schema, SimpleObject, ID,
+    http::GraphiQLSource, Context, EmptySubscription, InputObject, Json, Object, Schema,
+    SimpleObject, ID,
 };
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
-use axum::{extract::State, http::HeaderMap, routing::post, Router};
+use axum::{extract::State, http::HeaderMap, response::Html, routing::get, Router};
 use chrono::{DateTime, FixedOffset, Utc};
 use produktive_entity::{issue, issue_label, label, member, organization, project, user};
 use sea_orm::{
@@ -28,18 +29,24 @@ use uuid::Uuid;
 pub type PublicSchema = Schema<QueryRoot, MutationRoot, EmptySubscription>;
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/graphql", post(graphql_handler))
+    Router::new().route("/graphql", get(graphiql_handler).post(graphql_handler))
 }
 
-fn schema(disable_introspection: bool) -> PublicSchema {
-    let builder = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
+fn schema() -> PublicSchema {
+    Schema::build(QueryRoot, MutationRoot, EmptySubscription)
         .limit_depth(10)
-        .limit_complexity(256);
-    if disable_introspection {
-        builder.disable_introspection().finish()
-    } else {
-        builder.finish()
-    }
+        .limit_complexity(256)
+        .finish()
+}
+
+async fn graphiql_handler() -> Html<String> {
+    Html(
+        GraphiQLSource::build()
+            .endpoint("/api/v1/graphql")
+            .header("Authorization", "Bearer <API_KEY>")
+            .title("Produktive Public GraphQL API")
+            .finish(),
+    )
 }
 
 async fn graphql_handler(
@@ -51,10 +58,7 @@ async fn graphql_handler(
     match require_api_key(&headers, &state).await {
         Ok(auth) => {
             request = request.data(auth);
-            schema(state.config.is_production_like())
-                .execute(request)
-                .await
-                .into()
+            schema().execute(request).await.into()
         }
         Err(error) => async_graphql::Response::from_errors(vec![async_graphql::ServerError::new(
             error.to_string(),

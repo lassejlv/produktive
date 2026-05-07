@@ -1,6 +1,7 @@
 # Public GraphQL API
 
-The public API is available at `POST /api/v1/graphql` and requires an API key:
+The public API is available at `POST /api/v1/graphql` and requires an API key.
+You can also open `GET /api/v1/graphql` in a browser to use the public GraphiQL playground.
 
 ```sh
 curl https://produktive.app/api/v1/graphql \
