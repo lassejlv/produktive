@@ -1,0 +1,354 @@
+{
+  "currency": "USD",
+  "billingPeriod": "monthly",
+  "positioning": "Produktive is an AI-native team workspace with issues, projects, notes, chat, agents, MCP, REST API access, and integrations.",
+  "plans": [
+    {
+      "id": "free",
+      "name": "Free",
+      "price": 0,
+      "pricingModel": "workspace",
+      "cadence": "forever",
+      "description": "For exploring Produktive with real workspace features and lightweight access to the integration ecosystem.",
+      "recommended": false,
+      "limits": {
+        "workspaces": 1,
+        "members": 3,
+        "activeIssues": 250,
+        "projects": 3,
+        "notes": 100,
+        "storageGb": 1,
+        "apiRequestsPerMonth": 1000,
+        "mcpToolCallsPerMonth": 250,
+        "discordActionsPerMonth": 100,
+        "githubRepositories": 1,
+        "githubAutoImport": false,
+        "slackIntegration": false
+      },
+      "ai": {
+        "usageLimit": "light monthly usage",
+        "resetInterval": "monthly",
+        "models": ["fast-basic"],
+        "modelAccess": "Basic model access for lightweight chat, drafting, and simple agent runs.",
+        "includedFeatures": ["AI chat", "issue draft"],
+        "excludedFeatures": ["better models", "pro reasoning models", "high-volume agent work"]
+      },
+      "integrations": {
+        "mcp": "limited",
+        "restApi": "limited",
+        "discord": "limited",
+        "github": "limited manual import",
+        "slack": "not included"
+      },
+      "features": [
+        "Issues",
+        "Projects",
+        "Labels",
+        "Notes",
+        "Workspace members",
+        "Hosted MCP access",
+        "REST API access",
+        "Discord integration",
+        "Basic AI access"
+      ]
+    },
+    {
+      "id": "basic",
+      "name": "Basic",
+      "price": 15,
+      "pricingModel": "workspace",
+      "cadence": "per workspace per month",
+      "description": "For small teams using Produktive as their core workspace with light AI and higher integration limits.",
+      "recommended": false,
+      "limits": {
+        "workspaces": 1,
+        "members": 10,
+        "activeIssues": "unlimited",
+        "projects": "unlimited",
+        "notes": "unlimited",
+        "storageGb": 10,
+        "apiRequestsPerMonth": 10000,
+        "mcpToolCallsPerMonth": 2500,
+        "discordActionsPerMonth": 1000,
+        "githubRepositories": 3,
+        "githubAutoImport": "limited",
+        "githubMinimumImportIntervalMinutes": 360,
+        "slackIntegration": "commands only"
+      },
+      "ai": {
+        "usageLimit": "standard monthly usage",
+        "resetInterval": "monthly",
+        "models": ["fast-basic", "standard"],
+        "modelAccess": "Fast and standard models for regular workspace assistance.",
+        "includedFeatures": ["AI chat", "issue draft", "workspace brief"],
+        "excludedFeatures": ["better reasoning models", "high-volume agent work"]
+      },
+      "integrations": {
+        "mcp": "higher limits",
+        "restApi": "higher limits",
+        "discord": "included",
+        "github": "manual import plus limited auto-import",
+        "slack": "issue commands"
+      },
+      "features": [
+        "Everything in Free",
+        "Unlimited issues",
+        "Unlimited projects",
+        "Unlimited notes",
+        "Higher MCP limits",
+        "Higher REST API limits",
+        "GitHub import",
+        "Slack issue commands",
+        "Standard AI access"
+      ]
+    },
+    {
+      "id": "pro",
+      "name": "Pro",
+      "price": 49,
+      "pricingModel": "workspace",
+      "cadence": "per workspace per month",
+      "description": "For AI-native teams that want better models, agents, GitHub automation, Slack, Discord, MCP, and REST workflows.",
+      "recommended": true,
+      "limits": {
+        "workspaces": 1,
+        "members": 25,
+        "activeIssues": "unlimited",
+        "projects": "unlimited",
+        "notes": "unlimited",
+        "storageGb": 50,
+        "apiRequestsPerMonth": 50000,
+        "mcpToolCallsPerMonth": 15000,
+        "discordActionsPerMonth": 5000,
+        "slackActionsPerMonth": 5000,
+        "githubRepositories": 15,
+        "githubAutoImport": true,
+        "githubMinimumImportIntervalMinutes": 60
+      },
+      "ai": {
+        "usageLimit": "high monthly usage",
+        "resetInterval": "monthly",
+        "models": ["fast-basic", "standard", "better-reasoning", "better-coding"],
+        "modelAccess": "Better models for agentic work, coding support, project health, and knowledge workflows.",
+        "includedFeatures": [
+          "AI chat",
+          "issue draft",
+          "workspace brief",
+          "project health",
+          "note editing",
+          "agent tool calls",
+          "remote MCP tools"
+        ],
+        "excludedFeatures": ["highest-volume business limits", "full security governance"]
+      },
+      "integrations": {
+        "mcp": "full",
+        "restApi": "full",
+        "discord": "agent included",
+        "github": "auto-import included",
+        "slack": "commands and agent included"
+      },
+      "features": [
+        "Everything in Basic",
+        "Better AI models",
+        "Higher AI usage",
+        "Workspace brief",
+        "Project health",
+        "AI note editing",
+        "Slack agent",
+        "Discord agent",
+        "GitHub auto-import",
+        "Full hosted MCP workflow"
+      ]
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "price": 24,
+      "pricingModel": "perUser",
+      "cadence": "per user per month",
+      "description": "For companies that need best-model access, higher automation limits, workspace security, governance, and priority support.",
+      "recommended": false,
+      "limits": {
+        "workspaces": "unlimited",
+        "members": "paid seats",
+        "activeIssues": "unlimited",
+        "projects": "unlimited",
+        "notes": "unlimited",
+        "storageGbPerUser": 20,
+        "apiRequestsPerUserPerMonth": 50000,
+        "mcpToolCallsPerUserPerMonth": 20000,
+        "discordActionsPerUserPerMonth": 5000,
+        "slackActionsPerUserPerMonth": 5000,
+        "githubRepositories": "unlimited",
+        "githubAutoImport": true,
+        "githubMinimumImportIntervalMinutes": 15
+      },
+      "ai": {
+        "usageLimit": "high monthly usage per paid user",
+        "resetInterval": "monthly",
+        "models": [
+          "fast-basic",
+          "standard",
+          "better-reasoning",
+          "better-coding",
+          "pro-reasoning"
+        ],
+        "modelAccess": "Best available models, higher reliability, and the highest included agent capacity.",
+        "includedFeatures": [
+          "AI chat",
+          "issue draft",
+          "workspace brief",
+          "project health",
+          "note editing",
+          "agent tool calls",
+          "remote MCP tools",
+          "priority model access"
+        ],
+        "excludedFeatures": ["custom enterprise terms", "dedicated deployment"]
+      },
+      "integrations": {
+        "mcp": "highest included limits",
+        "restApi": "highest included limits",
+        "discord": "highest included limits",
+        "github": "fast auto-import",
+        "slack": "highest included limits"
+      },
+      "security": {
+        "workspaceTwoFactorRequirement": true,
+        "trustedDevices": true,
+        "securityEvents": true,
+        "advancedRoles": true,
+        "auditLog": true
+      },
+      "features": [
+        "Everything in Pro",
+        "Per-user AI capacity",
+        "Best models",
+        "Fast GitHub auto-import",
+        "Higher MCP limits",
+        "Higher REST API limits",
+        "Workspace 2FA requirement",
+        "Security event history",
+        "Advanced roles",
+        "Priority support"
+      ]
+    },
+    {
+      "id": "enterprise",
+      "name": "Enterprise",
+      "price": null,
+      "pricingModel": "custom",
+      "cadence": "custom contract",
+      "description": "For organizations that need custom governance, procurement, support, model policy, or deployment requirements.",
+      "recommended": false,
+      "limits": {
+        "workspaces": "custom",
+        "members": "custom",
+        "storage": "custom",
+        "apiRequests": "custom",
+        "mcpToolCalls": "custom",
+        "integrationLimits": "custom"
+      },
+      "ai": {
+        "usageLimit": "custom",
+        "resetInterval": "custom",
+        "models": ["custom"],
+        "modelAccess": "Custom model policy, custom limits, and optional bring-your-own-key support when available."
+      },
+      "integrations": {
+        "mcp": "custom",
+        "restApi": "custom",
+        "discord": "custom",
+        "github": "custom",
+        "slack": "custom"
+      },
+      "security": {
+        "sso": "planned",
+        "saml": "planned",
+        "scim": "planned",
+        "auditLog": true,
+        "customRetention": true,
+        "dedicatedSupport": true
+      },
+      "features": [
+        "Everything in Business",
+        "Custom limits",
+        "Custom contract",
+        "Dedicated support",
+        "Custom retention",
+        "Enterprise security options"
+      ]
+    }
+  ],
+  "overageTiers": [
+    {
+      "id": "weekly-boost",
+      "name": "Weekly Boost",
+      "price": 12,
+      "pricingModel": "workspaceAddOn",
+      "durationDays": 7,
+      "description": "Temporary extra AI capacity for launches, deadlines, imports, sprint planning, and heavy agent work.",
+      "appliesTo": ["free", "basic", "pro"],
+      "renews": false
+    },
+    {
+      "id": "monthly-boost",
+      "name": "Monthly Boost",
+      "price": 29,
+      "pricingModel": "workspaceAddOn",
+      "duration": "current billing month",
+      "description": "Sustained extra AI capacity for teams that regularly exceed their included monthly usage.",
+      "appliesTo": ["basic", "pro"],
+      "renews": true
+    },
+    {
+      "id": "business-monthly-boost",
+      "name": "Business Monthly Boost",
+      "price": 15,
+      "pricingModel": "perUserAddOn",
+      "duration": "current billing month",
+      "description": "Extra monthly AI capacity per paid Business user.",
+      "appliesTo": ["business"],
+      "renews": true
+    }
+  ],
+  "aiLimitPolicy": {
+    "style": "subscription capacity",
+    "publicLanguage": "AI usage resets monthly. Higher plans include more usage and better models. Add a weekly or monthly boost when you need more capacity.",
+    "overagePolicy": "No surprise usage bills. Extra AI capacity is purchased explicitly through weekly or monthly boosts.",
+    "limitBehavior": "When included usage is exhausted, users can wait for reset, upgrade plans, or purchase a boost."
+  },
+  "modelTiers": [
+    {
+      "id": "fast-basic",
+      "label": "Fast model",
+      "includedIn": ["free", "basic", "pro", "business"],
+      "intendedUse": "Quick answers, light drafting, simple agent work."
+    },
+    {
+      "id": "standard",
+      "label": "Standard model",
+      "includedIn": ["basic", "pro", "business"],
+      "intendedUse": "Regular workspace chat, summaries, issue drafting, and project assistance."
+    },
+    {
+      "id": "better-reasoning",
+      "label": "Better reasoning model",
+      "includedIn": ["pro", "business"],
+      "intendedUse": "Multi-step planning, project health, notes, complex workspace questions, and agentic workflows."
+    },
+    {
+      "id": "better-coding",
+      "label": "Better coding model",
+      "includedIn": ["pro", "business"],
+      "intendedUse": "Codebase-aware work through MCP, GitHub workflows, API usage, and technical planning."
+    },
+    {
+      "id": "pro-reasoning",
+      "label": "Pro reasoning model",
+      "includedIn": ["business"],
+      "intendedUse": "Highest-value reasoning, heavy agent sessions, complex automation, and business-critical work."
+    }
+  ]
+}
