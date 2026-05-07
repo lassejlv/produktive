@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { Spinner } from "@/components/ui/spinner";
 import { useInbox } from "@/lib/use-inbox";
 import { cn } from "@/lib/utils";
 
@@ -68,7 +69,9 @@ function InboxPage() {
       </header>
       <section className="mx-auto w-full max-w-[760px] px-6 py-8">
         {isLoading ? (
-          <p className="text-[13px] text-fg-faint">Loading…</p>
+          <div className="flex justify-center py-8 text-fg-faint">
+            <Spinner size={14} />
+          </div>
         ) : notifications.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <p className="text-[13px] text-fg">You're all caught up.</p>

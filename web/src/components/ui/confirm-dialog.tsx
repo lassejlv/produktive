@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 
 export type ConfirmDialogProps = {
   open: boolean;
@@ -74,7 +75,7 @@ export function ConfirmDialog({
           onClick={() => void handleConfirm()}
           disabled={submitting}
         >
-          {submitting ? "…" : confirmLabel}
+          {submitting ? <Spinner size={11} /> : confirmLabel}
         </Button>
       </DialogFooter>
     </Dialog>

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { NewLabelDialog } from "@/components/label/new-label-dialog";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
 import { type Label, deleteLabel, updateLabel } from "@/lib/api";
 import { labelColorHex, labelColorOptions } from "@/lib/label-constants";
 import { useLabels } from "@/lib/use-labels";
@@ -155,7 +156,9 @@ function LabelsPage() {
 
       <section className="mx-auto w-full max-w-[760px] px-5 py-6">
         {isLoading ? (
-          <p className="text-[13px] text-fg-faint">Loading…</p>
+          <div className="flex justify-center py-8 text-fg-faint">
+            <Spinner size={14} />
+          </div>
         ) : labels.length === 0 ? (
           <EmptyState
             onCreate={(name) => {

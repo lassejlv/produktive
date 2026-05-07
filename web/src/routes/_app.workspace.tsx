@@ -10,6 +10,7 @@ import { issuesQueryOptions, useIssuesQuery } from "@/lib/queries/issues";
 import { projectsQueryOptions, useProjectsQuery } from "@/lib/queries/projects";
 import { useInbox } from "@/lib/use-inbox";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/workspace")({
   loader: ({ context }) => {
@@ -29,6 +30,14 @@ const PRIORITY_RANK: Record<string, number> = {
 };
 
 const INTRO_SESSION_KEY = "produktive:workspace-overview-intro";
+const SHIMMER_SESSION_KEY = "produktive:workspace-overview-shimmer";
+
+function greetingFor(hour: number): string {
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 18) return "Good afternoon";
+  if (hour >= 18 && hour < 23) return "Good evening";
+  return "Good night";
+}
 
 function WorkspaceRoute() {
   const pathname = useRouterState({
@@ -94,6 +103,31 @@ function useIntroProgress(ready: boolean) {
   }, [ready]);
 
   return progress;
+}
+
+function useShimmerOnce(ready: boolean) {
+  const [active, setActive] = useState(() => {
+    if (typeof window === "undefined") return false;
+    if (window.sessionStorage.getItem(SHIMMER_SESSION_KEY)) return false;
+    return true;
+  });
+
+  useEffect(() => {
+    if (!active || !ready) return;
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      window.sessionStorage.setItem(SHIMMER_SESSION_KEY, "1");
+      setActive(false);
+      return;
+    }
+    const id = window.setTimeout(() => {
+      window.sessionStorage.setItem(SHIMMER_SESSION_KEY, "1");
+      setActive(false);
+    }, 1300);
+    return () => window.clearTimeout(id);
+  }, [active, ready]);
+
+  return active;
 }
 
 function WorkspaceOverview() {
@@ -181,16 +215,23 @@ function WorkspaceOverview() {
   const empty = !isLoading && issues.length === 0 && projects.length === 0;
 
   const introProgress = useIntroProgress(!isLoading && !empty);
+  const shimmerActive = useShimmerOnce(!isLoading && !empty);
   const a = Math.round(counts.active * introProgress);
   const i = Math.round(counts.inProgress * introProgress);
   const d = Math.round(counts.done * introProgress);
 
+  const now = useMemo(() => new Date(), []);
+  const greeting = greetingFor(now.getHours());
+  const dateLabel = now.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+
   return (
     <main className="min-h-full bg-bg">
       <header className="sticky top-0 z-10 flex h-11 items-center justify-between gap-3 border-b border-border-subtle bg-bg/85 px-4 backdrop-blur">
-        <h1 className="text-[11px] font-medium uppercase tracking-[0.14em] text-fg-muted">
-          Overview
-        </h1>
+        <h1 className="text-sm font-medium text-fg">Overview</h1>
         <Link
           to="/issues"
           search={{ new: true }}
@@ -216,10 +257,26 @@ function WorkspaceOverview() {
       ) : (
         <section className="mx-auto w-full max-w-2xl px-4 py-12 animate-fade-up">
           <div>
-            <h2 className="text-4xl font-light leading-[1.05] tracking-tight text-fg sm:text-5xl">
+            <div className="mb-3 flex items-center gap-2 text-[11.5px] text-fg-faint">
+              <span
+                aria-hidden
+                className="thinking-dot inline-block size-1 rounded-full bg-fg-muted"
+              />
+              <span>
+                {greeting}
+                <span className="px-1.5 text-fg-faint/60">·</span>
+                <span className="text-fg-muted">{dateLabel}</span>
+              </span>
+            </div>
+            <h2
+              className={cn(
+                "text-4xl font-light leading-[1.05] tracking-tight text-fg sm:text-5xl",
+                shimmerActive && "text-shimmer-once",
+              )}
+            >
               {orgName}
             </h2>
-            <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-1 text-[10.5px] font-medium uppercase tracking-[0.14em] text-fg-faint">
+            <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-1 text-[12px] text-fg-faint">
               <span>
                 <span className="tabular-nums text-fg-muted">{a}</span> active
               </span>
@@ -261,6 +318,13 @@ function WorkspaceOverview() {
                     >
                       <StatusIcon status={issue.status} statuses={statuses} />
                       <span className="min-w-0 flex-1 truncate text-sm text-fg">{issue.title}</span>
+                      {issue.status === "in-progress" ? (
+                        <span
+                          aria-label="In progress"
+                          title="In progress"
+                          className="thinking-dot inline-block size-1.5 shrink-0 rounded-full bg-fg/75"
+                        />
+                      ) : null}
                       {issue.project ? (
                         <span className="shrink-0 text-xs text-fg-faint">{issue.project.name}</span>
                       ) : null}
@@ -352,9 +416,7 @@ function Section({
     <section className="mt-12">
       <div className="hairline-top mb-3" />
       <div className="mb-2 flex items-baseline justify-between gap-3">
-        <h3 className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-fg-muted">
-          {title}
-        </h3>
+        <h3 className="text-xs font-medium text-fg-muted">{title}</h3>
         <Link
           to={actionTo}
           className="text-[11px] text-fg-faint transition-colors hover:text-fg-muted"

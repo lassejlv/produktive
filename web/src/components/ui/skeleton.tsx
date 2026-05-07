@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 export function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      className={cn("rounded-md bg-surface-2 animate-pulse", className)}
+      className={cn("skeleton-shimmer rounded-[8px]", className)}
       {...props}
     />
   );

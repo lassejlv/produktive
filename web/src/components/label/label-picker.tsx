@@ -8,6 +8,7 @@ import {
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { CheckIcon } from "@/components/chat/icons";
+import { Spinner } from "@/components/ui/spinner";
 import {
   type Label,
   type LabelSummary,
@@ -234,8 +235,8 @@ export function LabelPicker({
               </div>
               <div className="flex max-h-[280px] flex-col overflow-auto py-1">
                 {isLoading && labels.length === 0 ? (
-                  <div className="px-3 py-2 text-[12px] text-fg-faint">
-                    Loading…
+                  <div className="flex justify-center px-3 py-3 text-fg-faint">
+                    <Spinner size={12} />
                   </div>
                 ) : filtered.length === 0 && !query.trim() ? (
                   <div className="px-3 py-2 text-[12px] text-fg-faint">

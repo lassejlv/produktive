@@ -15,16 +15,38 @@ use produktive_entity::{
     user,
 };
 use regex::Regex;
+use reqwest::{
+    header::{ACCEPT, CONTENT_TYPE, USER_AGENT},
+    Url,
+};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, EntityTrait, IntoActiveModel,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::{net::IpAddr, time::Duration};
 use uuid::Uuid;
+
+const FETCH_MAX_BYTES: usize = 512 * 1024;
+const FETCH_TIMEOUT_SECONDS: u64 = 15;
 
 pub fn registry() -> Vec<Tool> {
     vec![
+        Tool {
+            name: "fetch".to_owned(),
+            description: "Fetch a public HTTP(S) URL with GET and return the status, content type, final URL, and response body text. Use this to read public web pages or API responses when the user asks for information from a URL.".to_owned(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "The public http:// or https:// URL to fetch."
+                    }
+                },
+                "required": ["url"]
+            }),
+        },
         Tool {
             name: "list_issues".to_owned(),
             description: "List issues in the current workspace, optionally filtered by status, priority, or assignee. Returns at most 50 most recent issues.".to_owned(),
@@ -339,6 +361,7 @@ pub async fn dispatch(
         "create_note_folder" => create_note_folder(parsed_args, state, auth).await,
         "update_note_folder" => update_note_folder(parsed_args, state, auth).await,
         "archive_note_folder" => archive_note_folder(parsed_args, state, auth).await,
+        "fetch" => fetch(parsed_args).await,
         "ask_user" => ask_user(parsed_args).await,
         other => return Ok(json!({ "error": format!("Unknown tool: {other}") })),
     };
@@ -349,6 +372,116 @@ pub async fn dispatch(
             Ok(json!({ "error": msg }))
         }
         Err(other) => Err(other),
+    }
+}
+
+#[derive(Deserialize)]
+struct FetchArgs {
+    url: String,
+}
+
+async fn fetch(args: Value) -> Result<Value, ApiError> {
+    let args: FetchArgs = serde_json::from_value(args)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid arguments for fetch: {e}")))?;
+    let url = validate_fetch_url(&args.url)?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(FETCH_TIMEOUT_SECONDS))
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .build()
+        .map_err(|e| ApiError::Internal(e.into()))?;
+    let mut response = client
+        .get(url)
+        .header(USER_AGENT, "Produktive AI Agent")
+        .header(ACCEPT, "*/*")
+        .send()
+        .await
+        .map_err(fetch_transport_error)?;
+
+    let status = response.status();
+    let final_url = response.url().to_string();
+    validate_fetch_url(&final_url)?;
+    let content_type = response
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+
+    if let Some(length) = response.content_length() {
+        if length > FETCH_MAX_BYTES as u64 {
+            return Err(ApiError::BadRequest(format!(
+                "Response is too large; maximum is {FETCH_MAX_BYTES} bytes"
+            )));
+        }
+    }
+
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(fetch_transport_error)? {
+        if body.len() + chunk.len() > FETCH_MAX_BYTES {
+            return Err(ApiError::BadRequest(format!(
+                "Response is too large; maximum is {FETCH_MAX_BYTES} bytes"
+            )));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    let body_len = body.len();
+    let text = String::from_utf8_lossy(&body).into_owned();
+
+    Ok(json!({
+        "url": final_url,
+        "status": status.as_u16(),
+        "ok": status.is_success(),
+        "content_type": content_type,
+        "body": text,
+        "body_bytes": body_len,
+    }))
+}
+
+fn fetch_transport_error(error: reqwest::Error) -> ApiError {
+    ApiError::BadRequest(format!("fetch failed: {error}"))
+}
+
+fn validate_fetch_url(raw: &str) -> Result<Url, ApiError> {
+    let url = Url::parse(raw.trim())
+        .map_err(|_| ApiError::BadRequest("fetch requires a valid URL".to_owned()))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(ApiError::BadRequest(
+            "fetch only supports http and https URLs".to_owned(),
+        ));
+    }
+    let Some(host) = url.host_str().map(|value| value.to_ascii_lowercase()) else {
+        return Err(ApiError::BadRequest("fetch URL requires a host".to_owned()));
+    };
+    if host == "localhost" || host.ends_with(".localhost") {
+        return Err(ApiError::BadRequest(
+            "fetch cannot access localhost URLs".to_owned(),
+        ));
+    }
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        if is_blocked_fetch_ip(ip) {
+            return Err(ApiError::BadRequest(
+                "fetch cannot access private or local IP addresses".to_owned(),
+            ));
+        }
+    }
+    Ok(url)
+}
+
+fn is_blocked_fetch_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            ip.is_private()
+                || ip.is_loopback()
+                || ip.is_link_local()
+                || ip.is_broadcast()
+                || ip.is_documentation()
+                || ip.is_unspecified()
+        }
+        IpAddr::V6(ip) => {
+            ip.is_loopback()
+                || ip.is_unspecified()
+                || ip.is_unique_local()
+                || ip.is_unicast_link_local()
+        }
     }
 }
 

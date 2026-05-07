@@ -9,6 +9,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
 import { useSession } from "@/lib/auth-client";
 import { type Chat, deleteChat, getChat } from "@/lib/api";
 import { parseMessageWithAttachments } from "@/lib/chat-attachments";
@@ -210,7 +211,9 @@ function ChatsPage() {
 
       <section className="mx-auto w-full max-w-[920px] px-5 pb-24 pt-4">
         {isLoading ? (
-          <p className="px-2 py-8 text-[13px] text-fg-faint">Loading…</p>
+          <div className="flex justify-center py-8 text-fg-faint">
+            <Spinner size={14} />
+          </div>
         ) : chats.length === 0 ? (
           <ChatsEmptyState onNewChat={() => void navigate({ to: "/chat" })} />
         ) : filtered.length === 0 ? (

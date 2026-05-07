@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { SparkleIcon, StarIcon } from "@/components/chat/icons";
 import { StatusIcon } from "@/components/issue/status-icon";
 import { ProjectIcon } from "@/components/project/project-icon";
+import { Spinner } from "@/components/ui/spinner";
 import { type Favorite, type FavoriteTarget } from "@/lib/api";
 import { parseMessageWithAttachments } from "@/lib/chat-attachments";
 import { useFavorites } from "@/lib/use-favorites";
@@ -221,7 +222,9 @@ function FavoritesPage() {
 
       <section className="mx-auto w-full max-w-[920px] px-8 pb-24 pt-2">
         {isLoading ? (
-          <p className="px-2 py-8 text-[13px] text-fg-faint">Loading…</p>
+          <div className="flex justify-center py-8 text-fg-faint">
+            <Spinner size={14} />
+          </div>
         ) : ordered.length === 0 ? (
           <FavoritesEmptyState />
         ) : filtered.length === 0 ? (

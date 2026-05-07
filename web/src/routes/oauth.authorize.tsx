@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   type OAuthAuthorizePreview,
   decideOAuthAuthorization,
@@ -61,7 +62,9 @@ function OAuthAuthorizePage() {
         ) : null}
 
         {!preview && !error ? (
-          <p className="mt-4 text-sm text-fg-muted">Loading…</p>
+          <div className="mt-4 flex justify-center text-fg-muted">
+            <Spinner size={16} />
+          </div>
         ) : null}
 
         {preview ? (

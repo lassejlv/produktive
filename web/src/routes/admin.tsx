@@ -28,6 +28,7 @@ import {
   type SupportTicketSummary,
 } from "@/lib/admin-api";
 import { signOut } from "@/lib/auth-client";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin")({
@@ -1732,7 +1733,7 @@ function SuspensionDialog({
             disabled={!canSubmit || busy}
             className="h-9 rounded-[6px] bg-danger px-3 text-[13px] text-white disabled:opacity-50"
           >
-            {busy ? "Saving..." : target.suspended ? "Unsuspend" : "Suspend"}
+            {busy ? <Spinner size={11} /> : target.suspended ? "Unsuspend" : "Suspend"}
           </button>
         </div>
       </form>

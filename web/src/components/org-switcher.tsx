@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { LoadingTip } from "@/components/ui/loading-tip";
+import { Spinner } from "@/components/ui/spinner";
 import {
   type OrganizationMembership,
   createOrganization,
@@ -270,14 +271,7 @@ function CreateOrganizationDialog({ open, onClose }: { open: boolean; onClose: (
             Cancel
           </Button>
           <Button type="submit" size="sm" disabled={isSaving || !name.trim()}>
-            {isSaving ? (
-              <span className="flex items-center gap-2">
-                <span className="inline-block size-3 animate-spin rounded-full border-2 border-bg/30 border-t-bg" />
-                Creating…
-              </span>
-            ) : (
-              "Create organization"
-            )}
+            {isSaving ? <Spinner size={11} /> : "Create organization"}
           </Button>
         </DialogFooter>
       </form>

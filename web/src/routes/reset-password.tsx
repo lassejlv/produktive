@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/reset-password")({
@@ -86,14 +87,7 @@ function ResetPasswordPage() {
           ) : null}
 
           <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? (
-              <span className="flex items-center gap-2">
-                <span className="inline-block size-3 animate-spin rounded-full border-2 border-bg/30 border-t-bg" />
-                Updating…
-              </span>
-            ) : (
-              "Update password"
-            )}
+            {isSubmitting ? <Spinner size={12} /> : "Update password"}
           </Button>
         </form>
 

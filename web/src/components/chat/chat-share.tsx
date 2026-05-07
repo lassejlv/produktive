@@ -6,6 +6,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
 import {
   type ChatAccessEntry,
   grantChatAccess,
@@ -110,7 +111,9 @@ function ChatShareBody({ chatId }: { chatId: string }) {
       />
       <div className="max-h-72 overflow-y-auto">
         {isLoading ? (
-          <p className="px-3 py-3 text-[12px] text-fg-faint">Loading…</p>
+          <div className="flex justify-center px-3 py-4 text-fg-faint">
+            <Spinner size={12} />
+          </div>
         ) : filteredMembers.length === 0 ? (
           <p className="px-3 py-3 text-[12px] text-fg-faint">No members.</p>
         ) : (

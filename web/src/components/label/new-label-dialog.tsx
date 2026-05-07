@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Dialog } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 import { type Label, createLabel } from "@/lib/api";
 import {
   defaultLabelColor,
@@ -155,7 +156,7 @@ export function NewLabelDialog({ onCreated, headless }: NewLabelDialogProps) {
               disabled={!name.trim() || submitting}
               className="h-8 rounded-md bg-fg px-3 text-[12.5px] font-medium text-bg transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "Creating…" : "Create label"}
+              {submitting ? <Spinner size={11} /> : "Create label"}
             </button>
           </div>
         </form>

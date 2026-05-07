@@ -7,6 +7,7 @@ import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { LoadingTip } from "@/components/ui/loading-tip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -614,7 +615,7 @@ function StatusSettings({ canEdit }: { canEdit: boolean }) {
               </SelectContent>
             </Select>
             <Button type="submit" size="sm" disabled={saving || !name.trim()}>
-              {saving ? "Creating..." : "Create"}
+              {saving ? <Spinner size={11} /> : "Create"}
             </Button>
           </form>
         </section>
@@ -1380,7 +1381,7 @@ function GithubRepositoryRow({
             disabled={!canEdit || rowBusy || !draftValid || !draftDirty}
             onClick={() => onSaveEditInterval(repository)}
           >
-            {busy === `update:${repository.id}` ? "Saving…" : "Save"}
+            {busy === `update:${repository.id}` ? <Spinner size={11} /> : "Save"}
           </Button>
         </div>
       ) : null}
@@ -1655,7 +1656,7 @@ function McpKeySettings() {
           <div className="mt-2 flex items-center justify-between gap-2 text-[11.5px] text-fg-faint">
             <span>Days until expiry.</span>
             <Button type="submit" size="sm" disabled={busy === "create"}>
-              {busy === "create" ? "Creating…" : "Create"}
+              {busy === "create" ? <Spinner size={11} /> : "Create"}
             </Button>
           </div>
         </SettingRow>
@@ -2216,7 +2217,7 @@ function GeneralSettings({
             </Button>
           ) : null}
           <Button type="submit" size="sm" disabled={!canSave}>
-            {submitting ? "Saving…" : "Save changes"}
+            {submitting ? <Spinner size={11} /> : "Save changes"}
           </Button>
         </div>
       ) : null}

@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Avatar } from "@/components/issue/avatar";
 import { MemberPicker } from "@/components/issue/member-picker";
 import { Dialog } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 import { type Project, createProject, listMembers } from "@/lib/api";
 import {
   defaultProjectColor,
@@ -228,7 +229,7 @@ export function NewProjectDialog({
               disabled={!name.trim() || submitting}
               className="h-8 rounded-md bg-fg px-3 text-[12.5px] font-medium text-bg transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "Creating…" : "Create project"}
+              {submitting ? <Spinner size={11} /> : "Create project"}
             </button>
           </div>
         </form>

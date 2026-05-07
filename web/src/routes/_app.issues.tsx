@@ -19,7 +19,8 @@ import {
   emptyFilters,
   type IssueFilters,
 } from "@/components/issue/issue-toolbar";
-import { NewIssueDialog } from "@/components/issue/new-issue-dialog";
+import { IssueSidepane } from "@/components/issue/issue-sidepane";
+import { NewIssueSheet } from "@/components/issue/new-issue-sheet";
 import { useOnboarding } from "@/components/onboarding/onboarding-context";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { DashboardSkeleton } from "@/components/issue-skeleton";
@@ -48,12 +49,14 @@ import { cn } from "@/lib/utils";
 type IssuesSearch = {
   mine?: boolean;
   new?: boolean;
+  activeId?: string;
 };
 
 export const Route = createFileRoute("/_app/issues")({
   validateSearch: (search: Record<string, unknown>): IssuesSearch => ({
     mine: search.mine === true || search.mine === "1" || search.mine === "true" ? true : undefined,
     new: search.new === true || search.new === "1" || search.new === "true" ? true : undefined,
+    activeId: typeof search.activeId === "string" && search.activeId.length > 0 ? search.activeId : undefined,
   }),
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(issuesQueryOptions()),
@@ -119,6 +122,14 @@ function IssuesPage() {
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [lastClickedId, setLastClickedId] = useState<string | null>(null);
+  const previewIssueId = search.activeId ?? null;
+  const setPreviewIssueId = (next: string | null) => {
+    void navigate({
+      to: "/issues",
+      search: (prev) => ({ ...prev, activeId: next ?? undefined }),
+      replace: true,
+    });
+  };
 
   const filteredIssues = useMemo(() => {
     let pool = issues;
@@ -225,7 +236,7 @@ function IssuesPage() {
       return;
     }
     setLastClickedId(id);
-    void navigate({ to: "/issues/$issueId", params: { issueId: id } });
+    setPreviewIssueId(id);
   };
 
   const clearSelection = () => {
@@ -441,7 +452,7 @@ function IssuesPage() {
             </kbd>{" "}
             to create
           </span>
-          <NewIssueDialog
+          <NewIssueSheet
             shortcutEnabled
             onCreated={(issue) => {
               addIssue(issue);
@@ -600,6 +611,10 @@ function IssuesPage() {
           onClear={clearSelection}
         />
       ) : null}
+      <IssueSidepane
+        issueId={previewIssueId}
+        onClose={() => setPreviewIssueId(null)}
+      />
     </>
   );
 }

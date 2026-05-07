@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
 
 type LoginSearch = {
@@ -352,14 +353,7 @@ function LoginPage() {
 
           <Button type="submit" disabled={isSubmitting}>
             {isSubmitting ? (
-              <span className="flex items-center gap-2">
-                <span className="inline-block size-3 animate-spin rounded-full border-2 border-bg/30 border-t-bg" />
-                {twoFactorPending
-                  ? "Verifying…"
-                  : mode === "signin"
-                    ? "Signing in…"
-                    : "Creating account…"}
-              </span>
+              <Spinner size={12} />
             ) : twoFactorPending ? (
               "Verify"
             ) : mode === "signin" ? (

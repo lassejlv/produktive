@@ -20,7 +20,10 @@ function PopoverContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 w-72 rounded-lg border border-border bg-bg p-3 text-fg shadow-xl shadow-black/20 outline-none",
+          "z-50 w-72 overflow-hidden rounded-[14px] outline-none",
+          "border border-border-subtle/80 bg-bg/85 backdrop-blur-2xl",
+          "widget-panel-shadow",
+          "p-3 text-fg",
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
           "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
           className,

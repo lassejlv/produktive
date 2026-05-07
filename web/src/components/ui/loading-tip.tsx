@@ -38,7 +38,7 @@ export function LoadingTip({ compact = false, className }: LoadingTipProps) {
           className,
         )}
       >
-        <span className="inline-block size-2.5 shrink-0 animate-spin rounded-full border border-border border-t-fg-muted" />
+        <span className="inline-block size-2.5 shrink-0 animate-spin rounded-full border border-border-subtle border-t-fg-muted" />
         <span className="min-w-0 truncate">{LOADING_TIPS[tipIndex]}</span>
       </div>
     );
@@ -51,9 +51,9 @@ export function LoadingTip({ compact = false, className }: LoadingTipProps) {
         className,
       )}
     >
-      <span className="inline-block size-5 animate-spin rounded-full border-2 border-border border-t-fg-muted" />
+      <span className="inline-block size-5 animate-spin rounded-full border-2 border-border-subtle border-t-fg" />
       <div className="space-y-1">
-        <p className="text-sm text-fg-muted">Loading Produktive</p>
+        <p className="text-shimmer text-sm tracking-tight">Loading Produktive</p>
         <p className="text-xs leading-relaxed text-fg-faint">
           {LOADING_TIPS[tipIndex]}
         </p>

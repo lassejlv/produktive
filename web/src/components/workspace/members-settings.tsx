@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -772,7 +773,7 @@ function RoleManager({
               </button>
             ) : null}
             <Button type="submit" size="sm" disabled={saving || !name.trim()}>
-              {saving ? "Saving…" : editingId ? "Save role" : "Create role"}
+              {saving ? <Spinner size={11} /> : editingId ? "Save role" : "Create role"}
             </Button>
           </div>
         </form>

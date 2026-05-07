@@ -8,6 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { CaretIcon, CheckIcon } from "@/components/chat/icons";
+import { Spinner } from "@/components/ui/spinner";
 import { useGithubRepositorySearchQuery } from "@/lib/queries/github";
 import { cn } from "@/lib/utils";
 
@@ -205,7 +206,9 @@ export function GithubRepoPicker({
               </div>
               <div className="flex max-h-[280px] flex-col overflow-auto py-1">
                 {searchQuery.isPending && !searchQuery.data ? (
-                  <div className="px-3 py-2 text-[12px] text-fg-faint">Loading…</div>
+                  <div className="flex justify-center px-3 py-3 text-fg-faint">
+                    <Spinner size={12} />
+                  </div>
                 ) : null}
 
                 {searchQuery.isError ? (

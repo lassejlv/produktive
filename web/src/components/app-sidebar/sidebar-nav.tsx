@@ -1,9 +1,17 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { InboxIcon, IssuesIcon, ProjectsIcon } from "@/components/chat/icons";
 import { ISSUE_DRAG_MIME } from "@/components/issue/issue-list";
 import { ProjectIcon } from "@/components/project/project-icon";
+import { BookmarkIcon } from "@/components/ui/bookmark";
+import { CircleCheckIcon } from "@/components/ui/circle-check";
+import { FileTextIcon } from "@/components/ui/file-text";
+import { FolderKanbanIcon } from "@/components/ui/folder-kanban";
+import { LayoutGridIcon } from "@/components/ui/layout-grid";
+import { MailboxIcon } from "@/components/ui/mailbox";
+import { SparklesIcon } from "@/components/ui/sparkles";
+import { Spinner } from "@/components/ui/spinner";
+import { UserIcon } from "@/components/ui/user";
 import type { SidebarLayoutItem } from "@/lib/api";
 import { updateIssue } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -13,20 +21,6 @@ import {
   useSidebarLayout,
 } from "@/lib/use-sidebar-layout";
 import { useProjects } from "@/lib/use-projects";
-
-function MyIssuesIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <circle cx="7" cy="5" r="2" stroke="currentColor" strokeWidth="1.4" />
-      <path
-        d="M3 12c.5-2 2-3 4-3s3.5 1 4 3"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 function SidebarRecentProjects({ pathname }: { pathname: string }) {
   const navigate = useNavigate();
@@ -119,81 +113,6 @@ function SidebarRecentProjects({ pathname }: { pathname: string }) {
   );
 }
 
-function OverviewIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <rect
-        x="2"
-        y="2"
-        width="4"
-        height="4"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
-      <rect
-        x="8"
-        y="2"
-        width="4"
-        height="4"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
-      <rect
-        x="2"
-        y="8"
-        width="4"
-        height="4"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
-      <rect
-        x="8"
-        y="8"
-        width="4"
-        height="4"
-        rx="1"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
-    </svg>
-  );
-}
-
-function SidebarLabelsIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path
-        d="M7.5 1.5h4a1 1 0 011 1v4l-6 6a1 1 0 01-1.4 0L1.5 8.4a1 1 0 010-1.4l6-6z"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-      <circle cx="9.5" cy="4.5" r="0.9" fill="currentColor" />
-    </svg>
-  );
-}
-
-function SidebarNotesIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
-      <path
-        d="M3 1.5h5.4L11.5 4.6V12a1 1 0 01-1 1H3a1 1 0 01-1-1V2.5a1 1 0 011-1z"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M8.4 1.7v3h2.9M4.4 7h5M4.4 9.5h4"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
 
 type NavContext = {
   pathname: string;
@@ -212,28 +131,28 @@ const NAV_ITEM_SPECS: Record<SidebarItemId, NavItemSpec> = {
   inbox: {
     id: "inbox",
     label: "Inbox",
-    icon: <InboxIcon />,
+    icon: <MailboxIcon size={15} />,
     isActive: (ctx) => ctx.pathname === "/inbox",
     onNavigate: (n) => void n({ to: "/inbox" }),
   },
   "my-issues": {
     id: "my-issues",
     label: "My issues",
-    icon: <MyIssuesIcon />,
+    icon: <UserIcon size={15} />,
     isActive: (ctx) => ctx.pathname === "/issues" && ctx.issuesMine,
     onNavigate: (n) => void n({ to: "/issues", search: { mine: true } }),
   },
   overview: {
     id: "overview",
     label: "Overview",
-    icon: <OverviewIcon />,
+    icon: <LayoutGridIcon size={15} />,
     isActive: (ctx) => ctx.pathname === "/workspace",
     onNavigate: (n) => void n({ to: "/workspace" }),
   },
   issues: {
     id: "issues",
     label: "Issues",
-    icon: <IssuesIcon />,
+    icon: <CircleCheckIcon size={15} />,
     isActive: (ctx) =>
       (ctx.pathname === "/issues" && !ctx.issuesMine) ||
       (ctx.pathname.startsWith("/issues/") &&
@@ -243,7 +162,7 @@ const NAV_ITEM_SPECS: Record<SidebarItemId, NavItemSpec> = {
   notes: {
     id: "notes",
     label: "Notes (preview)",
-    icon: <SidebarNotesIcon />,
+    icon: <FileTextIcon size={15} />,
     isActive: (ctx) =>
       ctx.pathname === "/notes" || ctx.pathname.startsWith("/notes/"),
     onNavigate: (n) => void n({ to: "/notes" }),
@@ -251,7 +170,7 @@ const NAV_ITEM_SPECS: Record<SidebarItemId, NavItemSpec> = {
   projects: {
     id: "projects",
     label: "Projects",
-    icon: <ProjectsIcon />,
+    icon: <FolderKanbanIcon size={15} />,
     isActive: (ctx) =>
       ctx.pathname === "/projects" || ctx.pathname.startsWith("/projects/"),
     onNavigate: (n) => void n({ to: "/projects" }),
@@ -259,9 +178,19 @@ const NAV_ITEM_SPECS: Record<SidebarItemId, NavItemSpec> = {
   labels: {
     id: "labels",
     label: "Labels",
-    icon: <SidebarLabelsIcon />,
+    icon: <BookmarkIcon size={15} />,
     isActive: (ctx) => ctx.pathname === "/labels",
     onNavigate: (n) => void n({ to: "/labels" }),
+  },
+  chats: {
+    id: "chats",
+    label: "Chats",
+    icon: <SparklesIcon size={15} />,
+    isActive: (ctx) =>
+      ctx.pathname === "/chats" ||
+      ctx.pathname === "/chat" ||
+      ctx.pathname.startsWith("/chat/"),
+    onNavigate: (n) => void n({ to: "/chats" }),
   },
 };
 
@@ -551,7 +480,7 @@ export function SidebarNav({
               disabled={isSaving}
               className="rounded-md bg-fg px-2 py-0.5 font-medium text-bg transition-colors hover:bg-white disabled:opacity-60"
             >
-              {isSaving ? "Saving…" : "Done"}
+              {isSaving ? <Spinner size={11} /> : "Done"}
             </button>
           </div>
         </div>

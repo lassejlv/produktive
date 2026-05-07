@@ -7,18 +7,22 @@ import {
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
-export function Dialog({
+type SheetSide = "right" | "left";
+
+export function Sheet({
   open,
   onClose,
   children,
   className,
   style,
+  side = "right",
 }: {
   open: boolean;
   onClose: () => void;
   children: ReactNode;
   className?: string;
   style?: CSSProperties;
+  side?: SheetSide;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -39,10 +43,12 @@ export function Dialog({
 
   if (!open) return null;
 
+  const isRight = side === "right";
+
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
+    <div className="fixed inset-0 z-50">
       <div
-        className="fixed inset-0 bg-black/55 backdrop-blur-[2px] animate-fade-in"
+        className="absolute inset-0 bg-black/55 backdrop-blur-[2px] animate-fade-in"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -50,9 +56,11 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 mt-[8vh] w-full max-w-lg overflow-hidden rounded-[14px]",
-          "border border-border-subtle/80 bg-bg/85 backdrop-blur-2xl",
-          "widget-panel-shadow animate-modal-pop",
+          "absolute top-0 bottom-0 flex h-full w-full max-w-[520px] flex-col overflow-hidden",
+          "bg-bg/85 backdrop-blur-2xl widget-panel-shadow",
+          isRight
+            ? "right-0 rounded-l-[14px] border-l border-border-subtle/80 animate-sheet-right"
+            : "left-0 rounded-r-[14px] border-r border-border-subtle/80 animate-sheet-left",
           className,
         )}
         style={style}
@@ -61,6 +69,13 @@ export function Dialog({
           aria-hidden
           className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-fg-muted/40 to-transparent"
         />
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-y-8 w-px bg-gradient-to-b from-transparent via-fg-muted/30 to-transparent",
+            isRight ? "left-0" : "right-0",
+          )}
+        />
         {children}
       </div>
     </div>,
@@ -68,7 +83,7 @@ export function Dialog({
   );
 }
 
-export function DialogHeader({
+export function SheetHeader({
   children,
   className,
   ...props
@@ -76,8 +91,8 @@ export function DialogHeader({
   return (
     <div
       className={cn(
-        "relative flex items-center justify-between gap-4 px-4 py-3",
-        "after:content-[''] after:pointer-events-none after:absolute after:inset-x-4 after:bottom-0 after:h-px",
+        "relative flex items-center justify-between gap-4 px-5 py-3.5",
+        "after:content-[''] after:pointer-events-none after:absolute after:inset-x-5 after:bottom-0 after:h-px",
         "after:bg-gradient-to-r after:from-border-subtle after:via-border-subtle/60 after:to-transparent",
         className,
       )}
@@ -88,7 +103,7 @@ export function DialogHeader({
   );
 }
 
-export function DialogTitle({
+export function SheetTitle({
   children,
   className,
 }: {
@@ -96,23 +111,27 @@ export function DialogTitle({
   className?: string;
 }) {
   return (
-    <h2 className={cn("text-[13px] font-medium tracking-tight text-fg", className)}>
+    <h2
+      className={cn("text-[13px] font-medium tracking-tight text-fg", className)}
+    >
       {children}
     </h2>
   );
 }
 
-export function DialogContent({
+export function SheetContent({
   children,
   className,
 }: {
   children: ReactNode;
   className?: string;
 }) {
-  return <div className={cn("p-4", className)}>{children}</div>;
+  return (
+    <div className={cn("min-h-0 flex-1 overflow-y-auto", className)}>{children}</div>
+  );
 }
 
-export function DialogFooter({
+export function SheetFooter({
   children,
   className,
 }: {
@@ -122,8 +141,8 @@ export function DialogFooter({
   return (
     <div
       className={cn(
-        "relative flex items-center justify-end gap-2 px-4 py-3",
-        "before:content-[''] before:pointer-events-none before:absolute before:inset-x-4 before:top-0 before:h-px",
+        "relative flex items-center justify-end gap-2 px-5 py-3",
+        "before:content-[''] before:pointer-events-none before:absolute before:inset-x-5 before:top-0 before:h-px",
         "before:bg-gradient-to-r before:from-border-subtle before:via-border-subtle/60 before:to-transparent",
         className,
       )}
@@ -133,7 +152,7 @@ export function DialogFooter({
   );
 }
 
-export function DialogClose({ onClose }: { onClose: () => void }) {
+export function SheetClose({ onClose }: { onClose: () => void }) {
   return (
     <button
       type="button"

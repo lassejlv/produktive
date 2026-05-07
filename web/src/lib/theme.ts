@@ -1,5 +1,6 @@
 export type ThemeName =
   | "system"
+  | "zinc"
   | "ember"
   | "slate"
   | "obsidian"
@@ -21,13 +22,20 @@ export const THEMES: Array<{
     id: "system",
     label: "System",
     hint: "Follows your device appearance.",
-    swatchBg: "#0d0d0f",
-    swatchAccent: "#faf7f2",
+    swatchBg: "#09090b",
+    swatchAccent: "#fafafa",
+  },
+  {
+    id: "zinc",
+    label: "Zinc",
+    hint: "Neutral cool dark — default.",
+    swatchBg: "#09090b",
+    swatchAccent: "#a1a1aa",
   },
   {
     id: "slate",
     label: "Slate",
-    hint: "The cool dark — default.",
+    hint: "The original cool dark.",
     swatchBg: "#0d0d0f",
     swatchAccent: "#f1c6aa",
   },
@@ -75,10 +83,11 @@ export const THEMES: Array<{
   },
 ];
 
-export const DEFAULT_THEME: ThemeName = "slate";
+export const DEFAULT_THEME: ThemeName = "zinc";
 const STORAGE_KEY = "produktive-theme";
 
 const META_BG: Record<AppliedThemeName, string> = {
+  zinc: "#09090b",
   ember: "#0b0a0c",
   slate: "#0d0d0f",
   obsidian: "#060608",
@@ -90,6 +99,7 @@ const META_BG: Record<AppliedThemeName, string> = {
 
 const VALID = new Set<ThemeName>([
   "system",
+  "zinc",
   "ember",
   "slate",
   "obsidian",
@@ -121,8 +131,8 @@ export function applyTheme(theme: ThemeName) {
 
 function resolveTheme(theme: ThemeName): AppliedThemeName {
   if (theme !== "system") return theme;
-  if (typeof window === "undefined") return "slate";
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "slate";
+  if (typeof window === "undefined") return "zinc";
+  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "zinc";
 }
 
 function applyResolvedTheme(theme: AppliedThemeName) {

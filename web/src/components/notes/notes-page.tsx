@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { NoteEditor } from "@/components/notes/note-editor";
 import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
   DialogContent,
@@ -763,7 +764,7 @@ function CreateFolderDialog({
             Cancel
           </Button>
           <Button type="submit" size="sm" disabled={!name.trim() || busy}>
-            {busy ? "Creating…" : "Create"}
+            {busy ? <Spinner size={11} /> : "Create"}
           </Button>
         </DialogFooter>
       </form>

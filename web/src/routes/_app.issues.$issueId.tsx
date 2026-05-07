@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { AttachIcon, DotsIcon, StarIcon } from "@/components/chat/icons";
 import { ChatMarkdown } from "@/components/chat/chat-markdown";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Spinner } from "@/components/ui/spinner";
 import { Avatar } from "@/components/issue/avatar";
 import { EditableDescription } from "@/components/issue/editable-description";
 import { EditableTitle } from "@/components/issue/editable-title";
@@ -390,11 +391,7 @@ export function IssueDetail({
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
             >
-              {isUploading ? (
-                <span className="inline-block size-3 animate-spin rounded-full border-2 border-border border-t-fg" />
-              ) : (
-                <AttachIcon size={12} />
-              )}
+              {isUploading ? <Spinner size={12} /> : <AttachIcon size={12} />}
             </HeaderIconButton>
             <div ref={menuRef} className="relative">
               <HeaderIconButton
@@ -659,7 +656,7 @@ function SubIssuesSection({ parentId }: { parentId: string }) {
             disabled={!draft.trim() || submitting}
             className="rounded-md bg-fg px-2 py-0.5 text-[11px] font-medium text-bg disabled:opacity-50"
           >
-            {submitting ? "…" : "Add"}
+            {submitting ? <Spinner size={11} /> : "Add"}
           </button>
         </form>
       ) : null}

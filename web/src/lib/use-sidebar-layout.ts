@@ -14,6 +14,7 @@ export const SIDEBAR_ITEM_IDS = [
   "issues",
   "projects",
   "labels",
+  "chats",
 ] as const;
 
 export type SidebarItemId = (typeof SIDEBAR_ITEM_IDS)[number];
