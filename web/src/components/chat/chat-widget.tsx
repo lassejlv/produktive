@@ -46,11 +46,11 @@ type AddToWidgetChatEvent = CustomEvent<{
 
 export function ChatWidget() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const isChatRoute = pathname === "/chat" || pathname.startsWith("/chat/");
-
   const navigate = useNavigate();
   const session = useSession();
   const workspaceSlug = session.data?.organization.slug ?? "";
+  const chatPrefix = workspaceSlug ? `/${workspaceSlug}/chat` : "/chat";
+  const isChatRoute = pathname === chatPrefix || pathname.startsWith(`${chatPrefix}/`);
   const userName = session.data?.user?.name ?? null;
   const { chats, prependChat, refresh: refreshChats } = useChats();
 

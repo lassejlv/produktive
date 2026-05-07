@@ -6,11 +6,13 @@ export const Route = createFileRoute("/_app/$workspaceSlug/chat")({
 });
 
 function ChatIndex() {
+  const { workspaceSlug } = Route.useParams();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const chatId = pathname.startsWith("/chat/")
-    ? decodeURIComponent(pathname.slice("/chat/".length))
+  const prefix = `/${workspaceSlug}/chat/`;
+  const chatId = pathname.startsWith(prefix)
+    ? decodeURIComponent(pathname.slice(prefix.length))
     : null;
 
   return <ChatPane chatId={chatId} />;

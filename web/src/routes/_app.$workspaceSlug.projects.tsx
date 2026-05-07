@@ -62,7 +62,7 @@ function ProjectsPage() {
     [projects],
   );
 
-  if (pathname.startsWith("/projects/")) {
+  if (pathname.startsWith(`/${workspaceSlug}/projects/`)) {
     return <Outlet />;
   }
 

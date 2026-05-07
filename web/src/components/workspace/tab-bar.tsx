@@ -89,7 +89,7 @@ export function TabBar({ enabled }: Props) {
   if (!enabled) return null;
   if (tabs.length === 0) return null;
 
-  const activeId = activeTargetFor(pathname);
+  const activeId = activeTargetFor(pathname, workspaceSlug);
 
   const startDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
     const node = barRef.current;
@@ -394,23 +394,36 @@ function readStoredPosition(): Position | null {
   return null;
 }
 
-function activeTargetFor(pathname: string): {
+function activeTargetFor(
+  pathname: string,
+  workspaceSlug: string,
+): {
   tabType: WorkspaceTab["tabType"] | null;
   targetId: string | null;
 } {
-  if (pathname.startsWith("/issues/")) {
-    return { tabType: "issue", targetId: decodeURIComponent(pathname.slice("/issues/".length)) };
-  }
-  if (pathname.startsWith("/projects/")) {
+  const prefix = workspaceSlug ? `/${workspaceSlug}` : "";
+  const issuesPrefix = `${prefix}/issues/`;
+  const projectsPrefix = `${prefix}/projects/`;
+  const chatPrefix = `${prefix}/chat/`;
+  if (pathname.startsWith(issuesPrefix)) {
     return {
-      tabType: "project",
-      targetId: decodeURIComponent(pathname.slice("/projects/".length)),
+      tabType: "issue",
+      targetId: decodeURIComponent(pathname.slice(issuesPrefix.length)),
     };
   }
-  if (pathname.startsWith("/chat/")) {
-    return { tabType: "chat", targetId: decodeURIComponent(pathname.slice("/chat/".length)) };
+  if (pathname.startsWith(projectsPrefix)) {
+    return {
+      tabType: "project",
+      targetId: decodeURIComponent(pathname.slice(projectsPrefix.length)),
+    };
   }
-  const page = findStaticPage(pathname);
+  if (pathname.startsWith(chatPrefix)) {
+    return {
+      tabType: "chat",
+      targetId: decodeURIComponent(pathname.slice(chatPrefix.length)),
+    };
+  }
+  const page = findStaticPage(pathname, workspaceSlug);
   if (page) {
     return { tabType: "page", targetId: page.path };
   }

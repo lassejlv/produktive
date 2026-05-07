@@ -66,9 +66,10 @@ function AppLayout() {
     select: (state) => state.location,
   });
   const rawMine = (search as Record<string, unknown>).mine;
-  const issuesMine =
-    pathname === "/issues" && (rawMine === true || rawMine === "1" || rawMine === "true");
   const activeOrgSlug = session.data?.organization.slug ?? "";
+  const issuesMine =
+    pathname === `/${activeOrgSlug}/issues` &&
+    (rawMine === true || rawMine === "1" || rawMine === "true");
   const staticPage = findStaticPage(pathname, activeOrgSlug);
   useRegisterTab({
     tabType: "page",
@@ -104,7 +105,7 @@ function AppLayout() {
   useEffect(() => {
     if (!session.data) return;
     if (!session.data.organization.requireTwoFactor || session.data.user.twoFactorEnabled) return;
-    if (pathname === "/account") return;
+    if (pathname === `/${activeOrgSlug}/account`) return;
     const redirect = `${pathname}${window.location.search}${window.location.hash}`;
     const blockKey = `produktive:2fa-blocked:${session.data.organization.id}:${session.data.user.id}`;
     if (typeof window !== "undefined" && !window.sessionStorage.getItem(blockKey)) {

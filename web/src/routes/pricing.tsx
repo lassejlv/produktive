@@ -13,11 +13,14 @@ type PricingPlan = {
   description: string;
   recommended?: boolean;
   features: string[];
+  limits: Record<string, string | number | boolean>;
   ai?: {
     usageLimit: string;
     modelAccess: string;
     models: string[];
   };
+  integrations?: Record<string, string>;
+  security?: Record<string, string | boolean>;
 };
 
 type OverageTier = {
@@ -120,9 +123,7 @@ function PricingPage() {
 
       <section className="relative z-10 mx-auto w-full max-w-[1180px] flex-1 px-5 pb-24 pt-32 sm:px-8">
         <div className="animate-fade-up max-w-[640px]">
-          <p className="text-[11.5px] font-medium tracking-tight text-fg/55">
-            Pricing
-          </p>
+          <p className="text-[11.5px] font-medium tracking-tight text-fg/55">Pricing</p>
           <h1 className="mt-3 text-balance text-[clamp(40px,6.4vw,76px)] font-light leading-[0.98] tracking-[-0.04em] text-fg">
             Built for teams. Priced for growth.
           </h1>
@@ -178,18 +179,28 @@ function PricingBody({
       </div>
 
       {enterprise ? (
-        <div
-          className="animate-fade-up mt-4"
-          style={{ animationDelay: "260ms" }}
-        >
+        <div className="animate-fade-up mt-4" style={{ animationDelay: "260ms" }}>
           <EnterpriseCard plan={enterprise} />
         </div>
       ) : null}
 
+      <section
+        className="animate-fade-up mt-24"
+        style={{ animationDelay: "320ms" }}
+      >
+        <SectionHeading
+          eyebrow="Compare"
+          title="Everything that's in each plan"
+        />
+        <div className="mt-6">
+          <ComparisonTable plans={tiered} />
+        </div>
+      </section>
+
       {data.overageTiers.length ? (
         <section
           className="animate-fade-up mt-20"
-          style={{ animationDelay: "340ms" }}
+          style={{ animationDelay: "400ms" }}
         >
           <SectionHeading
             eyebrow="Boosts"
@@ -205,24 +216,26 @@ function PricingBody({
       ) : null}
 
       <section
-        className="animate-fade-up mt-20 grid gap-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]"
-        style={{ animationDelay: "420ms" }}
+        className="animate-fade-up mt-20 max-w-[640px]"
+        style={{ animationDelay: "460ms" }}
       >
-        <div>
-          <SectionHeading eyebrow="AI usage" title="Predictable, never punitive" />
-          <p className="mt-4 max-w-[420px] text-[13.5px] leading-[1.65] text-fg/70">
-            {data.aiLimitPolicy.publicLanguage}
-          </p>
-          <p className="mt-3 max-w-[420px] text-[13px] leading-[1.6] text-fg-faint">
-            {data.aiLimitPolicy.overagePolicy}
-          </p>
-        </div>
-
-        <ModelTiers tiers={data.modelTiers} />
+        <SectionHeading eyebrow="AI usage" title="Predictable, never punitive" />
+        <p className="mt-4 text-[13.5px] leading-[1.65] text-fg/70">
+          {data.aiLimitPolicy.publicLanguage}
+        </p>
+        <p className="mt-3 text-[13px] leading-[1.6] text-fg-faint">
+          {data.aiLimitPolicy.overagePolicy}
+        </p>
       </section>
     </>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Plan cards (slim)                                                          */
+/* -------------------------------------------------------------------------- */
+
+const HIGHLIGHT_LIMIT = 4;
 
 function PricingCard({
   plan,
@@ -234,11 +247,12 @@ function PricingCard({
   const recommended = plan.recommended === true;
   const ctaTo = isLoggedIn ? "/" : "/login";
   const ctaLabel = plan.id === "free" ? "Start free" : `Choose ${plan.name}`;
+  const features = plan.features.slice(0, HIGHLIGHT_LIMIT);
 
   return (
     <article
       className={cn(
-        "relative flex min-h-[460px] flex-col overflow-hidden rounded-[14px] border bg-bg/70 p-5 text-fg backdrop-blur-2xl",
+        "relative flex min-h-[360px] flex-col overflow-hidden rounded-[14px] border bg-bg/70 p-5 text-fg backdrop-blur-2xl",
         "shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_36px_-20px_rgba(0,0,0,0.6)]",
         recommended ? "border-fg/30 bg-bg/85" : "border-white/10",
       )}
@@ -266,31 +280,19 @@ function PricingCard({
         <span className="pb-1 text-[12px] text-fg/55">{cadenceLabel(plan)}</span>
       </div>
 
-      <p className="mt-4 text-[13px] leading-[1.55] text-fg/70">{plan.description}</p>
+      <p className="mt-3 text-[12.5px] leading-[1.5] text-fg/65">{plan.description}</p>
 
-      <div
-        aria-hidden
-        className="my-5 h-px bg-gradient-to-r from-white/15 via-white/5 to-transparent"
-      />
-
-      <ul className="space-y-2.5">
-        {plan.features.map((feature) => (
+      <ul className="mt-5 space-y-2">
+        {features.map((feature) => (
           <li
             key={feature}
-            className="flex items-start gap-2.5 text-[12.5px] leading-[1.5] text-fg/80"
+            className="flex items-start gap-2.5 text-[12.5px] leading-[1.45] text-fg/80"
           >
             <CheckGlyph />
             <span>{feature}</span>
           </li>
         ))}
       </ul>
-
-      {plan.ai ? (
-        <p className="mt-5 text-[11.5px] leading-[1.5] text-fg-faint">
-          <span className="text-fg/70">AI: </span>
-          {plan.ai.modelAccess}
-        </p>
-      ) : null}
 
       <div className="mt-auto pt-6">
         <Link
@@ -314,7 +316,7 @@ function EnterpriseCard({ plan }: { plan: PricingPlan }) {
   return (
     <article
       className={cn(
-        "relative overflow-hidden rounded-[14px] border border-white/10 bg-bg/65 p-6 text-fg backdrop-blur-2xl",
+        "relative overflow-hidden rounded-[14px] border border-white/10 bg-bg/65 p-5 text-fg backdrop-blur-2xl",
         "shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_36px_-20px_rgba(0,0,0,0.6)]",
       )}
     >
@@ -322,20 +324,15 @@ function EnterpriseCard({ plan }: { plan: PricingPlan }) {
         aria-hidden
         className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent"
       />
-      <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
         <div className="min-w-0">
-          <p className="text-[13px] font-medium text-fg">{plan.name}</p>
-          <h3 className="mt-2 max-w-[640px] text-[20px] leading-[1.3] tracking-tight text-fg">
+          <div className="flex items-baseline gap-3">
+            <p className="text-[13px] font-medium text-fg">{plan.name}</p>
+            <span className="text-[11.5px] text-fg/55">{cadenceLabel(plan)}</span>
+          </div>
+          <h3 className="mt-2 max-w-[640px] text-[16px] leading-[1.45] text-fg/85">
             {plan.description}
           </h3>
-          <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 text-[12.5px] text-fg/70">
-            {plan.features.slice(0, 6).map((feature) => (
-              <li key={feature} className="flex items-center gap-1.5">
-                <CheckGlyph />
-                <span>{feature}</span>
-              </li>
-            ))}
-          </ul>
         </div>
         <a
           href="mailto:hello@produktive.app?subject=Enterprise%20inquiry"
@@ -350,6 +347,305 @@ function EnterpriseCard({ plan }: { plan: PricingPlan }) {
     </article>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Comparison table                                                           */
+/* -------------------------------------------------------------------------- */
+
+type Cell = string | number | boolean | null;
+
+type ComparisonRow = {
+  label: string;
+  values: Record<string, Cell>;
+};
+
+type ComparisonGroup = {
+  label: string;
+  rows: ComparisonRow[];
+};
+
+function buildComparison(plans: PricingPlan[]): ComparisonGroup[] {
+  const cell = (
+    plan: PricingPlan,
+    pick: (p: PricingPlan) => Cell | undefined,
+  ): Cell => {
+    const value = pick(plan);
+    return value === undefined ? null : value;
+  };
+
+  const limit = (plan: PricingPlan, key: string): Cell =>
+    cell(plan, (p) => p.limits?.[key]);
+
+  return [
+    {
+      label: "Workspace",
+      rows: [
+        {
+          label: "Workspaces",
+          values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "workspaces")])),
+        },
+        {
+          label: "Members",
+          values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "members")])),
+        },
+        {
+          label: "Active issues",
+          values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "activeIssues")])),
+        },
+        {
+          label: "Projects",
+          values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "projects")])),
+        },
+        {
+          label: "Notes",
+          values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "notes")])),
+        },
+        {
+          label: "Storage",
+          values: Object.fromEntries(
+            plans.map((p) => [
+              p.id,
+              p.limits?.storageGbPerUser !== undefined
+                ? `${p.limits.storageGbPerUser} GB / user`
+                : p.limits?.storageGb !== undefined
+                  ? `${p.limits.storageGb} GB`
+                  : null,
+            ]),
+          ),
+        },
+      ],
+    },
+    {
+      label: "AI",
+      rows: [
+        {
+          label: "Usage",
+          values: Object.fromEntries(plans.map((p) => [p.id, p.ai?.usageLimit ?? null])),
+        },
+        ...modelRows(plans),
+      ],
+    },
+    {
+      label: "Integrations",
+      rows: [
+        {
+          label: "API requests / mo.",
+          values: Object.fromEntries(
+            plans.map((p) => [
+              p.id,
+              p.limits?.apiRequestsPerUserPerMonth !== undefined
+                ? `${formatNumber(p.limits.apiRequestsPerUserPerMonth)} / user`
+                : limit(p, "apiRequestsPerMonth"),
+            ]),
+          ),
+        },
+        {
+          label: "MCP tool calls / mo.",
+          values: Object.fromEntries(
+            plans.map((p) => [
+              p.id,
+              p.limits?.mcpToolCallsPerUserPerMonth !== undefined
+                ? `${formatNumber(p.limits.mcpToolCallsPerUserPerMonth)} / user`
+                : limit(p, "mcpToolCallsPerMonth"),
+            ]),
+          ),
+        },
+        {
+          label: "GitHub repos",
+          values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "githubRepositories")])),
+        },
+        {
+          label: "GitHub auto-import",
+          values: Object.fromEntries(
+            plans.map((p) => [p.id, limit(p, "githubAutoImport")]),
+          ),
+        },
+        {
+          label: "Slack",
+          values: Object.fromEntries(
+            plans.map((p) => [p.id, p.integrations?.slack ?? null]),
+          ),
+        },
+        {
+          label: "Discord",
+          values: Object.fromEntries(
+            plans.map((p) => [p.id, p.integrations?.discord ?? null]),
+          ),
+        },
+      ],
+    },
+    {
+      label: "Security",
+      rows: [
+        {
+          label: "Workspace 2FA requirement",
+          values: Object.fromEntries(
+            plans.map((p) => [p.id, p.security?.workspaceTwoFactorRequirement ?? false]),
+          ),
+        },
+        {
+          label: "Trusted devices",
+          values: Object.fromEntries(
+            plans.map((p) => [p.id, p.security?.trustedDevices ?? false]),
+          ),
+        },
+        {
+          label: "Audit log",
+          values: Object.fromEntries(plans.map((p) => [p.id, p.security?.auditLog ?? false])),
+        },
+        {
+          label: "Advanced roles",
+          values: Object.fromEntries(
+            plans.map((p) => [p.id, p.security?.advancedRoles ?? false]),
+          ),
+        },
+        {
+          label: "Security event history",
+          values: Object.fromEntries(
+            plans.map((p) => [p.id, p.security?.securityEvents ?? false]),
+          ),
+        },
+      ],
+    },
+  ];
+}
+
+function modelRows(plans: PricingPlan[]): ComparisonRow[] {
+  const labelByTier: Record<string, string> = {
+    "fast-basic": "Fast model",
+    standard: "Standard model",
+    "better-reasoning": "Better reasoning",
+    "better-coding": "Better coding",
+    "pro-reasoning": "Pro reasoning",
+  };
+  const tierIds = ["fast-basic", "standard", "better-reasoning", "better-coding", "pro-reasoning"];
+  return tierIds.map((tier) => ({
+    label: labelByTier[tier] ?? tier,
+    values: Object.fromEntries(
+      plans.map((p) => [p.id, p.ai?.models.includes(tier) ?? false]),
+    ),
+  }));
+}
+
+function ComparisonTable({ plans }: { plans: PricingPlan[] }) {
+  const groups = buildComparison(plans);
+
+  return (
+    <div className="overflow-x-auto rounded-[14px] border border-white/10 bg-bg/55 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+      <table className="w-full min-w-[640px] table-fixed text-[12.5px]">
+        <thead>
+          <tr className="border-b border-white/10">
+            <th className="w-[34%] px-4 py-3 text-left text-[11.5px] font-medium text-fg/55">
+              {/* Empty cell above the feature column */}
+            </th>
+            {plans.map((plan) => (
+              <th
+                key={plan.id}
+                className={cn(
+                  "px-3 py-3 text-left text-[12.5px] font-medium",
+                  plan.recommended ? "text-fg" : "text-fg/85",
+                )}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  {plan.name}
+                  {plan.recommended ? (
+                    <span className="rounded-full border border-fg/25 bg-fg/10 px-1.5 py-px text-[9.5px] text-fg/70">
+                      Pro
+                    </span>
+                  ) : null}
+                </span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((group, groupIdx) => (
+            <GroupRows
+              key={group.label}
+              group={group}
+              plans={plans}
+              isFirst={groupIdx === 0}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function GroupRows({
+  group,
+  plans,
+  isFirst,
+}: {
+  group: ComparisonGroup;
+  plans: PricingPlan[];
+  isFirst: boolean;
+}) {
+  return (
+    <>
+      <tr
+        className={cn(
+          "bg-white/[0.02]",
+          !isFirst && "border-t border-white/5",
+        )}
+      >
+        <td
+          colSpan={plans.length + 1}
+          className="px-4 pb-1 pt-3 text-[10.5px] font-medium tracking-tight text-fg-muted"
+        >
+          {group.label}
+        </td>
+      </tr>
+      {group.rows.map((row) => (
+        <tr key={row.label} className="border-t border-white/5">
+          <td className="px-4 py-2.5 align-top text-fg/70">{row.label}</td>
+          {plans.map((plan) => (
+            <td
+              key={plan.id}
+              className={cn(
+                "px-3 py-2.5 align-top",
+                plan.recommended ? "bg-fg/[0.025]" : undefined,
+              )}
+            >
+              <CellValue value={row.values[plan.id]} />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  );
+}
+
+function CellValue({ value }: { value: Cell }) {
+  if (value === null || value === undefined) {
+    return <span className="text-fg-faint">—</span>;
+  }
+  if (value === true) {
+    return (
+      <span className="inline-flex size-4 items-center justify-center rounded-full bg-fg/10 text-fg/85">
+        <CheckGlyph small />
+      </span>
+    );
+  }
+  if (value === false) {
+    return <span className="text-fg-faint">—</span>;
+  }
+  if (typeof value === "number") {
+    return <span className="text-fg/85 tabular-nums">{formatNumber(value)}</span>;
+  }
+  if (value === "unlimited") {
+    return <span className="text-fg/85">Unlimited</span>;
+  }
+  if (value === "not included") {
+    return <span className="text-fg-faint">—</span>;
+  }
+  return <span className="text-fg/85">{capitalize(value)}</span>;
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Boost cards                                                                */
+/* -------------------------------------------------------------------------- */
 
 function BoostCard({ tier }: { tier: OverageTier }) {
   return (
@@ -372,33 +668,14 @@ function BoostCard({ tier }: { tier: OverageTier }) {
         <span className="pb-0.5 text-[11.5px] text-fg/55">{boostUnit(tier)}</span>
       </div>
       <p className="text-[12.5px] leading-[1.55] text-fg/70">{tier.description}</p>
-      <p className="mt-auto text-[11px] text-fg-faint">
-        For {humanList(tier.appliesTo)}
-      </p>
+      <p className="mt-auto text-[11px] text-fg-faint">For {humanList(tier.appliesTo)}</p>
     </article>
   );
 }
 
-function ModelTiers({ tiers }: { tiers: ModelTier[] }) {
-  return (
-    <div className="rounded-[12px] border border-white/10 bg-bg/55 p-5 backdrop-blur-2xl">
-      <p className="text-[11.5px] font-medium text-fg-muted">Models by plan</p>
-      <ul className="mt-3 divide-y divide-white/5">
-        {tiers.map((tier) => (
-          <li key={tier.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5">
-            <span className="text-[12.5px] font-medium text-fg">{tier.label}</span>
-            <span className="font-mono text-[10.5px] tabular-nums text-fg-faint">
-              {tier.includedIn.map((p) => prettyPlanName(p)).join(" · ")}
-            </span>
-            <p className="basis-full text-[11.5px] leading-[1.5] text-fg/65">
-              {tier.intendedUse}
-            </p>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
+/* -------------------------------------------------------------------------- */
+/*  Atoms + helpers                                                            */
+/* -------------------------------------------------------------------------- */
 
 function SectionHeading({
   eyebrow,
@@ -416,23 +693,22 @@ function SectionHeading({
         {title}
       </h2>
       {subtitle ? (
-        <p className="mt-2 max-w-[420px] text-[13px] leading-[1.6] text-fg-faint">
-          {subtitle}
-        </p>
+        <p className="mt-2 max-w-[420px] text-[13px] leading-[1.6] text-fg-faint">{subtitle}</p>
       ) : null}
     </div>
   );
 }
 
-function CheckGlyph() {
+function CheckGlyph({ small = false }: { small?: boolean }) {
+  const size = small ? 9 : 11;
   return (
     <svg
       aria-hidden
-      width="11"
-      height="11"
+      width={size}
+      height={size}
       viewBox="0 0 12 12"
       fill="none"
-      className="mt-1 shrink-0 text-fg/45"
+      className={cn("shrink-0 text-fg/45", !small && "mt-1")}
     >
       <path
         d="M2.5 6.2 4.8 8.5 9.5 3.7"
@@ -469,4 +745,18 @@ function humanList(values: string[]): string {
 
 function prettyPlanName(id: string): string {
   return id.charAt(0).toUpperCase() + id.slice(1);
+}
+
+function formatNumber(value: number | string | boolean): string {
+  if (typeof value === "boolean") return value ? "Included" : "—";
+  if (typeof value === "string") return value;
+  if (value >= 1000) {
+    return value.toLocaleString();
+  }
+  return String(value);
+}
+
+function capitalize(value: string): string {
+  if (!value) return value;
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
