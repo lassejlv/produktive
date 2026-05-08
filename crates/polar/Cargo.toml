@@ -6,9 +6,11 @@ license.workspace = true
 description = "Async Rust SDK for the Polar API"
 
 [dependencies]
+base64.workspace = true
+hmac.workspace = true
 http = "1.4"
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-standardwebhooks = "1.0"
+sha2.workspace = true
 thiserror.workspace = true

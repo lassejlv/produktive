@@ -12,7 +12,7 @@ pub enum PolarError {
     #[error("missing required field: {0}")]
     MissingRequiredField(&'static str),
     #[error("webhook error: {0}")]
-    Webhook(#[from] standardwebhooks::WebhookError),
+    Webhook(String),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
 }

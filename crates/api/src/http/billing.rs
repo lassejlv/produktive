@@ -145,7 +145,7 @@ fn map_polar_error(error: polar_rs::PolarError) -> ApiError {
         }
         polar_rs::PolarError::Webhook(error) => {
             tracing::warn!(%error, "polar webhook verification failed");
-            ApiError::BadRequest("Invalid Polar webhook signature".to_owned())
+            ApiError::BadRequest(format!("Invalid Polar webhook: {error}"))
         }
         polar_rs::PolarError::Json(error) => {
             tracing::warn!(%error, "polar json parsing failed");
