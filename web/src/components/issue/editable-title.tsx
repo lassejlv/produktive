@@ -42,7 +42,7 @@ export function EditableTitle({
   };
 
   const sharedTypography =
-    "text-[44px] font-semibold leading-[1.04] tracking-[-0.03em] text-fg text-balance";
+    "text-[22px] font-semibold leading-[1.25] tracking-[-0.01em] text-fg";
 
   if (editing) {
     return (

@@ -370,7 +370,7 @@ export function ChatWidget() {
           onClick={() => setOpen(true)}
           aria-label="Open AI assistant"
           className={cn(
-            "group fixed bottom-4 right-4 z-40 hidden h-11 w-[360px] origin-bottom-right items-center gap-2.5 rounded-full border border-border-subtle bg-bg/85 px-4 pr-1.5 text-left backdrop-blur-md transition-all duration-200 hover:-translate-y-px hover:border-border focus-visible:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 md:flex",
+            "group fixed bottom-4 right-4 z-40 hidden h-11 w-[360px] origin-bottom-right items-center gap-2.5 rounded-full border border-border-subtle bg-bg/85 px-4 text-left backdrop-blur-md transition-all duration-200 hover:-translate-y-px hover:border-border focus-visible:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 md:flex",
             "widget-dock-shadow animate-widget-bar",
           )}
         >
@@ -380,7 +380,7 @@ export function ChatWidget() {
           <span className="flex-1 truncate text-[13px] text-fg-faint transition-colors group-hover:text-fg-muted">
             Ask anything…
           </span>
-          <kbd className="grid h-[22px] shrink-0 select-none place-items-center gap-0.5 rounded-[6px] border border-border-subtle bg-surface px-1.5 font-mono text-[10.5px] tracking-tight text-fg-faint">
+          <kbd className="shrink-0 select-none font-mono text-[11px] tracking-tight text-fg-faint">
             {MOD_LABEL} .
           </kbd>
         </button>
