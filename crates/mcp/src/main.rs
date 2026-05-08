@@ -85,6 +85,18 @@ impl AuthProvider for ProduktiveAuthProvider {
                 description: "MCP OAuth grant is invalid",
             });
         }
+        let token_user = user::Entity::find_by_id(&token.user_id)
+            .one(&self.state.db)
+            .await
+            .map_err(auth_server_error)?
+            .ok_or_else(|| AuthenticationError::InvalidToken {
+                description: "MCP OAuth token user no longer exists",
+            })?;
+        if token_user.suspended_at.is_some() {
+            return Err(AuthenticationError::InvalidToken {
+                description: "Produktive user is suspended",
+            });
+        }
 
         let expires_at = system_time_from_datetime(token.expires_at)?;
 

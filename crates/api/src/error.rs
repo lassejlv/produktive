@@ -14,6 +14,8 @@ pub enum ApiError {
     Conflict(String),
     #[error("{0}")]
     Forbidden(String),
+    #[error("{0}")]
+    RateLimited(String),
     #[error("Internal server error")]
     Internal(#[from] anyhow::Error),
 }
@@ -31,6 +33,7 @@ impl IntoResponse for ApiError {
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Conflict(_) => StatusCode::CONFLICT,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
+            Self::RateLimited(_) => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
 

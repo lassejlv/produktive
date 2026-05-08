@@ -25,7 +25,10 @@ use sea_orm::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::{net::IpAddr, time::Duration};
+use std::{
+    net::{IpAddr, SocketAddr},
+    time::Duration,
+};
 use uuid::Uuid;
 
 const FETCH_MAX_BYTES: usize = 512 * 1024;
@@ -383,19 +386,49 @@ struct FetchArgs {
 async fn fetch(args: Value) -> Result<Value, ApiError> {
     let args: FetchArgs = serde_json::from_value(args)
         .map_err(|e| ApiError::BadRequest(format!("Invalid arguments for fetch: {e}")))?;
-    let url = validate_fetch_url(&args.url)?;
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(FETCH_TIMEOUT_SECONDS))
-        .redirect(reqwest::redirect::Policy::limited(5))
-        .build()
-        .map_err(|e| ApiError::Internal(e.into()))?;
-    let mut response = client
-        .get(url)
-        .header(USER_AGENT, "Produktive AI Agent")
-        .header(ACCEPT, "*/*")
-        .send()
-        .await
-        .map_err(fetch_transport_error)?;
+    let mut url = validate_fetch_url(&args.url)?;
+    let mut response = None;
+    for _ in 0..=5 {
+        let addrs = resolve_fetch_url(&url).await?;
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(FETCH_TIMEOUT_SECONDS))
+            .redirect(reqwest::redirect::Policy::none())
+            .resolve_to_addrs(
+                url.host_str()
+                    .ok_or_else(|| ApiError::BadRequest("fetch URL requires a host".to_owned()))?,
+                &addrs,
+            )
+            .build()
+            .map_err(|e| ApiError::Internal(e.into()))?;
+        let candidate = client
+            .get(url.clone())
+            .header(USER_AGENT, "Produktive AI Agent")
+            .header(ACCEPT, "*/*")
+            .send()
+            .await
+            .map_err(fetch_transport_error)?;
+
+        if candidate.status().is_redirection() {
+            let Some(location) = candidate.headers().get(reqwest::header::LOCATION) else {
+                response = Some(candidate);
+                break;
+            };
+            let location = location
+                .to_str()
+                .map_err(|_| ApiError::BadRequest("fetch redirect was invalid".to_owned()))?;
+            url = validate_fetch_url(
+                url.join(location)
+                    .map_err(|_| ApiError::BadRequest("fetch redirect was invalid".to_owned()))?
+                    .as_str(),
+            )?;
+            continue;
+        }
+
+        response = Some(candidate);
+        break;
+    }
+    let mut response = response
+        .ok_or_else(|| ApiError::BadRequest("fetch followed too many redirects".to_owned()))?;
 
     let status = response.status();
     let final_url = response.url().to_string();
@@ -464,6 +497,30 @@ fn validate_fetch_url(raw: &str) -> Result<Url, ApiError> {
         }
     }
     Ok(url)
+}
+
+async fn resolve_fetch_url(url: &Url) -> Result<Vec<SocketAddr>, ApiError> {
+    let host = url
+        .host_str()
+        .ok_or_else(|| ApiError::BadRequest("fetch URL requires a host".to_owned()))?;
+    let port = url
+        .port_or_known_default()
+        .ok_or_else(|| ApiError::BadRequest("fetch URL requires a port".to_owned()))?;
+    let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|error| ApiError::BadRequest(format!("fetch failed: {error}")))?
+        .collect();
+    if addrs.is_empty() {
+        return Err(ApiError::BadRequest(
+            "fetch host did not resolve".to_owned(),
+        ));
+    }
+    if addrs.iter().any(|addr| is_blocked_fetch_ip(addr.ip())) {
+        return Err(ApiError::BadRequest(
+            "fetch cannot access private or local IP addresses".to_owned(),
+        ));
+    }
+    Ok(addrs)
 }
 
 fn is_blocked_fetch_ip(ip: IpAddr) -> bool {

@@ -47,6 +47,10 @@ use sea_orm::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::{
+    collections::HashMap,
+    sync::{Mutex, OnceLock},
+};
 use time::Duration as CookieDuration;
 use totp_rs::{Algorithm, Secret, TOTP};
 use uuid::Uuid;
@@ -63,6 +67,9 @@ const GITHUB_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 const GITHUB_API_BASE: &str = "https://api.github.com";
 const GITHUB_API_VERSION: &str = "2026-03-10";
 const GITHUB_AUTH_SCOPE: &str = "user:email";
+const AUTH_RATE_WINDOW_SECONDS: i64 = 15 * 60;
+
+static AUTH_RATE_LIMITS: OnceLock<Mutex<HashMap<String, Vec<i64>>>> = OnceLock::new();
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -290,11 +297,14 @@ struct SessionListItem {
 
 async fn sign_up(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<SignUpRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     let name = validate_name(&payload.name)?;
     let email = validate_email(&payload.email)?;
     let password = validate_password(&payload.password)?;
+    enforce_auth_rate_limit(&headers, "sign_up:ip", None, 10)?;
+    enforce_auth_rate_limit(&headers, "sign_up:email", Some(&email), 3)?;
     let (user, _) = create_signup_records(&state, name, email, password).await?;
     let token = create_auth_token(
         &state.db,
@@ -315,6 +325,8 @@ async fn sign_in(
 ) -> Result<Response, ApiError> {
     let email = validate_email(&payload.email)?;
     let password = validate_password(&payload.password)?;
+    enforce_auth_rate_limit(&headers, "sign_in:ip", None, 20)?;
+    enforce_auth_rate_limit(&headers, "sign_in:email", Some(&email), 8)?;
     let user = user::Entity::find()
         .filter(user::Column::Email.eq(email))
         .one(&state.db)
@@ -480,9 +492,12 @@ async fn verify_email(
 
 async fn request_password_reset(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<RequestPasswordResetRequest>,
 ) -> Result<Json<EmptyResponse>, ApiError> {
     let email = validate_email(&payload.email)?;
+    enforce_auth_rate_limit(&headers, "password_reset_request:ip", None, 10)?;
+    enforce_auth_rate_limit(&headers, "password_reset_request:email", Some(&email), 3)?;
 
     if let Some(user) = user::Entity::find()
         .filter(user::Column::Email.eq(email))
@@ -504,9 +519,12 @@ async fn request_password_reset(
 
 async fn reset_password(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<ResetPasswordRequest>,
 ) -> Result<Json<EmptyResponse>, ApiError> {
     let password = validate_password(&payload.password)?;
+    enforce_auth_rate_limit(&headers, "password_reset:ip", None, 20)?;
+    enforce_auth_rate_limit(&headers, "password_reset:token", Some(&payload.token), 8)?;
     let auth_token = consume_auth_token(&state.db, &payload.token, PASSWORD_RESET_PURPOSE).await?;
     update_user_password(&state.db, &auth_token.user_id, &password).await?;
     revoke_user_sessions(&state.db, &auth_token.user_id).await?;
@@ -795,6 +813,13 @@ async fn two_factor_verify_login(
     Json(payload): Json<TwoFactorCodeRequest>,
 ) -> Result<Response, ApiError> {
     let challenge_token = read_two_factor_cookie(&headers, &state).ok_or(ApiError::Unauthorized)?;
+    enforce_auth_rate_limit(&headers, "two_factor_login:ip", None, 20)?;
+    enforce_auth_rate_limit(
+        &headers,
+        "two_factor_login:challenge",
+        Some(&challenge_token),
+        8,
+    )?;
     let challenge = two_factor_challenge::Entity::find()
         .filter(two_factor_challenge::Column::TokenHash.eq(hash_token(&challenge_token)))
         .one(&state.db)
@@ -1799,6 +1824,46 @@ fn random_url_token(bytes_len: usize) -> String {
 
 fn urlencoding(value: &str) -> String {
     url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
+}
+
+fn enforce_auth_rate_limit(
+    headers: &HeaderMap,
+    bucket: &str,
+    subject: Option<&str>,
+    max_attempts: usize,
+) -> Result<(), ApiError> {
+    let now = Utc::now().timestamp();
+    let cutoff = now - AUTH_RATE_WINDOW_SECONDS;
+    let subject = subject
+        .map(|value| hash_token(&value.trim().to_ascii_lowercase()))
+        .unwrap_or_else(|| client_ip_for_rate_limit(headers));
+    let key = format!("{bucket}:{subject}");
+    let limits = AUTH_RATE_LIMITS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut limits = limits
+        .lock()
+        .map_err(|_| ApiError::Internal(anyhow::anyhow!("auth rate limiter lock poisoned")))?;
+    let hits = limits.entry(key).or_default();
+    hits.retain(|timestamp| *timestamp >= cutoff);
+    if hits.len() >= max_attempts {
+        return Err(ApiError::RateLimited(
+            "Too many attempts. Try again later.".to_owned(),
+        ));
+    }
+    hits.push(now);
+    Ok(())
+}
+
+fn client_ip_for_rate_limit(headers: &HeaderMap) -> String {
+    for name in ["cf-connecting-ip", "x-real-ip", "x-forwarded-for"] {
+        let Some(value) = headers.get(name).and_then(|value| value.to_str().ok()) else {
+            continue;
+        };
+        let candidate = value.split(',').next().unwrap_or(value).trim();
+        if !candidate.is_empty() {
+            return candidate.to_owned();
+        }
+    }
+    "unknown".to_owned()
 }
 
 fn sign_github_auth_state(

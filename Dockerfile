@@ -24,6 +24,8 @@ FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
+    && groupadd --system produktive \
+    && useradd --system --gid produktive --home-dir /app --no-create-home produktive \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -32,6 +34,9 @@ COPY --from=api-builder /app/target/release/produktive-api ./bin/produktive-api
 COPY --from=web-builder /app/web/dist ./web/dist
 
 ENV WEB_DIST_DIR=/app/web/dist
+
+RUN chown -R produktive:produktive /app
+USER produktive
 
 EXPOSE 3000
 
