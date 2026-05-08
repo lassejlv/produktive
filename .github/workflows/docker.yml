@@ -18,6 +18,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - image: lassejlv/produktive/api
+            dockerfile: Dockerfile
           - image: lassejlv/produktive/discord-bot
             dockerfile: Dockerfile.bot
           - image: lassejlv/produktive/mcp
