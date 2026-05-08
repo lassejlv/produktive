@@ -19,18 +19,8 @@ type PricingPlan = {
     modelAccess: string;
     models: string[];
   };
-  integrations?: Record<string, string>;
+  integrations?: Record<string, string | boolean>;
   security?: Record<string, string | boolean>;
-};
-
-type OverageTier = {
-  id: string;
-  name: string;
-  price: number;
-  pricingModel: string;
-  description: string;
-  appliesTo: string[];
-  renews: boolean;
 };
 
 type AiPolicy = {
@@ -49,7 +39,6 @@ type PricingResponse = {
   currency: string;
   positioning: string;
   plans: PricingPlan[];
-  overageTiers: OverageTier[];
   aiLimitPolicy: AiPolicy;
   modelTiers: ModelTier[];
 };
@@ -78,25 +67,7 @@ function PricingPage() {
   });
 
   return (
-    <main className="relative isolate flex min-h-screen flex-col overflow-hidden bg-bg">
-      <div aria-hidden className="absolute inset-0 -z-10">
-        <img
-          src="https://cdn.produktive.app/assets/landing.webp"
-          alt=""
-          decoding="async"
-          fetchPriority="high"
-          className="animate-ken-burns absolute inset-0 h-full w-full object-cover object-[center_65%] opacity-65"
-        />
-        <div className="absolute inset-0 bg-linear-to-b from-bg/30 via-bg/55 to-bg" />
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(ellipse 80% 60% at 50% 30%, transparent 0%, rgba(0,0,0,0.55) 100%)",
-          }}
-        />
-      </div>
-
+    <main className="relative min-h-screen bg-bg text-fg">
       <header className="absolute inset-x-0 top-4 z-20 px-4">
         <nav
           className={cn(
@@ -108,7 +79,9 @@ function PricingPage() {
             <div className="grid size-6 place-items-center rounded-md bg-fg text-[11px] font-semibold tracking-tight text-bg">
               P
             </div>
-            <span className="text-[13px] font-medium tracking-tight text-fg">Produktive</span>
+            <span className="text-[13px] font-medium tracking-tight text-fg">
+              Produktive
+            </span>
           </Link>
           <div className="flex items-center gap-1">
             <Link
@@ -121,16 +94,16 @@ function PricingPage() {
         </nav>
       </header>
 
-      <section className="relative z-10 mx-auto w-full max-w-[1180px] flex-1 px-5 pb-24 pt-32 sm:px-8">
-        <div className="animate-fade-up max-w-[640px]">
-          <p className="text-[11.5px] font-medium tracking-tight text-fg/55">Pricing</p>
-          <h1 className="mt-3 text-balance text-[clamp(40px,6.4vw,76px)] font-light leading-[0.98] tracking-[-0.04em] text-fg">
-            Built for teams. Priced for growth.
+      <section className="mx-auto w-full max-w-[1100px] px-6 pb-28 pt-32">
+        <div className="animate-fade-up max-w-[620px]">
+          <p className="text-[12px] tracking-tight text-fg/55">Pricing</p>
+          <h1 className="mt-3 text-balance text-[clamp(38px,5.4vw,60px)] font-light leading-[1.02] tracking-[-0.035em] text-fg">
+            Plans that scale with your team.
           </h1>
           {pricingQuery.data ? (
             <p
-              className="mt-5 max-w-[540px] text-pretty text-[14.5px] leading-[1.6] text-fg/70 animate-fade-up"
-              style={{ animationDelay: "100ms" }}
+              className="animate-fade-up mt-5 max-w-[520px] text-pretty text-[14px] leading-[1.65] text-fg/65"
+              style={{ animationDelay: "80ms" }}
             >
               {pricingQuery.data.positioning}
             </p>
@@ -138,11 +111,11 @@ function PricingPage() {
         </div>
 
         {pricingQuery.isPending ? (
-          <div className="flex items-center justify-center py-32 text-fg/60">
+          <div className="flex items-center justify-center py-32 text-fg/55">
             <Spinner size={20} />
           </div>
         ) : pricingQuery.isError ? (
-          <p className="mt-12 rounded-[10px] border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger">
+          <p className="mt-12 rounded-[6px] border border-danger/30 bg-danger/[0.06] px-4 py-3 text-[13px] text-danger">
             Failed to load pricing. Please try again later.
           </p>
         ) : pricingQuery.data ? (
@@ -150,7 +123,7 @@ function PricingPage() {
         ) : null}
       </section>
 
-      <footer className="relative z-10 px-7 pb-5 text-center text-[11px] text-fg/40">
+      <footer className="border-t border-fg/[0.06] py-6 text-center text-[11px] text-fg/40">
         © 2026 Produktive
       </footer>
     </main>
@@ -169,8 +142,8 @@ function PricingBody({
   return (
     <>
       <div
-        className="animate-fade-up mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-4"
-        style={{ animationDelay: "180ms" }}
+        className="animate-fade-up mt-14 grid gap-4 md:grid-cols-3"
+        style={{ animationDelay: "160ms" }}
       >
         {tiered.map((plan) => (
           <PricingCard key={plan.id} plan={plan} isLoggedIn={isLoggedIn} />
@@ -178,37 +151,18 @@ function PricingBody({
       </div>
 
       <section
-        className="animate-fade-up mt-24"
-        style={{ animationDelay: "320ms" }}
+        className="animate-fade-up mt-28"
+        style={{ animationDelay: "260ms" }}
       >
-        <SectionHeading
-          eyebrow="Compare"
-          title="Everything that's in each plan"
-        />
+        <SectionHeading eyebrow="Compare" title="What's in each plan" />
         <div className="mt-6">
           <ComparisonTable plans={tiered} />
         </div>
       </section>
 
-      {data.overageTiers.length ? (
-        <section
-          className="animate-fade-up mt-20"
-          style={{ animationDelay: "400ms" }}
-        >
-          <SectionHeading
-            eyebrow="Boosts"
-            title="When you need more"
-            subtitle="Buy capacity explicitly. No surprise bills."
-          />
-          <div className="mt-6">
-            <BoostsTable tiers={data.overageTiers} />
-          </div>
-        </section>
-      ) : null}
-
       <section
-        className="animate-fade-up mt-20 max-w-[640px]"
-        style={{ animationDelay: "460ms" }}
+        className="animate-fade-up mt-24 max-w-[620px]"
+        style={{ animationDelay: "340ms" }}
       >
         <SectionHeading eyebrow="AI usage" title="Predictable, never punitive" />
         <p className="mt-4 text-[13.5px] leading-[1.65] text-fg/70">
@@ -223,10 +177,10 @@ function PricingBody({
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Plan cards (slim)                                                          */
+/*  Plan cards                                                                 */
 /* -------------------------------------------------------------------------- */
 
-const HIGHLIGHT_LIMIT = 4;
+const HIGHLIGHT_LIMIT = 5;
 
 function PricingCard({
   plan,
@@ -243,41 +197,40 @@ function PricingCard({
   return (
     <article
       className={cn(
-        "relative flex min-h-[360px] flex-col overflow-hidden rounded-[14px] border bg-bg/70 p-5 text-fg backdrop-blur-2xl",
-        "shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_36px_-20px_rgba(0,0,0,0.6)]",
-        recommended ? "border-fg/30 bg-bg/85" : "border-white/10",
+        "relative flex min-h-[420px] flex-col rounded-[10px] border bg-bg p-7 transition-colors",
+        "shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
+        recommended
+          ? "border-fg/[0.2] bg-fg/[0.018]"
+          : "border-fg/[0.08] hover:border-fg/[0.14]",
       )}
     >
-      {recommended ? (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-fg/55 to-transparent"
-        />
-      ) : null}
-
       <div className="flex items-baseline justify-between gap-2">
-        <p className="text-[13px] font-medium text-fg">{plan.name}</p>
+        <p className="text-[13.5px] font-medium tracking-tight text-fg">
+          {plan.name}
+        </p>
         {recommended ? (
-          <span className="rounded-full border border-fg/25 bg-fg/10 px-2 py-0.5 text-[10px] text-fg/80">
+          <span className="text-[10.5px] tracking-tight text-fg/50">
             Recommended
           </span>
         ) : null}
       </div>
 
-      <div className="mt-5 flex items-end gap-1.5">
-        <span className="text-[44px] font-light leading-none tracking-[-0.04em] text-fg">
+      <div className="mt-7 flex items-baseline gap-1.5">
+        <span className="text-[46px] font-light leading-none tracking-[-0.04em] text-fg tabular-nums">
           {plan.price === null ? "Custom" : `$${plan.price}`}
         </span>
-        <span className="pb-1 text-[12px] text-fg/55">{cadenceLabel(plan)}</span>
+        <span className="pb-1 text-[12px] text-fg/50">{cadenceLabel(plan)}</span>
       </div>
 
-      <p className="mt-3 text-[12.5px] leading-[1.5] text-fg/65">{plan.description}</p>
+      <p className="mt-3 text-[12.5px] leading-[1.55] text-fg/60">
+        {plan.description}
+      </p>
 
-      <ul className="mt-5 space-y-2">
+      <ul className="mt-7 flex-1 space-y-2.5">
         {features.map((feature) => (
           <li
             key={feature}
-            className="flex items-start gap-2.5 text-[12.5px] leading-[1.45] text-fg/80"
+            className="flex items-start gap-2 text-[12.5px] leading-[1.45] text-fg/80"
           >
             <CheckGlyph />
             <span>{feature}</span>
@@ -285,20 +238,17 @@ function PricingCard({
         ))}
       </ul>
 
-      <div className="mt-auto pt-6">
-        <Link
-          to={ctaTo}
-          className={cn(
-            "inline-flex h-9 w-full items-center justify-center rounded-[9px] px-4 text-[12.5px] font-medium transition-all duration-150",
-            "shadow-[inset_0_1px_0_0_rgba(255,255,255,0.18),0_1px_2px_rgba(0,0,0,0.4)]",
-            recommended
-              ? "bg-fg text-bg hover:bg-fg/90"
-              : "border border-white/10 bg-fg/95 text-bg hover:bg-fg",
-          )}
-        >
-          {ctaLabel}
-        </Link>
-      </div>
+      <Link
+        to={ctaTo}
+        className={cn(
+          "mt-8 inline-flex h-9 items-center justify-center rounded-[5px] text-[12.5px] font-medium transition-colors",
+          recommended
+            ? "bg-fg text-bg hover:bg-fg/90"
+            : "border border-fg/[0.12] text-fg hover:bg-fg/[0.04]",
+        )}
+      >
+        {ctaLabel}
+      </Link>
     </article>
   );
 }
@@ -356,6 +306,10 @@ function buildComparison(plans: PricingPlan[]): ComparisonGroup[] {
           values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "notes")])),
         },
         {
+          label: "Encrypted notes",
+          values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "notesEncrypted")])),
+        },
+        {
           label: "Storage",
           values: Object.fromEntries(
             plans.map((p) => [
@@ -377,7 +331,15 @@ function buildComparison(plans: PricingPlan[]): ComparisonGroup[] {
           label: "Usage",
           values: Object.fromEntries(plans.map((p) => [p.id, p.ai?.usageLimit ?? null])),
         },
-        ...modelRows(plans),
+        {
+          label: "Models",
+          values: Object.fromEntries(
+            plans.map((p) => [
+              p.id,
+              (p.ai?.models.length ?? 0) > 1 ? "Better models" : "Basic",
+            ]),
+          ),
+        },
       ],
     },
     {
@@ -391,17 +353,6 @@ function buildComparison(plans: PricingPlan[]): ComparisonGroup[] {
               p.limits?.apiRequestsPerUserPerMonth !== undefined
                 ? `${formatNumber(p.limits.apiRequestsPerUserPerMonth)} / user`
                 : limit(p, "apiRequestsPerMonth"),
-            ]),
-          ),
-        },
-        {
-          label: "MCP tool calls / mo.",
-          values: Object.fromEntries(
-            plans.map((p) => [
-              p.id,
-              p.limits?.mcpToolCallsPerUserPerMonth !== undefined
-                ? `${formatNumber(p.limits.mcpToolCallsPerUserPerMonth)} / user`
-                : limit(p, "mcpToolCallsPerMonth"),
             ]),
           ),
         },
@@ -465,41 +416,21 @@ function buildComparison(plans: PricingPlan[]): ComparisonGroup[] {
   ];
 }
 
-function modelRows(plans: PricingPlan[]): ComparisonRow[] {
-  const labelByTier: Record<string, string> = {
-    "fast-basic": "Fast model",
-    standard: "Standard model",
-    "better-reasoning": "Better reasoning",
-    "better-coding": "Better coding",
-    "pro-reasoning": "Pro reasoning",
-  };
-  const tierIds = ["fast-basic", "standard", "better-reasoning", "better-coding", "pro-reasoning"];
-  return tierIds.map((tier) => ({
-    label: labelByTier[tier] ?? tier,
-    values: Object.fromEntries(
-      plans.map((p) => [p.id, p.ai?.models.includes(tier) ?? false]),
-    ),
-  }));
-}
-
 function ComparisonTable({ plans }: { plans: PricingPlan[] }) {
   const groups = buildComparison(plans);
 
   return (
-    <div className="overflow-x-auto rounded-[14px] border border-white/10 bg-bg/55 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+    <div className="overflow-x-auto rounded-[10px] border border-fg/[0.08]">
       <table className="w-full min-w-[640px] table-fixed text-[12.5px]">
         <thead>
-          <tr className="border-b border-white/10">
-            <th className="w-[34%] px-4 py-3 text-left text-[11.5px] font-medium text-fg/55">
-              {/* Empty cell above the feature column */}
+          <tr className="border-b border-fg/[0.06]">
+            <th className="w-[34%] px-4 py-3.5 text-left text-[11.5px] font-medium text-fg/55">
+              {/* */}
             </th>
             {plans.map((plan) => (
               <th
                 key={plan.id}
-                className={cn(
-                  "px-3 py-3 text-left text-[12.5px] font-medium",
-                  plan.recommended ? "text-fg" : "text-fg/85",
-                )}
+                className="px-3 py-3.5 text-left text-[12.5px] font-medium tracking-tight text-fg/85"
               >
                 {plan.name}
               </th>
@@ -532,30 +463,19 @@ function GroupRows({
 }) {
   return (
     <>
-      <tr
-        className={cn(
-          "bg-white/[0.02]",
-          !isFirst && "border-t border-white/5",
-        )}
-      >
+      <tr className={cn(!isFirst && "border-t border-fg/[0.05]")}>
         <td
           colSpan={plans.length + 1}
-          className="px-4 pb-1 pt-3 text-[10.5px] font-medium tracking-tight text-fg-muted"
+          className="px-4 pb-1.5 pt-4 text-[11px] font-medium tracking-tight text-fg/45"
         >
           {group.label}
         </td>
       </tr>
       {group.rows.map((row) => (
-        <tr key={row.label} className="border-t border-white/5">
-          <td className="px-4 py-2.5 align-top text-fg/70">{row.label}</td>
+        <tr key={row.label} className="border-t border-fg/[0.05]">
+          <td className="px-4 py-2.5 align-top text-fg/65">{row.label}</td>
           {plans.map((plan) => (
-            <td
-              key={plan.id}
-              className={cn(
-                "px-3 py-2.5 align-top",
-                plan.recommended ? "bg-fg/[0.025]" : undefined,
-              )}
-            >
+            <td key={plan.id} className="px-3 py-2.5 align-top">
               <CellValue value={row.values[plan.id]} />
             </td>
           ))}
@@ -592,59 +512,6 @@ function CellValue({ value }: { value: Cell }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Boosts table                                                               */
-/* -------------------------------------------------------------------------- */
-
-function BoostsTable({ tiers }: { tiers: OverageTier[] }) {
-  return (
-    <div className="overflow-x-auto rounded-[14px] border border-white/10 bg-bg/55 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-      <table className="w-full min-w-[640px] table-fixed text-[12.5px]">
-        <thead>
-          <tr className="border-b border-white/10">
-            <th className="w-[46%] px-4 py-3 text-left text-[11.5px] font-medium text-fg/55">
-              Boost
-            </th>
-            <th className="px-3 py-3 text-left text-[11.5px] font-medium text-fg/55">
-              Price
-            </th>
-            <th className="px-3 py-3 text-left text-[11.5px] font-medium text-fg/55">
-              Type
-            </th>
-            <th className="px-3 py-3 text-left text-[11.5px] font-medium text-fg/55">
-              Available on
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {tiers.map((tier) => (
-            <tr key={tier.id} className="border-t border-white/5">
-              <td className="px-4 py-3 align-top">
-                <p className="text-[12.5px] font-medium text-fg">{tier.name}</p>
-                <p className="mt-1 text-[11.5px] leading-[1.55] text-fg/65">
-                  {tier.description}
-                </p>
-              </td>
-              <td className="px-3 py-3 align-top">
-                <span className="text-[14px] font-light tracking-[-0.02em] text-fg">
-                  ${tier.price}
-                </span>
-                <span className="ml-1 text-[11px] text-fg/55">{boostUnit(tier)}</span>
-              </td>
-              <td className="px-3 py-3 align-top font-mono text-[11.5px] tabular-nums text-fg/70">
-                {tier.renews ? "Recurring" : "One-time"}
-              </td>
-              <td className="px-3 py-3 align-top text-[12px] text-fg/75">
-                {humanList(tier.appliesTo)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
 /*  Atoms + helpers                                                            */
 /* -------------------------------------------------------------------------- */
 
@@ -659,8 +526,8 @@ function SectionHeading({
 }) {
   return (
     <div>
-      <p className="text-[11.5px] font-medium tracking-tight text-fg/55">{eyebrow}</p>
-      <h2 className="mt-2 text-[24px] font-light leading-tight tracking-[-0.02em] text-fg">
+      <p className="text-[11.5px] tracking-tight text-fg/50">{eyebrow}</p>
+      <h2 className="mt-2 text-[24px] font-light leading-tight tracking-[-0.025em] text-fg">
         {title}
       </h2>
       {subtitle ? (
@@ -679,7 +546,7 @@ function CheckGlyph({ small = false }: { small?: boolean }) {
       height={size}
       viewBox="0 0 12 12"
       fill="none"
-      className={cn("shrink-0 text-fg/45", !small && "mt-1")}
+      className={cn("shrink-0 text-fg/40", !small && "mt-1")}
     >
       <path
         d="M2.5 6.2 4.8 8.5 9.5 3.7"
@@ -698,24 +565,6 @@ function cadenceLabel(plan: PricingPlan): string {
   if (plan.pricingModel === "workspace") return "per workspace / month";
   if (plan.pricingModel === "custom") return "custom contract";
   return plan.cadence;
-}
-
-function boostUnit(tier: OverageTier): string {
-  if (tier.pricingModel === "perUserAddOn") return "per user / month";
-  if (tier.id === "weekly-boost") return "for 7 days";
-  return "per month";
-}
-
-function humanList(values: string[]): string {
-  if (values.length === 0) return "every plan";
-  const named = values.map(prettyPlanName);
-  if (named.length === 1) return named[0];
-  if (named.length === 2) return `${named[0]} and ${named[1]}`;
-  return `${named.slice(0, -1).join(", ")}, and ${named[named.length - 1]}`;
-}
-
-function prettyPlanName(id: string): string {
-  return id.charAt(0).toUpperCase() + id.slice(1);
 }
 
 function formatNumber(value: number | string | boolean): string {
