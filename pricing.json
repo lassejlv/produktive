@@ -54,7 +54,7 @@
     {
       "id": "pro",
       "name": "Pro",
-      "price": 10,
+      "price": 15,
       "pricingModel": "workspace",
       "cadence": "per workspace per month",
       "checkoutEnabled": true,
@@ -88,7 +88,7 @@
           "agent tool calls",
           "remote MCP tools"
         ],
-        "excludedFeatures": ["highest-volume business limits", "full security governance"]
+        "excludedFeatures": ["custom enterprise terms", "dedicated deployment"]
       },
       "integrations": {
         "mcp": "full",
@@ -108,71 +108,6 @@
         "GitHub auto-import",
         "Full hosted MCP workflow"
       ]
-    },
-    {
-      "id": "business",
-      "name": "Business",
-      "price": 24,
-      "pricingModel": "perUser",
-      "cadence": "per user per month",
-      "checkoutEnabled": false,
-      "description": "For companies that need best-model access, higher automation limits, workspace security, governance, and priority support.",
-      "recommended": false,
-      "limits": {
-        "workspaces": "unlimited",
-        "members": "paid seats",
-        "activeIssues": "unlimited",
-        "projects": "unlimited",
-        "notes": "unlimited",
-        "notesEncrypted": true,
-        "storageGbPerUser": 20,
-        "apiRequestsPerUserPerMonth": 50000,
-        "discordActionsPerUserPerMonth": 5000,
-        "githubRepositories": "unlimited",
-        "githubAutoImport": true,
-        "githubMinimumImportIntervalMinutes": 15
-      },
-      "ai": {
-        "usageLimit": "high monthly usage per paid user",
-        "resetInterval": "monthly",
-        "models": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"],
-        "modelAccess": "Same better models as Pro, with higher reliability and the highest included agent capacity.",
-        "includedFeatures": [
-          "AI chat",
-          "issue draft",
-          "project health",
-          "note editing",
-          "agent tool calls",
-          "remote MCP tools",
-          "priority model access"
-        ],
-        "excludedFeatures": ["custom enterprise terms", "dedicated deployment"]
-      },
-      "integrations": {
-        "mcp": "highest included limits",
-        "restApi": "highest included limits",
-        "discord": true,
-        "github": "fast auto-import",
-        "slack": true
-      },
-      "security": {
-        "workspaceTwoFactorRequirement": true,
-        "trustedDevices": true,
-        "securityEvents": true,
-        "advancedRoles": true,
-        "auditLog": true
-      },
-      "features": [
-        "Everything in Pro",
-        "Per-user AI capacity",
-        "Fast GitHub auto-import",
-        "Higher MCP limits",
-        "Higher REST API limits",
-        "Workspace 2FA requirement",
-        "Security event history",
-        "Advanced roles",
-        "Priority support"
-      ]
     }
   ],
   "aiLimitPolicy": {
@@ -185,25 +120,25 @@
     {
       "id": "fast-basic",
       "label": "Fast model",
-      "includedIn": ["free", "pro", "business"],
+      "includedIn": ["free", "pro"],
       "intendedUse": "Quick answers, light drafting, simple agent work."
     },
     {
       "id": "standard",
       "label": "Standard model",
-      "includedIn": ["pro", "business"],
+      "includedIn": ["pro"],
       "intendedUse": "Regular workspace chat, summaries, issue drafting, and project assistance."
     },
     {
       "id": "better-reasoning",
       "label": "Better reasoning model",
-      "includedIn": ["pro", "business"],
+      "includedIn": ["pro"],
       "intendedUse": "Multi-step planning, project health, notes, complex workspace questions, and agentic workflows."
     },
     {
       "id": "better-coding",
       "label": "Better coding model",
-      "includedIn": ["pro", "business"],
+      "includedIn": ["pro"],
       "intendedUse": "Codebase-aware work through MCP, GitHub workflows, API usage, and technical planning."
     }
   ]

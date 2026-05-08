@@ -327,7 +327,7 @@ pub fn is_terminal_tool(name: &str) -> bool {
 }
 
 /// Dispatch a tool call. Returns either the structured success value, or
-/// `{"error": "..."}` for validation/business errors so the model can self-correct.
+/// `{"error": "..."}` for validation errors so the model can self-correct.
 /// Real DB/system errors bubble up as `ApiError::Internal`.
 pub async fn dispatch(
     name: &str,

@@ -51,14 +51,12 @@ pub const AI_USAGE_FEE_MULTIPLIER: f64 = 1.20;
 pub enum AiPlan {
     Free,
     Pro,
-    Business,
 }
 
 impl AiPlan {
     pub fn from_str(value: &str) -> Self {
         match value {
             "pro" => Self::Pro,
-            "business" => Self::Business,
             _ => Self::Free,
         }
     }
@@ -67,7 +65,6 @@ impl AiPlan {
         match self {
             Self::Free => "free",
             Self::Pro => "pro",
-            Self::Business => "business",
         }
     }
 
@@ -75,7 +72,6 @@ impl AiPlan {
         match self {
             Self::Free => 250_000,
             Self::Pro => 2_500_000,
-            Self::Business => 20_000_000,
         }
     }
 
@@ -83,14 +79,13 @@ impl AiPlan {
         match self {
             Self::Free => 1_000_000,
             Self::Pro => 10_000_000,
-            Self::Business => 80_000_000,
         }
     }
 
     pub fn can_use_model(self, model_id: &str) -> bool {
         match self {
             Self::Free => model_id == degrade_model_id(),
-            Self::Pro | Self::Business => true,
+            Self::Pro => true,
         }
     }
 }

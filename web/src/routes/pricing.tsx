@@ -83,9 +83,7 @@ function PricingPage() {
             <div className="grid size-6 place-items-center rounded-md bg-fg text-[11px] font-semibold tracking-tight text-bg">
               P
             </div>
-            <span className="text-[13px] font-medium tracking-tight text-fg">
-              Produktive
-            </span>
+            <span className="text-[13px] font-medium tracking-tight text-fg">Produktive</span>
           </Link>
           <div className="flex items-center gap-1">
             <Link
@@ -134,19 +132,13 @@ function PricingPage() {
   );
 }
 
-function PricingBody({
-  data,
-  isLoggedIn,
-}: {
-  data: PricingResponse;
-  isLoggedIn: boolean;
-}) {
+function PricingBody({ data, isLoggedIn }: { data: PricingResponse; isLoggedIn: boolean }) {
   const tiered = data.plans.filter((plan) => plan.id !== "enterprise");
 
   return (
     <>
       <div
-        className="animate-fade-up mt-14 grid gap-4 md:grid-cols-3"
+        className="animate-fade-up mt-14 grid gap-4 md:grid-cols-2"
         style={{ animationDelay: "160ms" }}
       >
         {tiered.map((plan) => (
@@ -154,20 +146,7 @@ function PricingBody({
         ))}
       </div>
 
-      <section
-        className="animate-fade-up mt-28"
-        style={{ animationDelay: "260ms" }}
-      >
-        <SectionHeading eyebrow="Compare" title="What's in each plan" />
-        <div className="mt-6">
-          <ComparisonTable plans={tiered} />
-        </div>
-      </section>
-
-      <section
-        className="animate-fade-up mt-24 max-w-[620px]"
-        style={{ animationDelay: "340ms" }}
-      >
+      <section className="animate-fade-up mt-24 max-w-[620px]" style={{ animationDelay: "260ms" }}>
         <SectionHeading eyebrow="AI usage" title="Predictable, never punitive" />
         <p className="mt-4 text-[13.5px] leading-[1.65] text-fg/70">
           {data.aiLimitPolicy.publicLanguage}
@@ -186,13 +165,7 @@ function PricingBody({
 
 const HIGHLIGHT_LIMIT = 5;
 
-function PricingCard({
-  plan,
-  isLoggedIn,
-}: {
-  plan: PricingPlan;
-  isLoggedIn: boolean;
-}) {
+function PricingCard({ plan, isLoggedIn }: { plan: PricingPlan; isLoggedIn: boolean }) {
   const recommended = plan.recommended === true;
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
   const features = plan.features.slice(0, HIGHLIGHT_LIMIT);
@@ -211,9 +184,7 @@ function PricingCard({
       const checkout = await createBillingCheckout("pro");
       window.location.assign(checkout.url);
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to start checkout",
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to start checkout");
       setIsStartingCheckout(false);
     }
   };
@@ -223,19 +194,13 @@ function PricingCard({
       className={cn(
         "relative flex min-h-[420px] flex-col rounded-[10px] border bg-bg p-7 transition-colors",
         "shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
-        recommended
-          ? "border-fg/[0.2] bg-fg/[0.018]"
-          : "border-fg/[0.08] hover:border-fg/[0.14]",
+        recommended ? "border-fg/[0.2] bg-fg/[0.018]" : "border-fg/[0.08] hover:border-fg/[0.14]",
       )}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <p className="text-[13.5px] font-medium tracking-tight text-fg">
-          {plan.name}
-        </p>
+        <p className="text-[13.5px] font-medium tracking-tight text-fg">{plan.name}</p>
         {recommended ? (
-          <span className="text-[10.5px] tracking-tight text-fg/50">
-            Recommended
-          </span>
+          <span className="text-[10.5px] tracking-tight text-fg/50">Recommended</span>
         ) : null}
       </div>
 
@@ -246,9 +211,7 @@ function PricingCard({
         <span className="pb-1 text-[12px] text-fg/50">{cadenceLabel(plan)}</span>
       </div>
 
-      <p className="mt-3 text-[12.5px] leading-[1.55] text-fg/60">
-        {plan.description}
-      </p>
+      <p className="mt-3 text-[12.5px] leading-[1.55] text-fg/60">{plan.description}</p>
 
       <ul className="mt-7 flex-1 space-y-2.5">
         {features.map((feature) => (
@@ -277,10 +240,6 @@ function PricingCard({
             Sign in to upgrade
           </Link>
         )
-      ) : plan.id === "business" ? (
-        <button type="button" disabled className={ctaClassName}>
-          Coming later
-        </button>
       ) : (
         <Link to={isLoggedIn ? "/" : "/login"} className={ctaClassName}>
           Start free
@@ -288,264 +247,6 @@ function PricingCard({
       )}
     </article>
   );
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Comparison table                                                           */
-/* -------------------------------------------------------------------------- */
-
-type Cell = string | number | boolean | null;
-
-type ComparisonRow = {
-  label: string;
-  values: Record<string, Cell>;
-};
-
-type ComparisonGroup = {
-  label: string;
-  rows: ComparisonRow[];
-};
-
-function buildComparison(plans: PricingPlan[]): ComparisonGroup[] {
-  const cell = (
-    plan: PricingPlan,
-    pick: (p: PricingPlan) => Cell | undefined,
-  ): Cell => {
-    const value = pick(plan);
-    return value === undefined ? null : value;
-  };
-
-  const limit = (plan: PricingPlan, key: string): Cell =>
-    cell(plan, (p) => p.limits?.[key]);
-
-  return [
-    {
-      label: "Workspace",
-      rows: [
-        {
-          label: "Workspaces",
-          values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "workspaces")])),
-        },
-        {
-          label: "Members",
-          values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "members")])),
-        },
-        {
-          label: "Active issues",
-          values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "activeIssues")])),
-        },
-        {
-          label: "Projects",
-          values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "projects")])),
-        },
-        {
-          label: "Notes",
-          values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "notes")])),
-        },
-        {
-          label: "Encrypted notes",
-          values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "notesEncrypted")])),
-        },
-        {
-          label: "Storage",
-          values: Object.fromEntries(
-            plans.map((p) => [
-              p.id,
-              p.limits?.storageGbPerUser !== undefined
-                ? `${p.limits.storageGbPerUser} GB / user`
-                : p.limits?.storageGb !== undefined
-                  ? `${p.limits.storageGb} GB`
-                  : null,
-            ]),
-          ),
-        },
-      ],
-    },
-    {
-      label: "AI",
-      rows: [
-        {
-          label: "Usage",
-          values: Object.fromEntries(plans.map((p) => [p.id, p.ai?.usageLimit ?? null])),
-        },
-        {
-          label: "Models",
-          values: Object.fromEntries(
-            plans.map((p) => [
-              p.id,
-              (p.ai?.models.length ?? 0) > 1 ? "Better models" : "Basic",
-            ]),
-          ),
-        },
-      ],
-    },
-    {
-      label: "Integrations",
-      rows: [
-        {
-          label: "API requests / mo.",
-          values: Object.fromEntries(
-            plans.map((p) => [
-              p.id,
-              p.limits?.apiRequestsPerUserPerMonth !== undefined
-                ? `${formatNumber(p.limits.apiRequestsPerUserPerMonth)} / user`
-                : limit(p, "apiRequestsPerMonth"),
-            ]),
-          ),
-        },
-        {
-          label: "GitHub repos",
-          values: Object.fromEntries(plans.map((p) => [p.id, limit(p, "githubRepositories")])),
-        },
-        {
-          label: "GitHub auto-import",
-          values: Object.fromEntries(
-            plans.map((p) => [p.id, limit(p, "githubAutoImport")]),
-          ),
-        },
-        {
-          label: "Slack",
-          values: Object.fromEntries(
-            plans.map((p) => [p.id, p.integrations?.slack ?? null]),
-          ),
-        },
-        {
-          label: "Discord",
-          values: Object.fromEntries(
-            plans.map((p) => [p.id, p.integrations?.discord ?? null]),
-          ),
-        },
-      ],
-    },
-    {
-      label: "Security",
-      rows: [
-        {
-          label: "Workspace 2FA requirement",
-          values: Object.fromEntries(
-            plans.map((p) => [p.id, p.security?.workspaceTwoFactorRequirement ?? false]),
-          ),
-        },
-        {
-          label: "Trusted devices",
-          values: Object.fromEntries(
-            plans.map((p) => [p.id, p.security?.trustedDevices ?? false]),
-          ),
-        },
-        {
-          label: "Audit log",
-          values: Object.fromEntries(plans.map((p) => [p.id, p.security?.auditLog ?? false])),
-        },
-        {
-          label: "Advanced roles",
-          values: Object.fromEntries(
-            plans.map((p) => [p.id, p.security?.advancedRoles ?? false]),
-          ),
-        },
-        {
-          label: "Security event history",
-          values: Object.fromEntries(
-            plans.map((p) => [p.id, p.security?.securityEvents ?? false]),
-          ),
-        },
-      ],
-    },
-  ];
-}
-
-function ComparisonTable({ plans }: { plans: PricingPlan[] }) {
-  const groups = buildComparison(plans);
-
-  return (
-    <div className="overflow-x-auto rounded-[10px] border border-fg/[0.08]">
-      <table className="w-full min-w-[640px] table-fixed text-[12.5px]">
-        <thead>
-          <tr className="border-b border-fg/[0.06]">
-            <th className="w-[34%] px-4 py-3.5 text-left text-[11.5px] font-medium text-fg/55">
-              {/* */}
-            </th>
-            {plans.map((plan) => (
-              <th
-                key={plan.id}
-                className="px-3 py-3.5 text-left text-[12.5px] font-medium tracking-tight text-fg/85"
-              >
-                {plan.name}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {groups.map((group, groupIdx) => (
-            <GroupRows
-              key={group.label}
-              group={group}
-              plans={plans}
-              isFirst={groupIdx === 0}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function GroupRows({
-  group,
-  plans,
-  isFirst,
-}: {
-  group: ComparisonGroup;
-  plans: PricingPlan[];
-  isFirst: boolean;
-}) {
-  return (
-    <>
-      <tr className={cn(!isFirst && "border-t border-fg/[0.05]")}>
-        <td
-          colSpan={plans.length + 1}
-          className="px-4 pb-1.5 pt-4 text-[11px] font-medium tracking-tight text-fg/45"
-        >
-          {group.label}
-        </td>
-      </tr>
-      {group.rows.map((row) => (
-        <tr key={row.label} className="border-t border-fg/[0.05]">
-          <td className="px-4 py-2.5 align-top text-fg/65">{row.label}</td>
-          {plans.map((plan) => (
-            <td key={plan.id} className="px-3 py-2.5 align-top">
-              <CellValue value={row.values[plan.id]} />
-            </td>
-          ))}
-        </tr>
-      ))}
-    </>
-  );
-}
-
-function CellValue({ value }: { value: Cell }) {
-  if (value === null || value === undefined) {
-    return <span className="text-fg-faint">—</span>;
-  }
-  if (value === true) {
-    return (
-      <span className="inline-flex size-4 items-center justify-center rounded-full bg-fg/10 text-fg/85">
-        <CheckGlyph small />
-      </span>
-    );
-  }
-  if (value === false) {
-    return <span className="text-fg-faint">—</span>;
-  }
-  if (typeof value === "number") {
-    return <span className="text-fg/85 tabular-nums">{formatNumber(value)}</span>;
-  }
-  if (value === "unlimited") {
-    return <span className="text-fg/85">Unlimited</span>;
-  }
-  if (value === "not included") {
-    return <span className="text-fg-faint">—</span>;
-  }
-  return <span className="text-fg/85">{capitalize(value)}</span>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -602,18 +303,4 @@ function cadenceLabel(plan: PricingPlan): string {
   if (plan.pricingModel === "workspace") return "per workspace / month";
   if (plan.pricingModel === "custom") return "custom contract";
   return plan.cadence;
-}
-
-function formatNumber(value: number | string | boolean): string {
-  if (typeof value === "boolean") return value ? "Included" : "—";
-  if (typeof value === "string") return value;
-  if (value >= 1000) {
-    return value.toLocaleString();
-  }
-  return String(value);
-}
-
-function capitalize(value: string): string {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1);
 }

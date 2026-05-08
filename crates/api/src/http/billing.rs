@@ -237,7 +237,7 @@ mod tests {
             "type": "order.paid",
             "data": {
                 "metadata": {
-                    "plan": "business",
+                    "plan": "free",
                     "organizationId": "org_123"
                 }
             }

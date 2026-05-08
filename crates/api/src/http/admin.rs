@@ -492,7 +492,6 @@ async fn update_ai_plan(
     let plan = match payload.plan.as_str() {
         "free" => AiPlan::Free,
         "pro" => AiPlan::Pro,
-        "business" => AiPlan::Business,
         _ => return Err(ApiError::BadRequest("Unsupported AI plan".to_owned())),
     };
     let row = ai_usage::update_plan(&state, &id, plan).await?;
