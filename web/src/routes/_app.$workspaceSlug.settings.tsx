@@ -483,9 +483,8 @@ function BillingSettings({ canManageBilling }: { canManageBilling: boolean }) {
       </section>
 
       <section className="rounded-[8px] border border-border-subtle bg-bg p-4">
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <BillingPlanFact label="Price" value="$10 / workspace / month" />
-          <BillingPlanFact label="Provider" value="Polar checkout" />
           <BillingPlanFact label="Status" value={isPro ? "Active" : "Free"} />
         </div>
       </section>
