@@ -96,6 +96,61 @@ pub fn validate_event(
     secret: &str,
 ) -> Result<WebhookEvent> {
     let payload = payload.as_ref();
-    Webhook::new(secret)?.verify(payload, headers)?;
+    verify_signature(payload, headers, secret)?;
     Ok(serde_json::from_slice(payload)?)
+}
+
+fn verify_signature(payload: &[u8], headers: &HeaderMap, secret: &str) -> Result<()> {
+    let trimmed = secret.trim();
+    let base64_result = Webhook::new(trimmed).and_then(|webhook| webhook.verify(payload, headers));
+    if base64_result.is_ok() {
+        return Ok(());
+    }
+
+    Webhook::from_bytes(trimmed.as_bytes().to_vec())?.verify(payload, headers)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use http::{HeaderMap, HeaderValue};
+    use standardwebhooks::Webhook;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn headers(secret: &str, payload: &[u8]) -> HeaderMap {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let webhook = Webhook::from_bytes(secret.as_bytes().to_vec()).unwrap();
+        let signature = webhook.sign("evt_123", timestamp, payload).unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert("webhook-id", HeaderValue::from_static("evt_123"));
+        headers.insert(
+            "webhook-timestamp",
+            HeaderValue::from_str(&timestamp.to_string()).unwrap(),
+        );
+        headers.insert(
+            "webhook-signature",
+            HeaderValue::from_str(&signature).unwrap(),
+        );
+        headers
+    }
+
+    #[test]
+    fn validates_polar_raw_webhook_secret() {
+        let secret = "polar_whs_ovyN6cPrTv56AApvzCaJno08SSmGJmgbWilb33N2JuK";
+        let payload = br#"{"type":"order.paid","data":{"id":"order_123"}}"#;
+
+        verify_signature(payload, &headers(secret, payload), secret).unwrap();
+    }
+
+    #[test]
+    fn rejects_incorrect_polar_raw_webhook_secret() {
+        let secret = "polar_whs_ovyN6cPrTv56AApvzCaJno08SSmGJmgbWilb33N2JuK";
+        let payload = br#"{"type":"order.paid","data":{"id":"order_123"}}"#;
+
+        assert!(verify_signature(payload, &headers(secret, payload), "polar_whs_wrong").is_err());
+    }
 }
