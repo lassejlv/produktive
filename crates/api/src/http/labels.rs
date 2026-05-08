@@ -171,6 +171,7 @@ pub(crate) async fn patch_label(
     Json(payload): Json<PatchLabelRequest>,
 ) -> Result<Json<LabelEnvelope>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, LABELS_UPDATE).await?;
     let existing = find_label(&state, &auth.organization.id, &id).await?;
     let existing_id = existing.id.clone();
     let mut active = existing.into_active_model();

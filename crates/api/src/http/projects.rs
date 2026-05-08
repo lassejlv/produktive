@@ -231,6 +231,7 @@ pub(crate) async fn patch_project(
     Json(payload): Json<PatchProjectRequest>,
 ) -> Result<Json<ProjectEnvelope>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, PROJECTS_UPDATE).await?;
     let existing = find_project(&state, &auth.organization.id, &id).await?;
     let mut active = existing.into_active_model();
 

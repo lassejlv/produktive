@@ -9,6 +9,7 @@ use produktive_ai::Tool;
 use produktive_entity::{mcp_oauth_token, mcp_server};
 use reqwest::{
     header::{HeaderName, ACCEPT, AUTHORIZATION, CONTENT_TYPE, WWW_AUTHENTICATE},
+    redirect::Policy,
     StatusCode, Url,
 };
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
@@ -16,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{net::IpAddr, sync::Mutex, time::Duration as StdDuration};
+use tokio::net::lookup_host;
 
 pub const TOOL_PREFIX: &str = "mcp__";
 pub const TOOL_LIMIT: usize = 24;
@@ -107,6 +109,23 @@ pub fn validate_remote_url(raw: &str, allow_local: bool) -> Result<String, McpEr
     }
 
     Ok(url.to_string())
+}
+
+pub async fn validate_remote_request_url(raw: &str, allow_local: bool) -> Result<Url, McpError> {
+    let normalized = validate_remote_url(raw, allow_local)?;
+    let url = Url::parse(&normalized)
+        .map_err(|_| McpError::InvalidUrl("Enter a valid MCP URL".to_owned()))?;
+    if !allow_local {
+        ensure_public_dns_target(&url).await?;
+    }
+    Ok(url)
+}
+
+pub fn safe_remote_http_client() -> Result<reqwest::Client, McpError> {
+    Ok(reqwest::Client::builder()
+        .timeout(StdDuration::from_secs(30))
+        .redirect(Policy::none())
+        .build()?)
 }
 
 pub fn allow_local_mcp() -> bool {
@@ -363,9 +382,7 @@ struct McpHttpClient {
 impl McpHttpClient {
     fn new(url: String, access_token: Option<String>) -> Result<Self, McpError> {
         validate_remote_url(&url, allow_local_mcp())?;
-        let http = reqwest::Client::builder()
-            .timeout(StdDuration::from_secs(30))
-            .build()?;
+        let http = safe_remote_http_client()?;
         Ok(Self {
             http,
             url,
@@ -450,9 +467,10 @@ impl McpHttpClient {
     }
 
     async fn request(&self, body: Value) -> Result<McpResponse, McpError> {
+        let url = validate_remote_request_url(&self.url, allow_local_mcp()).await?;
         let mut req = self
             .http
-            .post(&self.url)
+            .post(url)
             .header(CONTENT_TYPE, "application/json")
             .header("MCP-Protocol-Version", "2025-06-18")
             .header(ACCEPT, "application/json, text/event-stream")
@@ -704,6 +722,58 @@ fn is_local_url(url: &Url) -> bool {
         .unwrap_or(false)
 }
 
+async fn ensure_public_dns_target(url: &Url) -> Result<(), McpError> {
+    let host = url
+        .host_str()
+        .ok_or_else(|| McpError::InvalidUrl("Remote URL must include a host".to_owned()))?;
+    let port = url
+        .port_or_known_default()
+        .ok_or_else(|| McpError::InvalidUrl("Remote URL must include a valid port".to_owned()))?;
+    let mut resolved_any = false;
+    for addr in lookup_host((host, port))
+        .await
+        .map_err(|_| McpError::InvalidUrl("Remote URL host could not be resolved".to_owned()))?
+    {
+        resolved_any = true;
+        if is_blocked_remote_ip(addr.ip()) {
+            return Err(McpError::InvalidUrl(
+                "Local and private network MCP URLs are not allowed".to_owned(),
+            ));
+        }
+    }
+    if resolved_any {
+        Ok(())
+    } else {
+        Err(McpError::InvalidUrl(
+            "Remote URL host could not be resolved".to_owned(),
+        ))
+    }
+}
+
+fn is_blocked_remote_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            ip.is_private()
+                || ip.is_loopback()
+                || ip.is_link_local()
+                || ip.is_multicast()
+                || ip.is_broadcast()
+                || ip.is_documentation()
+                || ip.is_unspecified()
+                || ip.octets()[0] == 0
+                || matches!(ip.octets(), [100, 64..=127, _, _])
+                || matches!(ip.octets(), [198, 18 | 19, _, _])
+        }
+        IpAddr::V6(ip) => {
+            ip.is_loopback()
+                || ip.is_unique_local()
+                || ip.is_unicast_link_local()
+                || ip.is_multicast()
+                || ip.is_unspecified()
+        }
+    }
+}
+
 async fn discover_oauth_metadata(
     http: &reqwest::Client,
     resource_url: &str,
@@ -715,9 +785,21 @@ async fn discover_oauth_metadata(
         .get("authorization_uri")
         .or_else(|| params.get("authorization_url"))
     {
+        validate_remote_request_url(authorization_endpoint, allow_local_mcp()).await?;
+        if let Some(token_endpoint) = infer_token_url(authorization_endpoint) {
+            validate_remote_request_url(&token_endpoint, allow_local_mcp()).await?;
+            return Ok(Some(OAuthDiscovery {
+                authorization_endpoint: authorization_endpoint.clone(),
+                token_endpoint: Some(token_endpoint),
+                registration_endpoint: None,
+                resource: Some(resource_url.to_owned()),
+                scopes_supported: Vec::new(),
+                token_endpoint_auth_methods_supported: vec!["none".to_owned()],
+            }));
+        }
         return Ok(Some(OAuthDiscovery {
             authorization_endpoint: authorization_endpoint.clone(),
-            token_endpoint: infer_token_url(authorization_endpoint),
+            token_endpoint: None,
             registration_endpoint: None,
             resource: Some(resource_url.to_owned()),
             scopes_supported: Vec::new(),
@@ -772,6 +854,13 @@ async fn discover_oauth_metadata(
             "OAuth metadata did not include authorization_endpoint".to_owned(),
         ));
     };
+    validate_remote_request_url(&authorization_endpoint, allow_local_mcp()).await?;
+    if let Some(token_endpoint) = metadata.token_endpoint.as_deref() {
+        validate_remote_request_url(token_endpoint, allow_local_mcp()).await?;
+    }
+    if let Some(registration_endpoint) = metadata.registration_endpoint.as_deref() {
+        validate_remote_request_url(registration_endpoint, allow_local_mcp()).await?;
+    }
 
     let mut scopes_supported = metadata.scopes_supported.unwrap_or_default();
     for scope in protected_scopes {
@@ -831,7 +920,7 @@ async fn fetch_json<T: for<'de> Deserialize<'de>>(
     url: &str,
 ) -> Result<T, McpError> {
     let response = http
-        .get(url)
+        .get(validate_remote_request_url(url, allow_local_mcp()).await?)
         .header(ACCEPT, "application/json")
         .send()
         .await?;
@@ -915,6 +1004,28 @@ mod tests {
     fn remote_mcp_url_validation_allows_local_urls_when_explicit() {
         assert!(validate_remote_url("http://127.0.0.1:3001/mcp", true).is_ok());
         assert!(validate_remote_url("https://example.com/mcp", false).is_ok());
+    }
+
+    #[test]
+    fn remote_ip_blocklist_covers_internal_ranges() {
+        for ip in [
+            "127.0.0.1",
+            "10.0.0.1",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.169.254",
+            "100.64.0.1",
+            "198.18.0.1",
+            "::1",
+            "fc00::1",
+            "fe80::1",
+        ] {
+            assert!(is_blocked_remote_ip(ip.parse().unwrap()), "{ip}");
+        }
+        assert!(!is_blocked_remote_ip("8.8.8.8".parse().unwrap()));
+        assert!(!is_blocked_remote_ip(
+            "2606:4700:4700::1111".parse().unwrap()
+        ));
     }
 }
 
