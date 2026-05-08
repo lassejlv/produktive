@@ -10,6 +10,7 @@ pub struct Model {
     pub organization_id: String,
     pub issue_id: String,
     pub actor_id: Option<String>,
+    pub actor_oauth_client_id: Option<String>,
     pub action: String,
     pub changes: Value,
     pub created_at: DateTimeWithTimeZone,

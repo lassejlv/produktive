@@ -11,6 +11,7 @@ pub struct Model {
     pub description: Option<String>,
     pub color: String,
     pub created_by_id: Option<String>,
+    pub created_by_oauth_client_id: Option<String>,
     pub archived_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

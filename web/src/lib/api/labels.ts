@@ -6,6 +6,7 @@ import {
   UpdateLabelDocument,
 } from "@/gql/graphql";
 import { graphqlRequest, unwrapGraphQLJson } from "@/lib/graphql/client";
+import type { ActorProfile } from "./actor-profile";
 
 export type LabelSummary = {
   id: string;
@@ -18,6 +19,7 @@ export type Label = {
   name: string;
   description: string | null;
   color: string;
+  createdByProfile?: ActorProfile | null;
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;

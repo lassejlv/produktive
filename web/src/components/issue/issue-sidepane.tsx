@@ -8,12 +8,7 @@ import { EditableDescription } from "@/components/issue/editable-description";
 import { EditableTitle } from "@/components/issue/editable-title";
 import { IssueProperties } from "@/components/issue/issue-properties";
 import { StatusIcon } from "@/components/issue/status-icon";
-import {
-  SidePane,
-  SidePaneBody,
-  SidePaneClose,
-  SidePaneHeader,
-} from "@/components/ui/sidepane";
+import { SidePane, SidePaneBody, SidePaneClose, SidePaneHeader } from "@/components/ui/sidepane";
 import { Spinner } from "@/components/ui/spinner";
 import {
   type IssueComment,
@@ -58,13 +53,7 @@ export function IssueSidepane({
   );
 }
 
-function IssueSidepaneContent({
-  issueId,
-  onClose,
-}: {
-  issueId: string;
-  onClose: () => void;
-}) {
+function IssueSidepaneContent({ issueId, onClose }: { issueId: string; onClose: () => void }) {
   const navigate = useNavigate();
   const workspaceSlug = useWorkspaceSlug();
   const qc = useQueryClient();
@@ -301,13 +290,18 @@ function IssueSidepaneContent({
             <EditableTitle value={issue.title} onSave={handleTitle} />
 
             <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-fg-faint">
-              {issue.createdBy ? (
+              {(issue.createdByProfile ?? issue.createdBy) ? (
                 <span className="inline-flex items-center gap-1.5 text-fg-muted">
-                  <Avatar name={issue.createdBy.name} image={issue.createdBy.image} />
-                  {issue.createdBy.name}
+                  <Avatar
+                    name={(issue.createdByProfile ?? issue.createdBy)?.name}
+                    image={(issue.createdByProfile ?? issue.createdBy)?.image}
+                  />
+                  {(issue.createdByProfile ?? issue.createdBy)?.name}
                 </span>
               ) : null}
-              {issue.createdBy ? <span className="text-fg-faint/60">·</span> : null}
+              {(issue.createdByProfile ?? issue.createdBy) ? (
+                <span className="text-fg-faint/60">·</span>
+              ) : null}
               <span>Created {formatDate(issue.createdAt)}</span>
               <span className="text-fg-faint/60">·</span>
               <span>Updated {formatDate(issue.updatedAt)}</span>
@@ -346,9 +340,7 @@ function IssueSidepaneContent({
                 aria-hidden
                 className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-border-subtle via-border-subtle/60 to-transparent"
               />
-              <h3 className="mb-2 text-[11.5px] font-medium text-fg-muted">
-                Description
-              </h3>
+              <h3 className="mb-2 text-[11.5px] font-medium text-fg-muted">Description</h3>
               <EditableDescription value={issue.description} onSave={handleDescription} />
             </div>
 
@@ -358,14 +350,15 @@ function IssueSidepaneContent({
                   aria-hidden
                   className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-border-subtle via-border-subtle/60 to-transparent"
                 />
-                <h3 className="mb-2 text-[11.5px] font-medium text-fg-muted">
-                  Recent activity
-                </h3>
+                <h3 className="mb-2 text-[11.5px] font-medium text-fg-muted">Recent activity</h3>
                 <ul className="m-0 flex list-none flex-col gap-2 p-0">
                   {recentComments.map((comment) => (
                     <li key={`comment-${comment.id}`} className="text-[12px] text-fg-muted">
-                      <span className="text-fg">{comment.author?.name ?? "Someone"}</span>{" "}
-                      commented · <span className="text-fg-faint">{formatDate(comment.createdAt)}</span>
+                      <span className="text-fg">
+                        {(comment.authorProfile ?? comment.author)?.name ?? "Someone"}
+                      </span>{" "}
+                      commented ·{" "}
+                      <span className="text-fg-faint">{formatDate(comment.createdAt)}</span>
                     </li>
                   ))}
                   {recentHistory.map((event) => (
@@ -391,9 +384,7 @@ function IssueSidepaneContent({
                 aria-hidden
                 className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-border-subtle via-border-subtle/60 to-transparent"
               />
-              <h3 className="mb-2 text-[11.5px] font-medium text-fg-muted">
-                Comment
-              </h3>
+              <h3 className="mb-2 text-[11.5px] font-medium text-fg-muted">Comment</h3>
               <textarea
                 value={commentBody}
                 onChange={(event) => setCommentBody(event.target.value)}
@@ -495,7 +486,7 @@ function ExpandIcon() {
 }
 
 function describeBriefEvent(event: IssueHistoryEvent): string {
-  const actor = event.actor?.name ?? "Someone";
+  const actor = (event.actorProfile ?? event.actor)?.name ?? "Someone";
   if (!event.changes || event.changes.length === 0) {
     return `${actor} updated this issue · ${formatDate(event.createdAt)}`;
   }

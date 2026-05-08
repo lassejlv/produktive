@@ -19,6 +19,7 @@ pub async fn record_issue_event(
     organization_id: &str,
     issue_id: &str,
     actor_id: Option<&str>,
+    actor_oauth_client_id: Option<&str>,
     action: &str,
     changes: Vec<IssueChange>,
 ) -> Result<issue_event::Model, ApiError> {
@@ -29,6 +30,7 @@ pub async fn record_issue_event(
         organization_id: Set(organization_id.to_owned()),
         issue_id: Set(issue_id.to_owned()),
         actor_id: Set(actor_id.map(ToOwned::to_owned)),
+        actor_oauth_client_id: Set(actor_oauth_client_id.map(ToOwned::to_owned)),
         action: Set(action.to_owned()),
         changes: Set(serde_json::to_value(changes).map_err(|error| {
             ApiError::Internal(anyhow::anyhow!(

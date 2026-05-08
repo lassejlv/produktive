@@ -13,6 +13,7 @@ pub struct Model {
     pub status: String,
     pub priority: String,
     pub created_by_id: Option<String>,
+    pub created_by_oauth_client_id: Option<String>,
     pub assigned_to_id: Option<String>,
     pub parent_id: Option<String>,
     pub project_id: Option<String>,

@@ -979,6 +979,7 @@ async fn import_one_issue(
         status: Set(status.to_owned()),
         priority: Set("medium".to_owned()),
         created_by_id: Set(Some(auth.user.id.clone())),
+        created_by_oauth_client_id: Set(None),
         assigned_to_id: Set(None),
         parent_id: Set(None),
         project_id: Set(None),
@@ -994,6 +995,7 @@ async fn import_one_issue(
         &auth.organization.id,
         &issue.id,
         Some(&auth.user.id),
+        None,
         "created",
         vec![
             IssueChange {
@@ -1051,6 +1053,7 @@ async fn update_imported_issue(
             &auth.organization.id,
             &issue.id,
             Some(&auth.user.id),
+            None,
             "updated",
             changes,
         )
@@ -1115,6 +1118,7 @@ async fn find_or_create_label(
         description: Set(Some("Imported from GitHub".to_owned())),
         color: Set(color),
         created_by_id: Set(Some(auth.user.id.clone())),
+        created_by_oauth_client_id: Set(None),
         archived_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),

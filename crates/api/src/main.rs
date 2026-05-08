@@ -1,3 +1,4 @@
+mod actor_profiles;
 mod agent_tools;
 mod ai_models;
 mod auth;

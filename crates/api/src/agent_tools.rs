@@ -626,6 +626,7 @@ async fn create_issue(
         status: Set(optional_string(args.status, "backlog")?),
         priority: Set(optional_string(args.priority, "medium")?),
         created_by_id: Set(Some(auth.user.id.clone())),
+        created_by_oauth_client_id: Set(None),
         assigned_to_id: Set(assigned_to_id),
         parent_id: Set(None),
         project_id: Set(None),
@@ -677,6 +678,7 @@ async fn create_issue(
         &auth.organization.id,
         &issue.id,
         Some(&auth.user.id),
+        None,
         "created",
         changes.clone(),
     )
@@ -767,6 +769,7 @@ async fn update_issue(
             &auth.organization.id,
             &updated.id,
             Some(&auth.user.id),
+            None,
             "updated",
             changes,
         )

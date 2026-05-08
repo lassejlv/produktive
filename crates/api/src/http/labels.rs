@@ -1,4 +1,5 @@
 use crate::{
+    actor_profiles::{actor_profile_for_ids, ActorProfile},
     auth::require_auth,
     error::ApiError,
     permissions::{require_permission, LABELS_CREATE, LABELS_DELETE, LABELS_UPDATE},
@@ -36,6 +37,7 @@ pub(crate) struct LabelResponse {
     name: String,
     description: Option<String>,
     color: String,
+    created_by_profile: Option<ActorProfile>,
     archived_at: Option<String>,
     created_at: String,
     updated_at: String,
@@ -117,6 +119,7 @@ pub(crate) async fn create_label(
         description: Set(non_empty(payload.description)),
         color: Set(normalize_color(payload.color.as_deref())),
         created_by_id: Set(Some(auth.user.id.clone())),
+        created_by_oauth_client_id: Set(None),
         archived_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
@@ -258,11 +261,18 @@ pub(crate) async fn label_response(
         .filter(issue_label::Column::LabelId.eq(&row.id))
         .count(&state.db)
         .await?;
+    let created_by_profile = actor_profile_for_ids(
+        state,
+        row.created_by_oauth_client_id.as_deref(),
+        row.created_by_id.as_deref(),
+    )
+    .await?;
     Ok(LabelResponse {
         id: row.id,
         name: row.name,
         description: row.description,
         color: row.color,
+        created_by_profile,
         archived_at: row.archived_at.map(|d| d.to_rfc3339()),
         created_at: row.created_at.to_rfc3339(),
         updated_at: row.updated_at.to_rfc3339(),

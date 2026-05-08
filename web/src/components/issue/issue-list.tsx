@@ -8,11 +8,7 @@ import { ProjectIcon } from "@/components/project/project-icon";
 import { Avatar } from "@/components/issue/avatar";
 import { PriorityIcon } from "@/components/issue/priority-icon";
 import { StatusIcon } from "@/components/issue/status-icon";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { type Issue, type IssueStatus } from "@/lib/api";
 import { formatDate } from "@/lib/issue-constants";
 import {
@@ -72,9 +68,7 @@ export function IssueList({
   const workspaceSlug = useWorkspaceSlug();
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(
-    () => ({}),
-  );
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>(() => ({}));
   const [inlineCreatingKey, setInlineCreatingKey] = useState<string | null>(null);
   const [inlineDraft, setInlineDraft] = useState("");
   const [inlineSubmitting, setInlineSubmitting] = useState(false);
@@ -88,10 +82,7 @@ export function IssueList({
       const next = { ...current, [key]: !current[key] };
       if (typeof window !== "undefined") {
         try {
-          window.localStorage.setItem(
-            COLLAPSED_GROUPS_KEY,
-            JSON.stringify(next),
-          );
+          window.localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify(next));
         } catch {
           /* ignore */
         }
@@ -134,10 +125,7 @@ export function IssueList({
   const isCompact = displayOptions.density === "compact";
   const rowPadY = isCompact ? "py-1" : "py-1.5";
 
-  const handleDragStart = (
-    event: React.DragEvent<HTMLLIElement>,
-    issue: Issue,
-  ) => {
+  const handleDragStart = (event: React.DragEvent<HTMLLIElement>, issue: Issue) => {
     if (!onMoveToStatus) return;
     event.dataTransfer.setData(DRAG_MIME, issue.id);
     event.dataTransfer.setData("text/plain", issue.title);
@@ -173,13 +161,9 @@ export function IssueList({
     if (dropTarget === groupStatus) setDropTarget(null);
   };
 
-  const handleGroupDrop = (
-    event: React.DragEvent<HTMLDivElement>,
-    groupStatus: string | null,
-  ) => {
+  const handleGroupDrop = (event: React.DragEvent<HTMLDivElement>, groupStatus: string | null) => {
     if (!onMoveToStatus || !groupStatus) return;
-    const issueId =
-      event.dataTransfer.getData(DRAG_MIME) || draggingId || "";
+    const issueId = event.dataTransfer.getData(DRAG_MIME) || draggingId || "";
     setDraggingId(null);
     setDropTarget(null);
     if (!issueId) return;
@@ -208,9 +192,7 @@ export function IssueList({
             <div
               className={cn(
                 "sticky top-12 z-[5] flex items-center gap-2 border-b bg-bg/95 px-5 py-2 backdrop-blur transition-colors",
-                isDropping
-                  ? "border-accent/60 text-accent"
-                  : "border-border-subtle",
+                isDropping ? "border-accent/60 text-accent" : "border-border-subtle",
               )}
             >
               <button
@@ -222,17 +204,10 @@ export function IssueList({
                 <ChevronIcon collapsed={collapsed} />
               </button>
               {group.status ? <StatusIcon status={group.status} statuses={statuses} /> : null}
-              <span
-                className={cn(
-                  "text-xs font-medium",
-                  isDropping ? "text-accent" : "text-fg",
-                )}
-              >
+              <span className={cn("text-xs font-medium", isDropping ? "text-accent" : "text-fg")}>
                 {group.label}
               </span>
-              <span className="text-[11px] tabular-nums text-fg-muted">
-                {group.items.length}
-              </span>
+              <span className="text-[11px] tabular-nums text-fg-muted">{group.items.length}</span>
               {isDropping ? (
                 <span className="ml-auto text-[10.5px] uppercase tracking-[0.08em] text-accent">
                   Drop to move
@@ -278,8 +253,7 @@ export function IssueList({
                       onDragEnd={handleDragEnd}
                       className={cn(
                         "transition-all",
-                        isDragging &&
-                          "opacity-60 scale-[0.99] shadow-lg shadow-black/30",
+                        isDragging && "opacity-60 scale-[0.99] shadow-lg shadow-black/30",
                       )}
                     >
                       <div
@@ -296,8 +270,7 @@ export function IssueList({
                         className={cn(
                           "group/row relative flex w-full cursor-pointer items-center gap-3 border-b border-border-subtle px-5 text-left transition-colors hover:bg-surface/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent",
                           rowPadY,
-                          onMoveToStatus &&
-                            "cursor-grab active:cursor-grabbing",
+                          onMoveToStatus && "cursor-grab active:cursor-grabbing",
                           isSelected && "bg-surface",
                           isMultiSelected && "bg-accent/10",
                           (isFocused || isMultiSelected) &&
@@ -323,9 +296,7 @@ export function IssueList({
                         >
                           <CheckIcon />
                         </button>
-                        {properties.priority ? (
-                          <PriorityIcon priority={issue.priority} />
-                        ) : null}
+                        {properties.priority ? <PriorityIcon priority={issue.priority} /> : null}
                         {properties.id ? (
                           <span className="font-mono text-[11px] text-fg-muted w-16 shrink-0">
                             P-{issue.id.slice(0, 4).toUpperCase()}
@@ -351,11 +322,7 @@ export function IssueList({
                         {onToggleFavorite ? (
                           <button
                             type="button"
-                            aria-label={
-                              isFavorite?.(issue.id)
-                                ? "Unpin issue"
-                                : "Pin issue"
-                            }
+                            aria-label={isFavorite?.(issue.id) ? "Unpin issue" : "Pin issue"}
                             onClick={(event) => {
                               event.stopPropagation();
                               onToggleFavorite(issue.id);
@@ -367,10 +334,7 @@ export function IssueList({
                                 : "text-fg-faint opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-fg",
                             )}
                           >
-                            <StarIcon
-                              size={11}
-                              filled={Boolean(isFavorite?.(issue.id))}
-                            />
+                            <StarIcon size={11} filled={Boolean(isFavorite?.(issue.id))} />
                           </button>
                         ) : null}
                         {properties.project && issue.project ? (
@@ -392,9 +356,7 @@ export function IssueList({
                         {properties.labels && (issue.labels?.length ?? 0) > 0 ? (
                           <span
                             className="hidden items-center gap-1 sm:flex"
-                            title={(issue.labels ?? [])
-                              .map((l) => l.name)
-                              .join(", ")}
+                            title={(issue.labels ?? []).map((l) => l.name).join(", ")}
                           >
                             {(issue.labels ?? []).slice(0, 2).map((label) => (
                               <LabelChip
@@ -507,25 +469,17 @@ function MemberPopover({
           <div className="flex items-start gap-3">
             <Avatar name={member.name} image={member.image} />
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium text-fg">
-                {member.name}
-              </div>
-              <div className="mt-0.5 truncate text-[11px] text-fg-muted">
-                {member.email}
-              </div>
+              <div className="truncate text-sm font-medium text-fg">{member.name}</div>
+              <div className="mt-0.5 truncate text-[11px] text-fg-muted">{member.email}</div>
             </div>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <div className="rounded-md border border-border-subtle bg-surface px-2 py-1.5">
-              <div className="font-mono text-sm text-fg tabular-nums">
-                {stats.assigned}
-              </div>
+              <div className="font-mono text-sm text-fg tabular-nums">{stats.assigned}</div>
               <div className="text-[11px] text-fg-muted">Assigned</div>
             </div>
             <div className="rounded-md border border-border-subtle bg-surface px-2 py-1.5">
-              <div className="font-mono text-sm text-fg tabular-nums">
-                {stats.created}
-              </div>
+              <div className="font-mono text-sm text-fg tabular-nums">{stats.created}</div>
               <div className="text-[11px] text-fg-muted">Created</div>
             </div>
           </div>
@@ -571,12 +525,7 @@ function PlusIcon() {
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden
     >
-      <path
-        d="M6 2.5v7M2.5 6h7"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
+      <path d="M6 2.5v7M2.5 6h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   );
 }
@@ -658,15 +607,10 @@ function InlineCreateRow({
         event.preventDefault();
         onSubmit();
       }}
-      className={cn(
-        "flex w-full items-center gap-3 px-5 text-left",
-        rowPadY,
-      )}
+      className={cn("flex w-full items-center gap-3 px-5 text-left", rowPadY)}
     >
       <span className="size-3 shrink-0" aria-hidden />
-      <span className="font-mono text-[11px] text-fg-faint w-16 shrink-0">
-        new
-      </span>
+      <span className="font-mono text-[11px] text-fg-faint w-16 shrink-0">new</span>
       <StatusIcon status={status} statuses={statuses} />
       <input
         ref={inputRef}
@@ -690,9 +634,7 @@ function InlineCreateRow({
         disabled={!value.trim() || submitting}
         className={cn(
           "h-6 rounded-md px-2 text-[11px] transition-colors",
-          value.trim() && !submitting
-            ? "bg-fg text-bg hover:bg-white"
-            : "bg-surface text-fg-faint",
+          value.trim() && !submitting ? "bg-fg text-bg hover:bg-white" : "bg-surface text-fg-faint",
         )}
       >
         {submitting ? "Adding…" : "Add"}
@@ -706,7 +648,14 @@ function memberStats(issues: Issue[], memberId: string) {
   let created = 0;
   for (const issue of issues) {
     if (issue.assignedTo?.id === memberId) assigned += 1;
-    if (issue.createdBy?.id === memberId) created += 1;
+    const creator = issue.createdByProfile;
+    if (
+      creator
+        ? creator.kind === "user" && creator.id === memberId
+        : issue.createdBy?.id === memberId
+    ) {
+      created += 1;
+    }
   }
   return { assigned, created };
 }

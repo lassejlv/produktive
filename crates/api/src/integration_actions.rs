@@ -102,6 +102,7 @@ pub async fn create_issue_for_actor(
         status: Set(status),
         priority: Set(priority),
         created_by_id: Set(Some(actor_id.to_owned())),
+        created_by_oauth_client_id: Set(None),
         assigned_to_id: Set(None),
         parent_id: Set(None),
         project_id: Set(None),
@@ -117,6 +118,7 @@ pub async fn create_issue_for_actor(
         organization_id,
         &issue.id,
         Some(actor_id),
+        None,
         "created",
         vec![
             IssueChange {
@@ -200,6 +202,7 @@ pub async fn update_issue_for_actor(
         organization_id,
         &updated.id,
         Some(actor_id),
+        None,
         "updated",
         changes,
     )

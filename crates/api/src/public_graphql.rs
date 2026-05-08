@@ -228,6 +228,7 @@ impl MutationRoot {
             status: Set(status),
             priority: Set(non_empty(input.priority).unwrap_or_else(|| "medium".to_owned())),
             created_by_id: Set(Some(actor_id.clone())),
+            created_by_oauth_client_id: Set(None),
             assigned_to_id: Set(assigned_to_id.clone()),
             parent_id: Set(parent_id),
             project_id: Set(project_id),
@@ -248,6 +249,7 @@ impl MutationRoot {
             &organization_id,
             &row.id,
             Some(&actor_id),
+            None,
             "created",
             vec![
                 IssueChange {
@@ -422,6 +424,7 @@ impl MutationRoot {
                 &organization_id,
                 &updated.id,
                 Some(&auth.user.id),
+                None,
                 "updated",
                 changes,
             )
@@ -499,6 +502,7 @@ impl MutationRoot {
             description: Set(non_empty(input.description)),
             color: Set(normalize_color(input.color.as_deref(), "gray")),
             created_by_id: Set(Some(auth.user.id.clone())),
+            created_by_oauth_client_id: Set(None),
             archived_at: Set(None),
             created_at: Set(now),
             updated_at: Set(now),
@@ -639,6 +643,7 @@ impl MutationRoot {
             target_date: Set(target_date),
             sort_order: Set(next_order),
             created_by_id: Set(Some(auth.user.id.clone())),
+            created_by_oauth_client_id: Set(None),
             archived_at: Set(None),
             created_at: Set(now),
             updated_at: Set(now),

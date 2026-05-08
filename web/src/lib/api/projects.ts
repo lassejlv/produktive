@@ -6,6 +6,7 @@ import {
   UpdateProjectDocument,
 } from "@/gql/graphql";
 import { graphqlRequest, unwrapGraphQLJson } from "@/lib/graphql/client";
+import type { ActorProfile } from "./actor-profile";
 
 export type ProjectSummary = {
   id: string;
@@ -37,6 +38,7 @@ export type Project = {
   icon: string | null;
   leadId: string | null;
   lead: ProjectLead | null;
+  createdByProfile?: ActorProfile | null;
   targetDate: string | null;
   sortOrder: number;
   archivedAt: string | null;
