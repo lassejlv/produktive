@@ -16,6 +16,7 @@ import {
   listSupportTickets,
   replyToSupportTicket,
   retrySupportMessage,
+  resetAdminOrganizationAiUsage,
   suspendAdminOrganization,
   suspendAdminUser,
   updateSupportTicket,
@@ -214,6 +215,18 @@ function AdminDashboard() {
     },
   });
 
+  const resetAiUsageMutation = useMutation({
+    mutationFn: (input: { organizationId: string; scope: "weekly" | "all" }) =>
+      resetAdminOrganizationAiUsage(input.organizationId, input.scope),
+    onSuccess: async (_, variables) => {
+      await invalidateAdmin();
+      toast.success(variables.scope === "weekly" ? "Weekly AI usage reset" : "AI usage reset");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "AI usage reset failed");
+    },
+  });
+
   if (admin.isLoading) {
     return <AdminShellState title="Admin" message="Checking operator access..." />;
   }
@@ -338,7 +351,11 @@ function AdminDashboard() {
           </nav>
 
           <div className="flex items-center gap-[10px] border-t border-border-subtle p-3">
-            <Avatar name={adminData.user.name || adminData.user.email} seed={adminData.user.id} size={28} />
+            <Avatar
+              name={adminData.user.name || adminData.user.email}
+              seed={adminData.user.id}
+              size={28}
+            />
             <div className="min-w-0 flex-1">
               <p className="truncate text-[12px] font-medium text-fg">
                 {adminData.user.name || adminData.user.email}
@@ -429,6 +446,10 @@ function AdminDashboard() {
               onStatus={setOrgStatus}
               onSelect={setSelectedOrgId}
               onSuspend={setSuspensionTarget}
+              onResetAiUsage={(organizationId, scope) =>
+                resetAiUsageMutation.mutate({ organizationId, scope })
+              }
+              resetAiUsageBusy={resetAiUsageMutation.isPending}
             />
           ) : null}
           {section === "audit" ? (
@@ -536,9 +557,7 @@ function NavItem({
         <span
           className={cn(
             "rounded-[3px] px-[6px] py-px font-mono text-[10px]",
-            active
-              ? "border border-border-subtle bg-bg text-fg-muted"
-              : "text-fg-faint",
+            active ? "border border-border-subtle bg-bg text-fg-muted" : "text-fg-faint",
           )}
         >
           {fmtCount(count)}
@@ -649,8 +668,8 @@ function Overview({
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-mono text-[11px] text-fg">{event.action}</p>
                   <p className="truncate text-[11.5px] text-fg-muted">
-                    <span className="text-fg-faint">{event.actor.email} →</span>{" "}
-                    {event.targetType}:{event.targetId}
+                    <span className="text-fg-faint">{event.actor.email} →</span> {event.targetType}:
+                    {event.targetId}
                   </p>
                 </div>
                 <span className="flex-shrink-0 font-mono text-[10px] text-fg-faint">
@@ -849,9 +868,7 @@ function UserDetailPanel({
         </div>
 
         <div>
-          <p className="mb-2 text-[10px] uppercase tracking-[0.08em] text-fg-faint">
-            Memberships
-          </p>
+          <p className="mb-2 text-[10px] uppercase tracking-[0.08em] text-fg-faint">Memberships</p>
           <div className="flex flex-col gap-1">
             {detail.memberships.slice(0, 6).map((membership) => (
               <div
@@ -898,6 +915,8 @@ function OrganizationsView({
   onStatus,
   onSelect,
   onSuspend,
+  onResetAiUsage,
+  resetAiUsageBusy,
 }: {
   organizations: AdminOrganizationSummary[];
   pageTotal: number;
@@ -910,6 +929,8 @@ function OrganizationsView({
   onStatus: (value: string) => void;
   onSelect: (value: string) => void;
   onSuspend: (target: SuspensionTarget) => void;
+  onResetAiUsage: (organizationId: string, scope: "weekly" | "all") => void;
+  resetAiUsageBusy: boolean;
 }) {
   return (
     <div className="grid h-full grid-cols-[minmax(0,1fr)_360px] gap-3">
@@ -1000,7 +1021,12 @@ function OrganizationsView({
         </div>
       </Panel>
 
-      <OrgDetailPanel detail={detail} onSuspend={onSuspend} />
+      <OrgDetailPanel
+        detail={detail}
+        onSuspend={onSuspend}
+        onResetAiUsage={onResetAiUsage}
+        resetAiUsageBusy={resetAiUsageBusy}
+      />
     </div>
   );
 }
@@ -1008,9 +1034,13 @@ function OrganizationsView({
 function OrgDetailPanel({
   detail,
   onSuspend,
+  onResetAiUsage,
+  resetAiUsageBusy,
 }: {
   detail: Awaited<ReturnType<typeof getAdminOrganization>> | undefined;
   onSuspend: (target: SuspensionTarget) => void;
+  onResetAiUsage: (organizationId: string, scope: "weekly" | "all") => void;
+  resetAiUsageBusy: boolean;
 }) {
   if (!detail) {
     return (
@@ -1081,6 +1111,29 @@ function OrgDetailPanel({
             }
           >
             {org.suspendedAt ? "Unsuspend" : "Suspend"}
+          </Btn>
+          <Btn
+            size="sm"
+            onClick={() => {
+              if (window.confirm(`Reset weekly AI usage for ${org.name}?`)) {
+                onResetAiUsage(org.id, "weekly");
+              }
+            }}
+            disabled={resetAiUsageBusy}
+          >
+            Reset AI week
+          </Btn>
+          <Btn
+            size="sm"
+            kind="danger"
+            onClick={() => {
+              if (window.confirm(`Reset weekly and monthly AI usage for ${org.name}?`)) {
+                onResetAiUsage(org.id, "all");
+              }
+            }}
+            disabled={resetAiUsageBusy}
+          >
+            Reset AI limits
           </Btn>
         </div>
 
@@ -1164,15 +1217,17 @@ function AuditView({
               <tr key={event.id} className="border-b border-border-subtle">
                 <td className="px-[14px] py-[11px]">
                   <span className="inline-flex items-center gap-2 font-mono text-[12px] text-fg">
-                    <span
-                      className={cn("h-[6px] w-[6px] rounded-full", actionDot(event.action))}
-                    />
+                    <span className={cn("h-[6px] w-[6px] rounded-full", actionDot(event.action))} />
                     {event.action}
                   </span>
                 </td>
                 <td className="px-[14px] py-[11px]">
                   <div className="flex items-center gap-2">
-                    <Avatar name={event.actor.name || event.actor.email} seed={event.actor.id} size={22} />
+                    <Avatar
+                      name={event.actor.name || event.actor.email}
+                      seed={event.actor.id}
+                      size={22}
+                    />
                     <div className="min-w-0">
                       <p className="truncate text-[12.5px] text-fg">{event.actor.name}</p>
                       <p className="truncate font-mono text-[10.5px] text-fg-faint">
@@ -1304,15 +1359,11 @@ function SupportView({
               </div>
               <p className="mb-[2px] truncate text-[13px] font-medium text-fg">{ticket.subject}</p>
               <p className="truncate text-[11.5px] text-fg-muted">
-                <span className="text-fg-faint">
-                  {ticket.customerName ?? ticket.customerEmail}
-                </span>
+                <span className="text-fg-faint">{ticket.customerName ?? ticket.customerEmail}</span>
               </p>
             </button>
           ))}
-          {isLoading ? (
-            <p className="p-4 text-[12px] text-fg-faint">Loading tickets...</p>
-          ) : null}
+          {isLoading ? <p className="p-4 text-[12px] text-fg-faint">Loading tickets...</p> : null}
           {!isLoading && tickets.length === 0 ? (
             <p className="p-4 text-[12px] text-fg-faint">No tickets match these filters.</p>
           ) : null}
@@ -1327,9 +1378,7 @@ function SupportView({
             <div className="flex gap-[6px]">
               <Btn
                 size="sm"
-                onClick={() =>
-                  onUpdate({ status: ticket.status === "closed" ? "open" : "closed" })
-                }
+                onClick={() => onUpdate({ status: ticket.status === "closed" ? "open" : "closed" })}
                 disabled={updateBusy}
               >
                 {ticket.status === "closed" ? "Reopen" : "Close"}
@@ -1378,7 +1427,9 @@ function SupportView({
                           outbound ? "text-accent" : "text-fg",
                         )}
                       >
-                        {outbound ? "Produktive Support" : ticket.customerName ?? message.fromEmail}
+                        {outbound
+                          ? "Produktive Support"
+                          : (ticket.customerName ?? message.fromEmail)}
                       </span>
                       <span className="font-mono text-[10px] text-fg-faint">
                         {longDate(message.createdAt)}
@@ -1588,7 +1639,10 @@ function ComposeSupportDialog({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4">
-      <form onSubmit={submit} className="w-full max-w-xl rounded-[8px] border border-border bg-bg p-5 shadow-2xl">
+      <form
+        onSubmit={submit}
+        className="w-full max-w-xl rounded-[8px] border border-border bg-bg p-5 shadow-2xl"
+      >
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
           Produktive Support
         </p>
@@ -1690,7 +1744,10 @@ function SuspensionDialog({
   };
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4">
-      <form onSubmit={submit} className="w-full max-w-md rounded-[8px] border border-border bg-bg p-5 shadow-2xl">
+      <form
+        onSubmit={submit}
+        className="w-full max-w-md rounded-[8px] border border-border bg-bg p-5 shadow-2xl"
+      >
         <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-danger">
           {target.suspended ? "Restore access" : "Suspend access"}
         </p>
@@ -1759,9 +1816,7 @@ function Panel({
       <div className="flex h-11 flex-shrink-0 items-center justify-between border-b border-border-subtle pl-4 pr-[14px]">
         <div className="flex min-w-0 items-baseline gap-[10px]">
           <h3 className="m-0 text-[13px] font-semibold tracking-tight text-fg">{title}</h3>
-          {meta ? (
-            <span className="font-mono text-[10.5px] text-fg-faint">{meta}</span>
-          ) : null}
+          {meta ? <span className="font-mono text-[10.5px] text-fg-faint">{meta}</span> : null}
         </div>
         {action}
       </div>
@@ -1804,10 +1859,7 @@ function Kpi({
         <span className="text-[11px] uppercase tracking-[0.06em] text-fg-muted">{label}</span>
         {delta != null ? (
           <span
-            className={cn(
-              "font-mono text-[11px]",
-              delta >= 0 ? "text-success" : "text-danger",
-            )}
+            className={cn("font-mono text-[11px]", delta >= 0 ? "text-success" : "text-danger")}
           >
             {delta >= 0 ? "▲" : "▼"} {Math.abs(delta).toFixed(1)}%
           </span>
@@ -2081,12 +2133,7 @@ function Stat({
   return (
     <div className="rounded-[6px] border border-border-subtle bg-bg px-[10px] py-2">
       <p className="mb-[3px] text-[10px] uppercase tracking-[0.08em] text-fg-faint">{label}</p>
-      <p
-        className={cn(
-          "m-0 text-[14px] font-medium text-fg",
-          mono && "font-mono",
-        )}
-      >
+      <p className={cn("m-0 text-[14px] font-medium text-fg", mono && "font-mono")}>
         {value == null || value === "" ? "—" : value}
       </p>
     </div>
@@ -2154,15 +2201,7 @@ function OrgGlyph({ name, size = 28 }: { name: string; size?: number }) {
   );
 }
 
-function Avatar({
-  name,
-  seed,
-  size = 28,
-}: {
-  name: string;
-  seed?: string;
-  size?: number;
-}) {
+function Avatar({ name, seed, size = 28 }: { name: string; seed?: string; size?: number }) {
   const hues = [12, 32, 52, 196, 220, 268, 320];
   const key = (seed || name || "").split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
   const hue = hues[key % hues.length];
@@ -2196,21 +2235,12 @@ function ActivityRow({ event }: { event: ActivityEvent }) {
       <span className="min-w-0 flex-1 truncate text-fg-faint">
         {event.issueTitle ?? event.issueId}
       </span>
-      <span className="font-mono text-[10px] text-fg-faint">
-        {relativeShort(event.createdAt)}
-      </span>
+      <span className="font-mono text-[10px] text-fg-faint">{relativeShort(event.createdAt)}</span>
     </div>
   );
 }
 
-type IconName =
-  | "grid"
-  | "users"
-  | "building"
-  | "inbox"
-  | "shield"
-  | "search"
-  | "logout";
+type IconName = "grid" | "users" | "building" | "inbox" | "shield" | "search" | "logout";
 
 function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
   const props = {

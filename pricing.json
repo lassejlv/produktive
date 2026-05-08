@@ -27,8 +27,8 @@
       "ai": {
         "usageLimit": "light monthly usage",
         "resetInterval": "monthly",
-        "models": ["fast-basic"],
-        "modelAccess": "Basic model access for lightweight chat, drafting, and simple agent runs.",
+        "models": ["gpt-5.4-mini"],
+        "modelAccess": "Basic model access for lightweight chat, drafting, and simple agent runs. GPT-5.5 and GPT-5.4 are not available on Free.",
         "includedFeatures": ["AI chat", "issue draft"],
         "excludedFeatures": ["better models", "pro reasoning models", "high-volume agent work"]
       },
@@ -76,7 +76,7 @@
       "ai": {
         "usageLimit": "high monthly usage",
         "resetInterval": "monthly",
-        "models": ["fast-basic", "standard", "better-reasoning", "better-coding"],
+        "models": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"],
         "modelAccess": "Better models for agentic work, coding support, project health, and knowledge workflows.",
         "includedFeatures": [
           "AI chat",
@@ -132,7 +132,7 @@
       "ai": {
         "usageLimit": "high monthly usage per paid user",
         "resetInterval": "monthly",
-        "models": ["fast-basic", "standard", "better-reasoning", "better-coding"],
+        "models": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"],
         "modelAccess": "Same better models as Pro, with higher reliability and the highest included agent capacity.",
         "includedFeatures": [
           "AI chat",

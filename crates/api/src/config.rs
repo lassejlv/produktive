@@ -118,8 +118,8 @@ impl Config {
             support_email_worker_url: optional_env("SUPPORT_EMAIL_WORKER_URL"),
             support_email_fallback_forward: optional_env("SUPPORT_EMAIL_FALLBACK_FORWARD"),
             ai_api_key: required_env("AI_API_KEY").context("AI_API_KEY is required")?,
-            ai_base_url: env_or_default("AI_BASE_URL", "https://ollama.com/v1"),
-            ai_model: env_or_default("AI_MODEL", "glm-5.1"),
+            ai_base_url: env_or_default("AI_BASE_URL", "https://api.openai.com/v1"),
+            ai_model: env_or_default("AI_MODEL", "gpt-5.4-mini"),
             unkey_root_key: required_env("UNKEY_ROOT_KEY").context("UNKEY_ROOT_KEY is required")?,
             unkey_api_id: required_env("UNKEY_API_ID").context("UNKEY_API_ID is required")?,
             unkey_base_url: optional_env("UNKEY_BASE_URL"),
@@ -176,6 +176,10 @@ impl Config {
 
     pub fn is_production_like(&self) -> bool {
         is_production_like_url_or_env(&self.app_url)
+    }
+
+    pub fn is_local_development(&self) -> bool {
+        !self.is_production_like() && is_local_app_url(&self.app_url)
     }
 }
 

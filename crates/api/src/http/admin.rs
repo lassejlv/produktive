@@ -1,4 +1,5 @@
 use crate::{
+    ai_usage::{self, AiPlan},
     auth::require_platform_admin,
     email::{send_organization_suspended_email, send_user_suspended_email},
     error::ApiError,
@@ -35,6 +36,8 @@ pub fn routes() -> Router<AppState> {
         .route("/users/{id}/unsuspend", post(unsuspend_user))
         .route("/organizations", get(list_organizations))
         .route("/organizations/{id}", get(get_organization))
+        .route("/organizations/{id}/ai-plan", post(update_ai_plan))
+        .route("/organizations/{id}/ai-usage/reset", post(reset_ai_usage))
         .route("/organizations/{id}/suspend", post(suspend_organization))
         .route(
             "/organizations/{id}/unsuspend",
@@ -364,9 +367,16 @@ struct AdminOrganizationSummary {
     owner_count: u64,
     issue_count: u64,
     project_count: u64,
+    ai_plan: String,
     suspended_at: Option<String>,
     suspension_reason: Option<String>,
     created_at: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateAiPlanRequest {
+    plan: String,
 }
 
 async fn list_organizations(
@@ -470,6 +480,62 @@ async fn get_organization(
         activity_events,
         audit_events,
     }))
+}
+
+async fn update_ai_plan(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(payload): Json<UpdateAiPlanRequest>,
+) -> Result<Json<AdminOrganizationSummary>, ApiError> {
+    require_platform_admin(&headers, &state).await?;
+    let plan = match payload.plan.as_str() {
+        "free" => AiPlan::Free,
+        "pro" => AiPlan::Pro,
+        "business" => AiPlan::Business,
+        _ => return Err(ApiError::BadRequest("Unsupported AI plan".to_owned())),
+    };
+    let row = ai_usage::update_plan(&state, &id, plan).await?;
+    organization_summary(&state, row).await.map(Json)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ResetAiUsageRequest {
+    scope: String,
+}
+
+async fn reset_ai_usage(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(payload): Json<ResetAiUsageRequest>,
+) -> Result<StatusCode, ApiError> {
+    let admin = require_platform_admin(&headers, &state).await?;
+    let scope = match payload.scope.as_str() {
+        "weekly" => ai_usage::AiUsageResetScope::Weekly,
+        "all" => ai_usage::AiUsageResetScope::All,
+        _ => {
+            return Err(ApiError::BadRequest(
+                "Unsupported AI usage reset scope".to_owned(),
+            ))
+        }
+    };
+    let deleted = ai_usage::reset_usage(&state, &id, scope).await?;
+    audit(
+        &state,
+        &admin.user.id,
+        "organization.ai_usage.reset",
+        "organization",
+        &id,
+        None,
+        json!({
+            "scope": payload.scope,
+            "deleted": deleted.rows_affected,
+        }),
+    )
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -835,6 +901,7 @@ async fn organization_summary(
         owner_count,
         issue_count,
         project_count,
+        ai_plan: row.ai_plan,
         suspended_at: row.suspended_at.map(|value| value.to_rfc3339()),
         suspension_reason: row.suspension_reason,
         created_at: row.created_at.to_rfc3339(),

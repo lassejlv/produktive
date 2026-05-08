@@ -1,4 +1,11 @@
-use crate::{ai_models::AI_MODELS, auth::require_auth, error::ApiError, state::AppState};
+use crate::{
+    ai_models::AI_MODELS,
+    ai_usage::{self, AiCompletionRequest},
+    auth::require_auth,
+    error::ApiError,
+    permissions::{require_permission, BILLING_MANAGE},
+    state::AppState,
+};
 use axum::{
     extract::{Path, State},
     http::HeaderMap,
@@ -20,6 +27,7 @@ const MAX_PROJECT_COMMENTS: u64 = 12;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/models", get(list_models))
+        .route("/usage", get(get_usage))
         .route("/workspace-brief", post(generate_workspace_brief))
         .route(
             "/projects/{project_id}/health",
@@ -33,7 +41,12 @@ pub fn routes() -> Router<AppState> {
 struct ModelEntry {
     id: &'static str,
     name: &'static str,
+    provider: &'static str,
+    input_usd_per_million: f64,
+    cached_input_usd_per_million: f64,
+    output_usd_per_million: f64,
     is_default: bool,
+    is_available: bool,
 }
 
 #[derive(Serialize)]
@@ -74,19 +87,36 @@ async fn list_models(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<ModelsResponse>, ApiError> {
-    require_auth(&headers, &state).await?;
+    let auth = require_auth(&headers, &state).await?;
 
     let default_id = state.config.ai_model.clone();
+    let plan = ai_usage::AiPlan::from_str(&auth.organization.ai_plan);
     let models = AI_MODELS
         .iter()
         .map(|model| ModelEntry {
             id: model.id,
             name: model.name,
+            provider: model.provider,
+            input_usd_per_million: model.input_usd_per_million,
+            cached_input_usd_per_million: model.cached_input_usd_per_million,
+            output_usd_per_million: model.output_usd_per_million,
             is_default: model.id == default_id,
+            is_available: plan.can_use_model(model.id),
         })
         .collect();
 
     Ok(Json(ModelsResponse { models, default_id }))
+}
+
+async fn get_usage(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<ai_usage::AiUsageStatus>, ApiError> {
+    let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, BILLING_MANAGE).await?;
+    ai_usage::usage_status(&state, &auth.organization.id)
+        .await
+        .map(Json)
 }
 
 async fn generate_workspace_brief(
@@ -99,7 +129,15 @@ async fn generate_workspace_brief(
         "Generate an operational brief for the current Produktive workspace.\n\n{}",
         context
     );
-    let mut response = generate_brief(&state, workspace_brief_system_prompt(), prompt).await?;
+    let mut response = generate_brief(
+        &state,
+        &auth.organization.id,
+        &auth.user.id,
+        "workspace_brief",
+        workspace_brief_system_prompt(),
+        prompt,
+    )
+    .await?;
     response.status_update = None;
     Ok(Json(response))
 }
@@ -121,9 +159,16 @@ async fn generate_project_health(
         "Generate a health summary for this Produktive project.\n\n{}",
         context
     );
-    generate_brief(&state, project_health_system_prompt(), prompt)
-        .await
-        .map(Json)
+    generate_brief(
+        &state,
+        &auth.organization.id,
+        &auth.user.id,
+        "project_health",
+        project_health_system_prompt(),
+        prompt,
+    )
+    .await
+    .map(Json)
 }
 
 async fn generate_issue_draft(
@@ -149,16 +194,22 @@ async fn generate_issue_draft(
     })
     .to_string();
 
-    let result = state
-        .ai
-        .complete(
-            &state.config.ai_model,
-            issue_draft_system_prompt(),
-            &[AiMessage::user(prompt)],
-            &[],
-        )
-        .await
-        .map_err(|error| ApiError::Internal(anyhow::anyhow!("AI request failed: {error}")))?;
+    let messages = vec![AiMessage::user(prompt)];
+    let result = ai_usage::complete(
+        &state,
+        AiCompletionRequest {
+            organization_id: &auth.organization.id,
+            user_id: Some(&auth.user.id),
+            requested_model_id: &state.config.ai_model,
+            source: "issue_draft",
+            system_prompt: issue_draft_system_prompt(),
+            messages: &messages,
+            tools: &[],
+            reasoning_effort: None,
+        },
+    )
+    .await?
+    .result;
 
     let text = match result {
         CompletionResult::Text { text, .. } => text,
@@ -174,19 +225,28 @@ async fn generate_issue_draft(
 
 async fn generate_brief(
     state: &AppState,
+    organization_id: &str,
+    user_id: &str,
+    source: &str,
     system_prompt: &str,
     user_prompt: String,
 ) -> Result<AiBriefResponse, ApiError> {
-    let result = state
-        .ai
-        .complete(
-            &state.config.ai_model,
+    let messages = vec![AiMessage::user(user_prompt)];
+    let result = ai_usage::complete(
+        state,
+        AiCompletionRequest {
+            organization_id,
+            user_id: Some(user_id),
+            requested_model_id: &state.config.ai_model,
+            source,
             system_prompt,
-            &[AiMessage::user(user_prompt)],
-            &[],
-        )
-        .await
-        .map_err(|error| ApiError::Internal(anyhow::anyhow!("AI request failed: {error}")))?;
+            messages: &messages,
+            tools: &[],
+            reasoning_effort: None,
+        },
+    )
+    .await?
+    .result;
 
     let text = match result {
         CompletionResult::Text { text, .. } => text,

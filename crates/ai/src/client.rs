@@ -28,7 +28,7 @@ impl AiClient {
 
         Ok(Self {
             http,
-            base_url: base_url.trim_end_matches('/').to_owned(),
+            base_url: self::responses_base_url(base_url),
         })
     }
 
@@ -38,24 +38,37 @@ impl AiClient {
         system_prompt: &str,
         messages: &[Message],
         tools: &[Tool],
+        reasoning_effort: Option<&str>,
     ) -> Result<CompletionResult, AiError> {
-        let mut wire_messages: Vec<Value> = Vec::with_capacity(messages.len() + 1);
-        wire_messages.push(json!({ "role": "system", "content": system_prompt }));
-        for message in messages {
-            wire_messages.push(message_to_wire(message));
-        }
+        let input = messages
+            .iter()
+            .flat_map(message_to_response_items)
+            .collect::<Vec<_>>();
 
         let mut body = json!({
             "model": model,
-            "messages": wire_messages,
+            "instructions": system_prompt,
+            "input": input,
         });
 
         if !tools.is_empty() {
-            body["tools"] = json!(tools_to_wire(tools));
+            body["tools"] = json!(tools_to_response_wire(tools));
             body["tool_choice"] = json!("auto");
         }
 
-        let url = format!("{}/chat/completions", self.base_url);
+        body["reasoning"] = json!({ "summary": "auto" });
+
+        if let Some(reasoning_effort) = reasoning_effort
+            .map(str::trim)
+            .filter(|value| matches!(*value, "low" | "medium" | "high" | "xhigh"))
+        {
+            body["reasoning"] = json!({
+                "effort": reasoning_effort,
+                "summary": "auto",
+            });
+        }
+
+        let url = format!("{}/responses", self.base_url);
         let response = self.http.post(&url).json(&body).send().await?;
         let status = response.status();
         let raw = response.text().await?;
@@ -68,113 +81,175 @@ impl AiClient {
             });
         }
 
-        let parsed: ChatCompletionResponse = serde_json::from_str(&raw)?;
-        let usage = parsed.usage;
-        let first = parsed
-            .choices
-            .into_iter()
-            .next()
-            .ok_or(AiError::EmptyChoices)?;
-
-        if let Some(calls) = first.message.tool_calls {
-            if !calls.is_empty() {
-                let mapped = calls
-                    .into_iter()
-                    .map(|c| ToolCall {
-                        id: c.id,
-                        name: c.function.name,
-                        arguments: c.function.arguments,
-                    })
-                    .collect();
-                return Ok(CompletionResult::ToolCalls {
-                    calls: mapped,
-                    reasoning_content: first.message.reasoning_content,
-                    usage,
-                });
-            }
-        }
-
-        Ok(CompletionResult::Text {
-            text: first.message.content.unwrap_or_default(),
-            usage,
-        })
+        let parsed: ResponsesResponse = serde_json::from_str(&raw)?;
+        response_to_completion(parsed)
     }
 }
 
-fn message_to_wire(message: &Message) -> Value {
+fn responses_base_url(base_url: &str) -> String {
+    base_url
+        .trim_end_matches('/')
+        .strip_suffix("/chat/completions")
+        .unwrap_or_else(|| base_url.trim_end_matches('/'))
+        .trim_end_matches('/')
+        .to_owned()
+}
+
+fn message_to_response_items(message: &Message) -> Vec<Value> {
     match message.role {
-        Role::System => json!({ "role": "system", "content": message.content }),
-        Role::User => json!({ "role": "user", "content": message.content }),
+        Role::System => Vec::new(),
+        Role::User => vec![json!({ "role": "user", "content": message.content })],
         Role::Assistant => {
             if message.tool_calls.is_empty() {
-                json!({ "role": "assistant", "content": message.content })
+                vec![json!({ "role": "assistant", "content": message.content })]
             } else {
-                let calls: Vec<Value> = message
+                message
                     .tool_calls
                     .iter()
-                    .map(|c| {
+                    .map(|call| {
                         json!({
-                            "id": c.id,
-                            "type": "function",
-                            "function": {
-                                "name": c.name,
-                                "arguments": c.arguments,
-                            }
+                            "type": "function_call",
+                            "call_id": call.id,
+                            "name": call.name,
+                            "arguments": call.arguments,
                         })
                     })
-                    .collect();
-                json!({
-                    "role": "assistant",
-                    "content": message.content,
-                    "reasoning_content": message.reasoning_content.as_deref().unwrap_or(""),
-                    "tool_calls": calls,
-                })
+                    .collect()
             }
         }
-        Role::Tool => json!({
-            "role": "tool",
-            "tool_call_id": message.tool_call_id.clone().unwrap_or_default(),
-            "content": message.content,
-        }),
+        Role::Tool => vec![json!({
+            "type": "function_call_output",
+            "call_id": message.tool_call_id.clone().unwrap_or_default(),
+            "output": message.content,
+        })],
     }
 }
 
-fn tools_to_wire(tools: &[Tool]) -> Vec<Value> {
+fn tools_to_response_wire(tools: &[Tool]) -> Vec<Value> {
     tools
         .iter()
         .map(|tool| {
             json!({
                 "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.parameters,
-                }
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters,
             })
         })
         .collect()
 }
 
+fn response_to_completion(response: ResponsesResponse) -> Result<CompletionResult, AiError> {
+    let mut text_parts = Vec::new();
+    let mut calls = Vec::new();
+    let mut reasoning_parts = Vec::new();
+
+    for item in response.output {
+        match item {
+            ResponseOutputItem::Message { content, .. } => {
+                for part in content {
+                    if let Some(text) = part.text {
+                        text_parts.push(text);
+                    }
+                }
+            }
+            ResponseOutputItem::FunctionCall {
+                call_id,
+                name,
+                arguments,
+                ..
+            } => calls.push(ToolCall {
+                id: call_id,
+                name,
+                arguments,
+            }),
+            ResponseOutputItem::Reasoning {
+                summary, content, ..
+            } => {
+                for part in summary.into_iter().chain(content) {
+                    if let Some(text) = part.text {
+                        reasoning_parts.push(text);
+                    }
+                }
+            }
+            ResponseOutputItem::Other => {}
+        }
+    }
+
+    if !calls.is_empty() {
+        return Ok(CompletionResult::ToolCalls {
+            calls,
+            reasoning_content: join_text(reasoning_parts),
+            usage: response.usage,
+        });
+    }
+
+    let text = text_parts.join("");
+    if !text.is_empty() {
+        return Ok(CompletionResult::Text {
+            text,
+            reasoning_content: join_text(reasoning_parts),
+            usage: response.usage,
+        });
+    }
+
+    Err(AiError::EmptyOutput)
+}
+
+fn join_text(parts: Vec<String>) -> Option<String> {
+    let joined = parts
+        .into_iter()
+        .map(|part| part.trim().to_owned())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    (!joined.is_empty()).then_some(joined)
+}
+
 #[derive(Deserialize)]
-struct ChatCompletionResponse {
-    choices: Vec<ChatChoice>,
+struct ResponsesResponse {
+    #[serde(default)]
+    output: Vec<ResponseOutputItem>,
     #[serde(default)]
     usage: Option<Usage>,
 }
 
 #[derive(Deserialize)]
-struct ChatChoice {
-    message: ChatChoiceMessage,
+#[serde(tag = "type")]
+enum ResponseOutputItem {
+    #[serde(rename = "message")]
+    Message {
+        #[allow(dead_code)]
+        role: Option<String>,
+        #[serde(default)]
+        content: Vec<ResponseContentPart>,
+    },
+    #[serde(rename = "function_call")]
+    FunctionCall {
+        #[allow(dead_code)]
+        id: Option<String>,
+        call_id: String,
+        name: String,
+        arguments: String,
+    },
+    #[serde(rename = "reasoning")]
+    Reasoning {
+        #[serde(default)]
+        summary: Vec<ResponseContentPart>,
+        #[serde(default)]
+        content: Vec<ResponseContentPart>,
+    },
+    #[serde(other)]
+    Other,
 }
 
 #[derive(Deserialize)]
-struct ChatChoiceMessage {
-    content: Option<String>,
+struct ResponseContentPart {
+    #[allow(dead_code)]
+    #[serde(rename = "type", default)]
+    kind: Option<String>,
     #[serde(default)]
-    #[serde(alias = "reasoning")]
-    reasoning_content: Option<String>,
-    #[serde(default)]
-    tool_calls: Option<Vec<ChatToolCall>>,
+    text: Option<String>,
 }
 
 #[cfg(test)]
@@ -182,101 +257,105 @@ mod tests {
     use super::*;
 
     #[test]
-    fn assistant_tool_call_messages_include_reasoning_content() {
-        let message = Message::assistant_tool_calls_with_reasoning(
-            vec![ToolCall {
-                id: "call_1".to_owned(),
-                name: "list_issues".to_owned(),
-                arguments: "{}".to_owned(),
-            }],
-            Some("Need to inspect current issues.".to_owned()),
-        );
-
-        let wire = message_to_wire(&message);
-
-        assert_eq!(wire["role"], "assistant");
-        assert_eq!(wire["reasoning_content"], "Need to inspect current issues.");
-        assert!(wire["tool_calls"].is_array());
-    }
-
-    #[test]
-    fn legacy_assistant_tool_call_messages_include_empty_reasoning_content() {
+    fn response_input_maps_assistant_tool_calls_to_function_calls() {
         let message = Message::assistant_tool_calls(vec![ToolCall {
             id: "call_1".to_owned(),
             name: "list_issues".to_owned(),
             arguments: "{}".to_owned(),
         }]);
 
-        let wire = message_to_wire(&message);
+        let wire = message_to_response_items(&message);
 
-        assert_eq!(wire["reasoning_content"], "");
+        assert_eq!(wire[0]["type"], "function_call");
+        assert_eq!(wire[0]["call_id"], "call_1");
+        assert_eq!(wire[0]["name"], "list_issues");
+        assert_eq!(wire[0]["arguments"], "{}");
     }
 
     #[test]
-    fn chat_response_decodes_tool_call_reasoning_content() {
-        let parsed: ChatCompletionResponse = serde_json::from_value(json!({
-            "choices": [{
-                "message": {
-                    "content": null,
-                    "reasoning_content": "Need issue data before answering.",
-                    "tool_calls": [{
-                        "id": "call_1",
-                        "type": "function",
-                        "function": {
-                            "name": "list_issues",
-                            "arguments": "{}"
-                        }
-                    }]
+    fn response_input_maps_tool_results_to_function_outputs() {
+        let message = Message::tool_result("call_1", "{\"ok\":true}");
+
+        let wire = message_to_response_items(&message);
+
+        assert_eq!(wire[0]["type"], "function_call_output");
+        assert_eq!(wire[0]["call_id"], "call_1");
+        assert_eq!(wire[0]["output"], "{\"ok\":true}");
+    }
+
+    #[test]
+    fn responses_response_decodes_tool_call_reasoning_content() {
+        let parsed: ResponsesResponse = serde_json::from_value(json!({
+            "output": [
+                {
+                    "type": "reasoning",
+                    "summary": [{ "type": "summary_text", "text": "Need issue data before answering." }]
+                },
+                {
+                    "type": "function_call",
+                    "call_id": "call_1",
+                    "name": "list_issues",
+                    "arguments": "{}"
                 }
-            }]
+            ]
         }))
-        .expect("valid chat completion response");
+        .expect("valid responses response");
 
-        let message = &parsed.choices[0].message;
-        assert_eq!(
-            message.reasoning_content.as_deref(),
-            Some("Need issue data before answering.")
-        );
+        let result = response_to_completion(parsed).expect("completion");
+        match result {
+            CompletionResult::ToolCalls {
+                calls,
+                reasoning_content,
+                ..
+            } => {
+                assert_eq!(calls[0].id, "call_1");
+                assert_eq!(
+                    reasoning_content.as_deref(),
+                    Some("Need issue data before answering.")
+                );
+            }
+            CompletionResult::Text { .. } => panic!("expected tool calls"),
+        }
     }
 
     #[test]
-    fn chat_response_decodes_usage() {
-        let parsed: ChatCompletionResponse = serde_json::from_value(json!({
-            "choices": [{
-                "message": {
-                    "content": "Done"
-                }
+    fn responses_response_decodes_text_and_usage() {
+        let parsed: ResponsesResponse = serde_json::from_value(json!({
+            "output": [{
+                "type": "message",
+                "role": "assistant",
+                "content": [{ "type": "output_text", "text": "Done" }]
             }],
             "usage": {
-                "prompt_tokens": 123,
-                "completion_tokens": 45,
+                "input_tokens": 123,
+                "output_tokens": 45,
                 "total_tokens": 168
             }
         }))
-        .expect("valid chat completion response");
+        .expect("valid responses response");
 
+        let result = response_to_completion(parsed).expect("completion");
+        match result {
+            CompletionResult::Text { text, usage, .. } => {
+                assert_eq!(text, "Done");
+                assert_eq!(
+                    usage,
+                    Some(Usage {
+                        prompt_tokens: Some(123),
+                        completion_tokens: Some(45),
+                        total_tokens: Some(168),
+                    })
+                );
+            }
+            CompletionResult::ToolCalls { .. } => panic!("expected text"),
+        }
+    }
+
+    #[test]
+    fn strips_legacy_chat_completions_suffix_from_base_url() {
         assert_eq!(
-            parsed.usage,
-            Some(Usage {
-                prompt_tokens: Some(123),
-                completion_tokens: Some(45),
-                total_tokens: Some(168),
-            })
+            responses_base_url("https://api.openai.com/v1/chat/completions"),
+            "https://api.openai.com/v1"
         );
     }
-}
-
-#[derive(Deserialize)]
-struct ChatToolCall {
-    id: String,
-    #[allow(dead_code)]
-    #[serde(rename = "type", default)]
-    kind: Option<String>,
-    function: ChatToolCallFunction,
-}
-
-#[derive(Deserialize)]
-struct ChatToolCallFunction {
-    name: String,
-    arguments: String,
 }

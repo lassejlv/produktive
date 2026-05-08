@@ -6,23 +6,62 @@
 pub struct AiModelInfo {
     pub id: &'static str,
     pub name: &'static str,
+    pub provider: &'static str,
+    pub input_usd_per_million: f64,
+    pub cached_input_usd_per_million: f64,
+    pub output_usd_per_million: f64,
+    pub is_degrade_target: bool,
 }
 
 pub const AI_MODELS: &[AiModelInfo] = &[
     AiModelInfo {
-        id: "kimi-k2.6",
-        name: "Kimi K2.6",
+        id: "gpt-5.5",
+        name: "GPT-5.5",
+        provider: "OpenAI",
+        // Official OpenAI API pricing: https://openai.com/api/pricing/
+        input_usd_per_million: 5.00,
+        cached_input_usd_per_million: 0.50,
+        output_usd_per_million: 30.00,
+        is_degrade_target: false,
     },
     AiModelInfo {
-        id: "glm-5.1",
-        name: "GLM 5.1",
+        id: "gpt-5.4",
+        name: "GPT-5.4",
+        provider: "OpenAI",
+        // Official OpenAI API pricing: https://openai.com/api/pricing/
+        input_usd_per_million: 2.50,
+        cached_input_usd_per_million: 0.25,
+        output_usd_per_million: 15.00,
+        is_degrade_target: false,
     },
     AiModelInfo {
-        id: "deepseek-v4-pro",
-        name: "DeepSeek V4 Pro",
-    },
-    AiModelInfo {
-        id: "deepseek-v4-flash",
-        name: "DeepSeek V4 Flash",
+        id: "gpt-5.4-mini",
+        name: "GPT-5.4 mini",
+        provider: "OpenAI",
+        // Official OpenAI API pricing: https://openai.com/api/pricing/
+        input_usd_per_million: 0.75,
+        cached_input_usd_per_million: 0.075,
+        output_usd_per_million: 4.50,
+        is_degrade_target: true,
     },
 ];
+
+pub const AI_USAGE_FEE_MULTIPLIER: f64 = 1.20;
+
+pub fn model_info(model_id: &str) -> Option<&'static AiModelInfo> {
+    AI_MODELS.iter().find(|model| model.id == model_id)
+}
+
+pub fn degrade_model_id() -> &'static str {
+    AI_MODELS
+        .iter()
+        .find(|model| model.is_degrade_target)
+        .map(|model| model.id)
+        .unwrap_or("gpt-5.4-mini")
+}
+
+pub fn baseline_usd_per_million_units() -> f64 {
+    model_info(degrade_model_id())
+        .map(|model| model.input_usd_per_million * AI_USAGE_FEE_MULTIPLIER)
+        .unwrap_or(1.0)
+}

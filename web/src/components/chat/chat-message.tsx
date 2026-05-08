@@ -1,9 +1,4 @@
-import {
-  CopyIcon,
-  PlayIcon,
-  RefreshIcon,
-  ThumbsUpIcon,
-} from "@/components/chat/icons";
+import { CopyIcon, PlayIcon, RefreshIcon, ThumbsUpIcon } from "@/components/chat/icons";
 import { type ChatAttachment, formatBytes } from "@/lib/chat-attachments";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +18,7 @@ export type ChatMessage = {
   rawContent?: string;
   attachments?: ChatAttachment[];
   toolCalls?: ChatToolCall[];
+  reasoningContent?: string;
   time?: string;
   typing?: boolean;
 };
@@ -31,6 +27,7 @@ export type ChatToolCall = {
   id: string;
   name: string;
   arguments: string;
+  reasoningContent?: string;
   result?: unknown;
 };
 
@@ -54,32 +51,27 @@ export function ChatMessageItem({
   const isUser = message.role === "user";
 
   return (
-    <div
-      className={cn(
-        "group flex animate-fade-up",
-        isUser ? "justify-end" : "justify-start",
-      )}
-    >
-      <div
-        className={cn("flex min-w-0 flex-col gap-1.5", isUser && "items-end")}
-      >
+    <div className={cn("group flex animate-fade-up", isUser ? "justify-end" : "justify-start")}>
+      <div className={cn("flex min-w-0 flex-col gap-1.5", isUser && "items-end")}>
         <div className="flex items-center gap-2 text-[12px] text-fg-faint">
           {message.time ? <span>{message.time}</span> : null}
         </div>
         <div
           className={cn(
             "max-w-full text-[14px] leading-[1.65] text-fg text-pretty",
-            isUser &&
-              "max-w-110 rounded-md border border-border-subtle bg-surface/60 px-3 py-2",
+            isUser && "max-w-110 rounded-md border border-border-subtle bg-surface/60 px-3 py-2",
             !isUser && "max-w-170",
           )}
         >
-          {message.typing ? (
+          {message.typing && !message.reasoningContent && !message.toolCalls?.length ? (
             <span className="inline-flex items-center py-1 text-fg-muted">
               <span className="text-shimmer text-[13px] font-medium">Thinking</span>
             </span>
           ) : (
             <>
+              {message.reasoningContent ? (
+                <ReasoningTrace content={message.reasoningContent} live={message.typing} />
+              ) : null}
               {message.toolCalls?.length ? (
                 <ToolCallList
                   toolCalls={message.toolCalls}
@@ -94,9 +86,7 @@ export function ChatMessageItem({
             </>
           )}
         </div>
-        {message.role === "assistant" &&
-        !message.typing &&
-        message.rawContent ? (
+        {message.role === "assistant" && !message.typing && message.rawContent ? (
           <div className="mt-0.5 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <ActionButton
               title={actionState === "copied" ? "Copied" : "Copy"}
@@ -122,6 +112,24 @@ export function ChatMessageItem({
   );
 }
 
+function ReasoningTrace({ content, live }: { content: string; live?: boolean }) {
+  const text = cleanReasoningText(content);
+  if (!text) return null;
+
+  return (
+    <details className="group/reasoning mb-2.5 text-[12px] leading-[1.6] text-fg-faint" open={live}>
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-[12px] tracking-normal text-fg-muted marker:hidden">
+        <span className={cn(live && "text-shimmer")}>
+          {live ? summarizeReasoning(text) : "reasoning"}
+        </span>
+      </summary>
+      <p className="m-0 mt-1.5 max-h-20 overflow-y-auto whitespace-pre-wrap text-[12px] text-fg-faint">
+        {text}
+      </p>
+    </details>
+  );
+}
+
 function ToolCallList({
   toolCalls,
   onAnswerQuestion,
@@ -131,8 +139,9 @@ function ToolCallList({
   onAnswerQuestion?: (answer: string) => void;
   pendingAnswer?: string | null;
 }) {
-  const askUserCalls = toolCalls.filter((tc) => tc.name === "ask_user");
-  const otherCalls = toolCalls.filter((tc) => tc.name !== "ask_user");
+  const validToolCalls = toolCalls.filter(Boolean);
+  const askUserCalls = validToolCalls.filter((tc) => tc.name === "ask_user");
+  const otherCalls = validToolCalls.filter((tc) => tc.name !== "ask_user");
   const groups = groupConsecutive(otherCalls);
 
   return (
@@ -174,50 +183,42 @@ function groupConsecutive(toolCalls: ChatToolCall[]): ToolCallGroup[] {
 function ToolCallChip({ group }: { group: ToolCallGroup }) {
   const count = group.calls.length;
   const errorCount = group.calls.filter((c) => isErrorResult(c.result)).length;
+  const pendingCount = group.calls.filter((c) => c.result === undefined).length;
   const allErrored = errorCount > 0 && errorCount === count;
   const summary = aggregateSummary(group.calls);
 
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center gap-1.5 rounded-[5px] border border-border-subtle bg-surface/60 py-[3px] pl-1.5 pr-2 text-[11px] leading-none",
+        "inline-flex max-w-full items-center gap-1.5 rounded-[4px] border border-border-subtle/70 bg-transparent py-[3px] pl-1.5 pr-2 text-[12px] leading-none",
+        pendingCount > 0 && "border-border bg-surface/50 text-fg",
         allErrored && "text-danger",
       )}
       title={summary ?? group.name}
     >
       <span
         className={cn(
-          "grid size-[11px] shrink-0 place-items-center",
-          allErrored ? "text-danger" : "text-fg-faint",
+          "grid size-[10px] shrink-0 place-items-center",
+          pendingCount > 0 ? "text-fg" : allErrored ? "text-danger" : "text-fg-faint",
         )}
       >
         <PlayIcon size={7} />
       </span>
-      <span
-        className={cn(
-          "truncate font-mono",
-          allErrored ? "text-danger" : "text-fg-muted",
-        )}
-      >
-        {group.name}
+      <span className={cn("truncate", allErrored ? "text-danger" : "text-fg-muted")}>
+        {formatToolName(group.name)}
       </span>
       {count > 1 ? (
         <span
           className={cn(
-            "font-mono text-[10px] tabular-nums",
+            "text-[11px] tabular-nums",
             allErrored ? "text-danger/80" : "text-fg-faint",
           )}
         >
-          ×{count}
+          {count}
         </span>
       ) : null}
       {summary ? (
-        <span
-          className={cn(
-            "truncate",
-            allErrored ? "text-danger/80" : "text-fg-faint",
-          )}
-        >
+        <span className={cn("truncate", allErrored ? "text-danger/80" : "text-fg-faint")}>
           {summary}
         </span>
       ) : null}
@@ -251,6 +252,15 @@ function aggregateSummary(calls: ChatToolCall[]): string | null {
   }
 
   return "all done";
+}
+
+function formatToolName(name: string) {
+  return name
+    .replace(/^mcp__/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function AskUserCard({
@@ -317,21 +327,19 @@ function parseAskUserPayload(raw: string): {
 
 function isErrorResult(result: unknown): boolean {
   return (
-    typeof result === "object" &&
-    result !== null &&
-    "error" in (result as Record<string, unknown>)
+    typeof result === "object" && result !== null && "error" in (result as Record<string, unknown>)
   );
 }
 
 function summarizeResult(result: unknown): string | null {
-  if (result === undefined) return "Pending";
+  if (result === undefined) return "pending";
   if (result === null) return null;
 
   if (typeof result === "object") {
     const obj = result as Record<string, unknown>;
     if ("error" in obj) {
       const error = obj.error;
-      return typeof error === "string" ? error : "Error";
+      return typeof error === "string" ? error : "error";
     }
     for (const [key, value] of Object.entries(obj)) {
       if (Array.isArray(value)) {
@@ -342,26 +350,32 @@ function summarizeResult(result: unknown): string | null {
     if (Array.isArray(result)) {
       return `${(result as unknown[]).length} items`;
     }
-    return "Done";
+    return "done";
   }
   return null;
 }
 
-function ChatAttachmentList({
-  attachments,
-}: {
-  attachments: ChatAttachment[];
-}) {
+function summarizeReasoning(value: string): string {
+  const firstLine = value.split(/\n+/).map(cleanReasoningText).find(Boolean);
+  if (!firstLine) return "thinking";
+  return firstLine.length > 96 ? `${firstLine.slice(0, 96)}...` : firstLine;
+}
+
+function cleanReasoningText(value: string): string {
+  return value
+    .trim()
+    .replace(/^[-–—]\s*/, "")
+    .replace(/^#{1,6}\s+/, "")
+    .replace(/^\*\*(.+)\*\*$/s, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .trim();
+}
+
+function ChatAttachmentList({ attachments }: { attachments: ChatAttachment[] }) {
   return (
     <div className="mt-2 divide-y divide-border-subtle/60 overflow-hidden rounded-md border border-border-subtle">
       {attachments.map((file) => (
-        <a
-          key={file.id}
-          href={file.url}
-          target="_blank"
-          rel="noreferrer"
-          className="block bg-bg"
-        >
+        <a key={file.id} href={file.url} target="_blank" rel="noreferrer" className="block bg-bg">
           {isImageAttachment(file) ? (
             <figure className="m-0">
               <img
@@ -371,9 +385,7 @@ function ChatAttachmentList({
                 className="max-h-[360px] w-full object-contain"
               />
               <figcaption className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-t border-border-subtle/60 px-2.5 py-2">
-                <span className="truncate font-mono text-[10px] text-fg-muted">
-                  {file.name}
-                </span>
+                <span className="truncate font-mono text-[10px] text-fg-muted">{file.name}</span>
                 <span className="font-mono text-[10px] text-fg-faint">
                   {formatBytes(file.size)}
                 </span>
@@ -389,9 +401,7 @@ function ChatAttachmentList({
                   {file.type || "application/octet-stream"}
                 </p>
               </div>
-              <span className="font-mono text-[10px] text-fg-muted">
-                {formatBytes(file.size)}
-              </span>
+              <span className="font-mono text-[10px] text-fg-muted">{formatBytes(file.size)}</span>
             </div>
           )}
         </a>
@@ -438,9 +448,7 @@ export function ChatIssueCardList({ items }: { items: ChatIssueCard[] }) {
           key={card.id}
           className="flex cursor-pointer items-center gap-2.5 bg-surface px-3 py-[9px] text-[13px] transition-colors hover:bg-surface-2"
         >
-          <span className="w-[54px] shrink-0 font-mono text-[11px] text-fg-faint">
-            {card.id}
-          </span>
+          <span className="w-[54px] shrink-0 font-mono text-[11px] text-fg-faint">{card.id}</span>
           <StatusDot status={card.status} />
           <span className="flex-1 truncate text-fg">{card.label}</span>
           <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-fg-muted">
@@ -482,7 +490,5 @@ function StatusDot({ status }: { status: ChatIssueCard["status"] }) {
       />
     );
   }
-  return (
-    <span className="size-[13px] shrink-0 rounded-full border-[1.5px] border-fg-muted" />
-  );
+  return <span className="size-[13px] shrink-0 rounded-full border-[1.5px] border-fg-muted" />;
 }

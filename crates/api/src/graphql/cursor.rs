@@ -22,8 +22,8 @@ pub fn decode(raw: &str) -> Result<(DateTimeWithTimeZone, String), CursorError> 
         .decode(raw.as_bytes())
         .map_err(|_| CursorError::Invalid)?;
     let payload: Cursor = serde_json::from_slice(&bytes).map_err(|_| CursorError::Invalid)?;
-    let created_at = DateTimeWithTimeZone::parse_from_rfc3339(&payload.c)
-        .map_err(|_| CursorError::Invalid)?;
+    let created_at =
+        DateTimeWithTimeZone::parse_from_rfc3339(&payload.c).map_err(|_| CursorError::Invalid)?;
     Ok((created_at, payload.i))
 }
 

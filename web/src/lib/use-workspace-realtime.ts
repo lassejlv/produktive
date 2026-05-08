@@ -9,11 +9,7 @@ import {
   type Label,
   type Project,
 } from "@/lib/api";
-import {
-  type IssuesCache,
-  removeIssue,
-  upsertIssue,
-} from "@/lib/queries/issues-cache";
+import { type IssuesCache, removeIssue, upsertIssue } from "@/lib/queries/issues-cache";
 import { queryKeys } from "@/lib/queries/keys";
 
 type WorkspaceRealtimeEvent = {
@@ -89,6 +85,7 @@ export function useWorkspaceRealtime(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return;
+    if (isLocalDevelopmentHost(window.location.hostname)) return;
 
     const applyIssueEvent = (message: WorkspaceRealtimeEvent) => {
       if (message.action === "deleted") {
@@ -287,4 +284,8 @@ export function useWorkspaceRealtime(enabled: boolean) {
       socket?.close();
     };
   }, [enabled, queryClient]);
+}
+
+function isLocalDevelopmentHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }

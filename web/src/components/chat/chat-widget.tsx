@@ -1,7 +1,11 @@
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ChatComposer, type PendingQuestion } from "@/components/chat/chat-composer";
+import {
+  ChatComposer,
+  type ChatSendOptions,
+  type PendingQuestion,
+} from "@/components/chat/chat-composer";
 import { ChatMarkdown } from "@/components/chat/chat-markdown";
 import {
   ChatMessageItem,
@@ -28,6 +32,7 @@ import {
   parseMessageWithAttachments,
 } from "@/lib/chat-attachments";
 import { firstName } from "@/lib/chat-history";
+import { useAiModels } from "@/lib/use-ai-models";
 import { useChats } from "@/lib/use-chats";
 import { cn } from "@/lib/utils";
 
@@ -35,8 +40,7 @@ const WIDGET_CHAT_ID_KEY = "produktive:widget-chat-id";
 const MODEL_STORAGE_KEY = "produktive:chat-model";
 const ADD_TO_WIDGET_CHAT_EVENT = "produktive:add-to-widget-chat";
 
-const isMac =
-  typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
 const MOD_LABEL = isMac ? "⌘" : "Ctrl";
 
 type AddToWidgetChatEvent = CustomEvent<{
@@ -53,9 +57,15 @@ export function ChatWidget() {
   const isChatRoute = pathname === chatPrefix || pathname.startsWith(`${chatPrefix}/`);
   const userName = session.data?.user?.name ?? null;
   const { chats, prependChat, refresh: refreshChats } = useChats();
+  const { models: availableModels, defaultId: defaultModelId } = useAiModels();
+  const modelSelectionLocked = availableModels.some((model) => !model.isAvailable);
 
   const [open, setOpen] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem(MODEL_STORAGE_KEY);
+  });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draftInsertion, setDraftInsertion] = useState<{
     id: number;
@@ -69,6 +79,29 @@ export function ChatWidget() {
   const listRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const bubbleRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (availableModels.length === 0) return;
+    const current = selectedModel
+      ? availableModels.find((entry) => entry.id === selectedModel)
+      : null;
+    if (current?.isAvailable) return;
+    const fallback =
+      availableModels.find((entry) => entry.id === defaultModelId && entry.isAvailable) ??
+      availableModels.find((entry) => entry.isAvailable) ??
+      null;
+    setSelectedModel(fallback?.id ?? null);
+    if (typeof window !== "undefined" && fallback) {
+      window.localStorage.setItem(MODEL_STORAGE_KEY, fallback.id);
+    }
+  }, [availableModels, defaultModelId, selectedModel]);
+
+  const handleModelChange = (modelId: string) => {
+    setSelectedModel(modelId);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(MODEL_STORAGE_KEY, modelId);
+    }
+  };
   const draftCounterRef = useRef(0);
 
   // Load persisted chat once on mount.
@@ -159,7 +192,11 @@ export function ChatWidget() {
 
   const renderedMessages = useMemo(() => collapseToolMessages(messages), [messages]);
 
-  const handleSend = async (text: string, attachmentDrafts: ChatAttachmentDraft[] = []) => {
+  const handleSend = async (
+    text: string,
+    attachmentDrafts: ChatAttachmentDraft[] = [],
+    sendOptions?: ChatSendOptions,
+  ) => {
     setError(null);
     stopRef.current = false;
     setBusy(true);
@@ -178,9 +215,6 @@ export function ChatWidget() {
 
       const uploadedAttachments = await uploadAttachments(activeId, attachmentDrafts);
       const messageText = buildOutgoingMessage(text, uploadedAttachments);
-
-      const selectedModel =
-        typeof window !== "undefined" ? window.localStorage.getItem(MODEL_STORAGE_KEY) : null;
 
       let streamedText = "";
       await streamChatMessage(
@@ -203,25 +237,51 @@ export function ChatWidget() {
               const last = next[next.length - 1];
               if (last?.role === "assistant") {
                 next[next.length - 1] = {
+                  ...last,
                   role: "assistant",
+                  typing: false,
                   content: <ChatMarkdown content={streamedText} />,
+                  rawContent: streamedText,
                 };
               }
               return next;
             });
             return;
           }
+          if (event.type === "reasoning") {
+            setMessages((prev) => updateLiveReasoning(prev, event.content));
+            return;
+          }
+          if (event.type === "toolStart") {
+            if (event.toolCall) {
+              setMessages((prev) => upsertLiveToolCall(prev, event.toolCall));
+            }
+            return;
+          }
+          if (event.type === "toolResult") {
+            setMessages((prev) => updateLiveToolResult(prev, event.id, event.result));
+            return;
+          }
           if (event.type === "done") {
             setMessages((prev) => {
+              const liveAssistant = [...prev]
+                .reverse()
+                .find((message) => message.role === "assistant");
               const withoutTyping = prev.filter((m) => !m.typing);
               const last = withoutTyping[withoutTyping.length - 1];
               const base = last?.role === "assistant" ? withoutTyping.slice(0, -1) : withoutTyping;
-              return [
-                ...base,
-                ...event.messages
-                  .filter((record) => record.role === "assistant")
-                  .map(recordToMessage),
-              ];
+              const assistantMessages = event.messages
+                .filter((record) => record.role === "assistant")
+                .map(recordToMessage);
+              const finalAssistant = assistantMessages[assistantMessages.length - 1];
+              if (finalAssistant && liveAssistant?.reasoningContent) {
+                assistantMessages[assistantMessages.length - 1] = {
+                  ...finalAssistant,
+                  reasoningContent:
+                    finalAssistant.reasoningContent ?? liveAssistant.reasoningContent,
+                };
+              }
+              return [...base, ...assistantMessages];
             });
             void refreshChats();
             return;
@@ -230,7 +290,12 @@ export function ChatWidget() {
             throw new Error(event.error);
           }
         },
-        selectedModel ? { model: selectedModel } : undefined,
+        (!modelSelectionLocked && selectedModel) || sendOptions?.reasoningEffort
+          ? {
+              model: modelSelectionLocked ? undefined : (selectedModel ?? undefined),
+              reasoningEffort: sendOptions?.reasoningEffort,
+            }
+          : undefined,
       );
     } catch (sendError) {
       const message = sendError instanceof Error ? sendError.message : "Failed to send";
@@ -437,8 +502,12 @@ export function ChatWidget() {
             />
             <ChatComposer
               busy={busy}
-              onSend={(text, attachments) => void handleSend(text, attachments)}
+              onSend={(text, attachments, options) => void handleSend(text, attachments, options)}
               onStop={handleStop}
+              models={availableModels}
+              selectedModel={selectedModel}
+              onModelChange={handleModelChange}
+              modelSelectionLocked={modelSelectionLocked}
               pendingQuestion={pendingQuestion}
               draftInsertion={draftInsertion}
             />
@@ -524,6 +593,7 @@ function buildOutgoingMessage(text: string, attachments: ChatAttachment[]) {
 
 function recordToMessage(record: ChatMessageRecord): ChatMessage {
   const parsed = parseMessageWithAttachments(record.content);
+  const toolCalls = record.toolCalls ?? [];
   const content =
     record.role === "assistant" ? (
       <ChatMarkdown content={parsed.text} />
@@ -536,8 +606,56 @@ function recordToMessage(record: ChatMessageRecord): ChatMessage {
     content,
     rawContent: record.role === "user" ? record.content : parsed.text,
     attachments: parsed.attachments,
-    toolCalls: record.toolCalls ?? [],
+    toolCalls,
+    reasoningContent: toolCalls.find((call) => call.reasoningContent)?.reasoningContent,
   };
+}
+
+function updateLiveReasoning(messages: ChatMessage[], reasoningContent: string): ChatMessage[] {
+  return updateLastAssistant(messages, (message) => ({
+    ...message,
+    typing: true,
+    reasoningContent,
+  }));
+}
+
+function upsertLiveToolCall(messages: ChatMessage[], toolCall: ChatToolCall): ChatMessage[] {
+  return updateLastAssistant(messages, (message) => {
+    const current = message.toolCalls ?? [];
+    const exists = current.some((call) => call.id === toolCall.id);
+    return {
+      ...message,
+      typing: true,
+      reasoningContent: message.reasoningContent ?? toolCall.reasoningContent,
+      toolCalls: exists
+        ? current.map((call) => (call.id === toolCall.id ? { ...call, ...toolCall } : call))
+        : [...current, toolCall],
+    };
+  });
+}
+
+function updateLiveToolResult(messages: ChatMessage[], id: string, result: unknown): ChatMessage[] {
+  return updateLastAssistant(messages, (message) => ({
+    ...message,
+    typing: true,
+    toolCalls: (message.toolCalls ?? []).map((call) =>
+      call.id === id ? { ...call, result } : call,
+    ),
+  }));
+}
+
+function updateLastAssistant(
+  messages: ChatMessage[],
+  update: (message: ChatMessage) => ChatMessage,
+): ChatMessage[] {
+  const next = [...messages];
+  const last = next[next.length - 1];
+  if (last?.role === "assistant") {
+    next[next.length - 1] = update(last);
+  } else {
+    next.push(update({ role: "assistant", typing: true }));
+  }
+  return next;
 }
 
 function collapseToolMessages(messages: ChatMessage[]): ChatMessage[] {
@@ -551,21 +669,25 @@ function collapseToolMessages(messages: ChatMessage[]): ChatMessage[] {
   };
 
   for (const message of messages) {
+    const toolCalls = (message.toolCalls ?? []).filter(Boolean);
     const isToolOnly =
       message.role === "assistant" &&
       !message.typing &&
       !message.rawContent &&
-      (message.toolCalls?.length ?? 0) > 0;
+      toolCalls.length > 0;
 
     if (isToolOnly) {
-      pending.push(...(message.toolCalls ?? []));
+      pending.push(...toolCalls);
       continue;
     }
 
     if (message.role === "assistant" && pending.length > 0) {
       out.push({
         ...message,
-        toolCalls: [...pending, ...(message.toolCalls ?? [])],
+        toolCalls: [...pending, ...toolCalls],
+        reasoningContent:
+          message.reasoningContent ??
+          pending.find((call) => call.reasoningContent)?.reasoningContent,
       });
       pending = [];
       continue;

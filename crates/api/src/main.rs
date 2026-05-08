@@ -1,6 +1,7 @@
 mod actor_profiles;
 mod agent_tools;
 mod ai_models;
+mod ai_usage;
 mod auth;
 mod config;
 mod digest;
@@ -90,7 +91,11 @@ async fn main() -> anyhow::Result<()> {
     let unkey = Unkey::with_config(unkey_config)
         .map_err(|e| anyhow::anyhow!("failed to build Unkey client: {e}"))?;
     let state = AppState::new(db, config.clone(), ai, unkey);
-    realtime::spawn_postgres_listener(state.clone());
+    if config.is_local_development() {
+        tracing::info!("realtime endpoint disabled for local development");
+    } else {
+        realtime::spawn_postgres_listener(state.clone());
+    }
     spawn_github_auto_importer(state.clone());
     digest::spawn_progress_digest_scheduler(state.clone());
     let asset_service = ServeDir::new(format!("{}/assets", config.web_dist_dir));
@@ -98,7 +103,7 @@ async fn main() -> anyhow::Result<()> {
         "{}/index.html",
         config.web_dist_dir
     )));
-    let app = Router::new()
+    let mut app = Router::new()
         .merge(oauth_metadata_routes())
         .nest("/api/auth", auth_routes())
         .nest("/api/graphql", graphql_routes())
@@ -132,15 +137,19 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/roles", role_routes())
         .nest("/api/security", security_routes())
         .nest("/api/projects", project_routes())
-        .nest("/api/realtime", realtime_routes())
         .nest("/api/unsubscribe", unsubscribe_routes())
         .nest("/api/dev", dev_routes())
         .nest_service("/assets", asset_service)
         .fallback_service(spa_service)
         .layer(middleware::from_fn(cache_control_headers))
         .layer(TraceLayer::new_for_http())
-        .layer(cors_layer(&config))
-        .with_state(state);
+        .layer(cors_layer(&config));
+
+    if !config.is_local_development() {
+        app = app.nest("/api/realtime", realtime_routes());
+    }
+
+    let app = app.with_state(state);
 
     let addr = format!("0.0.0.0:{}", config.port);
     let listener = TcpListener::bind(&addr)

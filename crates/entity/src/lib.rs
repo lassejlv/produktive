@@ -1,4 +1,5 @@
 pub mod admin_audit_event;
+pub mod ai_usage_event;
 pub mod auth_token;
 pub mod chat;
 pub mod chat_access;

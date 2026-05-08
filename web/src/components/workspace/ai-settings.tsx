@@ -4,9 +4,11 @@ import { Button } from "@/components/ui/button";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SettingRow, SettingsSkeleton } from "@/components/workspace/setting-row";
 import {
+  type AiUsageStatus,
   type McpServer,
   createMcpServer,
   deleteMcpServer,
+  getAiUsage,
   listMcpServers,
   refreshMcpServerTools,
   startMcpServerOAuth,
@@ -56,6 +58,7 @@ const MCP_TEMPLATES: McpTemplate[] = [
 
 export function AiSettings() {
   const [servers, setServers] = useState<McpServer[]>([]);
+  const [usage, setUsage] = useState<AiUsageStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [url, setUrl] = useState("");
@@ -83,6 +86,20 @@ export function AiSettings() {
       })
       .finally(() => {
         if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    void getAiUsage()
+      .then((response) => {
+        if (mounted) setUsage(response);
+      })
+      .catch(() => {
+        if (mounted) setUsage(null);
       });
     return () => {
       mounted = false;
@@ -221,6 +238,7 @@ export function AiSettings() {
   return (
     <div>
       {dialog}
+      {usage ? <AiUsagePanel usage={usage} /> : null}
       <SettingRow label="Remote MCPs">
         <form className="grid gap-2" onSubmit={(event) => void onCreate(event)}>
           <input
@@ -272,6 +290,86 @@ export function AiSettings() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function AiUsagePanel({ usage }: { usage: AiUsageStatus }) {
+  const status = usage.blocked
+    ? "Limit reached"
+    : usage.degraded
+      ? `Using ${usage.degradeModelId}`
+      : "Normal access";
+
+  return (
+    <SettingRow label="Usage">
+      <div className="grid gap-4">
+        <div className="flex items-baseline justify-between gap-4 text-[13px]">
+          <span className={cn(usage.blocked && "text-danger", usage.degraded && "text-warning")}>
+            {status}
+          </span>
+          <span className="text-fg-faint">{usage.plan}</span>
+        </div>
+        <UsageMeter label="Weekly" period={usage.weekly} />
+        <UsageMeter label="Monthly" period={usage.monthly} />
+        {usage.breakdown.length > 0 ? (
+          <div className="mt-1 grid gap-1 border-t border-border-subtle pt-2">
+            {usage.breakdown.slice(0, 5).map((item) => (
+              <div
+                key={`${item.modelId}:${item.source}`}
+                className="grid gap-2 py-1 text-[12px] md:grid-cols-[1fr_auto]"
+              >
+                <div className="min-w-0 truncate text-fg-muted">
+                  <span>{sourceLabel(item.source)}</span>
+                  <span className="mx-1.5 text-fg-faint">·</span>
+                  <span className="text-fg-faint">{item.modelId}</span>
+                </div>
+                <div className="text-fg-faint tabular-nums">
+                  {formatCompact(item.normalizedUnits)} units
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </SettingRow>
+  );
+}
+
+function UsageMeter({ label, period }: { label: string; period: AiUsageStatus["weekly"] }) {
+  const percent = Math.min(100, Math.max(0, period.percentUsed));
+  const overuseUnits = Math.max(0, period.usedUnits - period.limitUnits);
+  return (
+    <div>
+      <div className="mb-1.5 flex items-center justify-between gap-3 text-[12px]">
+        <span className="text-fg">{label}</span>
+        <span className="text-fg-faint tabular-nums">
+          {formatCompact(period.usedUnits)} / {formatCompact(period.limitUnits)}
+        </span>
+      </div>
+      <div className="h-px overflow-hidden bg-border">
+        <div
+          className={cn(
+            "h-full",
+            period.percentUsed >= 100
+              ? "bg-danger"
+              : period.percentUsed >= 80
+                ? "bg-warning"
+                : "bg-fg-muted",
+          )}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-3 text-[11px] text-fg-faint">
+        <span>Resets {formatReset(period.periodEnd)}</span>
+        {overuseUnits > 0 ? (
+          <span className="tabular-nums">{formatCompact(overuseUnits)} deducted after reset</span>
+        ) : period.carryoverUnits > 0 ? (
+          <span className="tabular-nums">
+            {formatCompact(period.carryoverUnits)} deducted from reset
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -597,6 +695,30 @@ function cleanMcpError(message: string | null) {
     return message;
   }
   return message;
+}
+
+function formatCompact(value: number) {
+  return new Intl.NumberFormat(undefined, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
+function formatReset(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function sourceLabel(value: string) {
+  return value
+    .split(/[_-]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function sameMcpUrl(a: string, b: string) {

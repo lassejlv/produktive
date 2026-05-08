@@ -24,6 +24,14 @@ import { getCaretCoords } from "@/lib/textarea-caret";
 import { useChats } from "@/lib/use-chats";
 import { useIssues } from "@/lib/use-issues";
 import { useMcpTools, type MentionableTool } from "@/lib/use-mcp-tools";
+import type { AiModel, ReasoningEffort } from "@/lib/api";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 export type PendingQuestion = {
@@ -31,6 +39,20 @@ export type PendingQuestion = {
   options: string[];
   onAnswer: (answer: string) => void;
 };
+
+export type ChatSendOptions = {
+  reasoningEffort?: ReasoningEffort;
+};
+
+const REASONING_EFFORT_STORAGE_KEY = "produktive:reasoning-effort";
+
+const reasoningEffortOptions: Array<{ value: ReasoningEffort; label: string }> = [
+  { value: "auto", label: "Auto" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "xhigh", label: "Extra high" },
+];
 
 export function ChatComposer({
   busy,
@@ -41,15 +63,23 @@ export function ChatComposer({
   changesOpen = false,
   pendingQuestion,
   draftInsertion,
+  models = [],
+  selectedModel,
+  onModelChange,
+  modelSelectionLocked = false,
 }: {
   busy: boolean;
-  onSend: (value: string, attachments: ChatAttachmentDraft[]) => void;
+  onSend: (value: string, attachments: ChatAttachmentDraft[], options?: ChatSendOptions) => void;
   onStop: () => void;
   onOpenChanges?: () => void;
   changesCount?: number;
   changesOpen?: boolean;
   pendingQuestion?: PendingQuestion | null;
   draftInsertion?: { id: number; text: string } | null;
+  models?: AiModel[];
+  selectedModel?: string | null;
+  onModelChange?: (modelId: string) => void;
+  modelSelectionLocked?: boolean;
 }) {
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<ChatAttachmentDraft[]>([]);
@@ -58,6 +88,11 @@ export function ChatComposer({
   const [mentionedTools, setMentionedTools] = useState<MentionableTool[]>([]);
   const [mentionedChats, setMentionedChats] = useState<ReferencedChat[]>([]);
   const [mentionedNotes, setMentionedNotes] = useState<ReferencedNote[]>([]);
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>(() => {
+    if (typeof window === "undefined") return "auto";
+    const stored = window.localStorage.getItem(REASONING_EFFORT_STORAGE_KEY);
+    return isReasoningEffort(stored) ? stored : "auto";
+  });
   const [mentionState, setMentionState] = useState<{
     anchor: number;
     query: string;
@@ -256,7 +291,9 @@ export function ChatComposer({
     const outgoing = `${baseText}${formatIssueReferences(issues)}${formatChatReferences(
       mentionedChats,
     )}${formatNoteReferences(mentionedNotes)}${formatToolReferences(mentionedTools)}`.trim();
-    onSend(outgoing, attachments);
+    onSend(outgoing, attachments, {
+      reasoningEffort,
+    });
     setValue("");
     setAttachments([]);
     setAttachmentError(null);
@@ -319,10 +356,10 @@ export function ChatComposer({
     <div className="relative z-10 px-6 pb-3 pt-2">
       <div
         className={cn(
-          "mx-auto w-full max-w-[760px] overflow-hidden rounded-[10px] border bg-surface/80 transition-colors focus-within:bg-surface-2",
+          "mx-auto w-full max-w-[760px] overflow-hidden rounded-[8px] border bg-surface/70 transition-colors focus-within:bg-surface",
           pendingQuestion
             ? "border-accent/40 focus-within:border-accent/60"
-            : "border-border-subtle focus-within:border-border",
+            : "border-border-subtle/80 focus-within:border-border",
         )}
       >
         <input
@@ -471,7 +508,7 @@ export function ChatComposer({
           }}
           rows={1}
           placeholder={placeholder}
-          className="block min-h-[46px] w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3.5 text-[14px] leading-[1.55] text-fg outline-none placeholder:text-fg-muted"
+          className="block min-h-[48px] w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3.5 text-[14px] leading-[1.6] text-fg outline-none placeholder:text-fg-faint"
           style={{ maxHeight: 240 }}
         />
         <MentionPopup
@@ -487,7 +524,7 @@ export function ChatComposer({
             {attachmentError}
           </p>
         ) : null}
-        <div className="flex items-center gap-0.5 px-2 pb-2 pt-1">
+        <div className="flex items-center gap-1 border-t border-border-subtle/50 px-2.5 pb-2 pt-1.5">
           <ToolButton
             title="Add context (@)"
             onClick={openMentionFromButton}
@@ -513,12 +550,92 @@ export function ChatComposer({
             </ToolButton>
           ) : null}
           <span className="flex-1" />
+          {models.length > 0 && onModelChange ? (
+            <Select
+              value={modelSelectionLocked ? "auto" : (selectedModel ?? undefined)}
+              onValueChange={(modelId) => {
+                if (modelSelectionLocked || modelId === "auto") return;
+                const model = models.find((entry) => entry.id === modelId);
+                if (!model?.isAvailable) return;
+                onModelChange(modelId);
+              }}
+              disabled={busy}
+            >
+              <SelectTrigger
+                aria-label="AI model"
+                title="AI model"
+                className="h-6 w-[126px] rounded-[5px] border-transparent bg-transparent px-1.5 text-[12px] tracking-normal text-fg-muted hover:border-border-subtle hover:bg-surface/70 hover:text-fg focus:border-border-subtle focus:ring-0 data-[state=open]:border-border-subtle data-[state=open]:bg-surface"
+              >
+                <SelectValue placeholder="Auto" />
+              </SelectTrigger>
+              <SelectContent
+                align="end"
+                className="min-w-[220px] rounded-[8px] border-border-subtle bg-surface shadow-none"
+              >
+                <SelectItem value="auto" className="h-7 rounded-[5px] text-[12px]">
+                  Auto
+                </SelectItem>
+                {models.map((model) => (
+                  <SelectItem
+                    key={model.id}
+                    value={model.id}
+                    aria-disabled={modelSelectionLocked || !model.isAvailable}
+                    className={cn(
+                      "group/model h-9 rounded-[5px] text-[12px]",
+                      (modelSelectionLocked || !model.isAvailable) &&
+                        "cursor-not-allowed text-fg-faint",
+                    )}
+                  >
+                    <span className="flex min-w-0 items-baseline justify-between gap-3">
+                      <span className="truncate">{model.name}</span>
+                      <span className="shrink-0 text-[10.5px] text-fg-faint opacity-0 transition-opacity group-hover/model:opacity-100 group-data-[highlighted]/model:opacity-100">
+                        {modelPriceLabel(model)}
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+          <Select
+            value={reasoningEffort}
+            onValueChange={(next) => {
+              if (!isReasoningEffort(next)) return;
+              setReasoningEffort(next);
+              if (typeof window !== "undefined") {
+                window.localStorage.setItem(REASONING_EFFORT_STORAGE_KEY, next);
+              }
+            }}
+            disabled={busy}
+          >
+            <SelectTrigger
+              aria-label="Reasoning effort"
+              title="Reasoning effort"
+              className="h-6 w-[92px] rounded-[5px] border-transparent bg-transparent px-1.5 text-[12px] tracking-normal text-fg-muted hover:border-border-subtle hover:bg-surface/70 hover:text-fg focus:border-border-subtle focus:ring-0 data-[state=open]:border-border-subtle data-[state=open]:bg-surface"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent
+              align="end"
+              className="min-w-[140px] rounded-[8px] border-border-subtle bg-surface shadow-none"
+            >
+              {reasoningEffortOptions.map((option) => (
+                <SelectItem
+                  key={option.value}
+                  value={option.value}
+                  className="h-7 rounded-[5px] text-[12px]"
+                >
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {busy ? (
             <button
               type="button"
               onClick={onStop}
               aria-label="Stop generating"
-              className="grid size-8 place-items-center rounded-[8px] bg-surface-3 text-fg transition-colors hover:bg-surface-2"
+              className="grid size-7 place-items-center rounded-[6px] border border-border-subtle bg-surface text-fg transition-colors hover:bg-surface-2"
             >
               <StopIcon />
             </button>
@@ -528,7 +645,7 @@ export function ChatComposer({
               onClick={trySend}
               disabled={!canSend}
               aria-label="Send"
-              className="grid size-8 place-items-center rounded-[8px] bg-fg text-bg transition-colors hover:bg-white disabled:cursor-not-allowed disabled:bg-surface-3 disabled:text-fg-faint"
+              className="grid size-7 place-items-center rounded-[6px] bg-fg text-bg transition-colors hover:bg-fg-muted active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-fg-faint"
             >
               <SendIcon />
             </button>
@@ -537,6 +654,26 @@ export function ChatComposer({
       </div>
     </div>
   );
+}
+
+function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return (
+    value === "auto" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh"
+  );
+}
+
+function modelPriceLabel(model: AiModel) {
+  const input = formatModelPrice(model.inputUsdPerMillion);
+  const output = formatModelPrice(model.outputUsdPerMillion);
+  return `$${input} in / $${output} out`;
+}
+
+function formatModelPrice(value: number) {
+  return value >= 1 ? value.toFixed(2) : value.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function ToolButton({
@@ -560,7 +697,7 @@ function ToolButton({
       disabled={disabled}
       className={cn(
         "inline-flex h-6 items-center gap-1 rounded-[5px] px-1.5 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        active ? "bg-surface-2 text-fg" : "text-fg-muted hover:bg-surface hover:text-fg",
+        active ? "bg-surface text-fg" : "text-fg-muted hover:bg-surface/70 hover:text-fg",
       )}
     >
       {children}

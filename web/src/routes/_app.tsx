@@ -1,4 +1,5 @@
 import { Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -24,7 +25,8 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar";
 import { LoadingTip } from "@/components/ui/loading-tip";
-import { recordTwoFactorEnforcementBlocked } from "@/lib/api";
+import { getAiUsage, recordTwoFactorEnforcementBlocked } from "@/lib/api";
+import type { AiUsageStatus } from "@/lib/api/ai";
 import { signOut, useSession } from "@/lib/auth-client";
 import { parseMessageWithAttachments } from "@/lib/chat-attachments";
 import { NewLabelSheet } from "@/components/label/new-label-sheet";
@@ -61,6 +63,13 @@ function AppLayout() {
   const navigate = useNavigate();
   const session = useSession();
   const { tabsEnabled } = useUserPreferences();
+  const aiUsageQuery = useQuery({
+    queryKey: ["ai", "usage", "sidebar"],
+    queryFn: getAiUsage,
+    enabled: Boolean(session.data),
+    staleTime: 60_000,
+    retry: false,
+  });
   const { statuses } = useIssueStatuses();
   const { pathname, search } = useRouterState({
     select: (state) => state.location,
@@ -77,17 +86,9 @@ function AppLayout() {
     title: staticPage?.title ?? null,
     enabled: tabsEnabled && Boolean(staticPage),
   });
-  const {
-    favorites: rawFavorites,
-    isLoading: favoritesLoading,
-    toggleFavorite,
-  } = useFavorites();
+  const { favorites: rawFavorites, isLoading: favoritesLoading, toggleFavorite } = useFavorites();
   const { unreadCount: inboxUnread } = useInbox();
-  const {
-    layout: sidebarLayout,
-    toggleFavoritesCollapsed,
-    setFavoritesOrder,
-  } = useSidebarLayout();
+  const { layout: sidebarLayout, toggleFavoritesCollapsed, setFavoritesOrder } = useSidebarLayout();
   const favorites = applyOrder(rawFavorites, sidebarLayout.favoritesOrder, (fav) => fav.favoriteId);
   const [favDragId, setFavDragId] = useState<string | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -160,6 +161,7 @@ function AppLayout() {
   }, [accountMenuOpen]);
 
   const currentUser = session.data?.user;
+  const aiUsage = aiUsageQuery.data ?? null;
 
   if (session.isPending || !session.data) {
     return (
@@ -336,10 +338,10 @@ function AppLayout() {
               )}
             </div>
           ) : null}
-
         </SidebarContent>
 
-        <SidebarFooter className="relative">
+        <SidebarFooter className="relative gap-2">
+          {aiUsage ? <SidebarAiUsage usage={aiUsage} workspaceSlug={activeOrgSlug} /> : null}
           <div ref={accountMenuRef}>
             {accountMenuOpen ? (
               <div
@@ -347,7 +349,7 @@ function AppLayout() {
                   "absolute left-3 right-3 z-30 overflow-hidden",
                   "rounded-[12px] border border-border-subtle/80 bg-bg/85 backdrop-blur-2xl",
                   "widget-panel-shadow animate-account-pop",
-                  "bottom-18.5",
+                  aiUsage ? "bottom-[8.5rem]" : "bottom-18.5",
                 )}
               >
                 <div
@@ -461,6 +463,61 @@ function AppLayout() {
   );
 }
 
+function SidebarAiUsage({ usage, workspaceSlug }: { usage: AiUsageStatus; workspaceSlug: string }) {
+  const navigate = useNavigate();
+  const statusLabel = usage.blocked ? "Limit reached" : usage.degraded ? "Reduced" : "AI";
+
+  return (
+    <button
+      type="button"
+      aria-label="Open AI usage settings"
+      onClick={() =>
+        void navigate({
+          to: "/$workspaceSlug/settings",
+          params: { workspaceSlug },
+          search: { section: "ai" },
+        })
+      }
+      className={cn(
+        "group w-full border-t border-border-subtle/70 px-1 py-2 text-left",
+        "transition-colors hover:bg-surface/35 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+      )}
+    >
+      <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
+        <span className="text-[11px] text-fg-muted">{statusLabel}</span>
+        <span className="text-[10.5px] text-fg-faint">{usage.plan}</span>
+      </div>
+      <SidebarUsageBar label="Week" period={usage.weekly} />
+      <SidebarUsageBar label="Month" period={usage.monthly} />
+    </button>
+  );
+}
+
+function SidebarUsageBar({ label, period }: { label: string; period: AiUsageStatus["weekly"] }) {
+  const percent = Math.min(100, Math.max(0, period.percentUsed));
+  return (
+    <div className="grid grid-cols-[34px_minmax(0,1fr)_30px] items-center gap-2 px-0.5 py-[3px]">
+      <span className="text-[10.5px] text-fg-faint">{label}</span>
+      <span className="h-px overflow-hidden bg-border">
+        <span
+          className={cn(
+            "block h-full transition-[width]",
+            period.percentUsed >= 100
+              ? "bg-danger"
+              : period.percentUsed >= 80
+                ? "bg-warning"
+                : "bg-fg-muted",
+          )}
+          style={{ width: `${percent}%` }}
+        />
+      </span>
+      <span className="text-right text-[10.5px] text-fg-faint tabular-nums">
+        {Math.round(period.percentUsed)}%
+      </span>
+    </div>
+  );
+}
+
 function AccountMenuItem({
   children,
   onClick,
@@ -537,4 +594,3 @@ function SignOutIcon() {
     </svg>
   );
 }
-

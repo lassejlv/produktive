@@ -530,7 +530,7 @@ pub(crate) async fn agent_respond(
     for _ in 0..5 {
         let result = state
             .ai
-            .complete(&state.ai_model, &system, &history, &tools)
+            .complete(&state.ai_model, &system, &history, &tools, None)
             .await
             .map_err(|error| anyhow!("AI request failed: {error}"))?;
         match result {
@@ -800,6 +800,7 @@ async fn create_issue_for_actor(
         status: Set(request.status),
         priority: Set(request.priority),
         created_by_id: Set(Some(actor.id.clone())),
+        created_by_oauth_client_id: Set(None),
         assigned_to_id: Set(None),
         parent_id: Set(None),
         project_id: Set(None),
@@ -838,6 +839,7 @@ async fn record_issue_event(
         organization_id: Set(organization_id.to_owned()),
         issue_id: Set(issue_id.to_owned()),
         actor_id: Set(actor_id.map(ToOwned::to_owned)),
+        actor_oauth_client_id: Set(None),
         action: Set(action.to_owned()),
         changes: Set(changes),
         created_at: Set(Utc::now().fixed_offset()),

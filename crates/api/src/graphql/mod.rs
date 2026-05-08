@@ -185,6 +185,7 @@ fn is_internal_graphql_bridge_path(method: &Method, path: &str) -> bool {
             | ("POST", "/api/notes/folders")
             | ("GET", "/api/notes/mentions")
             | ("GET", "/api/ai/models")
+            | ("GET", "/api/ai/usage")
             | ("POST", "/api/ai/workspace-brief")
             | ("POST", "/api/ai/issue-draft")
             | ("GET", "/api/ai/mcp/servers")
@@ -373,9 +374,8 @@ impl QueryRoot {
         }
 
         if let Some(raw) = cursor.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-            let (cursor_at, cursor_id) =
-                cursor::decode(raw)
-                    .map_err(|_| graphql_error(ApiError::BadRequest("invalid cursor".into())))?;
+            let (cursor_at, cursor_id) = cursor::decode(raw)
+                .map_err(|_| graphql_error(ApiError::BadRequest("invalid cursor".into())))?;
             select = select.filter(
                 Condition::any()
                     .add(issue::Column::CreatedAt.lt(cursor_at))
@@ -1757,6 +1757,7 @@ impl MutationRoot {
                 AxumJson(chats::PostMessageRequest {
                     content: input.content,
                     model: input.model,
+                    reasoning_effort: None,
                 }),
             )
             .await,

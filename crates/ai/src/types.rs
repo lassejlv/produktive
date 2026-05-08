@@ -97,6 +97,7 @@ pub struct Tool {
 pub enum CompletionResult {
     Text {
         text: String,
+        reasoning_content: Option<String>,
         usage: Option<Usage>,
     },
     ToolCalls {
@@ -108,8 +109,11 @@ pub enum CompletionResult {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Usage {
+    #[serde(alias = "input_tokens")]
     pub prompt_tokens: Option<u64>,
+    #[serde(alias = "output_tokens")]
     pub completion_tokens: Option<u64>,
+    #[serde(alias = "total_tokens")]
     pub total_tokens: Option<u64>,
 }
 
@@ -121,6 +125,6 @@ pub enum AiError {
     Decode(#[from] serde_json::Error),
     #[error("upstream returned status {status}: {body}")]
     Upstream { status: u16, body: String },
-    #[error("upstream returned no choices")]
-    EmptyChoices,
+    #[error("upstream returned no output")]
+    EmptyOutput,
 }

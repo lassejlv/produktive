@@ -1,4 +1,5 @@
 use crate::{
+    ai_usage::{self, AiCompletionRequest},
     error::ApiError,
     http::issue_statuses::validate_issue_status,
     issue_helpers::{non_empty_optional, optional_string, required_string},
@@ -246,11 +247,21 @@ pub async fn agent_ask(
     let tools = agent_tools();
 
     for _ in 0..5 {
-        let result = state
-            .ai
-            .complete(&state.config.ai_model, &system, &history, &tools)
-            .await
-            .map_err(|error| ApiError::Internal(anyhow::anyhow!("AI request failed: {error}")))?;
+        let result = ai_usage::complete(
+            state,
+            AiCompletionRequest {
+                organization_id,
+                user_id: Some(actor_id),
+                requested_model_id: &state.config.ai_model,
+                source: platform,
+                system_prompt: &system,
+                messages: &history,
+                tools: &tools,
+                reasoning_effort: None,
+            },
+        )
+        .await?
+        .result;
         match result {
             CompletionResult::Text { text, .. } => return Ok(truncate_for_chat(&text)),
             CompletionResult::ToolCalls {

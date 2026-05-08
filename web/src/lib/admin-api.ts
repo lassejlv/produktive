@@ -271,6 +271,12 @@ export const suspendAdminOrganization = (id: string, input: { reason: string; no
 export const unsuspendAdminOrganization = (id: string) =>
   request<void>(`/api/admin/organizations/${id}/unsuspend`, { method: "POST" });
 
+export const resetAdminOrganizationAiUsage = (id: string, scope: "weekly" | "all") =>
+  request<void>(`/api/admin/organizations/${id}/ai-usage/reset`, {
+    method: "POST",
+    body: JSON.stringify({ scope }),
+  });
+
 export const listAuditEvents = (params: { page?: number } = {}) =>
   request<{ events: AuditEvent[]; page: PageInfo }>(
     `/api/admin/audit-events?${toQuery({ ...params, limit: 50 })}`,

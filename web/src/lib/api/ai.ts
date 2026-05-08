@@ -1,18 +1,46 @@
-import {
-  internalGraphQLGet,
-  internalGraphQLMutation,
-  request,
-} from "./client";
+import { internalGraphQLGet, internalGraphQLMutation, request } from "./client";
 
 export type AiModel = {
   id: string;
   name: string;
+  provider: string;
+  inputUsdPerMillion: number;
+  cachedInputUsdPerMillion: number;
+  outputUsdPerMillion: number;
   isDefault: boolean;
+  isAvailable: boolean;
 };
 
 export type AiModelsResponse = {
   models: AiModel[];
   defaultId: string;
+};
+
+export type AiUsagePeriod = {
+  usedUnits: number;
+  limitUnits: number;
+  carryoverUnits: number;
+  percentUsed: number;
+  periodStart: string;
+  periodEnd: string;
+};
+
+export type AiUsageBreakdown = {
+  modelId: string;
+  source: string;
+  normalizedUnits: number;
+  totalTokens: number;
+  estimatedMicroUsd: number;
+};
+
+export type AiUsageStatus = {
+  plan: string;
+  weekly: AiUsagePeriod;
+  monthly: AiUsagePeriod;
+  degraded: boolean;
+  blocked: boolean;
+  degradeModelId: string;
+  breakdown: AiUsageBreakdown[];
 };
 
 export type AiBrief = {
@@ -30,22 +58,17 @@ export type IssueDraft = {
   priority?: string | null;
 };
 
-export const listAiModels = () =>
-  internalGraphQLGet<AiModelsResponse>("/api/ai/models");
+export const listAiModels = () => internalGraphQLGet<AiModelsResponse>("/api/ai/models");
+
+export const getAiUsage = () => internalGraphQLGet<AiUsageStatus>("/api/ai/usage");
 
 export const generateWorkspaceBrief = () =>
   internalGraphQLMutation<AiBrief>("POST", "/api/ai/workspace-brief");
 
 export const generateProjectHealth = (projectId: string) =>
-  internalGraphQLMutation<AiBrief>(
-    "POST",
-    `/api/ai/projects/${projectId}/health`,
-  );
+  internalGraphQLMutation<AiBrief>("POST", `/api/ai/projects/${projectId}/health`);
 
-export const generateIssueDraft = (input: {
-  title: string;
-  description?: string;
-}) =>
+export const generateIssueDraft = (input: { title: string; description?: string }) =>
   internalGraphQLMutation<IssueDraft>("POST", "/api/ai/issue-draft", input);
 
 export type McpTool = {
@@ -90,50 +113,29 @@ export type McpApiKey = {
 export const listMcpServers = () =>
   internalGraphQLGet<{ servers: McpServer[] }>("/api/ai/mcp/servers");
 
-export const createMcpServer = (input: {
-  name?: string;
-  url: string;
-  accessToken?: string;
-}) =>
-  internalGraphQLMutation<McpServerEnvelope>(
-    "POST",
-    "/api/ai/mcp/servers",
-    input,
-  );
+export const createMcpServer = (input: { name?: string; url: string; accessToken?: string }) =>
+  internalGraphQLMutation<McpServerEnvelope>("POST", "/api/ai/mcp/servers", input);
 
 export const updateMcpServer = (
   id: string,
   patch: { name?: string; enabled?: boolean; accessToken?: string },
-) =>
-  internalGraphQLMutation<McpServerEnvelope>(
-    "PATCH",
-    `/api/ai/mcp/servers/${id}`,
-    patch,
-  );
+) => internalGraphQLMutation<McpServerEnvelope>("PATCH", `/api/ai/mcp/servers/${id}`, patch);
 
 export const deleteMcpServer = (id: string) =>
   internalGraphQLMutation<void>("DELETE", `/api/ai/mcp/servers/${id}`);
 
 export const refreshMcpServerTools = (id: string) =>
-  internalGraphQLMutation<McpServerEnvelope>(
-    "POST",
-    `/api/ai/mcp/servers/${id}/refresh-tools`,
-  );
+  internalGraphQLMutation<McpServerEnvelope>("POST", `/api/ai/mcp/servers/${id}/refresh-tools`);
 
 export const startMcpServerOAuth = (id: string) =>
   request<{ url: string }>(`/api/ai/mcp/servers/${id}/oauth/start`, {
     method: "POST",
   });
 
-export const listMcpApiKeys = () =>
-  internalGraphQLGet<{ keys: McpApiKey[] }>("/api/api-keys/keys");
+export const listMcpApiKeys = () => internalGraphQLGet<{ keys: McpApiKey[] }>("/api/api-keys/keys");
 
 export const createMcpApiKey = (input: { name?: string; expiresInDays?: number }) =>
-  internalGraphQLMutation<{ key: McpApiKey; token: string }>(
-    "POST",
-    "/api/api-keys/keys",
-    input,
-  );
+  internalGraphQLMutation<{ key: McpApiKey; token: string }>("POST", "/api/api-keys/keys", input);
 
 export const revokeMcpApiKey = (id: string) =>
   internalGraphQLMutation<void>("DELETE", `/api/api-keys/keys/${id}`);

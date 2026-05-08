@@ -31,6 +31,7 @@ export type ChatToolCallRecord = {
   id: string;
   name: string;
   arguments: string;
+  reasoningContent?: string;
   result?: unknown;
 };
 
@@ -54,8 +55,13 @@ export type UploadedChatAttachment = {
 export type ChatStreamEvent =
   | { type: "user"; message: ChatMessageRecord }
   | { type: "delta"; content: string }
+  | { type: "reasoning"; content: string }
+  | { type: "toolStart"; toolCall: ChatToolCallRecord }
+  | { type: "toolResult"; id: string; result: unknown }
   | { type: "done"; messages: ChatMessageRecord[] }
   | { type: "error"; error: string; messages?: ChatMessageRecord[] };
+
+export type ReasoningEffort = "auto" | "low" | "medium" | "high" | "xhigh";
 
 export const listChats = () =>
   graphqlRequest(ChatsDocument, {}).then((data) =>
@@ -83,8 +89,8 @@ export const listChatAccess = (id: string) =>
   );
 
 export const grantChatAccess = (id: string, userId: string) =>
-  graphqlRequest(GrantChatAccessDocument, { id, input: { userId } }).then(
-    (data) => unwrapGraphQLJson<{ access: ChatAccessEntry }>(data.grantChatAccess),
+  graphqlRequest(GrantChatAccessDocument, { id, input: { userId } }).then((data) =>
+    unwrapGraphQLJson<{ access: ChatAccessEntry }>(data.grantChatAccess),
   );
 
 export const revokeChatAccess = (id: string, userId: string) =>
@@ -93,9 +99,8 @@ export const revokeChatAccess = (id: string, userId: string) =>
   );
 
 export const postChatMessage = (id: string, content: string) =>
-  graphqlRequest(PostChatMessageDocument, { id, input: { content } }).then(
-    (data) =>
-      unwrapGraphQLJson<{ messages: ChatMessageRecord[] }>(data.postChatMessage),
+  graphqlRequest(PostChatMessageDocument, { id, input: { content } }).then((data) =>
+    unwrapGraphQLJson<{ messages: ChatMessageRecord[] }>(data.postChatMessage),
   );
 
 export const uploadChatAttachment = async (id: string, file: File) => {
@@ -120,10 +125,13 @@ export const streamChatMessage = async (
   id: string,
   content: string,
   onEvent: (event: ChatStreamEvent) => void,
-  options?: { model?: string },
+  options?: { model?: string; reasoningEffort?: ReasoningEffort },
 ) => {
   const body: Record<string, unknown> = { content };
   if (options?.model) body.model = options.model;
+  if (options?.reasoningEffort && options.reasoningEffort !== "auto") {
+    body.reasoningEffort = options.reasoningEffort;
+  }
   const response = await fetch(apiPath(`/api/chats/${id}/messages/stream`), {
     method: "POST",
     credentials: "include",

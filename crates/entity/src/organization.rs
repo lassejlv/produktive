@@ -16,6 +16,7 @@ pub struct Model {
     pub suspension_reason: Option<String>,
     pub suspension_note: Option<String>,
     pub require_two_factor: bool,
+    pub ai_plan: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

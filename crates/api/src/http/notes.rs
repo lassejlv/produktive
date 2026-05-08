@@ -1,4 +1,10 @@
-use crate::{auth::require_auth, error::ApiError, note_storage, state::AppState};
+use crate::{
+    ai_usage::{self, AiCompletionRequest},
+    auth::require_auth,
+    error::ApiError,
+    note_storage,
+    state::AppState,
+};
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
@@ -582,16 +588,22 @@ async fn propose_ai_edit(
     })
     .to_string();
 
-    let result = state
-        .ai
-        .complete(
-            &state.config.ai_model,
-            note_edit_system_prompt(),
-            &[AiMessage::user(prompt)],
-            &[],
-        )
-        .await
-        .map_err(|error| ApiError::Internal(anyhow::anyhow!("AI request failed: {error}")))?;
+    let messages = vec![AiMessage::user(prompt)];
+    let result = ai_usage::complete(
+        &state,
+        AiCompletionRequest {
+            organization_id: &auth.organization.id,
+            user_id: Some(&auth.user.id),
+            requested_model_id: &state.config.ai_model,
+            source: "note_edit",
+            system_prompt: note_edit_system_prompt(),
+            messages: &messages,
+            tools: &[],
+            reasoning_effort: None,
+        },
+    )
+    .await?
+    .result;
 
     let text = match result {
         CompletionResult::Text { text, .. } => text,

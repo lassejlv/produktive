@@ -1,5 +1,6 @@
 use crate::{
     agent_tools::{self, registry},
+    ai_usage::{self, AiCompletionRequest},
     auth::{require_auth, AuthContext},
     error::ApiError,
     mcp,
@@ -25,6 +26,7 @@ use sea_orm::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::convert::Infallible;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 const MAX_TOOL_ROUNDS: usize = 5;
@@ -97,6 +99,8 @@ pub(crate) struct WireToolCall {
     id: String,
     name: String,
     arguments: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_content: Option<String>,
     result: Option<Value>,
 }
 
@@ -140,6 +144,17 @@ enum StreamEvent {
     },
     Delta {
         content: String,
+    },
+    Reasoning {
+        content: String,
+    },
+    ToolStart {
+        #[serde(rename = "toolCall")]
+        tool_call: WireToolCall,
+    },
+    ToolResult {
+        id: String,
+        result: Value,
     },
     Done {
         messages: Vec<WireMessage>,
@@ -358,6 +373,8 @@ pub(crate) struct PostMessageRequest {
     pub(crate) content: String,
     #[serde(default)]
     pub(crate) model: Option<String>,
+    #[serde(default, rename = "reasoningEffort")]
+    pub(crate) reasoning_effort: Option<String>,
 }
 
 async fn resolve_model(
@@ -381,6 +398,18 @@ async fn resolve_model(
     Ok(value.to_owned())
 }
 
+fn resolve_reasoning_effort(requested: Option<String>) -> Option<String> {
+    let trimmed = requested
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+
+    match trimmed {
+        "low" | "medium" | "high" | "xhigh" => Some(trimmed.to_owned()),
+        _ => None,
+    }
+}
+
 pub(crate) async fn post_message(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -398,6 +427,7 @@ pub(crate) async fn post_message(
     }
 
     let model_id = resolve_model(&state, &auth, payload.model).await?;
+    let reasoning_effort = resolve_reasoning_effort(payload.reasoning_effort);
     let user_row = insert_message(&state, &chat_id, "user", user_content, None, None).await?;
 
     let mut new_rows = vec![user_row];
@@ -409,6 +439,8 @@ pub(crate) async fn post_message(
             &chat_id,
             user_content,
             &model_id,
+            reasoning_effort.as_deref(),
+            None,
         )
         .await?,
     );
@@ -435,6 +467,7 @@ async fn stream_message(
     }
 
     let model_id = resolve_model(&state, &auth, payload.model).await?;
+    let reasoning_effort = resolve_reasoning_effort(payload.reasoning_effort);
     let user_row = insert_message(&state, &chat_id, "user", &user_content, None, None).await?;
     let user_event = StreamEvent::User {
         message: WireMessage::from(&user_row),
@@ -443,27 +476,57 @@ async fn stream_message(
     let stream = async_stream::stream! {
         yield stream_line(&user_event);
 
-        match finish_assistant_turn(&state, &auth, &chat_model, &chat_id, &user_content, &model_id).await {
-            Ok(rows) => {
-                if let Some(assistant) = rows.iter().rev().find(|m| m.role == "assistant" && !m.content.is_empty()) {
-                    for chunk in chunk_text(&assistant.content) {
-                        yield stream_line(&StreamEvent::Delta { content: chunk });
-                    }
-                }
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let task_state = state.clone();
+        let task_auth = auth.clone();
+        let task_chat = chat_model.clone();
+        let task_chat_id = chat_id.clone();
+        let task_user_content = user_content.clone();
+        let task_model_id = model_id.clone();
+        let task_reasoning_effort = reasoning_effort.clone();
 
-                let messages = wire_messages_from_rows(&rows);
-                yield stream_line(&StreamEvent::Done { messages });
+        tokio::spawn(async move {
+            match finish_assistant_turn(
+                &task_state,
+                &task_auth,
+                &task_chat,
+                &task_chat_id,
+                &task_user_content,
+                &task_model_id,
+                task_reasoning_effort.as_deref(),
+                Some(&tx),
+            )
+            .await
+            {
+                Ok(rows) => {
+                    if let Some(assistant) = rows.iter().rev().find(|m| m.role == "assistant" && !m.content.is_empty()) {
+                        for chunk in chunk_text(&assistant.content) {
+                            let _ = tx.send(StreamEvent::Delta { content: chunk });
+                        }
+                    }
+
+                    let messages = wire_messages_from_rows(&rows);
+                    let _ = tx.send(StreamEvent::Done { messages });
+                }
+                Err(error) => {
+                    tracing::error!(?error, "streamed chat turn failed");
+                    let error_message = match &error {
+                        ApiError::RateLimited(message) => message.clone(),
+                        _ => "Failed to send message".to_owned(),
+                    };
+                    let messages = visible_messages_for_chat(&task_state, &task_chat_id)
+                        .await
+                        .unwrap_or_default();
+                    let _ = tx.send(StreamEvent::Error {
+                        error: error_message,
+                        messages,
+                    });
+                }
             }
-            Err(error) => {
-                tracing::error!(?error, "streamed chat turn failed");
-                let messages = visible_messages_for_chat(&state, &chat_id)
-                    .await
-                    .unwrap_or_default();
-                yield stream_line(&StreamEvent::Error {
-                    error: "Failed to send message".to_owned(),
-                    messages,
-                });
-            }
+        });
+
+        while let Some(event) = rx.recv().await {
+            yield stream_line(&event);
         }
     };
 
@@ -483,6 +546,8 @@ async fn finish_assistant_turn(
     chat_id: &str,
     user_content: &str,
     model_id: &str,
+    reasoning_effort: Option<&str>,
+    progress: Option<&mpsc::UnboundedSender<StreamEvent>>,
 ) -> Result<Vec<chat_message::Model>, ApiError> {
     let mut new_rows: Vec<chat_message::Model> = Vec::new();
 
@@ -507,13 +572,26 @@ async fn finish_assistant_turn(
 
     for round in 0..MAX_TOOL_ROUNDS {
         let history = load_history(state, chat_id).await?;
-        let result = match state
-            .ai
-            .complete(model_id, &system_prompt, &history, &tools)
-            .await
+        let result = match ai_usage::complete(
+            state,
+            AiCompletionRequest {
+                organization_id: &auth.organization.id,
+                user_id: Some(&auth.user.id),
+                requested_model_id: model_id,
+                source: "chat",
+                system_prompt: &system_prompt,
+                messages: &history,
+                tools: &tools,
+                reasoning_effort,
+            },
+        )
+        .await
         {
-            Ok(result) => result,
+            Ok(completion) => completion.result,
             Err(error) => {
+                if matches!(error, ApiError::RateLimited(_)) {
+                    return Err(error);
+                }
                 let has_tool_results = new_rows.iter().any(|row| row.role == "tool");
                 tracing::error!(
                     ?error,
@@ -544,7 +622,21 @@ async fn finish_assistant_turn(
         };
 
         match result {
-            CompletionResult::Text { text, .. } => {
+            CompletionResult::Text {
+                text,
+                reasoning_content,
+                ..
+            } => {
+                if let (Some(progress), Some(reasoning_content)) =
+                    (progress, reasoning_content.as_deref())
+                {
+                    let reasoning_content = truncate_reasoning(reasoning_content);
+                    if !reasoning_content.is_empty() {
+                        let _ = progress.send(StreamEvent::Reasoning {
+                            content: reasoning_content,
+                        });
+                    }
+                }
                 let assistant_row =
                     insert_message(state, chat_id, "assistant", &text, None, None).await?;
                 new_rows.push(assistant_row);
@@ -564,6 +656,32 @@ async fn finish_assistant_turn(
                 let serialized_calls = serialize_tool_calls(&calls);
                 let serialized_calls =
                     attach_reasoning_content(serialized_calls, reasoning_content.as_deref());
+                if let (Some(progress), Some(reasoning_content)) =
+                    (progress, reasoning_content.as_deref())
+                {
+                    let reasoning_content = truncate_reasoning(reasoning_content);
+                    if !reasoning_content.is_empty() {
+                        let _ = progress.send(StreamEvent::Reasoning {
+                            content: reasoning_content,
+                        });
+                    }
+                }
+                if let Some(progress) = progress {
+                    for call in &calls {
+                        let _ = progress.send(StreamEvent::ToolStart {
+                            tool_call: WireToolCall {
+                                id: call.id.clone(),
+                                name: call.name.clone(),
+                                arguments: call.arguments.clone(),
+                                reasoning_content: reasoning_content
+                                    .as_deref()
+                                    .map(truncate_reasoning)
+                                    .filter(|value| !value.is_empty()),
+                                result: None,
+                            },
+                        });
+                    }
+                }
                 let placeholder = insert_message(
                     state,
                     chat_id,
@@ -584,6 +702,12 @@ async fn finish_assistant_turn(
                     }
                     let result_str =
                         serde_json::to_string(&result_value).unwrap_or_else(|_| "{}".to_owned());
+                    if let Some(progress) = progress {
+                        let _ = progress.send(StreamEvent::ToolResult {
+                            id: call.id.clone(),
+                            result: result_value.clone(),
+                        });
+                    }
                     let tool_row = insert_message(
                         state,
                         chat_id,
@@ -1188,10 +1312,25 @@ fn wire_tool_calls(
                 id: call.id,
                 name: call.name,
                 arguments: call.arguments,
+                reasoning_content: call
+                    .reasoning_content
+                    .map(|value| truncate_reasoning(&value))
+                    .filter(|value| !value.is_empty()),
                 result,
             }
         })
         .collect()
+}
+
+fn truncate_reasoning(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.chars().count() <= 1_200 {
+        trimmed.to_owned()
+    } else {
+        let mut out: String = trimmed.chars().take(1_200).collect();
+        out.push('…');
+        out
+    }
 }
 
 fn truncate_title(text: &str) -> String {
