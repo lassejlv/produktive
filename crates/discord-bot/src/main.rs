@@ -222,18 +222,13 @@ impl EventHandler for Handler {
                     .flatten();
                 let (content, components) = if let Some(org) = org {
                     (
-                        format!(
-                            "Created issue `{}` ({})\n{}",
-                            created.title,
-                            short_id(&created.id),
-                            issue_url(&self.state.app_url, &org.slug, &created.id)
-                        ),
+                        format_issue_created_message(&self.state.app_url, &org.slug, &created),
                         issue_components(&self.state.app_url, &org.slug, &created),
                     )
                 } else {
                     (
                         format!(
-                            "Created issue `{}` ({})",
+                            "Created issue: **{}** ({})",
                             created.title,
                             short_id(&created.id)
                         ),
@@ -364,21 +359,7 @@ async fn handle_component(
         return Ok(());
     }
 
-    match custom_id {
-        "agent_close_thread" => {
-            component
-                .create_response(&ctx.http, CreateInteractionResponse::Acknowledge)
-                .await?;
-            close_thread_channel(state, component.channel_id, &ctx.http).await?;
-        }
-        "agent_continue" => {
-            agent_thread::continue_agent_thread(state, ctx, component).await?;
-        }
-        _ => {
-            return Err(anyhow!("Unknown action."));
-        }
-    }
-    Ok(())
+    Err(anyhow!("Unknown action."))
 }
 
 async fn respond_component_ephemeral(
@@ -399,18 +380,6 @@ async fn respond_component_ephemeral(
     {
         tracing::warn!(%error, "failed to send Discord component response");
     }
-}
-
-async fn close_thread_channel(
-    state: Arc<BotState>,
-    channel_id: ChannelId,
-    http: &Arc<serenity::http::Http>,
-) -> anyhow::Result<()> {
-    channel_id
-        .edit_thread(http, EditThread::new().archived(true))
-        .await?;
-    state.agent_threads.write().await.remove(&channel_id);
-    Ok(())
 }
 
 async fn create_login_link(
@@ -513,6 +482,7 @@ async fn usage_message(
 
 fn usage_line(label: &str, period: &ai_usage::UsagePeriod) -> String {
     let reset_at = period.period_end.timestamp();
+    let remaining_units = (period.limit_units - period.used_units).max(0);
     let carryover = if period.carryover_units > 0 {
         format!(
             "\n↳ {} deducted after reset",
@@ -522,13 +492,13 @@ fn usage_line(label: &str, period: &ai_usage::UsagePeriod) -> String {
         String::new()
     };
     format!(
-        "{}\n{} `{}` {} / {} · {:.1}% · resets <t:{}:R>{}",
+        "{}\n{} `{}` {} left · used {} of {} · resets <t:{}:R>{}",
         label,
         usage_bar(period.percent_used),
-        usage_mood(period.percent_used),
+        remaining_mood(period.percent_used),
+        format_units(remaining_units),
         format_units(period.used_units),
         format_units(period.limit_units),
-        period.percent_used,
         reset_at,
         carryover,
     )
@@ -548,13 +518,13 @@ fn usage_bar(percent: f64) -> String {
     format!("{}{}", fill.repeat(filled), empty.repeat(WIDTH - filled))
 }
 
-fn usage_mood(percent: f64) -> &'static str {
+fn remaining_mood(percent: f64) -> &'static str {
     if percent >= 100.0 {
-        "maxed"
+        "empty"
     } else if percent >= 80.0 {
-        "high"
+        "low"
     } else {
-        "good"
+        "left"
     }
 }
 
@@ -756,12 +726,7 @@ async fn create_issue_command(
     };
     let created = create_issue_for_actor(state, &server, &actor, request).await?;
     Ok(CommandReply::with_components(
-        format!(
-            "Created issue `{}` ({})\n{}",
-            created.title,
-            short_id(&created.id),
-            issue_url(&state.app_url, &org.slug, &created.id)
-        ),
+        format_issue_created_message(&state.app_url, &org.slug, &created),
         issue_components(&state.app_url, &org.slug, &created),
     ))
 }
@@ -788,7 +753,7 @@ async fn update_issue_command(
     let updated = update_issue_fields(state, &server, &actor, &id, &args).await?;
     Ok(CommandReply::with_components(
         format!(
-            "Updated issue `{}` ({})\n{}",
+            "Updated issue: **{}** ({})\n{}",
             updated.title,
             short_id(&updated.id),
             issue_url(&state.app_url, &org.slug, &updated.id)
@@ -869,6 +834,19 @@ fn issue_link(app_url: &str, workspace_slug: &str, issue: &issue::Model) -> Stri
     format!(
         "[{}]({})",
         issue.title,
+        issue_url(app_url, workspace_slug, &issue.id)
+    )
+}
+
+fn format_issue_created_message(
+    app_url: &str,
+    workspace_slug: &str,
+    issue: &issue::Model,
+) -> String {
+    format!(
+        "Created issue: **{}** ({})\n{}",
+        issue.title,
+        short_id(&issue.id),
         issue_url(app_url, workspace_slug, &issue.id)
     )
 }
@@ -1542,6 +1520,12 @@ async fn create_issue_from_mention(
         }
     };
 
+    let request = format_mention_issue_request(state, &server, &actor, request.clone())
+        .await
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "failed to format Discord mention issue with AI");
+            fallback_issue_request(request)
+        });
     let issue = create_issue_for_actor(state, &server, &actor, request).await?;
     let mut active = claim.into_active_model();
     active.issue_id = Set(Some(issue.id.clone()));
@@ -1602,6 +1586,171 @@ async fn create_issue_for_actor(
     Ok(row)
 }
 
+struct AiIssueDraft {
+    title: String,
+    description: Option<String>,
+    status: Option<String>,
+    priority: Option<String>,
+}
+
+async fn format_mention_issue_request(
+    state: &BotState,
+    server: &discord_server_link::Model,
+    actor: &user::Model,
+    request: IssueRequest,
+) -> anyhow::Result<IssueRequest> {
+    let system = "Format a Discord message into one Produktive issue. Return only JSON with fields title, description, status, and priority. title must be concise and action-oriented, not the raw command. Remove phrases like \"make an issue about\". status must be backlog, todo, in-progress, or done. priority must be low, medium, high, or urgent; infer urgent/high only when the user clearly says it.";
+    let user = json!({
+        "raw_title": request.title,
+        "raw_description": request.description,
+        "fallback_status": request.status,
+        "fallback_priority": request.priority,
+    });
+    let messages = vec![AiMessage::user(user.to_string())];
+    let result = ai_usage::complete(
+        state,
+        &server.organization_id,
+        &actor.id,
+        "gpt-5.4-mini",
+        system,
+        &messages,
+        &[],
+    )
+    .await?;
+    let text = match result {
+        CompletionResult::Text { text, .. } => text,
+        CompletionResult::ToolCalls { .. } => return Ok(fallback_issue_request(request)),
+    };
+    let draft = parse_ai_issue_draft(&text)?;
+    Ok(issue_request_from_draft(request, draft))
+}
+
+fn parse_ai_issue_draft(text: &str) -> anyhow::Result<AiIssueDraft> {
+    let trimmed = text.trim();
+    let json_text = if trimmed.starts_with("```") {
+        trimmed
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim()
+    } else if let (Some(start), Some(end)) = (trimmed.find('{'), trimmed.rfind('}')) {
+        &trimmed[start..=end]
+    } else {
+        trimmed
+    };
+    let value: Value =
+        serde_json::from_str(json_text).context("AI issue formatter returned invalid JSON")?;
+    Ok(AiIssueDraft {
+        title: value
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned(),
+        description: value
+            .get("description")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        status: value
+            .get("status")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+        priority: value
+            .get("priority")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned),
+    })
+}
+
+fn issue_request_from_draft(fallback: IssueRequest, draft: AiIssueDraft) -> IssueRequest {
+    let fallback = fallback_issue_request(fallback);
+    let title = clean_issue_title(&draft.title).unwrap_or(fallback.title);
+    let description = draft
+        .description
+        .and_then(|value| non_empty_trimmed(value).map(|value| value.chars().take(4000).collect()))
+        .or(fallback.description);
+    IssueRequest {
+        title,
+        description,
+        status: draft
+            .status
+            .and_then(valid_status)
+            .unwrap_or(fallback.status),
+        priority: draft
+            .priority
+            .and_then(valid_priority)
+            .unwrap_or(fallback.priority),
+        assigned_to_id: fallback.assigned_to_id,
+    }
+}
+
+fn fallback_issue_request(request: IssueRequest) -> IssueRequest {
+    let cleaned = clean_issue_title(&request.title).unwrap_or(request.title);
+    IssueRequest {
+        title: cleaned,
+        description: request.description,
+        status: request.status,
+        priority: request.priority,
+        assigned_to_id: request.assigned_to_id,
+    }
+}
+
+fn clean_issue_title(value: &str) -> Option<String> {
+    let stripped = strip_issue_request_prefix(value);
+    let stripped = strip_leading_task_phrase(stripped);
+    non_empty_trimmed(stripped).map(|title| capitalize_first(&title).chars().take(180).collect())
+}
+
+fn strip_issue_request_prefix(value: &str) -> &str {
+    let trimmed = value.trim();
+    let lower = trimmed.to_lowercase();
+    for prefix in [
+        "make an issue about",
+        "make issue about",
+        "create an issue about",
+        "create issue about",
+        "new issue about",
+        "issue about",
+        "make an issue",
+        "create an issue",
+        "create issue",
+        "new issue",
+        "issue",
+        "bug",
+    ] {
+        if lower.starts_with(prefix) {
+            let rest = &trimmed[prefix.len()..];
+            if rest.is_empty() || rest.starts_with([':', '-', ' ']) {
+                return rest.trim_start_matches([':', '-', ' ']);
+            }
+        }
+    }
+    trimmed
+}
+
+fn strip_leading_task_phrase(value: &str) -> &str {
+    let trimmed = value.trim();
+    let lower = trimmed.to_lowercase();
+    for prefix in ["i need to ", "we need to ", "please ", "pls "] {
+        if lower.starts_with(prefix) {
+            return trimmed[prefix.len()..].trim();
+        }
+    }
+    trimmed
+}
+
+fn non_empty_trimmed(value: impl AsRef<str>) -> Option<String> {
+    let trimmed = value.as_ref().trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
+fn capitalize_first(value: &str) -> String {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    first.to_uppercase().chain(chars).collect()
+}
+
 async fn record_issue_event(
     state: &BotState,
     organization_id: &str,
@@ -1626,13 +1775,7 @@ async fn record_issue_event(
 }
 
 fn parse_mention_issue(content: &str) -> Option<IssueRequest> {
-    let mut text = content.trim();
-    for prefix in ["create issue", "new issue", "issue", "bug:"] {
-        if let Some(rest) = text.strip_prefix(prefix) {
-            text = rest.trim_start_matches([':', '-', ' ']);
-            break;
-        }
-    }
+    let text = strip_issue_request_prefix(content);
     if text.is_empty() {
         return None;
     }

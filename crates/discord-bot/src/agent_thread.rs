@@ -2,11 +2,13 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context as _};
 use produktive_ai::Message as AiMessage;
+use produktive_entity::{chat, chat_access, chat_message};
+use sea_orm::{ActiveModelTrait, EntityTrait, IntoActiveModel, Set};
 use serenity::all::{
-    AutoArchiveDuration, ButtonStyle, ChannelId, ChannelType, CommandInteraction,
-    ComponentInteraction, Context, CreateActionRow, CreateButton, CreateInteractionResponse,
-    CreateInteractionResponseMessage, CreateMessage, CreateThread, EditThread, Message,
+    AutoArchiveDuration, ChannelId, ChannelType, CommandInteraction, Context, CreateMessage,
+    CreateThread, EditThread, Message,
 };
+use uuid::Uuid;
 
 use crate::commands::command_string_option;
 use crate::state::{AgentThread, BotState};
@@ -24,12 +26,16 @@ pub async fn start_agent_thread(
     let discord_user_id = command.user.id.to_string();
     let prompt =
         command_string_option(command, "message").ok_or_else(|| anyhow!("Message is required."))?;
-    let (server, _, _) = linked_context(&state, &guild_id, &discord_user_id).await?;
+    let (server, actor, _) = linked_context(&state, &guild_id, &discord_user_id).await?;
     if !server.agent_enabled {
         return Err(anyhow!("The agent is disabled in this server."));
     }
 
     let thread_name = agent_thread_name(&command.user.name, &prompt);
+    let produktive_chat_id =
+        create_produktive_chat(&state, &server.organization_id, &actor.id, &thread_name)
+            .await
+            .context("failed to create Produktive chat for Discord agent thread")?;
     let thread = command
         .channel_id
         .create_thread(
@@ -52,6 +58,7 @@ pub async fn start_agent_thread(
         AgentThread {
             guild_id,
             owner_discord_user_id: discord_user_id.clone(),
+            produktive_chat_id,
             history: Vec::new(),
         },
     );
@@ -171,65 +178,6 @@ pub(crate) async fn respond_ephemeral(
     }
 }
 
-pub async fn continue_agent_thread(
-    state: Arc<BotState>,
-    ctx: &Context,
-    component: &ComponentInteraction,
-) -> anyhow::Result<()> {
-    let session = state
-        .agent_threads
-        .read()
-        .await
-        .get(&component.channel_id)
-        .cloned()
-        .ok_or_else(|| anyhow!("Agent thread session was not found."))?;
-    if component.user.id.to_string() != session.owner_discord_user_id {
-        component
-            .create_response(
-                &ctx.http,
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new()
-                        .content("Only the thread owner can continue this agent.")
-                        .ephemeral(true),
-                ),
-            )
-            .await?;
-        return Ok(());
-    }
-    component
-        .create_response(&ctx.http, CreateInteractionResponse::Acknowledge)
-        .await?;
-    let thread_id = component.channel_id;
-    let discord_user_id = session.owner_discord_user_id;
-    let http = ctx.http.clone();
-    tokio::spawn(async move {
-        let typing = thread_id.start_typing(&http);
-        let progress = AgentProgress::new(thread_id, http.clone());
-        let turn = run_agent_thread_turn(
-            state.clone(),
-            thread_id,
-            discord_user_id,
-            "Continue.".to_owned(),
-            Some(&progress),
-        )
-        .await
-        .unwrap_or_else(|error| AgentReply {
-            content: error.to_string(),
-            close_thread: false,
-            rename_thread: None,
-        });
-        typing.stop();
-        maybe_rename_thread(thread_id, &http, turn.rename_thread.as_deref()).await;
-        if let Err(error) = send_agent_reply(thread_id, &http, turn.content).await {
-            tracing::warn!(%error, "failed to send Discord agent continue response");
-        }
-        if turn.close_thread {
-            close_agent_thread(state, thread_id, &http).await;
-        }
-    });
-    Ok(())
-}
-
 async fn run_agent_thread_turn(
     state: Arc<BotState>,
     thread_id: ChannelId,
@@ -237,21 +185,18 @@ async fn run_agent_thread_turn(
     prompt: String,
     progress: Option<&AgentProgress>,
 ) -> anyhow::Result<AgentReply> {
-    let guild_id = state
+    let session = state
         .agent_threads
         .read()
         .await
         .get(&thread_id)
-        .map(|session| session.guild_id.clone())
+        .cloned()
         .ok_or_else(|| anyhow!("Agent thread session was not found."))?;
-    let mut history = state
-        .agent_threads
-        .read()
-        .await
-        .get(&thread_id)
-        .map(|session| session.history.clone())
-        .unwrap_or_default();
+    let guild_id = session.guild_id;
+    let produktive_chat_id = session.produktive_chat_id;
+    let mut history = session.history;
 
+    insert_chat_message(&state, &produktive_chat_id, "user", &prompt).await?;
     let reply = agent_respond(
         &state,
         &guild_id,
@@ -261,6 +206,10 @@ async fn run_agent_thread_turn(
         progress,
     )
     .await?;
+    insert_chat_message(&state, &produktive_chat_id, "assistant", &reply.content).await?;
+    if let Some(title) = reply.rename_thread.as_deref() {
+        update_produktive_chat_title(&state, &produktive_chat_id, title).await?;
+    }
     let mut sessions = state.agent_threads.write().await;
     if let Some(session) = sessions.get_mut(&thread_id) {
         session.history = trim_agent_history(history);
@@ -305,24 +254,73 @@ async fn send_agent_reply(
     content: String,
 ) -> serenity::Result<Message> {
     thread_id
-        .send_message(
-            http,
-            CreateMessage::new()
-                .content(content)
-                .components(agent_reply_components()),
-        )
+        .send_message(http, CreateMessage::new().content(content))
         .await
 }
 
-fn agent_reply_components() -> Vec<CreateActionRow> {
-    vec![CreateActionRow::Buttons(vec![
-        CreateButton::new("agent_continue")
-            .label("Continue")
-            .style(ButtonStyle::Secondary),
-        CreateButton::new("agent_close_thread")
-            .label("Close thread")
-            .style(ButtonStyle::Danger),
-    ])]
+async fn create_produktive_chat(
+    state: &BotState,
+    organization_id: &str,
+    user_id: &str,
+    title: &str,
+) -> anyhow::Result<String> {
+    let now = chrono::Utc::now().fixed_offset();
+    let chat_id = Uuid::new_v4().to_string();
+    chat::ActiveModel {
+        id: Set(chat_id.clone()),
+        organization_id: Set(organization_id.to_owned()),
+        created_by_id: Set(Some(user_id.to_owned())),
+        title: Set(title.to_owned()),
+        created_at: Set(now),
+        updated_at: Set(now),
+    }
+    .insert(&state.db)
+    .await?;
+    chat_access::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        chat_id: Set(chat_id.clone()),
+        user_id: Set(user_id.to_owned()),
+        granted_by_id: Set(Some(user_id.to_owned())),
+        created_at: Set(now),
+    }
+    .insert(&state.db)
+    .await?;
+    Ok(chat_id)
+}
+
+async fn insert_chat_message(
+    state: &BotState,
+    chat_id: &str,
+    role: &str,
+    content: &str,
+) -> anyhow::Result<()> {
+    chat_message::ActiveModel {
+        id: Set(Uuid::new_v4().to_string()),
+        chat_id: Set(chat_id.to_owned()),
+        role: Set(role.to_owned()),
+        content: Set(content.to_owned()),
+        tool_calls: Set(None),
+        tool_call_id: Set(None),
+        created_at: Set(chrono::Utc::now().fixed_offset()),
+    }
+    .insert(&state.db)
+    .await?;
+    Ok(())
+}
+
+async fn update_produktive_chat_title(
+    state: &BotState,
+    chat_id: &str,
+    title: &str,
+) -> anyhow::Result<()> {
+    let Some(row) = chat::Entity::find_by_id(chat_id).one(&state.db).await? else {
+        return Ok(());
+    };
+    let mut active = row.into_active_model();
+    active.title = Set(title.to_owned());
+    active.updated_at = Set(chrono::Utc::now().fixed_offset());
+    active.update(&state.db).await?;
+    Ok(())
 }
 
 fn trim_agent_history(mut history: Vec<AiMessage>) -> Vec<AiMessage> {

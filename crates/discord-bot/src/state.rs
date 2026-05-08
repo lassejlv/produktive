@@ -19,5 +19,6 @@ pub struct BotState {
 pub struct AgentThread {
     pub guild_id: String,
     pub owner_discord_user_id: String,
+    pub produktive_chat_id: String,
     pub history: Vec<AiMessage>,
 }
