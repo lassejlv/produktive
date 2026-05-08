@@ -1,4 +1,5 @@
 use crate::{
+    actor_profiles::{actor_profile_for_ids, ActorProfile},
     auth::require_auth,
     error::ApiError,
     http::issue_statuses::{
@@ -61,6 +62,7 @@ pub(crate) struct ProjectResponse {
     icon: Option<String>,
     lead_id: Option<String>,
     lead: Option<LeadResponse>,
+    created_by_profile: Option<ActorProfile>,
     target_date: Option<String>,
     sort_order: i32,
     archived_at: Option<String>,
@@ -170,6 +172,7 @@ pub(crate) async fn create_project(
         target_date: Set(target_date),
         sort_order: Set(next_order),
         created_by_id: Set(Some(auth.user.id.clone())),
+        created_by_oauth_client_id: Set(None),
         archived_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
@@ -347,6 +350,12 @@ pub(crate) async fn project_response(
         .await?;
 
     let statuses = issue_statuses::list_issue_statuses(state, &row.organization_id, false).await?;
+    let created_by_profile = actor_profile_for_ids(
+        state,
+        row.created_by_oauth_client_id.as_deref(),
+        row.created_by_id.as_deref(),
+    )
+    .await?;
     let mut breakdown = StatusBreakdown::default();
     let mut done_count = 0_u64;
     let issues = issue::Entity::find()
@@ -381,6 +390,7 @@ pub(crate) async fn project_response(
         icon: row.icon,
         lead_id: row.lead_id,
         lead,
+        created_by_profile,
         target_date: row.target_date.map(|d| d.to_rfc3339()),
         sort_order: row.sort_order,
         archived_at: row.archived_at.map(|d| d.to_rfc3339()),

@@ -459,13 +459,18 @@ export function IssueDetail({
               <EditableTitle value={issue.title} onSave={handleTitle} />
 
               <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[12px] text-fg-faint">
-                {issue.createdBy ? (
+                {(issue.createdByProfile ?? issue.createdBy) ? (
                   <span className="inline-flex items-center gap-1.5 text-fg-muted">
-                    <Avatar name={issue.createdBy.name} image={issue.createdBy.image} />
-                    {issue.createdBy.name}
+                    <Avatar
+                      name={(issue.createdByProfile ?? issue.createdBy)?.name}
+                      image={(issue.createdByProfile ?? issue.createdBy)?.image}
+                    />
+                    {(issue.createdByProfile ?? issue.createdBy)?.name}
                   </span>
                 ) : null}
-                {issue.createdBy ? <span className="text-fg-faint/60">·</span> : null}
+                {(issue.createdByProfile ?? issue.createdBy) ? (
+                  <span className="text-fg-faint/60">·</span>
+                ) : null}
                 <span>Created {formatDate(issue.createdAt)}</span>
                 <span className="text-fg-faint/60">·</span>
                 <span>Updated {formatDate(issue.updatedAt)}</span>
@@ -912,20 +917,20 @@ type TimelineItem =
       type: "created";
       key: string;
       date: string;
-      actor: IssueHistoryEvent["actor"];
+      actor: IssueHistoryEvent["actorProfile"] | IssueHistoryEvent["actor"];
     }
   | {
       type: "attachment";
       key: string;
       date: string;
-      actor: IssueHistoryEvent["actor"];
+      actor: IssueHistoryEvent["actorProfile"] | IssueHistoryEvent["actor"];
       change: IssueHistoryChange;
     }
   | {
       type: "change";
       key: string;
       date: string;
-      actor: IssueHistoryEvent["actor"];
+      actor: IssueHistoryEvent["actorProfile"] | IssueHistoryEvent["actor"];
       change: IssueHistoryChange;
     }
   | { type: "comment"; key: string; date: string; comment: IssueComment };
@@ -938,7 +943,7 @@ function buildTimeline(events: IssueHistoryEvent[], comments: IssueComment[]): T
         type: "created",
         key: `created-${event.id}`,
         date: event.createdAt,
-        actor: event.actor,
+        actor: event.actorProfile ?? event.actor,
       });
       continue;
     }
@@ -949,7 +954,7 @@ function buildTimeline(events: IssueHistoryEvent[], comments: IssueComment[]): T
           type: "attachment",
           key: `att-${event.id}`,
           date: event.createdAt,
-          actor: event.actor,
+          actor: event.actorProfile ?? event.actor,
           change,
         });
       }
@@ -961,7 +966,7 @@ function buildTimeline(events: IssueHistoryEvent[], comments: IssueComment[]): T
         type: "change",
         key: `change-${event.id}-${change.field}-${index}`,
         date: event.createdAt,
-        actor: event.actor,
+        actor: event.actorProfile ?? event.actor,
         change,
       });
     });
@@ -999,14 +1004,15 @@ function IssueTimeline({ items, lookups }: { items: TimelineItem[]; lookups: Loo
 }
 
 function CommentRow({ comment }: { comment: IssueComment }) {
+  const author = comment.authorProfile ?? comment.author;
   return (
     <article className="relative flex gap-3 py-3">
       <span className="relative z-10 mt-0.5 grid size-[22px] shrink-0 place-items-center rounded-full bg-bg">
-        <Avatar name={comment.author?.name} image={comment.author?.image} />
+        <Avatar name={author?.name} image={author?.image} />
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2 text-[12.5px]">
-          <span className="font-medium text-fg">{comment.author?.name ?? "Unknown user"}</span>
+          <span className="font-medium text-fg">{author?.name ?? "Unknown user"}</span>
           <span className="text-[11.5px] text-fg-faint">{formatDate(comment.createdAt)}</span>
         </div>
         <div className="mt-1 text-[14px] leading-[1.6] text-fg">

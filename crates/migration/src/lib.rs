@@ -100,6 +100,8 @@ mod m20260505_000048_create_security_events;
 mod m20260505_000049_add_two_factor_trusted_devices;
 #[path = "../migrations/m20260505_000050_add_session_fresh_two_factor.rs"]
 mod m20260505_000050_add_session_fresh_two_factor;
+#[path = "../migrations/m20260508_000051_add_oauth_actor_profiles.rs"]
+mod m20260508_000051_add_oauth_actor_profiles;
 
 pub struct Migrator;
 
@@ -157,6 +159,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260505_000048_create_security_events::Migration),
             Box::new(m20260505_000049_add_two_factor_trusted_devices::Migration),
             Box::new(m20260505_000050_add_session_fresh_two_factor::Migration),
+            Box::new(m20260508_000051_add_oauth_actor_profiles::Migration),
         ]
     }
 }

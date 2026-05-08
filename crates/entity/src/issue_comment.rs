@@ -9,6 +9,7 @@ pub struct Model {
     pub organization_id: String,
     pub issue_id: String,
     pub author_id: Option<String>,
+    pub author_oauth_client_id: Option<String>,
     pub body: String,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

@@ -1,4 +1,5 @@
 use crate::{
+    actor_profiles::{actor_profile_for_ids, ActorProfile},
     auth::require_auth,
     error::ApiError,
     http::inbox::dispatch_notification,
@@ -134,6 +135,7 @@ pub(crate) struct IssueResponse {
     created_at: String,
     updated_at: String,
     created_by: Option<UserResponse>,
+    created_by_profile: Option<ActorProfile>,
     assigned_to: Option<UserResponse>,
     parent_id: Option<String>,
     project_id: Option<String>,
@@ -188,6 +190,7 @@ pub(crate) struct IssueEventResponse {
     changes: Vec<IssueChange>,
     created_at: String,
     actor: Option<UserResponse>,
+    actor_profile: Option<ActorProfile>,
 }
 
 #[derive(Serialize)]
@@ -198,6 +201,7 @@ pub(crate) struct IssueCommentResponse {
     created_at: String,
     updated_at: String,
     author: Option<UserResponse>,
+    author_profile: Option<ActorProfile>,
 }
 
 async fn list_issues(
@@ -312,6 +316,7 @@ pub(crate) async fn create_issue(
         status: Set(status),
         priority: Set(optional_string(payload.priority, "medium")?),
         created_by_id: Set(Some(actor_id.clone())),
+        created_by_oauth_client_id: Set(None),
         assigned_to_id: Set(assigned_to_id.clone()),
         parent_id: Set(parent_id),
         project_id: Set(project_id),
@@ -331,6 +336,7 @@ pub(crate) async fn create_issue(
         &organization_id,
         &issue.id,
         Some(&actor_id),
+        None,
         "created",
         vec![
             IssueChange {
@@ -505,6 +511,7 @@ pub(crate) async fn update_issue(
             &auth.organization.id,
             &issue.id,
             Some(&auth.user.id),
+            None,
             "updated",
             changes,
         )
@@ -626,6 +633,7 @@ async fn create_comment(
         organization_id: Set(auth.organization.id.clone()),
         issue_id: Set(issue.id.clone()),
         author_id: Set(Some(auth.user.id.clone())),
+        author_oauth_client_id: Set(None),
         body: Set(body),
         created_at: Set(now),
         updated_at: Set(now),
@@ -760,6 +768,7 @@ async fn upload_attachment(
                 &auth.organization.id,
                 &issue.id,
                 Some(&auth.user.id),
+                None,
                 "attachment_added",
                 vec![IssueChange {
                     field: "attachments".to_owned(),
@@ -814,6 +823,12 @@ pub(crate) async fn issue_response(
         Some(id) => find_user_response(state, id).await?,
         None => None,
     };
+    let created_by_profile = actor_profile_for_ids(
+        state,
+        issue.created_by_oauth_client_id.as_deref(),
+        issue.created_by_id.as_deref(),
+    )
+    .await?;
     let assigned_to = match &issue.assigned_to_id {
         Some(id) => find_user_response(state, id).await?,
         None => None,
@@ -851,6 +866,7 @@ pub(crate) async fn issue_response(
         created_at: issue.created_at.to_rfc3339(),
         updated_at: issue.updated_at.to_rfc3339(),
         created_by,
+        created_by_profile,
         assigned_to,
         parent_id: issue.parent_id,
         project_id: issue.project_id,
@@ -875,6 +891,12 @@ async fn issue_event_response(
         Some(id) => find_user_response(state, id).await?,
         None => None,
     };
+    let actor_profile = actor_profile_for_ids(
+        state,
+        event.actor_oauth_client_id.as_deref(),
+        event.actor_id.as_deref(),
+    )
+    .await?;
     let changes = serde_json::from_value::<Vec<IssueChange>>(event.changes).unwrap_or_default();
 
     Ok(IssueEventResponse {
@@ -883,6 +905,7 @@ async fn issue_event_response(
         changes,
         created_at: event.created_at.to_rfc3339(),
         actor,
+        actor_profile,
     })
 }
 
@@ -894,6 +917,12 @@ async fn issue_comment_response(
         Some(id) => find_user_response(state, id).await?,
         None => None,
     };
+    let author_profile = actor_profile_for_ids(
+        state,
+        comment.author_oauth_client_id.as_deref(),
+        comment.author_id.as_deref(),
+    )
+    .await?;
 
     Ok(IssueCommentResponse {
         id: comment.id,
@@ -901,6 +930,7 @@ async fn issue_comment_response(
         created_at: comment.created_at.to_rfc3339(),
         updated_at: comment.updated_at.to_rfc3339(),
         author,
+        author_profile,
     })
 }
 

@@ -11,13 +11,10 @@ import {
   UpdateIssueStatusDocument,
 } from "@/gql/graphql";
 import { graphqlRequest, unwrapGraphQLJson } from "@/lib/graphql/client";
-import {
-  apiPath,
-  internalGraphQLGet,
-  internalGraphQLMutation,
-} from "./client";
+import { apiPath, internalGraphQLGet, internalGraphQLMutation } from "./client";
 import type { LabelSummary } from "./labels";
 import type { ProjectSummary } from "./projects";
+import type { ActorProfile } from "./actor-profile";
 
 export type Issue = {
   id: string;
@@ -33,6 +30,7 @@ export type Issue = {
     email: string;
     image: string | null;
   } | null;
+  createdByProfile?: ActorProfile | null;
   assignedTo?: {
     id: string;
     name: string;
@@ -86,6 +84,7 @@ export type IssueHistoryEvent = {
     email: string;
     image: string | null;
   } | null;
+  actorProfile?: ActorProfile | null;
 };
 
 export type IssueComment = {
@@ -99,6 +98,7 @@ export type IssueComment = {
     email: string;
     image: string | null;
   } | null;
+  authorProfile?: ActorProfile | null;
 };
 
 export type IssueSubscriberUser = {
@@ -207,43 +207,27 @@ export const deleteIssueStatus = (id: string, replacementStatus?: string) =>
     input: replacementStatus ? { replacementStatus } : null,
   }).then(() => undefined);
 
-export const reorderIssueStatuses = (
-  statuses: { id: string; sortOrder: number }[],
-) =>
+export const reorderIssueStatuses = (statuses: { id: string; sortOrder: number }[]) =>
   graphqlRequest(ReorderIssueStatusesDocument, { statuses }).then((data) =>
     unwrapGraphQLJson<{ statuses: IssueStatus[] }>(data.reorderIssueStatuses),
   );
 
 export const getIssueHistory = (id: string) =>
-  internalGraphQLGet<{ events: IssueHistoryEvent[] }>(
-    `/api/issues/${id}/history`,
-  );
+  internalGraphQLGet<{ events: IssueHistoryEvent[] }>(`/api/issues/${id}/history`);
 
 export const listIssueComments = (id: string) =>
-  internalGraphQLGet<{ comments: IssueComment[] }>(
-    `/api/issues/${id}/comments`,
-  );
+  internalGraphQLGet<{ comments: IssueComment[] }>(`/api/issues/${id}/comments`);
 
 export const createIssueComment = (id: string, body: string) =>
-  internalGraphQLMutation<{ comment: IssueComment }>(
-    "POST",
-    `/api/issues/${id}/comments`,
-    { body },
-  );
+  internalGraphQLMutation<{ comment: IssueComment }>("POST", `/api/issues/${id}/comments`, {
+    body,
+  });
 
 export const listIssueSubscribers = (id: string) =>
-  internalGraphQLGet<IssueSubscribersResponse>(
-    `/api/issues/${id}/subscribers`,
-  );
+  internalGraphQLGet<IssueSubscribersResponse>(`/api/issues/${id}/subscribers`);
 
 export const subscribeToIssue = (id: string) =>
-  internalGraphQLMutation<IssueSubscribersResponse>(
-    "POST",
-    `/api/issues/${id}/subscribers`,
-  );
+  internalGraphQLMutation<IssueSubscribersResponse>("POST", `/api/issues/${id}/subscribers`);
 
 export const unsubscribeFromIssue = (id: string) =>
-  internalGraphQLMutation<IssueSubscribersResponse>(
-    "DELETE",
-    `/api/issues/${id}/subscribers`,
-  );
+  internalGraphQLMutation<IssueSubscribersResponse>("DELETE", `/api/issues/${id}/subscribers`);

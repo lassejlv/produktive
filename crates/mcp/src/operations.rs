@@ -1,7 +1,7 @@
 use chrono::Utc;
 use produktive_entity::{
     issue, issue_comment, issue_event, issue_label, issue_status, label, member, organization,
-    produktive_oauth_grant, project, user,
+    produktive_oauth_client, produktive_oauth_grant, project, user,
 };
 use rust_mcp_sdk::schema::schema_utils::CallToolError;
 use sea_orm::{
@@ -179,6 +179,7 @@ pub(crate) async fn create_label(
         description: Set(non_empty(args.description)),
         color: Set(normalize_color(args.color.as_deref(), "gray")),
         created_by_id: Set(Some(ctx.user_id.clone())),
+        created_by_oauth_client_id: Set(ctx.oauth_client_id.clone()),
         archived_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
@@ -287,6 +288,7 @@ pub(crate) async fn create_project(
         target_date: Set(target_date),
         sort_order: Set(next_order),
         created_by_id: Set(Some(ctx.user_id.clone())),
+        created_by_oauth_client_id: Set(ctx.oauth_client_id.clone()),
         archived_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
@@ -439,6 +441,7 @@ pub(crate) async fn create_issue(
         status: Set(status),
         priority: Set(non_empty(args.priority).unwrap_or_else(|| "medium".to_owned())),
         created_by_id: Set(Some(ctx.user_id.clone())),
+        created_by_oauth_client_id: Set(ctx.oauth_client_id.clone()),
         assigned_to_id: Set(assigned_to_id),
         parent_id: Set(None),
         project_id: Set(project_id),
@@ -456,6 +459,7 @@ pub(crate) async fn create_issue(
         organization_id,
         &row.id,
         Some(&ctx.user_id),
+        ctx.oauth_client_id.as_deref(),
         "created",
         json!([
             {"field": "title", "before": null, "after": row.title},
@@ -564,6 +568,7 @@ pub(crate) async fn update_issue(
             organization_id,
             &updated.id,
             Some(&ctx.user_id),
+            ctx.oauth_client_id.as_deref(),
             "updated",
             Value::Array(changes.clone()),
         )
@@ -612,6 +617,7 @@ pub(crate) async fn create_issue_comment(
         organization_id: Set(organization_id.to_owned()),
         issue_id: Set(found.id.clone()),
         author_id: Set(Some(ctx.user_id.clone())),
+        author_oauth_client_id: Set(ctx.oauth_client_id.clone()),
         body: Set(body),
         created_at: Set(now),
         updated_at: Set(now),
@@ -672,6 +678,12 @@ async fn issue_json(
     issue: &issue::Model,
     full: bool,
 ) -> Result<Value, CallToolError> {
+    let created_by_profile = actor_profile_json(
+        state,
+        issue.created_by_oauth_client_id.as_deref(),
+        issue.created_by_id.as_deref(),
+    )
+    .await?;
     let assigned_to = match issue.assigned_to_id.as_deref() {
         Some(id) => user::Entity::find_by_id(id)
             .one(&state.db)
@@ -710,6 +722,7 @@ async fn issue_json(
         "assigned_to": assigned_to,
         "project": project,
         "labels": labels,
+        "created_by_profile": created_by_profile,
         "created_at": issue.created_at.to_rfc3339(),
         "updated_at": issue.updated_at.to_rfc3339(),
     });
@@ -740,11 +753,18 @@ async fn label_json(state: &AppState, row: label::Model) -> Result<Value, CallTo
         .count(&state.db)
         .await
         .map_err(db_tool_error)?;
+    let created_by_profile = actor_profile_json(
+        state,
+        row.created_by_oauth_client_id.as_deref(),
+        row.created_by_id.as_deref(),
+    )
+    .await?;
     Ok(json!({
         "id": row.id,
         "name": row.name,
         "description": row.description,
         "color": row.color,
+        "created_by_profile": created_by_profile,
         "archived_at": row.archived_at.map(|value| value.to_rfc3339()),
         "created_at": row.created_at.to_rfc3339(),
         "updated_at": row.updated_at.to_rfc3339(),
@@ -761,6 +781,12 @@ async fn project_json(state: &AppState, row: project::Model) -> Result<Value, Ca
             .map(|user| json!({ "id": user.id, "name": user.name, "email": user.email, "image": user.image })),
         None => None,
     };
+    let created_by_profile = actor_profile_json(
+        state,
+        row.created_by_oauth_client_id.as_deref(),
+        row.created_by_id.as_deref(),
+    )
+    .await?;
     let mut backlog = 0_u64;
     let mut todo = 0_u64;
     let mut in_progress = 0_u64;
@@ -801,6 +827,7 @@ async fn project_json(state: &AppState, row: project::Model) -> Result<Value, Ca
         "icon": row.icon,
         "lead_id": row.lead_id,
         "lead": lead,
+        "created_by_profile": created_by_profile,
         "target_date": row.target_date.map(|value| value.to_rfc3339()),
         "sort_order": row.sort_order,
         "archived_at": row.archived_at.map(|value| value.to_rfc3339()),
@@ -821,6 +848,12 @@ async fn comment_json(
     state: &AppState,
     comment: issue_comment::Model,
 ) -> Result<Value, CallToolError> {
+    let author_profile = actor_profile_json(
+        state,
+        comment.author_oauth_client_id.as_deref(),
+        comment.author_id.as_deref(),
+    )
+    .await?;
     let author = match comment.author_id.as_deref() {
         Some(id) => user::Entity::find_by_id(id)
             .one(&state.db)
@@ -833,9 +866,48 @@ async fn comment_json(
         "id": comment.id,
         "body": comment.body,
         "author": author,
+        "author_profile": author_profile,
         "created_at": comment.created_at.to_rfc3339(),
         "updated_at": comment.updated_at.to_rfc3339(),
     }))
+}
+
+async fn actor_profile_json(
+    state: &AppState,
+    oauth_client_id: Option<&str>,
+    user_id: Option<&str>,
+) -> Result<Option<Value>, CallToolError> {
+    if let Some(id) = oauth_client_id {
+        if let Some(client) = produktive_oauth_client::Entity::find_by_id(id)
+            .one(&state.db)
+            .await
+            .map_err(db_tool_error)?
+        {
+            return Ok(Some(json!({
+                "kind": "agent",
+                "id": client.id,
+                "name": client.client_name,
+                "image": null,
+                "client_id": client.client_id,
+            })));
+        }
+    }
+
+    match user_id {
+        Some(id) => Ok(user::Entity::find_by_id(id)
+            .one(&state.db)
+            .await
+            .map_err(db_tool_error)?
+            .map(|user| {
+                json!({
+                    "kind": "user",
+                    "id": user.id,
+                    "name": user.name,
+                    "image": user.image,
+                })
+            })),
+        None => Ok(None),
+    }
 }
 
 async fn ensure_member(
@@ -1014,6 +1086,7 @@ async fn record_event(
     organization_id: &str,
     issue_id: &str,
     actor_id: Option<&str>,
+    actor_oauth_client_id: Option<&str>,
     action: &str,
     changes: Value,
 ) -> Result<(), CallToolError> {
@@ -1022,6 +1095,7 @@ async fn record_event(
         organization_id: Set(organization_id.to_owned()),
         issue_id: Set(issue_id.to_owned()),
         actor_id: Set(actor_id.map(str::to_owned)),
+        actor_oauth_client_id: Set(actor_oauth_client_id.map(str::to_owned)),
         action: Set(action.to_owned()),
         changes: Set(changes),
         created_at: Set(Utc::now().fixed_offset()),

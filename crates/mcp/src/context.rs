@@ -7,6 +7,7 @@ use crate::{error::tool_error, state::AppState};
 pub(crate) struct RequestContext {
     pub(crate) grant_id: String,
     pub(crate) user_id: String,
+    pub(crate) oauth_client_id: Option<String>,
     pub(crate) organization_id: Option<String>,
 }
 
@@ -25,6 +26,7 @@ impl RequestContext {
         Ok(Self {
             grant_id,
             user_id,
+            oauth_client_id: auth.client_id,
             organization_id,
         })
     }

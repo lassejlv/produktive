@@ -16,6 +16,7 @@ pub struct Model {
     pub target_date: Option<DateTimeWithTimeZone>,
     pub sort_order: i32,
     pub created_by_id: Option<String>,
+    pub created_by_oauth_client_id: Option<String>,
     pub archived_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
