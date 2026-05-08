@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DotsIcon, GithubIcon } from "@/components/chat/icons";
@@ -32,7 +33,9 @@ import {
   type Role,
   type SecurityEvent,
   createIssueStatus,
+  createBillingCheckout,
   deleteIssueStatus,
+  getAiUsage,
   listInvitations,
   listMembers,
   listRoles,
@@ -74,6 +77,7 @@ export const Route = createFileRoute("/_app/$workspaceSlug/settings")({
 
 type SettingsSectionId =
   | "general"
+  | "billing"
   | "security"
   | "members"
   | "statuses"
@@ -96,6 +100,12 @@ const settingsSections: SettingsSection[] = [
     id: "general",
     label: "General",
     description: "Workspace name and identity",
+    group: "main",
+  },
+  {
+    id: "billing",
+    label: "Billing",
+    description: "Plan and checkout",
     group: "main",
   },
   {
@@ -145,7 +155,7 @@ const settingsSections: SettingsSection[] = [
 const LEGACY_SECTION_TO_INTEGRATIONS = new Set(["github", "discord", "mcp"]);
 
 const settingsNavGroups: { label: string; ids: SettingsSectionId[] }[] = [
-  { label: "Workspace", ids: ["general", "security", "members", "statuses"] },
+  { label: "Workspace", ids: ["general", "billing", "security", "members", "statuses"] },
   { label: "Integrations", ids: ["integrations"] },
   { label: "Automation", ids: ["ai", "templates"] },
 ];
@@ -254,6 +264,7 @@ function WorkspaceSettingsPage() {
 
   const hasPermission = (permission: string) => currentPermissions.has(permission);
   const canEditWorkspace = hasPermission("workspace.rename");
+  const canManageBilling = hasPermission("billing.manage");
   const canEditSecurity = hasPermission("workspace.security");
   const activeMeta = settingsSections.find((s) => s.id === activeSection);
   const dangerSections = settingsSections.filter((s) => s.group === "danger");
@@ -334,6 +345,9 @@ function WorkspaceSettingsPage() {
           {activeSection === "general" ? (
             <GeneralSettings organization={organization} canEdit={canEditWorkspace} />
           ) : null}
+          {activeSection === "billing" ? (
+            <BillingSettings canManageBilling={canManageBilling} />
+          ) : null}
           {activeSection === "members" ? (
             <MembersSettings
               loading={membersLoading}
@@ -401,6 +415,92 @@ const statusCategories: { value: IssueStatusCategory; label: string }[] = [
 ];
 
 const statusColors = ["gray", "blue", "purple", "green", "red", "yellow", "pink"];
+
+function BillingSettings({ canManageBilling }: { canManageBilling: boolean }) {
+  const usageQuery = useQuery({
+    queryKey: ["ai", "usage", "billing-settings"],
+    queryFn: getAiUsage,
+    enabled: canManageBilling,
+    staleTime: 30_000,
+    retry: false,
+  });
+  const [startingCheckout, setStartingCheckout] = useState(false);
+  const plan = usageQuery.data?.plan ?? "free";
+  const isPro = plan === "pro";
+
+  const startCheckout = async () => {
+    setStartingCheckout(true);
+    try {
+      const checkout = await createBillingCheckout("pro");
+      window.location.assign(checkout.url);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to start checkout");
+      setStartingCheckout(false);
+    }
+  };
+
+  if (!canManageBilling) {
+    return (
+      <section className="rounded-[8px] border border-border-subtle bg-surface/25 p-4">
+        <p className="text-[13px] text-fg">Billing is managed by workspace owners.</p>
+        <p className="mt-1 text-[12px] leading-[1.5] text-fg-faint">
+          Ask an owner for access if you need to change this workspace's plan.
+        </p>
+      </section>
+    );
+  }
+
+  if (usageQuery.isLoading) return <LoadingTip compact />;
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-[8px] border border-border-subtle bg-surface/25 p-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[13px] font-medium text-fg">Current plan</p>
+            <p className="mt-1 text-[12px] leading-[1.5] text-fg-faint">
+              {isPro
+                ? "This workspace has Pro access."
+                : "Upgrade this workspace to Pro for better models and higher AI usage."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-[5px] border border-border-subtle bg-bg px-2 py-1 text-[12px] uppercase tracking-[0.08em] text-fg-muted">
+              {plan}
+            </span>
+            {!isPro ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void startCheckout()}
+                disabled={startingCheckout}
+              >
+                {startingCheckout ? "Starting..." : "Upgrade to Pro"}
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[8px] border border-border-subtle bg-bg p-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <BillingPlanFact label="Price" value="$10 / workspace / month" />
+          <BillingPlanFact label="Provider" value="Polar checkout" />
+          <BillingPlanFact label="Status" value={isPro ? "Active" : "Free"} />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function BillingPlanFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] uppercase tracking-[0.08em] text-fg-faint">{label}</p>
+      <p className="mt-1 text-[13px] text-fg">{value}</p>
+    </div>
+  );
+}
 
 function StatusSettings({ canEdit }: { canEdit: boolean }) {
   const { statuses, setStatuses, refresh } = useIssueStatuses();

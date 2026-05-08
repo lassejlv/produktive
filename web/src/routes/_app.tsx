@@ -25,7 +25,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar";
 import { LoadingTip } from "@/components/ui/loading-tip";
-import { getAiUsage, recordTwoFactorEnforcementBlocked } from "@/lib/api";
+import { createBillingCheckout, getAiUsage, recordTwoFactorEnforcementBlocked } from "@/lib/api";
 import type { AiUsageStatus } from "@/lib/api/ai";
 import { signOut, useSession } from "@/lib/auth-client";
 import { parseMessageWithAttachments } from "@/lib/chat-attachments";
@@ -341,6 +341,7 @@ function AppLayout() {
         </SidebarContent>
 
         <SidebarFooter className="relative gap-2">
+          {aiUsage && aiUsage.plan !== "pro" ? <SidebarUpgradeButton /> : null}
           {aiUsage ? <SidebarAiUsage usage={aiUsage} workspaceSlug={activeOrgSlug} /> : null}
           <div ref={accountMenuRef}>
             {accountMenuOpen ? (
@@ -489,6 +490,42 @@ function SidebarAiUsage({ usage, workspaceSlug }: { usage: AiUsageStatus; worksp
       </div>
       <SidebarUsageBar label="Week" period={usage.weekly} />
       <SidebarUsageBar label="Month" period={usage.monthly} />
+    </button>
+  );
+}
+
+function SidebarUpgradeButton() {
+  const [startingCheckout, setStartingCheckout] = useState(false);
+
+  const upgrade = async () => {
+    setStartingCheckout(true);
+    try {
+      const checkout = await createBillingCheckout("pro");
+      window.location.assign(checkout.url);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to start checkout");
+      setStartingCheckout(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      disabled={startingCheckout}
+      onClick={() => void upgrade()}
+      className={cn(
+        "flex h-8 w-full items-center justify-between rounded-[7px] border border-border-subtle px-2.5 text-[12px]",
+        "bg-surface/35 text-fg transition-colors hover:border-border hover:bg-surface",
+        "disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+      )}
+    >
+      <span className="inline-flex min-w-0 items-center gap-1.5">
+        <SparkleIcon size={11} />
+        <span className="truncate">Upgrade to Pro</span>
+      </span>
+      <span className="text-[10px] text-fg-faint">
+        {startingCheckout ? "..." : "$10"}
+      </span>
     </button>
   );
 }
