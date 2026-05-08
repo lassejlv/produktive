@@ -35,9 +35,9 @@ use axum::{
 use config::{Config, DatabaseConfig};
 use graphql::routes as graphql_routes;
 use http::{
-    admin_routes, ai_mcp_routes, ai_routes, auth_routes, chat_routes, cors_layer, dev_routes,
-    discord_routes, favorite_routes, github_routes, inbox_routes, invitation_routes, issue_routes,
-    issue_status_routes, label_routes, mcp_key_routes, member_routes, note_routes,
+    admin_routes, ai_mcp_routes, ai_routes, auth_routes, billing_routes, chat_routes, cors_layer,
+    dev_routes, discord_routes, favorite_routes, github_routes, inbox_routes, invitation_routes,
+    issue_routes, issue_status_routes, label_routes, mcp_key_routes, member_routes, note_routes,
     oauth_metadata_routes, oauth_routes, onboarding_routes, org_invitation_routes,
     preferences_routes, pricing_routes, project_routes, realtime_routes, role_routes,
     security_routes, slack_routes, spawn_github_auto_importer, support_admin_routes,
@@ -131,6 +131,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/me/onboarding", onboarding_routes())
         .nest("/api/me/preferences", preferences_routes())
         .nest("/api/pricing", pricing_routes())
+        .nest("/api/billing", billing_routes())
         .nest("/api/me/tabs", tabs_routes())
         .nest("/api/members", member_routes())
         .nest("/api/notes", note_routes())

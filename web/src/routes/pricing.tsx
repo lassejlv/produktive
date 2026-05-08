@@ -1,6 +1,9 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
+import { createBillingCheckout } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +13,7 @@ type PricingPlan = {
   price: number | null;
   pricingModel: string;
   cadence: string;
+  checkoutEnabled?: boolean;
   description: string;
   recommended?: boolean;
   features: string[];
@@ -190,9 +194,29 @@ function PricingCard({
   isLoggedIn: boolean;
 }) {
   const recommended = plan.recommended === true;
-  const ctaTo = isLoggedIn ? "/" : "/login";
-  const ctaLabel = plan.id === "free" ? "Start free" : `Choose ${plan.name}`;
+  const [isStartingCheckout, setIsStartingCheckout] = useState(false);
   const features = plan.features.slice(0, HIGHLIGHT_LIMIT);
+  const ctaClassName = cn(
+    "mt-8 inline-flex h-9 items-center justify-center rounded-[5px] text-[12.5px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-55",
+    recommended
+      ? "bg-fg text-bg hover:bg-fg/90"
+      : "border border-fg/[0.12] text-fg hover:bg-fg/[0.04]",
+  );
+
+  const startCheckout = async () => {
+    if (plan.id !== "pro") return;
+
+    setIsStartingCheckout(true);
+    try {
+      const checkout = await createBillingCheckout("pro");
+      window.location.assign(checkout.url);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to start checkout",
+      );
+      setIsStartingCheckout(false);
+    }
+  };
 
   return (
     <article
@@ -238,17 +262,30 @@ function PricingCard({
         ))}
       </ul>
 
-      <Link
-        to={ctaTo}
-        className={cn(
-          "mt-8 inline-flex h-9 items-center justify-center rounded-[5px] text-[12.5px] font-medium transition-colors",
-          recommended
-            ? "bg-fg text-bg hover:bg-fg/90"
-            : "border border-fg/[0.12] text-fg hover:bg-fg/[0.04]",
-        )}
-      >
-        {ctaLabel}
-      </Link>
+      {plan.id === "pro" && plan.checkoutEnabled ? (
+        isLoggedIn ? (
+          <button
+            type="button"
+            onClick={startCheckout}
+            disabled={isStartingCheckout}
+            className={ctaClassName}
+          >
+            {isStartingCheckout ? "Starting checkout..." : "Upgrade to Pro"}
+          </button>
+        ) : (
+          <Link to="/login" className={ctaClassName}>
+            Sign in to upgrade
+          </Link>
+        )
+      ) : plan.id === "business" ? (
+        <button type="button" disabled className={ctaClassName}>
+          Coming later
+        </button>
+      ) : (
+        <Link to={isLoggedIn ? "/" : "/login"} className={ctaClassName}>
+          Start free
+        </Link>
+      )}
     </article>
   );
 }

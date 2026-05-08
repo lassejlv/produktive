@@ -35,6 +35,9 @@ pub struct Config {
     pub mcp_token_encryption_key: Option<String>,
     pub slack_token_encryption_key: Option<String>,
     pub two_factor_encryption_key: Option<String>,
+    pub polar_access_token: Option<String>,
+    pub polar_pro_product_id: Option<String>,
+    pub polar_webhook_secret: Option<String>,
     pub enable_dev_triggers: bool,
     pub platform_admin_emails: Vec<String>,
     pub storage: Option<StorageConfig>,
@@ -126,6 +129,9 @@ impl Config {
             mcp_token_encryption_key,
             slack_token_encryption_key: optional_env("SLACK_TOKEN_ENCRYPTION_KEY"),
             two_factor_encryption_key: optional_env("TWO_FACTOR_ENCRYPTION_KEY"),
+            polar_access_token: optional_env("POLAR_ACCESS_TOKEN"),
+            polar_pro_product_id: optional_env("POLAR_PRO_PRODUCT_ID"),
+            polar_webhook_secret: optional_env("POLAR_WEBHOOK_SECRET"),
             enable_dev_triggers: env_or_default("ENABLE_DEV_TRIGGERS", "false")
                 .parse()
                 .context("ENABLE_DEV_TRIGGERS must be true or false")?,

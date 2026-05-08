@@ -57,6 +57,8 @@
       "price": 10,
       "pricingModel": "workspace",
       "cadence": "per workspace per month",
+      "checkoutEnabled": true,
+      "billingProvider": "polar",
       "description": "For AI-native teams that want better models, agents, GitHub automation, Discord, MCP, and REST workflows.",
       "recommended": true,
       "limits": {
@@ -113,6 +115,7 @@
       "price": 24,
       "pricingModel": "perUser",
       "cadence": "per user per month",
+      "checkoutEnabled": false,
       "description": "For companies that need best-model access, higher automation limits, workspace security, governance, and priority support.",
       "recommended": false,
       "limits": {

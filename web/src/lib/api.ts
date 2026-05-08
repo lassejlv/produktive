@@ -11,6 +11,7 @@ export * from "./api/github";
 export * from "./api/slack";
 export * from "./api/discord";
 export * from "./api/ai";
+export * from "./api/billing";
 export * from "./api/onboarding";
 export * from "./api/oauth";
 export * from "./api/waitlist";

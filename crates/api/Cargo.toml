@@ -21,6 +21,7 @@ jsonwebtoken.workspace = true
 produktive-ai = { path = "../ai" }
 produktive-entity = { path = "../entity" }
 produktive-migration = { path = "../migration" }
+polar-rs = { path = "../polar" }
 unkey-rs = { path = "../unkey" }
 rand_core.workspace = true
 regex.workspace = true
