@@ -24,6 +24,11 @@ pub fn produktive_command() -> CreateCommand {
         ))
         .add_option(CreateCommandOption::new(
             CommandOptionType::SubCommand,
+            "usage",
+            "Show this workspace's AI usage",
+        ))
+        .add_option(CreateCommandOption::new(
+            CommandOptionType::SubCommand,
             "agent-enable",
             "Enable the private thread agent in this server",
         ))
@@ -103,6 +108,10 @@ pub fn issue_command() -> CreateCommand {
                     "backlog, todo, in-progress, or done",
                 )),
         )
+}
+
+pub fn usage_command() -> CreateCommand {
+    CreateCommand::new("usage").description("Show this workspace's AI usage")
 }
 
 pub fn agent_command() -> CreateCommand {

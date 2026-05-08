@@ -1,4 +1,5 @@
 mod agent_thread;
+mod ai_usage;
 mod commands;
 mod env;
 mod health;
@@ -10,7 +11,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{Duration, Utc};
 use commands::{
     agent_command, first_subcommand, issue_command, produktive_command, require_manage_guild,
-    string_option,
+    string_option, usage_command,
 };
 use env::{env_or_default, required_env};
 use health::serve_http;
@@ -29,7 +30,7 @@ use serenity::{all::*, async_trait};
 use state::BotState;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use uuid::Uuid;
 
@@ -62,14 +63,14 @@ async fn main() -> anyhow::Result<()> {
         .to_owned();
     let ai = AiClient::new(
         &required_env("AI_API_KEY")?,
-        &env_or_default("AI_BASE_URL", "https://ollama.com/v1"),
+        &env_or_default("AI_BASE_URL", "https://api.openai.com/v1"),
     )
     .map_err(|error| anyhow!("failed to build AI client: {error}"))?;
     let state = Arc::new(BotState {
         db,
         app_url,
         ai,
-        ai_model: env_or_default("AI_MODEL", "glm-5.1"),
+        ai_model: env_or_default("AI_MODEL", "gpt-5.4-mini"),
         agent_threads: Arc::new(RwLock::new(HashMap::new())),
     });
 
@@ -99,7 +100,12 @@ impl EventHandler for Handler {
         tracing::info!(bot = %ready.user.name, "Discord bot connected");
         if let Err(error) = Command::set_global_commands(
             &ctx.http,
-            vec![produktive_command(), issue_command(), agent_command()],
+            vec![
+                produktive_command(),
+                issue_command(),
+                agent_command(),
+                usage_command(),
+            ],
         )
         .await
         {
@@ -205,6 +211,7 @@ async fn handle_command(
                 create_login_link(state, &guild_id, &discord_user_id).await
             }
             "status" => status_message(state, &guild_id, &discord_user_id).await,
+            "usage" => usage_message(state, &guild_id, &discord_user_id).await,
             "agent-enable" => {
                 require_manage_guild(command)?;
                 set_agent_enabled(state, &guild_id, &discord_user_id, true).await
@@ -228,6 +235,7 @@ async fn handle_command(
                 _ => Ok("Unknown issue command.".to_owned()),
             }
         }
+        "usage" => usage_message(state, &guild_id, &discord_user_id).await,
         _ => Ok("Unknown command.".to_owned()),
     }
 }
@@ -293,6 +301,99 @@ async fn status_message(
             "disabled"
         }
     ))
+}
+
+async fn usage_message(
+    state: &BotState,
+    guild_id: &str,
+    discord_user_id: &str,
+) -> anyhow::Result<String> {
+    let (server, _, _) = linked_context(state, guild_id, discord_user_id).await?;
+    let org = organization::Entity::find_by_id(&server.organization_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| anyhow!("Linked workspace was not found."))?;
+    let usage = ai_usage::usage_status(state, &org.id).await?;
+    let state_icon = if usage.blocked {
+        "🔴"
+    } else if usage.degraded {
+        "🟡"
+    } else {
+        "🟢"
+    };
+    let state_label = if usage.blocked {
+        "limit reached"
+    } else if usage.degraded {
+        "reduced"
+    } else {
+        "normal"
+    };
+
+    Ok(format!(
+        "{state_icon} **AI usage** · {} · `{}`\n{}\n{}",
+        org.name,
+        usage.plan.as_str(),
+        usage_line("Weekly", &usage.weekly),
+        usage_line("Monthly", &usage.monthly),
+    ) + &format!("\nStatus: {state_label}"))
+}
+
+fn usage_line(label: &str, period: &ai_usage::UsagePeriod) -> String {
+    let reset_at = period.period_end.timestamp();
+    let carryover = if period.carryover_units > 0 {
+        format!(
+            "\n↳ {} deducted after reset",
+            format_units(period.carryover_units)
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        "{}\n{} `{}` {} / {} · {:.1}% · resets <t:{}:R>{}",
+        label,
+        usage_bar(period.percent_used),
+        usage_mood(period.percent_used),
+        format_units(period.used_units),
+        format_units(period.limit_units),
+        period.percent_used,
+        reset_at,
+        carryover,
+    )
+}
+
+fn usage_bar(percent: f64) -> String {
+    const WIDTH: usize = 10;
+    let filled = ((percent.clamp(0.0, 100.0) / 100.0) * WIDTH as f64).round() as usize;
+    let fill = if percent >= 100.0 {
+        "🟥"
+    } else if percent >= 80.0 {
+        "🟨"
+    } else {
+        "🟩"
+    };
+    let empty = "⬛";
+    format!("{}{}", fill.repeat(filled), empty.repeat(WIDTH - filled))
+}
+
+fn usage_mood(percent: f64) -> &'static str {
+    if percent >= 100.0 {
+        "maxed"
+    } else if percent >= 80.0 {
+        "high"
+    } else {
+        "good"
+    }
+}
+
+fn format_units(value: i64) -> String {
+    let abs = value.abs();
+    if abs >= 1_000_000 {
+        format!("{:.1}M", value as f64 / 1_000_000.0)
+    } else if abs >= 1_000 {
+        format!("{:.1}K", value as f64 / 1_000.0)
+    } else {
+        value.to_string()
+    }
 }
 
 async fn unlink_server(state: &BotState, guild_id: &str) -> anyhow::Result<String> {
@@ -512,7 +613,8 @@ pub(crate) async fn agent_respond(
     discord_user_id: &str,
     prompt: String,
     history: &mut Vec<AiMessage>,
-) -> anyhow::Result<String> {
+    progress: Option<&AgentProgress>,
+) -> anyhow::Result<AgentReply> {
     let (server, actor, _) = linked_context(state, guild_id, discord_user_id).await?;
     if !server.agent_enabled {
         return Err(anyhow!("The agent is disabled in this server."));
@@ -522,22 +624,31 @@ pub(crate) async fn agent_respond(
         .await?
         .ok_or_else(|| anyhow!("Linked workspace was not found."))?;
     let system = format!(
-        "You are Produktive's Discord agent. Workspace: {} ({}). Current user: {} ({}). Be concise and practical.",
+        "You are Produktive's Discord agent. Workspace: {} ({}). Current user: {} ({}). Be concise and practical. If the user asks to close, end, archive, or finish this Discord thread, call close_thread before your final response.",
         org.name, org.id, actor.name, actor.id
     );
     history.push(AiMessage::user(prompt));
     let tools = agent_tools();
+    let mut close_thread = false;
     for _ in 0..5 {
-        let result = state
-            .ai
-            .complete(&state.ai_model, &system, &history, &tools, None)
-            .await
-            .map_err(|error| anyhow!("AI request failed: {error}"))?;
+        let result = ai_usage::complete(
+            state,
+            &org.id,
+            &actor.id,
+            &state.ai_model,
+            &system,
+            &history,
+            &tools,
+        )
+        .await?;
         match result {
             CompletionResult::Text { text, .. } => {
                 let text = discord_truncate(&text);
                 history.push(AiMessage::assistant_text(text.clone()));
-                return Ok(text);
+                return Ok(AgentReply {
+                    content: text,
+                    close_thread,
+                });
             }
             CompletionResult::ToolCalls {
                 calls,
@@ -549,14 +660,197 @@ pub(crate) async fn agent_respond(
                     reasoning_content,
                 ));
                 for call in calls {
+                    if let Some(progress) = progress {
+                        progress.tool_started(&call.name).await;
+                    }
                     let value = dispatch_agent_tool(state, &server, &actor, &call).await;
+                    if let Some(progress) = progress {
+                        progress.tool_finished(&call.name, &value).await;
+                    }
+                    if value
+                        .get("will_close_thread")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+                    {
+                        close_thread = true;
+                    }
                     let content = serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_owned());
                     history.push(AiMessage::tool_result(call.id, content));
                 }
             }
         }
     }
-    Ok("The agent hit its tool-call limit before finishing. Try a narrower request.".to_owned())
+    Ok(AgentReply {
+        content: "The agent hit its tool-call limit before finishing. Try a narrower request."
+            .to_owned(),
+        close_thread,
+    })
+}
+
+pub(crate) struct AgentReply {
+    pub content: String,
+    pub close_thread: bool,
+}
+
+pub(crate) struct AgentProgress {
+    http: Arc<serenity::http::Http>,
+    channel_id: ChannelId,
+    state: Mutex<AgentProgressState>,
+}
+
+struct AgentProgressState {
+    message_id: Option<MessageId>,
+    steps: Vec<ToolActivity>,
+}
+
+struct ToolActivity {
+    name: String,
+    status: ToolActivityStatus,
+    detail: String,
+}
+
+enum ToolActivityStatus {
+    Running,
+    Done,
+    Failed,
+}
+
+impl AgentProgress {
+    pub(crate) fn new(channel_id: ChannelId, http: Arc<serenity::http::Http>) -> Self {
+        Self {
+            http,
+            channel_id,
+            state: Mutex::new(AgentProgressState {
+                message_id: None,
+                steps: Vec::new(),
+            }),
+        }
+    }
+
+    async fn tool_started(&self, tool_name: &str) {
+        let mut state = self.state.lock().await;
+        state.steps.push(ToolActivity {
+            name: tool_name.to_owned(),
+            status: ToolActivityStatus::Running,
+            detail: running_tool_label(tool_name),
+        });
+        self.flush(&mut state).await;
+    }
+
+    async fn tool_finished(&self, tool_name: &str, value: &Value) {
+        let mut state = self.state.lock().await;
+        if let Some(step) = state.steps.iter_mut().rev().find(|step| {
+            step.name == tool_name && matches!(step.status, ToolActivityStatus::Running)
+        }) {
+            if let Some(error) = value.get("error").and_then(Value::as_str) {
+                step.status = ToolActivityStatus::Failed;
+                step.detail = format!("{} failed: {}", tool_display_name(tool_name), error);
+            } else {
+                step.status = ToolActivityStatus::Done;
+                step.detail = finished_tool_label(tool_name, value);
+            }
+        }
+        self.flush(&mut state).await;
+    }
+
+    async fn flush(&self, state: &mut AgentProgressState) {
+        let content = render_tool_activity(&state.steps);
+        if content.is_empty() {
+            return;
+        }
+        if let Some(message_id) = state.message_id {
+            if let Err(error) = self
+                .channel_id
+                .edit_message(&self.http, message_id, EditMessage::new().content(content))
+                .await
+            {
+                tracing::warn!(%error, "failed to edit Discord agent activity message");
+            }
+            return;
+        }
+
+        match self
+            .channel_id
+            .send_message(&self.http, CreateMessage::new().content(content))
+            .await
+        {
+            Ok(message) => state.message_id = Some(message.id),
+            Err(error) => tracing::warn!(%error, "failed to create Discord agent activity message"),
+        }
+    }
+}
+
+fn render_tool_activity(steps: &[ToolActivity]) -> String {
+    if steps.is_empty() {
+        return String::new();
+    }
+    let mut lines = vec!["**Activity**".to_owned()];
+    for step in steps
+        .iter()
+        .rev()
+        .take(6)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+    {
+        let icon = match step.status {
+            ToolActivityStatus::Running => "⏳",
+            ToolActivityStatus::Done => "✅",
+            ToolActivityStatus::Failed => "⚠️",
+        };
+        lines.push(format!("{icon} {}", step.detail));
+    }
+    lines.join("\n")
+}
+
+fn running_tool_label(tool_name: &str) -> String {
+    match tool_name {
+        "list_issues" => "Looking up issues...".to_owned(),
+        "create_issue" => "Creating issue...".to_owned(),
+        "update_issue" => "Updating issue...".to_owned(),
+        "close_thread" => "Closing thread after the reply...".to_owned(),
+        other => format!("Running {}", tool_display_name(other)),
+    }
+}
+
+fn finished_tool_label(tool_name: &str, value: &Value) -> String {
+    match tool_name {
+        "list_issues" => {
+            let count = value
+                .get("issues")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or(0);
+            format!("Found {count} issue{}", if count == 1 { "" } else { "s" })
+        }
+        "create_issue" => value
+            .get("issue")
+            .map(issue_activity_label)
+            .unwrap_or_else(|| "Created issue".to_owned()),
+        "update_issue" => value
+            .get("issue")
+            .map(|issue| format!("Updated {}", issue_title_for_activity(issue)))
+            .unwrap_or_else(|| "Updated issue".to_owned()),
+        "close_thread" => "Thread will close after the reply".to_owned(),
+        other => format!("Finished {}", tool_display_name(other)),
+    }
+}
+
+fn issue_activity_label(issue: &Value) -> String {
+    format!("Created {}", issue_title_for_activity(issue))
+}
+
+fn issue_title_for_activity(issue: &Value) -> String {
+    let title = issue
+        .get("title")
+        .and_then(Value::as_str)
+        .filter(|title| !title.trim().is_empty())
+        .unwrap_or("issue");
+    format!("issue `{}`", title.chars().take(80).collect::<String>())
+}
+
+fn tool_display_name(tool_name: &str) -> String {
+    tool_name.replace('_', " ")
 }
 
 fn agent_tools() -> Vec<Tool> {
@@ -600,6 +894,16 @@ fn agent_tools() -> Vec<Tool> {
                 "required": ["id"]
             }),
         },
+        Tool {
+            name: "close_thread".to_owned(),
+            description: "Close this private Discord agent thread after sending the final response. Use this when the user asks to close, archive, end, or finish the thread.".to_owned(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "reason": { "type": "string", "description": "Optional short reason for closing the thread." }
+                }
+            }),
+        },
     ]
 }
 
@@ -617,6 +921,7 @@ async fn dispatch_agent_tool(
         "list_issues" => agent_list_issues(state, server, args).await,
         "create_issue" => agent_create_issue(state, server, actor, args).await,
         "update_issue" => agent_update_issue(state, server, actor, args).await,
+        "close_thread" => json!({ "ok": true, "will_close_thread": true }),
         other => json!({ "error": format!("Unknown tool: {other}") }),
     }
 }

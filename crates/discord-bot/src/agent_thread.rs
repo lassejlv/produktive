@@ -3,12 +3,13 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context as _};
 use produktive_ai::Message as AiMessage;
 use serenity::all::{
-    AutoArchiveDuration, ChannelId, ChannelType, CommandInteraction, Context, CreateThread, Message,
+    AutoArchiveDuration, ChannelId, ChannelType, CommandInteraction, Context, CreateThread,
+    EditThread, Message,
 };
 
 use crate::commands::command_string_option;
 use crate::state::{AgentThread, BotState};
-use crate::{agent_respond, discord_truncate, linked_context};
+use crate::{agent_respond, discord_truncate, linked_context, AgentProgress, AgentReply};
 
 pub async fn start_agent_thread(
     state: Arc<BotState>,
@@ -66,11 +67,26 @@ pub async fn start_agent_thread(
         if let Err(error) = thread.id.say(&http, "Working on it...").await {
             tracing::warn!(%error, "failed to send Discord agent working message");
         }
-        let reply = run_agent_thread_turn(state.clone(), thread.id, discord_user_id, prompt)
-            .await
-            .unwrap_or_else(|error| error.to_string());
-        if let Err(error) = thread.id.say(&http, reply).await {
+        let typing = thread.id.start_typing(&http);
+        let progress = AgentProgress::new(thread.id, http.clone());
+        let turn = run_agent_thread_turn(
+            state.clone(),
+            thread.id,
+            discord_user_id,
+            prompt,
+            Some(&progress),
+        )
+        .await
+        .unwrap_or_else(|error| AgentReply {
+            content: error.to_string(),
+            close_thread: false,
+        });
+        typing.stop();
+        if let Err(error) = thread.id.say(&http, turn.content).await {
             tracing::warn!(%error, "failed to send Discord agent thread response");
+        }
+        if turn.close_thread {
+            close_agent_thread(state, thread.id, &http).await;
         }
     });
 
@@ -104,11 +120,26 @@ pub async fn handle_agent_thread_message(
     let discord_user_id = session.owner_discord_user_id;
     let http = ctx.http.clone();
     tokio::spawn(async move {
-        let reply = run_agent_thread_turn(state, thread_id, discord_user_id, prompt)
-            .await
-            .unwrap_or_else(|error| error.to_string());
-        if let Err(error) = thread_id.say(&http, reply).await {
+        let typing = thread_id.start_typing(&http);
+        let progress = AgentProgress::new(thread_id, http.clone());
+        let turn = run_agent_thread_turn(
+            state.clone(),
+            thread_id,
+            discord_user_id,
+            prompt,
+            Some(&progress),
+        )
+        .await
+        .unwrap_or_else(|error| AgentReply {
+            content: error.to_string(),
+            close_thread: false,
+        });
+        typing.stop();
+        if let Err(error) = thread_id.say(&http, turn.content).await {
             tracing::warn!(%error, "failed to send Discord agent follow-up response");
+        }
+        if turn.close_thread {
+            close_agent_thread(state, thread_id, &http).await;
         }
     });
 
@@ -140,7 +171,8 @@ async fn run_agent_thread_turn(
     thread_id: ChannelId,
     discord_user_id: String,
     prompt: String,
-) -> anyhow::Result<String> {
+    progress: Option<&AgentProgress>,
+) -> anyhow::Result<AgentReply> {
     let guild_id = state
         .agent_threads
         .read()
@@ -156,12 +188,35 @@ async fn run_agent_thread_turn(
         .map(|session| session.history.clone())
         .unwrap_or_default();
 
-    let reply = agent_respond(&state, &guild_id, &discord_user_id, prompt, &mut history).await?;
+    let reply = agent_respond(
+        &state,
+        &guild_id,
+        &discord_user_id,
+        prompt,
+        &mut history,
+        progress,
+    )
+    .await?;
     let mut sessions = state.agent_threads.write().await;
     if let Some(session) = sessions.get_mut(&thread_id) {
         session.history = trim_agent_history(history);
     }
     Ok(reply)
+}
+
+async fn close_agent_thread(
+    state: Arc<BotState>,
+    thread_id: ChannelId,
+    http: &std::sync::Arc<serenity::http::Http>,
+) {
+    if let Err(error) = thread_id
+        .edit_thread(http, EditThread::new().archived(true))
+        .await
+    {
+        tracing::warn!(%error, "failed to archive Discord agent thread");
+        return;
+    }
+    state.agent_threads.write().await.remove(&thread_id);
 }
 
 fn trim_agent_history(mut history: Vec<AiMessage>) -> Vec<AiMessage> {

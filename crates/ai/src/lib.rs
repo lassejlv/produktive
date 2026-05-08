@@ -1,4 +1,5 @@
 mod client;
+pub mod models;
 mod types;
 
 pub use client::AiClient;

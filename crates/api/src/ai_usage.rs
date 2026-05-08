@@ -6,6 +6,7 @@ use crate::{
     state::AppState,
 };
 use chrono::{DateTime, Datelike, Duration, FixedOffset, NaiveDate, Utc, Weekday};
+pub use produktive_ai::models::AiPlan;
 use produktive_ai::{CompletionResult, Message, Tool, Usage};
 use produktive_entity::{ai_usage_event, organization};
 use sea_orm::{
@@ -18,55 +19,6 @@ use uuid::Uuid;
 
 const DEGRADE_PERCENT: f64 = 80.0;
 const BLOCK_PERCENT: f64 = 100.0;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AiPlan {
-    Free,
-    Pro,
-    Business,
-}
-
-impl AiPlan {
-    pub fn from_str(value: &str) -> Self {
-        match value {
-            "pro" => Self::Pro,
-            "business" => Self::Business,
-            _ => Self::Free,
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Free => "free",
-            Self::Pro => "pro",
-            Self::Business => "business",
-        }
-    }
-
-    fn weekly_limit(self) -> i64 {
-        match self {
-            Self::Free => 250_000,
-            Self::Pro => 2_500_000,
-            Self::Business => 20_000_000,
-        }
-    }
-
-    fn monthly_limit(self) -> i64 {
-        match self {
-            Self::Free => 1_000_000,
-            Self::Pro => 10_000_000,
-            Self::Business => 80_000_000,
-        }
-    }
-
-    pub fn can_use_model(self, model_id: &str) -> bool {
-        match self {
-            Self::Free => model_id == degrade_model_id(),
-            Self::Pro | Self::Business => true,
-        }
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct AiCompletionRequest<'a> {
