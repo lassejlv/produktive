@@ -47,7 +47,7 @@ impl AiPlan {
     fn weekly_limit(self) -> i64 {
         match self {
             Self::Free => 250_000,
-            Self::Pro => 5_000_000,
+            Self::Pro => 2_500_000,
             Self::Business => 20_000_000,
         }
     }
@@ -55,7 +55,7 @@ impl AiPlan {
     fn monthly_limit(self) -> i64 {
         match self {
             Self::Free => 1_000_000,
-            Self::Pro => 20_000_000,
+            Self::Pro => 10_000_000,
             Self::Business => 80_000_000,
         }
     }
