@@ -84,6 +84,11 @@ pub fn issue_command() -> CreateCommand {
                     CommandOptionType::String,
                     "status",
                     "backlog, todo, in-progress, or done",
+                ))
+                .add_sub_option(CreateCommandOption::new(
+                    CommandOptionType::User,
+                    "assignee",
+                    "Assign to a linked Produktive member",
                 )),
         )
         .add_option(
@@ -106,12 +111,27 @@ pub fn issue_command() -> CreateCommand {
                     CommandOptionType::String,
                     "status",
                     "backlog, todo, in-progress, or done",
+                ))
+                .add_sub_option(CreateCommandOption::new(
+                    CommandOptionType::User,
+                    "assignee",
+                    "Assign to a linked Produktive member",
                 )),
         )
 }
 
 pub fn usage_command() -> CreateCommand {
     CreateCommand::new("usage").description("Show this workspace's AI usage")
+}
+
+pub fn digest_command() -> CreateCommand {
+    CreateCommand::new("digest")
+        .description("Summarize recent Produktive workspace activity")
+        .add_option(CreateCommandOption::new(
+            CommandOptionType::SubCommand,
+            "today",
+            "Show today's issue activity",
+        ))
 }
 
 pub fn agent_command() -> CreateCommand {
@@ -146,6 +166,16 @@ pub fn string_option(sub: &CommandDataOption, name: &str) -> Option<String> {
     sub_options(sub).iter().find_map(|option| {
         if option.name == name {
             option.value.as_str().map(ToOwned::to_owned)
+        } else {
+            None
+        }
+    })
+}
+
+pub fn user_option(sub: &CommandDataOption, name: &str) -> Option<String> {
+    sub_options(sub).iter().find_map(|option| {
+        if option.name == name {
+            option.value.as_user_id().map(|id| id.to_string())
         } else {
             None
         }
