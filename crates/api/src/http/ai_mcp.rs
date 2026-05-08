@@ -3,7 +3,8 @@ use crate::{
     error::ApiError,
     mcp::{
         allow_local_mcp, cached_tools, default_name, encrypt_secret, namespaced_tool_name, now,
-        oauth_state_ttl, probe_server, slugify, validate_remote_url, OAuthDiscovery, ProbeOutcome,
+        oauth_state_ttl, probe_server, safe_remote_http_client, slugify,
+        validate_remote_request_url, validate_remote_url, OAuthDiscovery, ProbeOutcome,
     },
     permissions::{require_permission, AI_MANAGE},
     state::AppState,
@@ -639,8 +640,13 @@ async fn register_oauth_client(
         body["scope"] = Value::String(scope.clone());
     }
 
-    let response = reqwest::Client::new()
-        .post(registration_endpoint)
+    let response = safe_remote_http_client()
+        .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?
+        .post(
+            validate_remote_request_url(registration_endpoint, allow_local_mcp())
+                .await
+                .map_err(ApiError::from)?,
+        )
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .header(reqwest::header::ACCEPT, "application/json")
         .json(&body)
@@ -653,9 +659,10 @@ async fn register_oauth_client(
         .await
         .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?;
     if !status.is_success() {
-        return Err(ApiError::BadRequest(format!(
-            "OAuth client registration failed: {raw}"
-        )));
+        tracing::warn!(status = %status, body = %raw, "OAuth client registration failed");
+        return Err(ApiError::BadRequest(
+            "OAuth client registration failed".to_owned(),
+        ));
     }
     serde_json::from_str(&raw).map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))
 }
@@ -776,8 +783,12 @@ async fn exchange_oauth_code(
         form.push(("resource", resource));
     }
 
-    let http = reqwest::Client::new();
-    let mut request = http.post(token_url).form(&form);
+    let http =
+        safe_remote_http_client().map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?;
+    let token_url = validate_remote_request_url(&token_url, allow_local_mcp())
+        .await
+        .map_err(ApiError::from)?;
+    let mut request = http.post(token_url.clone()).form(&form);
     if client_registration.token_endpoint_auth_method == "client_secret_basic" {
         let secret = decrypt_oauth_client_secret(state, &client_registration)?;
         request = request.basic_auth(&client_registration.client_id, Some(secret));
@@ -786,31 +797,11 @@ async fn exchange_oauth_code(
         let mut form = form;
         form.push(("client_id", oauth_state.client_id.clone()));
         form.push(("client_secret", secret));
-        request = http
-            .post(
-                oauth_state
-                    .token_url
-                    .clone()
-                    .or_else(|| infer_token_url(&oauth_state.auth_url))
-                    .ok_or_else(|| {
-                        ApiError::BadRequest("Could not infer OAuth token endpoint".to_owned())
-                    })?,
-            )
-            .form(&form);
+        request = http.post(token_url.clone()).form(&form);
     } else {
         let mut form = form;
         form.push(("client_id", oauth_state.client_id.clone()));
-        request = http
-            .post(
-                oauth_state
-                    .token_url
-                    .clone()
-                    .or_else(|| infer_token_url(&oauth_state.auth_url))
-                    .ok_or_else(|| {
-                        ApiError::BadRequest("Could not infer OAuth token endpoint".to_owned())
-                    })?,
-            )
-            .form(&form);
+        request = http.post(token_url.clone()).form(&form);
     }
 
     let response = request
@@ -823,9 +814,10 @@ async fn exchange_oauth_code(
         .await
         .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?;
     if !status.is_success() {
-        return Err(ApiError::BadRequest(format!(
-            "OAuth token exchange failed: {raw}"
-        )));
+        tracing::warn!(status = %status, body = %raw, "OAuth token exchange failed");
+        return Err(ApiError::BadRequest(
+            "OAuth token exchange failed".to_owned(),
+        ));
     }
     let parsed: Value =
         serde_json::from_str(&raw).map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?;

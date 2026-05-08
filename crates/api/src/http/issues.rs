@@ -409,6 +409,7 @@ pub(crate) async fn update_issue(
     Json(payload): Json<UpdateIssueRequest>,
 ) -> Result<Json<IssueEnvelope>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, ISSUES_UPDATE).await?;
     let issue = find_issue(&state, &auth.organization.id, &id).await?;
     let assigned_to_id = match payload.assigned_to_id {
         Some(value) => Some(normalize_assignee(Some(value))?),
@@ -700,6 +701,7 @@ async fn upload_attachment(
     mut multipart: Multipart,
 ) -> Result<Json<IssueEnvelope>, ApiError> {
     let auth = require_auth(&headers, &state).await?;
+    require_permission(&state, &auth, ISSUES_UPDATE).await?;
     let issue = find_issue(&state, &auth.organization.id, &id).await?;
     let storage_config = state
         .config

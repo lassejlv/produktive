@@ -7,6 +7,10 @@ use crate::{
     },
     issue_helpers::{non_empty_optional, normalize_assignee, required_string, validate_assignee},
     issue_history::{record_issue_event, string_change, IssueChange},
+    permissions::{
+        has_permission, ISSUES_CREATE, ISSUES_DELETE, ISSUES_UPDATE, LABELS_CREATE, LABELS_DELETE,
+        LABELS_UPDATE, PROJECTS_CREATE, PROJECTS_DELETE, PROJECTS_UPDATE,
+    },
     realtime::{RealtimeAction, RealtimeEntity},
     state::AppState,
 };
@@ -80,6 +84,23 @@ fn state<'ctx>(ctx: &'ctx Context<'ctx>) -> async_graphql::Result<&'ctx AppState
 
 fn auth<'ctx>(ctx: &'ctx Context<'ctx>) -> async_graphql::Result<&'ctx ApiKeyContext> {
     ctx.data::<ApiKeyContext>()
+}
+
+async fn require_api_permission(
+    state: &AppState,
+    auth: &ApiKeyContext,
+    permission: &str,
+) -> async_graphql::Result<()> {
+    if has_permission(&state.db, &auth.user.id, &auth.organization.id, permission)
+        .await
+        .map_err(graphql_error)?
+    {
+        Ok(())
+    } else {
+        Err(graphql_error(ApiError::Forbidden(
+            "Missing workspace permission".to_owned(),
+        )))
+    }
 }
 
 fn graphql_error(error: ApiError) -> async_graphql::Error {
@@ -186,6 +207,7 @@ impl MutationRoot {
     ) -> async_graphql::Result<IssuePayload> {
         let state = state(ctx)?;
         let auth = auth(ctx)?;
+        require_api_permission(state, auth, ISSUES_CREATE).await?;
         let organization_id = auth.organization.id.clone();
         let actor_id = auth.user.id.clone();
         let assigned_to_id = normalize_assignee(input.assigned_to_id)?;
@@ -305,6 +327,7 @@ impl MutationRoot {
     ) -> async_graphql::Result<IssuePayload> {
         let state = state(ctx)?;
         let auth = auth(ctx)?;
+        require_api_permission(state, auth, ISSUES_UPDATE).await?;
         let organization_id = auth.organization.id.clone();
         let before = find_issue(state, &organization_id, id.as_str())
             .await
@@ -456,6 +479,7 @@ impl MutationRoot {
     ) -> async_graphql::Result<DeletePayload> {
         let state = state(ctx)?;
         let auth = auth(ctx)?;
+        require_api_permission(state, auth, ISSUES_DELETE).await?;
         let row = find_issue(state, &auth.organization.id, id.as_str())
             .await
             .map_err(graphql_error)?;
@@ -483,6 +507,7 @@ impl MutationRoot {
     ) -> async_graphql::Result<LabelPayload> {
         let state = state(ctx)?;
         let auth = auth(ctx)?;
+        require_api_permission(state, auth, LABELS_CREATE).await?;
         let organization_id = auth.organization.id.clone();
         let name = required_string(input.name, "Label name")?;
         if name.chars().count() > 48 {
@@ -535,6 +560,7 @@ impl MutationRoot {
     ) -> async_graphql::Result<LabelPayload> {
         let state = state(ctx)?;
         let auth = auth(ctx)?;
+        require_api_permission(state, auth, LABELS_UPDATE).await?;
         let organization_id = auth.organization.id.clone();
         let existing = find_label(state, &organization_id, id.as_str())
             .await
@@ -592,6 +618,7 @@ impl MutationRoot {
     ) -> async_graphql::Result<DeletePayload> {
         let state = state(ctx)?;
         let auth = auth(ctx)?;
+        require_api_permission(state, auth, LABELS_DELETE).await?;
         let row = find_label(state, &auth.organization.id, id.as_str())
             .await
             .map_err(graphql_error)?;
@@ -619,6 +646,7 @@ impl MutationRoot {
     ) -> async_graphql::Result<ProjectPayload> {
         let state = state(ctx)?;
         let auth = auth(ctx)?;
+        require_api_permission(state, auth, PROJECTS_CREATE).await?;
         let organization_id = auth.organization.id.clone();
         let lead_id = normalize_optional_string(input.lead_id);
         if let Some(lead_id) = lead_id.as_deref() {
@@ -676,6 +704,7 @@ impl MutationRoot {
     ) -> async_graphql::Result<ProjectPayload> {
         let state = state(ctx)?;
         let auth = auth(ctx)?;
+        require_api_permission(state, auth, PROJECTS_UPDATE).await?;
         let organization_id = auth.organization.id.clone();
         let existing = find_project(state, &organization_id, id.as_str())
             .await
@@ -741,6 +770,7 @@ impl MutationRoot {
     ) -> async_graphql::Result<DeletePayload> {
         let state = state(ctx)?;
         let auth = auth(ctx)?;
+        require_api_permission(state, auth, PROJECTS_DELETE).await?;
         let row = find_project(state, &auth.organization.id, id.as_str())
             .await
             .map_err(graphql_error)?;

@@ -1492,7 +1492,16 @@ async fn mirror_github_body_media(
         return body.to_owned();
     }
 
-    let http = reqwest::Client::new();
+    let http = match reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+    {
+        Ok(client) => client,
+        Err(error) => {
+            tracing::warn!(%error, "failed to build github media client");
+            return body.to_owned();
+        }
+    };
     let mut replacements = HashMap::new();
     for source_url in urls {
         match mirror_one_github_media(
@@ -1529,8 +1538,8 @@ async fn mirror_one_github_media(
     source_url: &str,
 ) -> Result<String, anyhow::Error> {
     let parsed = reqwest::Url::parse(source_url)?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        anyhow::bail!("unsupported media URL scheme");
+    if !is_trusted_github_media_url(&parsed) {
+        anyhow::bail!("unsupported github media URL");
     }
 
     let response = http
@@ -1671,11 +1680,40 @@ fn rewrite_github_body_media_urls(body: &str, replacements: &HashMap<String, Str
 
 fn push_media_url(urls: &mut Vec<String>, url: &str) {
     let trimmed = url.trim();
-    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+    let Ok(parsed) = reqwest::Url::parse(trimmed) else {
+        return;
+    };
+    if !is_trusted_github_media_url(&parsed) {
         return;
     }
     if !urls.iter().any(|existing| existing == trimmed) {
         urls.push(trimmed.to_owned());
+    }
+}
+
+fn is_trusted_github_media_url(url: &reqwest::Url) -> bool {
+    if url.scheme() != "https" {
+        return false;
+    }
+    match url.host_str() {
+        Some("user-images.githubusercontent.com")
+        | Some("private-user-images.githubusercontent.com")
+        | Some("raw.githubusercontent.com")
+        | Some("camo.githubusercontent.com")
+        | Some("objects.githubusercontent.com") => true,
+        Some("github.com") => url
+            .path_segments()
+            .map(|segments| {
+                let segments = segments.collect::<Vec<_>>();
+                segments
+                    .windows(2)
+                    .any(|window| window == ["user-attachments", "assets"])
+                    || segments
+                        .windows(2)
+                        .any(|window| window == ["assets", "images"])
+            })
+            .unwrap_or(false),
+        _ => false,
     }
 }
 
@@ -1907,12 +1945,12 @@ mod tests {
 
     #[test]
     fn github_media_rewrite_keeps_unmirrored_or_unsupported_urls() {
-        let body = r#"![remote](https://example.com/image.png)
+        let body = r#"![remote](https://user-images.githubusercontent.com/1/image.png)
 ![relative](../image.png)
 <img src="data:image/png;base64,abc">
-<video src="https://example.com/video.mp4"></video>"#;
+<video src="https://evil.example.com/video.mp4"></video>"#;
         let replacements = HashMap::from([(
-            "https://example.com/image.png".to_owned(),
+            "https://user-images.githubusercontent.com/1/image.png".to_owned(),
             "https://cdn.produktive.app/image.png".to_owned(),
         )]);
 
@@ -1921,15 +1959,28 @@ mod tests {
 
         assert_eq!(
             extracted,
-            vec![
-                "https://example.com/image.png".to_owned(),
-                "https://example.com/video.mp4".to_owned()
-            ]
+            vec!["https://user-images.githubusercontent.com/1/image.png".to_owned()]
         );
         assert!(rewritten.contains("https://cdn.produktive.app/image.png"));
         assert!(rewritten.contains("../image.png"));
         assert!(rewritten.contains("data:image/png;base64,abc"));
-        assert!(rewritten.contains("https://example.com/video.mp4"));
+        assert!(rewritten.contains("https://evil.example.com/video.mp4"));
+    }
+
+    #[test]
+    fn github_media_url_trust_is_limited_to_github_media_hosts() {
+        assert!(is_trusted_github_media_url(
+            &reqwest::Url::parse("https://user-images.githubusercontent.com/1/image.png").unwrap()
+        ));
+        assert!(is_trusted_github_media_url(
+            &reqwest::Url::parse("https://github.com/org/repo/assets/images/image.png").unwrap()
+        ));
+        assert!(!is_trusted_github_media_url(
+            &reqwest::Url::parse("https://example.com/image.png").unwrap()
+        ));
+        assert!(!is_trusted_github_media_url(
+            &reqwest::Url::parse("http://user-images.githubusercontent.com/1/image.png").unwrap()
+        ));
     }
 
     #[test]
