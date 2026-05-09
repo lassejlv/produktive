@@ -2,7 +2,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AttachIcon, StarIcon } from "@/components/chat/icons";
+import { AttachIcon, CopyIcon, StarIcon } from "@/components/chat/icons";
 import { Avatar } from "@/components/issue/avatar";
 import { EditableDescription } from "@/components/issue/editable-description";
 import { EditableTitle } from "@/components/issue/editable-title";
@@ -19,6 +19,7 @@ import {
 } from "@/lib/api";
 import { prepareChatAttachments } from "@/lib/chat-attachments";
 import { formatDate } from "@/lib/issue-constants";
+import { copyIssuePrompt } from "@/lib/issue-prompt";
 import { useFavorites } from "@/lib/use-favorites";
 import {
   useIssueCommentsQuery,
@@ -148,6 +149,16 @@ function IssueSidepaneContent({ issueId, onClose }: { issueId: string; onClose: 
     }
   };
 
+  const handleCopyAsPrompt = async () => {
+    if (!issue) return;
+    try {
+      await copyIssuePrompt(issue);
+      toast.success("Copied as prompt");
+    } catch {
+      toast.error("Failed to copy");
+    }
+  };
+
   const handleComment = async () => {
     if (!issue) return;
     const body = commentBody.trim();
@@ -239,6 +250,13 @@ function IssueSidepaneContent({ issueId, onClose }: { issueId: string; onClose: 
             className="hidden"
             onChange={(event) => void handleAttachmentChange(event)}
           />
+          <SidePaneIconButton
+            title="Copy as prompt"
+            onClick={() => void handleCopyAsPrompt()}
+            disabled={!issue}
+          >
+            <CopyIcon size={11} />
+          </SidePaneIconButton>
           <SidePaneIconButton
             title={pinned ? "Unpin" : "Pin"}
             onClick={() => void handleTogglePin()}

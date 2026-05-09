@@ -2,7 +2,7 @@ import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { AttachIcon, DotsIcon, StarIcon } from "@/components/chat/icons";
+import { AttachIcon, CopyIcon, DotsIcon, StarIcon } from "@/components/chat/icons";
 import { ChatMarkdown } from "@/components/chat/chat-markdown";
 import { useConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Spinner } from "@/components/ui/spinner";
@@ -28,6 +28,7 @@ import {
 } from "@/lib/api";
 import { formatBytes, prepareChatAttachments } from "@/lib/chat-attachments";
 import { formatDate } from "@/lib/issue-constants";
+import { copyIssuePrompt } from "@/lib/issue-prompt";
 import { useOnboarding } from "@/components/onboarding/onboarding-context";
 import { useFavorites } from "@/lib/use-favorites";
 import {
@@ -213,6 +214,16 @@ export function IssueDetail({
     }
   };
 
+  const handleCopyAsPrompt = async () => {
+    if (!issue) return;
+    try {
+      await copyIssuePrompt(issue);
+      toast.success("Copied as prompt");
+    } catch {
+      toast.error("Failed to copy");
+    }
+  };
+
   const updateField = async (
     patch: Parameters<typeof updateIssueMutation.mutateAsync>[0]["patch"],
     errorLabel: string,
@@ -382,6 +393,12 @@ export function IssueDetail({
               className="hidden"
               onChange={(event) => void handleAttachmentChange(event)}
             />
+            <HeaderIconButton
+              title="Copy as prompt"
+              onClick={() => void handleCopyAsPrompt()}
+            >
+              <CopyIcon size={12} />
+            </HeaderIconButton>
             <HeaderIconButton
               title={pinned ? "Unpin issue" : "Pin issue"}
               onClick={() => void handleTogglePin()}
