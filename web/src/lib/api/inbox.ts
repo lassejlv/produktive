@@ -3,7 +3,7 @@ import {
   MarkAllNotificationsReadDocument,
   MarkNotificationReadDocument,
 } from "@/gql/graphql";
-import { graphqlRequest, unwrapGraphQLJson } from "@/lib/graphql/client";
+import { graphqlRequest, unwrapGraphQLJson } from "@/lib/api/graphql/client";
 
 export type InboxNotification = {
   id: string;

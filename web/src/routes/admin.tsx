@@ -27,7 +27,7 @@ import {
   type AuditEvent,
   type GrowthPoint,
   type SupportTicketSummary,
-} from "@/lib/admin-api";
+} from "@/lib/api/admin";
 import { signOut } from "@/lib/auth-client";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";

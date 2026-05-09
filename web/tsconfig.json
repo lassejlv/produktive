@@ -19,7 +19,8 @@
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@repo/*": ["../*"]
     }
   },
   "include": ["src"]

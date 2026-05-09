@@ -1,5 +1,5 @@
 import { MembersDocument } from "@/gql/graphql";
-import { graphqlRequest, unwrapGraphQLJson } from "@/lib/graphql/client";
+import { graphqlRequest, unwrapGraphQLJson } from "@/lib/api/graphql/client";
 import type { JsonObject } from "@/lib/json";
 import {
   internalGraphQLGet,

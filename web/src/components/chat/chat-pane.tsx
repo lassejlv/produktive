@@ -33,7 +33,7 @@ import {
   buildMessageWithAttachments,
   parseMessageWithAttachments,
 } from "@/lib/chat-attachments";
-import { firstName, greetingForNow } from "@/lib/chat-history";
+import { firstName, greetingForNow } from "@/components/chat/chat-history";
 import { selectAvailableModel, useAiModels } from "@/lib/use-ai-models";
 import { useRegisterTab } from "@/lib/use-tabs";
 import { useUserPreferences } from "@/lib/use-user-preferences";

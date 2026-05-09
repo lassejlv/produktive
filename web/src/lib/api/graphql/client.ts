@@ -1,6 +1,6 @@
 import { print } from "graphql";
 import type { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import { apiPath } from "@/lib/api";
+import { apiPath } from "@/lib/api/client";
 
 type GraphQLWireResponse<TData> = {
   data?: TData;

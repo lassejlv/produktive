@@ -31,7 +31,7 @@ import {
   buildMessageWithAttachments,
   parseMessageWithAttachments,
 } from "@/lib/chat-attachments";
-import { firstName } from "@/lib/chat-history";
+import { firstName } from "@/components/chat/chat-history";
 import { selectAvailableModel, useAiModels } from "@/lib/use-ai-models";
 import { useChats } from "@/lib/use-chats";
 import { cn } from "@/lib/utils";

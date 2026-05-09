@@ -1,0 +1,14 @@
+{
+  "tags": [
+    "axum",
+    "docker",
+    "github-actions",
+    "rust"
+  ],
+  "sentinels": [
+    "Cargo.toml",
+    "Dockerfile"
+  ],
+  "detectedAt": "2026-05-08T21:20:48.149Z",
+  "rootPath": "/Users/lassevestergaard/Documents/dev/produktive"
+}

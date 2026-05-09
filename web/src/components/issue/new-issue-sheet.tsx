@@ -11,6 +11,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
+import { parseNaturalIssueInput } from "@/components/issue/issue-natural-input";
+import { findSimilarIssues } from "@/components/issue/issue-similarity";
 import { PillSelect } from "@/components/issue/pill-select";
 import { PriorityIcon } from "@/components/issue/priority-icon";
 import { StatusIcon } from "@/components/issue/status-icon";
@@ -33,9 +35,7 @@ import {
   formatBytes,
   prepareChatAttachments,
 } from "@/lib/chat-attachments";
-import { parseNaturalIssueInput } from "@/lib/issue-natural-input";
 import { firstStatusForCategory, priorityOptions, sortedStatuses } from "@/lib/issue-constants";
-import { findSimilarIssues } from "@/lib/issue-similarity";
 import { useIssues } from "@/lib/use-issues";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
 

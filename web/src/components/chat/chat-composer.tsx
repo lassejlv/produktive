@@ -5,6 +5,7 @@ import {
   type MentionItem,
   prettyToolName,
 } from "@/components/chat/tool-mention-popup";
+import { getCaretCoords } from "@/components/chat/textarea-caret";
 import { StatusIcon } from "@/components/issue/status-icon";
 import { SparkleIcon } from "@/components/chat/icons";
 import {
@@ -20,7 +21,6 @@ import {
   prepareChatAttachments,
 } from "@/lib/chat-attachments";
 import { useNotesQuery } from "@/lib/queries/notes";
-import { getCaretCoords } from "@/lib/textarea-caret";
 import { useChats } from "@/lib/use-chats";
 import { useIssues } from "@/lib/use-issues";
 import { useMcpTools, type MentionableTool } from "@/lib/use-mcp-tools";

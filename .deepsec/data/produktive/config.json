@@ -1,0 +1,21 @@
+{
+  "priorityPaths": [
+    "crates/api/src/http/",
+    "crates/api/src/auth.rs",
+    "crates/api/src/permissions.rs",
+    "crates/api/src/ai_usage.rs",
+    "crates/mcp/src/",
+    "crates/discord-bot/src/"
+  ],
+  "ignorePaths": [
+    ".env",
+    ".env.*",
+    "**/.env",
+    "**/.env.*",
+    ".deepsec/**",
+    "target/**",
+    "web/dist/**",
+    "web/node_modules/**",
+    "node_modules/**"
+  ]
+}

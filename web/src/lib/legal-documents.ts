@@ -1,5 +1,5 @@
-import privacyMarkdown from "../../../PRIVACY.md?raw";
-import termsMarkdown from "../../../TERMS.md?raw";
+import privacyMarkdown from "@repo/PRIVACY.md?raw";
+import termsMarkdown from "@repo/TERMS.md?raw";
 
 type LegalDocumentType = "terms" | "privacy";
 

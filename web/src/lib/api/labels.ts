@@ -5,7 +5,7 @@ import {
   LabelsDocument,
   UpdateLabelDocument,
 } from "@/gql/graphql";
-import { graphqlRequest, unwrapGraphQLJson } from "@/lib/graphql/client";
+import { graphqlRequest, unwrapGraphQLJson } from "@/lib/api/graphql/client";
 import type { ActorProfile } from "./actor-profile";
 
 export type LabelSummary = {
