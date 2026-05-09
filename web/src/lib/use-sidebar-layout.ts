@@ -1,12 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   type NotificationPreferences,
+  type SidebarLayoutPreferences,
   type SidebarLayoutItem,
   updateMyPreferences,
 } from "@/lib/api";
 import { useUserPreferences } from "@/lib/use-user-preferences";
 
-export const SIDEBAR_ITEM_IDS = [
+const SIDEBAR_ITEM_IDS = [
   "inbox",
   "my-issues",
   "overview",
@@ -21,22 +22,13 @@ export type SidebarItemId = (typeof SIDEBAR_ITEM_IDS)[number];
 
 export type ChatsSortMode = "recent" | "alphabetical";
 
-export const CHATS_LIMIT_OPTIONS = [3, 5, 8, 12, 20, 50] as const;
-
-export type SidebarLayout = {
-  items: SidebarLayoutItem[];
-  favoritesCollapsed: boolean;
-  chatsCollapsed: boolean;
-  favoritesOrder: string[];
-  chatsLimit: number;
-  chatsSort: ChatsSortMode;
-};
+export type SidebarLayout = SidebarLayoutPreferences;
 
 const KNOWN_IDS = new Set<string>(SIDEBAR_ITEM_IDS);
 
 export const defaultSidebarItems: SidebarLayoutItem[] = SIDEBAR_ITEM_IDS.map((id) => ({ id }));
 
-export const defaultSidebarLayout: SidebarLayout = {
+const defaultSidebarLayout: SidebarLayout = {
   items: defaultSidebarItems,
   favoritesCollapsed: false,
   chatsCollapsed: false,
@@ -75,7 +67,7 @@ function normalizeStringArray(raw: unknown): string[] {
   return out;
 }
 
-export function normalizeLayout(raw: unknown): SidebarLayout {
+function normalizeLayout(raw: unknown): SidebarLayout {
   // Legacy shape: just an array of items.
   if (Array.isArray(raw)) {
     return { ...defaultSidebarLayout, items: normalizeItems(raw) };

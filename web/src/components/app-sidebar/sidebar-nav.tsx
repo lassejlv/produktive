@@ -129,7 +129,7 @@ type NavContext = {
   workspaceSlug: string;
 };
 
-export type AnimatedIconHandle = {
+type AnimatedIconHandle = {
   startAnimation: () => void;
   stopAnimation: () => void;
 };

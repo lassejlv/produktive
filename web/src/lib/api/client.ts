@@ -19,6 +19,15 @@ export const apiPath = (path: string) => {
   return `${apiUrl}${normalizedPath}`;
 };
 
+type ErrorResponse = {
+  error?: string;
+};
+
+const readErrorMessage = async (response: Response, fallback: string) => {
+  const error: ErrorResponse | null = await response.json().catch(() => null);
+  return error?.error ?? fallback;
+};
+
 export const apiWebSocketPath = (path: string) => {
   const target = apiPath(path);
   const base =
@@ -41,8 +50,7 @@ export const request = async <T>(path: string, init?: RequestInit): Promise<T> =
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new Error(error?.error ?? "Request failed");
+    throw new Error(await readErrorMessage(response, "Request failed"));
   }
 
   if (response.status === 204) {
@@ -50,6 +58,45 @@ export const request = async <T>(path: string, init?: RequestInit): Promise<T> =
   }
 
   return response.json() as Promise<T>;
+};
+
+export const formRequest = async <T>(
+  path: string,
+  form: FormData,
+  errorMessage = "Request failed",
+): Promise<T> => {
+  const response = await fetch(apiPath(path), {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, errorMessage));
+  }
+
+  return response.json() as Promise<T>;
+};
+
+export const fileUploadRequest = <T>(
+  path: string,
+  file: File,
+  errorMessage?: string,
+): Promise<T> => {
+  const form = new FormData();
+  form.append("file", file);
+  return formRequest<T>(path, form, errorMessage);
+};
+
+export const toQueryString = (
+  params: Record<string, string | number | boolean | null | undefined>,
+): string => {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") continue;
+    query.set(key, String(value));
+  }
+  return query.toString();
 };
 
 export const internalGraphQLGet = <T>(path: string) =>

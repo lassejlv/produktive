@@ -112,10 +112,6 @@ export function NotesPage({ noteId }: Props) {
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Left sidebar                                                              */
-/* -------------------------------------------------------------------------- */
-
 function NotesSidebar({
   search,
   onSearch,
@@ -217,10 +213,6 @@ function NoteRow({ note, selected }: { note: Note; selected: boolean }) {
     </li>
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/*  Note workspace (editor + commits rail)                                    */
-/* -------------------------------------------------------------------------- */
 
 type SaveState = "saved" | "saving" | "error";
 type Snapshot = {
@@ -446,10 +438,6 @@ function NoteWorkspace({
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Commits pane (right rail)                                                  */
-/* -------------------------------------------------------------------------- */
-
 function CommitsPane({
   noteId,
   baseline,
@@ -655,10 +643,6 @@ function VersionRow({
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Editor header bits                                                         */
-/* -------------------------------------------------------------------------- */
-
 function SaveIndicator({ state, pending }: { state: SaveState; pending: boolean }) {
   const label =
     state === "error" ? "Save failed" : state === "saving" || pending ? "Saving" : "Saved";
@@ -743,10 +727,6 @@ function MenuItem({
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Empty state                                                               */
-/* -------------------------------------------------------------------------- */
-
 function NotesEmptyState({ busy, onNewNote }: { busy: boolean; onNewNote: () => void }) {
   return (
     <div className="grid h-full flex-1 place-items-center px-6">
@@ -763,10 +743,6 @@ function NotesEmptyState({ busy, onNewNote }: { busy: boolean; onNewNote: () => 
     </div>
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/*  Diff view + algorithm                                                       */
-/* -------------------------------------------------------------------------- */
 
 type DiffRow = { type: "add" | "remove" | "context"; line: string };
 
@@ -856,10 +832,6 @@ function quickDiffStats(a: string, b: string): { adds: number; removes: number }
   return { adds, removes };
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Misc helpers                                                                */
-/* -------------------------------------------------------------------------- */
-
 function noteSnippet(markdown: string) {
   const stripped = markdown
     .replace(/\[[^\]]+\]\(produktive:\/\/(?:issue|chat|user)\/[^)]+\)/g, (value) => {
@@ -887,10 +859,6 @@ function relativeTime(value: string | null) {
   const mo = Math.round(day / 30);
   return `${mo}mo`;
 }
-
-/* -------------------------------------------------------------------------- */
-/*  Icons                                                                       */
-/* -------------------------------------------------------------------------- */
 
 function LockIcon({ className }: { className?: string }) {
   return (

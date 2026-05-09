@@ -20,7 +20,7 @@ export type ConfirmDialogProps = {
   destructive?: boolean;
 };
 
-export function ConfirmDialog({
+function ConfirmDialog({
   open,
   onClose,
   onConfirm,

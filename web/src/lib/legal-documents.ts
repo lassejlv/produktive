@@ -1,7 +1,7 @@
 import privacyMarkdown from "../../../PRIVACY.md?raw";
 import termsMarkdown from "../../../TERMS.md?raw";
 
-export type LegalDocumentType = "terms" | "privacy";
+type LegalDocumentType = "terms" | "privacy";
 
 export type LegalDocument = {
   type: LegalDocumentType;
@@ -12,7 +12,7 @@ export type LegalDocument = {
   markdown: string;
 };
 
-export const LEGAL_DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
+const LEGAL_DOCUMENTS: Record<LegalDocumentType, LegalDocument> = {
   terms: {
     type: "terms",
     title: "Terms of Service",

@@ -1,4 +1,4 @@
-import { internalGraphQLGet, internalGraphQLMutation } from "./client";
+import { internalGraphQLGet, internalGraphQLMutation, toQueryString } from "./client";
 
 export type NoteMentionTargetType = "issue" | "chat" | "user";
 
@@ -72,9 +72,8 @@ export type NoteFolder = {
 export type NoteMentionSearchResult = NoteMention;
 
 export const listNotes = (search?: string) => {
-  const params = new URLSearchParams();
-  if (search?.trim()) params.set("search", search.trim());
-  const suffix = params.toString() ? `?${params.toString()}` : "";
+  const query = toQueryString({ search: search?.trim() });
+  const suffix = query ? `?${query}` : "";
   return internalGraphQLGet<{ notes: Note[] }>(`/api/notes${suffix}`);
 };
 
@@ -162,5 +161,5 @@ export const archiveNoteFolder = (id: string) =>
 
 export const searchNoteMentions = (q: string) =>
   internalGraphQLGet<{ mentions: NoteMentionSearchResult[] }>(
-    `/api/notes/mentions?q=${encodeURIComponent(q)}`,
+    `/api/notes/mentions?${toQueryString({ q })}`,
   );

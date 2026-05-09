@@ -2,12 +2,18 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "@tanstack/react-router";
 import { SparkleIcon } from "@/components/chat/icons";
-import type { PickableIssue } from "@/components/chat/issue-picker";
 import { StatusIcon } from "@/components/issue/status-icon";
 import type { Chat, Note } from "@/lib/api";
 import type { MentionableTool } from "@/lib/use-mcp-tools";
 import { useWorkspaceSlug } from "@/lib/use-workspace-slug";
 import { cn } from "@/lib/utils";
+
+type PickableIssue = {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+};
 
 const POPOVER_WIDTH = 320;
 const POPOVER_MAX_HEIGHT = 320;

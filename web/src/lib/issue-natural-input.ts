@@ -10,7 +10,7 @@ export type NaturalIssueParseResult = {
   chips: NaturalIssueChip[];
 };
 
-export type NaturalIssueChip = {
+type NaturalIssueChip = {
   kind: "status" | "priority" | "assignee" | "project" | "label";
   label: string;
 };

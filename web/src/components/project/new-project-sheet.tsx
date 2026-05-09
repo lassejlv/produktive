@@ -81,7 +81,9 @@ export function NewProjectSheet({
           setLeadImage(member.image);
         }
       })
-      .catch(() => {});
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : "Failed to load project lead");
+      });
     return () => {
       mounted = false;
     };

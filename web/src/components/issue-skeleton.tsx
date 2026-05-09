@@ -1,6 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
-export function IssueSkeleton() {
+function IssueSkeleton() {
   return (
     <div className="flex items-center gap-3 border-b border-border-subtle px-4 py-2.5 last:border-b-0">
       <Skeleton className="size-1.5 shrink-0 rounded-full" />

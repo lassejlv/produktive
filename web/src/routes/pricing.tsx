@@ -3,59 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/spinner";
-import { createBillingCheckout } from "@/lib/api";
+import { createBillingCheckout, fetchPricing, type PricingPlan, type PricingResponse } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
-type PricingPlan = {
-  id: string;
-  name: string;
-  price: number | null;
-  pricingModel: string;
-  cadence: string;
-  checkoutEnabled?: boolean;
-  description: string;
-  recommended?: boolean;
-  features: string[];
-  limits: Record<string, string | number | boolean>;
-  ai?: {
-    usageLimit: string;
-    modelAccess: string;
-    models: string[];
-  };
-  integrations?: Record<string, string | boolean>;
-  security?: Record<string, string | boolean>;
-};
-
-type AiPolicy = {
-  publicLanguage: string;
-  overagePolicy: string;
-};
-
-type ModelTier = {
-  id: string;
-  label: string;
-  includedIn: string[];
-  intendedUse: string;
-};
-
-type PricingResponse = {
-  currency: string;
-  positioning: string;
-  plans: PricingPlan[];
-  aiLimitPolicy: AiPolicy;
-  modelTiers: ModelTier[];
-};
-
 const PRICING_QUERY_KEY = ["pricing"] as const;
-
-async function fetchPricing(): Promise<PricingResponse> {
-  const response = await fetch("/api/pricing");
-  if (!response.ok) {
-    throw new Error("Failed to load pricing");
-  }
-  return response.json();
-}
 
 export const Route = createFileRoute("/pricing")({
   component: PricingPage,
@@ -159,10 +111,6 @@ function PricingBody({ data, isLoggedIn }: { data: PricingResponse; isLoggedIn: 
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Plan cards                                                                 */
-/* -------------------------------------------------------------------------- */
-
 const HIGHLIGHT_LIMIT = 5;
 
 function PricingCard({ plan, isLoggedIn }: { plan: PricingPlan; isLoggedIn: boolean }) {
@@ -248,10 +196,6 @@ function PricingCard({ plan, isLoggedIn }: { plan: PricingPlan; isLoggedIn: bool
     </article>
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/*  Atoms + helpers                                                            */
-/* -------------------------------------------------------------------------- */
 
 function SectionHeading({
   eyebrow,

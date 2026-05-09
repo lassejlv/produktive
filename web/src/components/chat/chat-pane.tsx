@@ -34,7 +34,7 @@ import {
   parseMessageWithAttachments,
 } from "@/lib/chat-attachments";
 import { firstName, greetingForNow } from "@/lib/chat-history";
-import { useAiModels } from "@/lib/use-ai-models";
+import { selectAvailableModel, useAiModels } from "@/lib/use-ai-models";
 import { useRegisterTab } from "@/lib/use-tabs";
 import { useUserPreferences } from "@/lib/use-user-preferences";
 import { useWorkspaceSlug } from "@/lib/use-workspace-slug";
@@ -87,18 +87,11 @@ export function ChatPane({ chatId }: { chatId: string | null }) {
 
   useEffect(() => {
     if (availableModels.length === 0) return;
-    const current = selectedModel
-      ? availableModels.find((entry) => entry.id === selectedModel)
-      : null;
-    const isUsable = Boolean(current?.isAvailable);
-    if (isUsable) return;
-    const fallback =
-      availableModels.find((entry) => entry.id === defaultModelId && entry.isAvailable) ??
-      availableModels.find((entry) => entry.isAvailable) ??
-      null;
-    setSelectedModel(fallback?.id ?? null);
-    if (typeof window !== "undefined" && fallback) {
-      window.localStorage.setItem(MODEL_STORAGE_KEY, fallback.id);
+    const nextModel = selectAvailableModel(availableModels, defaultModelId, selectedModel);
+    if (nextModel === selectedModel) return;
+    setSelectedModel(nextModel);
+    if (typeof window !== "undefined" && nextModel) {
+      window.localStorage.setItem(MODEL_STORAGE_KEY, nextModel);
     }
   }, [availableModels, defaultModelId, selectedModel]);
 
@@ -764,7 +757,11 @@ function upsertLiveToolCall(messages: ChatMessage[], toolCall: ChatToolCall): Ch
   });
 }
 
-function updateLiveToolResult(messages: ChatMessage[], id: string, result: unknown): ChatMessage[] {
+function updateLiveToolResult(
+  messages: ChatMessage[],
+  id: string,
+  result: ChatToolCall["result"],
+): ChatMessage[] {
   return updateLastAssistant(messages, (message) => ({
     ...message,
     typing: true,

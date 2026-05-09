@@ -1,10 +1,7 @@
 use crate::{
     auth::{require_api_key, ApiKeyContext},
     error::ApiError,
-    http::issue_statuses::{
-        self, validate_issue_status, CATEGORY_ACTIVE, CATEGORY_BACKLOG, CATEGORY_CANCELED,
-        CATEGORY_DONE,
-    },
+    http::{issue_statuses::validate_issue_status, projects::project_issue_stats},
     issue_helpers::{non_empty_optional, normalize_assignee, required_string, validate_assignee},
     issue_history::{record_issue_event, string_change, IssueChange},
     permissions::{
@@ -1235,36 +1232,7 @@ async fn project_response(state: &AppState, row: project::Model) -> Result<Proje
         Some(id) => find_user_response(state, id).await?,
         None => None,
     };
-    let issue_count = issue::Entity::find()
-        .filter(issue::Column::OrganizationId.eq(&row.organization_id))
-        .filter(issue::Column::ProjectId.eq(&row.id))
-        .count(&state.db)
-        .await?;
-    let statuses = issue_statuses::list_issue_statuses(state, &row.organization_id, false).await?;
-    let mut status_breakdown = StatusBreakdown::default();
-    let mut done_count = 0_u64;
-    let project_issues = issue::Entity::find()
-        .filter(issue::Column::OrganizationId.eq(&row.organization_id))
-        .filter(issue::Column::ProjectId.eq(&row.id))
-        .all(&state.db)
-        .await?;
-    for issue in project_issues {
-        let category = statuses
-            .iter()
-            .find(|status| status.key == issue.status)
-            .map(|status| status.category.as_str())
-            .unwrap_or(CATEGORY_ACTIVE);
-        match category {
-            CATEGORY_BACKLOG => status_breakdown.backlog += 1,
-            CATEGORY_ACTIVE => status_breakdown.todo += 1,
-            CATEGORY_DONE => {
-                status_breakdown.done += 1;
-                done_count += 1;
-            }
-            CATEGORY_CANCELED => {}
-            _ => {}
-        }
-    }
+    let stats = project_issue_stats(state, &row.organization_id, &row.id).await?;
 
     Ok(Project {
         id: ID::from(row.id),
@@ -1280,9 +1248,14 @@ async fn project_response(state: &AppState, row: project::Model) -> Result<Proje
         archived_at: row.archived_at,
         created_at: row.created_at,
         updated_at: row.updated_at,
-        issue_count,
-        done_count,
-        status_breakdown,
+        issue_count: stats.issue_count,
+        done_count: stats.done_count,
+        status_breakdown: StatusBreakdown {
+            backlog: stats.status_breakdown.backlog,
+            todo: stats.status_breakdown.todo,
+            in_progress: stats.status_breakdown.in_progress,
+            done: stats.status_breakdown.done,
+        },
     })
 }
 

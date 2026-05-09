@@ -210,7 +210,9 @@ function WorkspaceSettingsPage() {
         setRoles(rolesResponse.roles);
         setPermissions(rolesResponse.permissions);
       })
-      .catch(() => {})
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : "Failed to load members");
+      })
       .finally(() => {
         if (mounted) setMembersLoading(false);
       });
@@ -225,7 +227,9 @@ function WorkspaceSettingsPage() {
       .then((response) => {
         if (mounted) setSecurityEvents(response.events);
       })
-      .catch(() => {})
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : "Failed to load security events");
+      })
       .finally(() => {
         if (mounted) setSecurityEventsLoading(false);
       });

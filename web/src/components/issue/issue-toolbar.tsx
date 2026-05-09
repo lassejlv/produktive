@@ -40,7 +40,7 @@ export const emptyFilters: IssueFilters = {
   labelIds: [],
 };
 
-export function filterCount(filters: IssueFilters) {
+function filterCount(filters: IssueFilters) {
   return (
     filters.statuses.length +
     filters.priorities.length +

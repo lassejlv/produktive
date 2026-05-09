@@ -5,7 +5,7 @@ export const projectStatusOptions = [
   "cancelled",
 ] as const;
 
-export type ProjectStatus = (typeof projectStatusOptions)[number];
+type ProjectStatus = (typeof projectStatusOptions)[number];
 
 export const projectStatusLabel: Record<string, string> = {
   planned: "Planned",
@@ -13,13 +13,6 @@ export const projectStatusLabel: Record<string, string> = {
   completed: "Completed",
   cancelled: "Cancelled",
 };
-
-export const projectStatusOrder = [
-  "in-progress",
-  "planned",
-  "completed",
-  "cancelled",
-];
 
 export const projectColorOptions = [
   "blue",
@@ -46,7 +39,6 @@ export const projectColorHex: Record<string, string> = {
 };
 
 export const defaultProjectColor: ProjectColor = "blue";
-export const defaultProjectStatus: ProjectStatus = "planned";
 
 export const projectColorBackground = (color: string) => {
   const hex = projectColorHex[color] ?? projectColorHex.blue;

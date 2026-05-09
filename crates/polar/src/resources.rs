@@ -1,6 +1,46 @@
 use serde::Serialize;
 
-use crate::{JsonValue, Polar, Result};
+use crate::client::Polar;
+use crate::error::Result;
+use crate::JsonValue;
+
+impl Polar {
+    pub fn benefits(&self) -> Benefits<'_> {
+        Benefits::new(self)
+    }
+
+    pub fn checkouts(&self) -> Checkouts<'_> {
+        Checkouts::new(self)
+    }
+
+    pub fn customers(&self) -> Customers<'_> {
+        Customers::new(self)
+    }
+
+    pub fn customer_sessions(&self) -> CustomerSessions<'_> {
+        CustomerSessions::new(self)
+    }
+
+    pub fn orders(&self) -> Orders<'_> {
+        Orders::new(self)
+    }
+
+    pub fn organizations(&self) -> Organizations<'_> {
+        Organizations::new(self)
+    }
+
+    pub fn products(&self) -> Products<'_> {
+        Products::new(self)
+    }
+
+    pub fn subscriptions(&self) -> Subscriptions<'_> {
+        Subscriptions::new(self)
+    }
+
+    pub fn webhooks(&self) -> Webhooks<'_> {
+        Webhooks::new(self)
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Organizations<'a> {

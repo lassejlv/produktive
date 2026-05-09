@@ -11,7 +11,8 @@ import {
   UpdateIssueStatusDocument,
 } from "@/gql/graphql";
 import { graphqlRequest, unwrapGraphQLJson } from "@/lib/graphql/client";
-import { apiPath, internalGraphQLGet, internalGraphQLMutation } from "./client";
+import type { JsonValue } from "@/lib/json";
+import { fileUploadRequest, internalGraphQLGet, internalGraphQLMutation } from "./client";
 import type { LabelSummary } from "./labels";
 import type { ProjectSummary } from "./projects";
 import type { ActorProfile } from "./actor-profile";
@@ -69,8 +70,8 @@ export type IssueAttachment = {
 
 export type IssueHistoryChange = {
   field: string;
-  before: unknown;
-  after: unknown;
+  before: JsonValue;
+  after: JsonValue;
 };
 
 export type IssueHistoryEvent = {
@@ -161,22 +162,12 @@ export const deleteIssue = (id: string) =>
     unwrapGraphQLJson<{ ok: true }>(data.deleteIssue),
   );
 
-export const uploadIssueAttachment = async (id: string, file: File) => {
-  const form = new FormData();
-  form.append("file", file);
-
-  const response = await fetch(apiPath(`/api/issues/${id}/attachments`), {
-    method: "POST",
-    credentials: "include",
-    body: form,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new Error(error?.error ?? "Failed to upload attachment");
-  }
-
-  return response.json() as Promise<{ issue: Issue }>;
+export const uploadIssueAttachment = (id: string, file: File) => {
+  return fileUploadRequest<{ issue: Issue }>(
+    `/api/issues/${id}/attachments`,
+    file,
+    "Failed to upload attachment",
+  );
 };
 
 export const listIssueStatuses = () =>

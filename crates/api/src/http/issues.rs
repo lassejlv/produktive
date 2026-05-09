@@ -520,7 +520,7 @@ pub(crate) async fn update_issue(
     }
     if let Some(assignee_id) = new_assignee_for_notify {
         let target_path = format!("/issues/{}", issue.id);
-        let _ = dispatch_notification(
+        if let Err(error) = dispatch_notification(
             &state,
             &auth.organization.id,
             &assignee_id,
@@ -532,7 +532,16 @@ pub(crate) async fn update_issue(
             None,
             &target_path,
         )
-        .await;
+        .await
+        {
+            tracing::warn!(
+                organization_id = %auth.organization.id,
+                issue_id = %issue.id,
+                assignee_id = %assignee_id,
+                error = %error,
+                "failed to dispatch assignment notification"
+            );
+        }
     }
     let response = issue_response(&state, issue).await?;
     state
@@ -671,7 +680,7 @@ async fn create_comment(
         if sub.user_id == auth.user.id {
             continue;
         }
-        let _ = dispatch_notification(
+        if let Err(error) = dispatch_notification(
             &state,
             &auth.organization.id,
             &sub.user_id,
@@ -683,7 +692,16 @@ async fn create_comment(
             Some(snippet.clone()),
             &target_path,
         )
-        .await;
+        .await
+        {
+            tracing::warn!(
+                organization_id = %auth.organization.id,
+                issue_id = %issue_id_for_notify,
+                subscriber_id = %sub.user_id,
+                error = %error,
+                "failed to dispatch comment notification"
+            );
+        }
     }
 
     Ok((

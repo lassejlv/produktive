@@ -12,7 +12,7 @@ export type StepId =
 
 export type SignalName = "issue-created" | "priority-or-assignee-changed";
 
-export type AwaitMode = "next" | { event: SignalName };
+type AwaitMode = "next" | { event: SignalName };
 
 export type OnboardingStep = {
   id: StepId;

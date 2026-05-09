@@ -18,7 +18,7 @@ export type StaticPage = {
  * Paths are workspace-relative (without the workspace slug prefix).
  * The dashboard sits at the root ("/") under the active workspace.
  */
-export const STATIC_PAGES: StaticPage[] = [
+const STATIC_PAGES: StaticPage[] = [
   { path: "/", title: "Overview", glyph: "overview" },
   { path: "/issues", title: "Issues", glyph: "issues" },
   { path: "/projects", title: "Projects", glyph: "projects" },
@@ -33,7 +33,7 @@ export const STATIC_PAGES: StaticPage[] = [
  * Strips the workspace slug from a pathname to produce the workspace-relative
  * sub-path that STATIC_PAGES is keyed on.
  */
-export function workspaceSubpath(pathname: string, workspaceSlug: string): string {
+function workspaceSubpath(pathname: string, workspaceSlug: string): string {
   if (!workspaceSlug) return pathname;
   const prefix = `/${workspaceSlug}`;
   if (pathname === prefix) return "/";

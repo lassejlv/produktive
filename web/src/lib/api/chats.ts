@@ -9,7 +9,8 @@ import {
   RevokeChatAccessDocument,
 } from "@/gql/graphql";
 import { graphqlRequest, unwrapGraphQLJson } from "@/lib/graphql/client";
-import { apiPath } from "./client";
+import type { JsonValue } from "@/lib/json";
+import { apiPath, fileUploadRequest } from "./client";
 
 export type Chat = {
   id: string;
@@ -32,12 +33,14 @@ export type ChatToolCallRecord = {
   name: string;
   arguments: string;
   reasoningContent?: string;
-  result?: unknown;
+  result?: JsonValue;
 };
+
+export type ChatRole = "user" | "assistant";
 
 export type ChatMessageRecord = {
   id: string;
-  role: "user" | "assistant";
+  role: ChatRole;
   content: string;
   createdAt: string;
   toolCalls?: ChatToolCallRecord[];
@@ -57,11 +60,17 @@ export type ChatStreamEvent =
   | { type: "delta"; content: string }
   | { type: "reasoning"; content: string }
   | { type: "toolStart"; toolCall: ChatToolCallRecord }
-  | { type: "toolResult"; id: string; result: unknown }
+  | { type: "toolResult"; id: string; result: JsonValue }
   | { type: "done"; messages: ChatMessageRecord[] }
   | { type: "error"; error: string; messages?: ChatMessageRecord[] };
 
 export type ReasoningEffort = "auto" | "low" | "medium" | "high" | "xhigh";
+
+type ChatStreamRequest = {
+  content: string;
+  model?: string;
+  reasoningEffort?: Exclude<ReasoningEffort, "auto">;
+};
 
 export const listChats = () =>
   graphqlRequest(ChatsDocument, {}).then((data) =>
@@ -103,22 +112,12 @@ export const postChatMessage = (id: string, content: string) =>
     unwrapGraphQLJson<{ messages: ChatMessageRecord[] }>(data.postChatMessage),
   );
 
-export const uploadChatAttachment = async (id: string, file: File) => {
-  const form = new FormData();
-  form.append("file", file);
-
-  const response = await fetch(apiPath(`/api/chats/${id}/attachments`), {
-    method: "POST",
-    credentials: "include",
-    body: form,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new Error(error?.error ?? "Failed to upload attachment");
-  }
-
-  return response.json() as Promise<UploadedChatAttachment>;
+export const uploadChatAttachment = (id: string, file: File) => {
+  return fileUploadRequest<UploadedChatAttachment>(
+    `/api/chats/${id}/attachments`,
+    file,
+    "Failed to upload attachment",
+  );
 };
 
 export const streamChatMessage = async (
@@ -127,7 +126,7 @@ export const streamChatMessage = async (
   onEvent: (event: ChatStreamEvent) => void,
   options?: { model?: string; reasoningEffort?: ReasoningEffort },
 ) => {
-  const body: Record<string, unknown> = { content };
+  const body: ChatStreamRequest = { content };
   if (options?.model) body.model = options.model;
   if (options?.reasoningEffort && options.reasoningEffort !== "auto") {
     body.reasoningEffort = options.reasoningEffort;

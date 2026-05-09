@@ -111,7 +111,9 @@ function AppLayout() {
     const blockKey = `produktive:2fa-blocked:${session.data.organization.id}:${session.data.user.id}`;
     if (typeof window !== "undefined" && !window.sessionStorage.getItem(blockKey)) {
       window.sessionStorage.setItem(blockKey, "1");
-      void recordTwoFactorEnforcementBlocked().catch(() => {});
+      void recordTwoFactorEnforcementBlocked().catch((error) => {
+        toast.error(error instanceof Error ? error.message : "Failed to record security event");
+      });
     }
     toast.message("This workspace requires two-factor authentication.");
     void navigate({

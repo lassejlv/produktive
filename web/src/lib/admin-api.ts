@@ -1,26 +1,5 @@
-import { apiPath } from "@/lib/api";
-
-const request = async <T>(path: string, init?: RequestInit): Promise<T> => {
-  const response = await fetch(apiPath(path), {
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-    ...init,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new Error(error?.error ?? "Request failed");
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return response.json() as Promise<T>;
-};
+import { request, toQueryString } from "@/lib/api/client";
+import type { JsonObject } from "@/lib/json";
 
 export type AdminIdentity = {
   user: {
@@ -95,7 +74,7 @@ export type AuditEvent = {
   targetType: string;
   targetId: string;
   reason: string | null;
-  metadata?: Record<string, unknown>;
+  metadata?: JsonObject;
   createdAt: string;
 };
 
@@ -193,7 +172,7 @@ export type SupportMessage = {
 export type SupportTicketEvent = {
   id: string;
   eventType: string;
-  metadata: Record<string, unknown>;
+  metadata: JsonObject;
   actorAdminId: string | null;
   createdAt: string;
 };
@@ -236,7 +215,7 @@ export const getGrowthAnalytics = (range = "30d") =>
 
 export const listAdminUsers = (params: { search?: string; status?: string; page?: number }) =>
   request<{ users: AdminUserSummary[]; page: PageInfo }>(
-    `/api/admin/users?${toQuery({ ...params, limit: 25 })}`,
+    `/api/admin/users?${toQueryString({ ...params, limit: 25 })}`,
   );
 
 export const getAdminUser = (id: string) => request<UserDetail>(`/api/admin/users/${id}`);
@@ -256,7 +235,7 @@ export const listAdminOrganizations = (params: {
   page?: number;
 }) =>
   request<{ organizations: AdminOrganizationSummary[]; page: PageInfo }>(
-    `/api/admin/organizations?${toQuery({ ...params, limit: 25 })}`,
+    `/api/admin/organizations?${toQueryString({ ...params, limit: 25 })}`,
   );
 
 export const getAdminOrganization = (id: string) =>
@@ -279,12 +258,12 @@ export const resetAdminOrganizationAiUsage = (id: string, scope: "weekly" | "all
 
 export const listAuditEvents = (params: { page?: number } = {}) =>
   request<{ events: AuditEvent[]; page: PageInfo }>(
-    `/api/admin/audit-events?${toQuery({ ...params, limit: 50 })}`,
+    `/api/admin/audit-events?${toQueryString({ ...params, limit: 50 })}`,
   );
 
 export const listSupportTickets = (params: { status?: string; search?: string; page?: number }) =>
   request<{ tickets: SupportTicketSummary[]; page: PageInfo }>(
-    `/api/admin/support/tickets?${toQuery({ ...params, limit: 30 })}`,
+    `/api/admin/support/tickets?${toQueryString({ ...params, limit: 30 })}`,
   );
 
 export const createSupportTicket = (input: {
@@ -325,12 +304,3 @@ export const replyToSupportTicket = (
 
 export const retrySupportMessage = (id: string) =>
   request<SupportTicketDetail>(`/api/admin/support/messages/${id}/retry`, { method: "POST" });
-
-const toQuery = (params: Record<string, string | number | undefined>) => {
-  const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === "") continue;
-    query.set(key, String(value));
-  }
-  return query.toString();
-};

@@ -174,7 +174,6 @@ async fn accept_invitation(
         .await?;
     }
 
-    let invitation_id = row.id.clone();
     let organization_id = row.organization_id.clone();
 
     let mut active = row.into_active_model();
@@ -193,8 +192,6 @@ async fn accept_invitation(
         set_session_active_organization(&state.db, &state, auth.session, organization.id.clone())
             .await?;
     let cookie = auth_cookie(&state, &token)?;
-
-    let _ = invitation_id; // currently unused; placeholder for audit logs
 
     Ok((
         StatusCode::OK,

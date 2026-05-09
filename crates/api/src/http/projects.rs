@@ -18,8 +18,8 @@ use axum::{
 use chrono::{DateTime, FixedOffset, Utc};
 use produktive_entity::{issue, member, project, user};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, EntityTrait, IntoActiveModel, ModelTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set,
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -45,10 +45,16 @@ pub(crate) struct LeadResponse {
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct StatusBreakdown {
-    backlog: u64,
-    todo: u64,
-    in_progress: u64,
-    done: u64,
+    pub(crate) backlog: u64,
+    pub(crate) todo: u64,
+    pub(crate) in_progress: u64,
+    pub(crate) done: u64,
+}
+
+pub(crate) struct ProjectIssueStats {
+    pub(crate) issue_count: u64,
+    pub(crate) done_count: u64,
+    pub(crate) status_breakdown: StatusBreakdown,
 }
 
 #[derive(Serialize)]
@@ -344,43 +350,13 @@ pub(crate) async fn project_response(
         None => None,
     };
 
-    let issue_count = issue::Entity::find()
-        .filter(issue::Column::OrganizationId.eq(&row.organization_id))
-        .filter(issue::Column::ProjectId.eq(&row.id))
-        .count(&state.db)
-        .await?;
-
-    let statuses = issue_statuses::list_issue_statuses(state, &row.organization_id, false).await?;
+    let stats = project_issue_stats(state, &row.organization_id, &row.id).await?;
     let created_by_profile = actor_profile_for_ids(
         state,
         row.created_by_oauth_client_id.as_deref(),
         row.created_by_id.as_deref(),
     )
     .await?;
-    let mut breakdown = StatusBreakdown::default();
-    let mut done_count = 0_u64;
-    let issues = issue::Entity::find()
-        .filter(issue::Column::OrganizationId.eq(&row.organization_id))
-        .filter(issue::Column::ProjectId.eq(&row.id))
-        .all(&state.db)
-        .await?;
-    for issue_row in issues {
-        let category = statuses
-            .iter()
-            .find(|status| status.key == issue_row.status)
-            .map(|status| status.category.as_str())
-            .unwrap_or(CATEGORY_ACTIVE);
-        match category {
-            CATEGORY_BACKLOG => breakdown.backlog += 1,
-            CATEGORY_ACTIVE => breakdown.todo += 1,
-            CATEGORY_DONE => {
-                breakdown.done += 1;
-                done_count += 1;
-            }
-            CATEGORY_CANCELED => {}
-            _ => {}
-        }
-    }
 
     Ok(ProjectResponse {
         id: row.id,
@@ -397,9 +373,48 @@ pub(crate) async fn project_response(
         archived_at: row.archived_at.map(|d| d.to_rfc3339()),
         created_at: row.created_at.to_rfc3339(),
         updated_at: row.updated_at.to_rfc3339(),
-        issue_count,
+        issue_count: stats.issue_count,
+        done_count: stats.done_count,
+        status_breakdown: stats.status_breakdown,
+    })
+}
+
+pub(crate) async fn project_issue_stats(
+    state: &AppState,
+    organization_id: &str,
+    project_id: &str,
+) -> Result<ProjectIssueStats, ApiError> {
+    let statuses = issue_statuses::list_issue_statuses(state, organization_id, false).await?;
+    let issues = issue::Entity::find()
+        .filter(issue::Column::OrganizationId.eq(organization_id))
+        .filter(issue::Column::ProjectId.eq(project_id))
+        .all(&state.db)
+        .await?;
+
+    let mut status_breakdown = StatusBreakdown::default();
+    let mut done_count = 0_u64;
+    for issue_row in &issues {
+        let category = statuses
+            .iter()
+            .find(|status| status.key == issue_row.status)
+            .map(|status| status.category.as_str())
+            .unwrap_or(CATEGORY_ACTIVE);
+        match category {
+            CATEGORY_BACKLOG => status_breakdown.backlog += 1,
+            CATEGORY_ACTIVE => status_breakdown.todo += 1,
+            CATEGORY_DONE => {
+                status_breakdown.done += 1;
+                done_count += 1;
+            }
+            CATEGORY_CANCELED => {}
+            _ => {}
+        }
+    }
+
+    Ok(ProjectIssueStats {
+        issue_count: issues.len() as u64,
         done_count,
-        status_breakdown: breakdown,
+        status_breakdown,
     })
 }
 

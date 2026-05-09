@@ -7,11 +7,21 @@ import {
   UpdatePreferencesDocument,
 } from "@/gql/graphql";
 import { graphqlRequest, unwrapGraphQLJson } from "@/lib/graphql/client";
+import type { JsonValue } from "@/lib/json";
 import { internalGraphQLGet, internalGraphQLMutation } from "./client";
 
 export type SidebarLayoutItem = {
   id: string;
   hidden?: boolean;
+};
+
+export type SidebarLayoutPreferences = {
+  items: SidebarLayoutItem[];
+  favoritesCollapsed: boolean;
+  chatsCollapsed: boolean;
+  favoritesOrder: string[];
+  chatsLimit: number;
+  chatsSort: "recent" | "alphabetical";
 };
 
 export type NotificationPreferences = {
@@ -20,7 +30,7 @@ export type NotificationPreferences = {
   emailComments: boolean;
   emailProgress: boolean;
   tabsEnabled: boolean;
-  sidebarLayout: unknown;
+  sidebarLayout: SidebarLayoutPreferences | SidebarLayoutItem[] | JsonValue | null;
 };
 
 export const getMyPreferences = () =>

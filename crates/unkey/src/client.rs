@@ -10,7 +10,6 @@ use tokio::time::sleep;
 
 use crate::config::UnkeyConfig;
 use crate::error::{ApiError, Result, UnkeyError};
-use crate::resources::{Apis, Identities, Keys, Permissions, Ratelimit};
 
 /// HTTP client for the Unkey API.
 ///
@@ -43,31 +42,6 @@ impl Unkey {
         Ok(Self {
             inner: Arc::new(ClientInner { http, config }),
         })
-    }
-
-    /// API namespace operations.
-    pub fn apis(&self) -> Apis {
-        Apis::new(self.clone())
-    }
-
-    /// API key operations.
-    pub fn keys(&self) -> Keys {
-        Keys::new(self.clone())
-    }
-
-    /// Identity operations.
-    pub fn identities(&self) -> Identities {
-        Identities::new(self.clone())
-    }
-
-    /// RBAC permission and role operations.
-    pub fn permissions(&self) -> Permissions {
-        Permissions::new(self.clone())
-    }
-
-    /// Ratelimit operations.
-    pub fn ratelimit(&self) -> Ratelimit {
-        Ratelimit::new(self.clone())
     }
 
     pub(crate) async fn post<T, B>(&self, procedure: &str, body: &B) -> Result<T>

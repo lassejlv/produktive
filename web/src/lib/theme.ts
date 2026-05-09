@@ -91,7 +91,7 @@ export const THEMES: Array<{
   },
 ];
 
-export const DEFAULT_THEME: ThemeName = "zinc";
+const DEFAULT_THEME: ThemeName = "zinc";
 const STORAGE_KEY = "produktive-theme";
 
 const META_BG: Record<AppliedThemeName, string> = {
@@ -125,8 +125,6 @@ export function readStoredTheme(): ThemeName {
   if (typeof window === "undefined") return DEFAULT_THEME;
   const raw = window.localStorage.getItem(STORAGE_KEY);
   if (raw && VALID.has(raw as ThemeName)) return raw as ThemeName;
-  // Migration: old key only stored "light" or null.
-  if (raw === "light") return "light";
   return DEFAULT_THEME;
 }
 
@@ -147,12 +145,8 @@ function resolveTheme(theme: ThemeName): AppliedThemeName {
 
 function applyResolvedTheme(theme: AppliedThemeName) {
   const root = document.documentElement;
-  // Drop the old class, if any, from the legacy bootstrap.
-  root.classList.remove("theme-light");
   root.setAttribute("data-theme", theme);
-  document
-    .querySelector('meta[name="theme-color"]')
-    ?.setAttribute("content", META_BG[theme]);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", META_BG[theme]);
 }
 
 function watchSystemTheme(theme: ThemeName) {

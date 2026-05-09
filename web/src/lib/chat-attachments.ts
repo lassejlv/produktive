@@ -130,10 +130,6 @@ export function buildMessageWithAttachments(text: string, attachments: ChatAttac
   return `${trimmed || "Review the attached files."}${attachmentStart}${payload}${attachmentEnd}`;
 }
 
-export function attachmentPrompt(attachment: ChatAttachment) {
-  return `- ${attachment.name} (${attachment.type || "application/octet-stream"}, ${formatBytes(attachment.size)}): ${attachment.url}`;
-}
-
 export function parseMessageWithAttachments(content: string): ParsedChatContent {
   const start = content.indexOf(attachmentStart);
   if (start === -1) {

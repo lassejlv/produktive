@@ -1,15 +1,7 @@
 import { CopyIcon, PlayIcon, RefreshIcon, ThumbsUpIcon } from "@/components/chat/icons";
+import type { ChatRole } from "@/lib/api";
 import { type ChatAttachment, formatBytes } from "@/lib/chat-attachments";
 import { cn } from "@/lib/utils";
-
-export type ChatRole = "user" | "assistant";
-
-export type ChatIssueCard = {
-  id: string;
-  status: "todo" | "in-progress" | "done";
-  label: string;
-  priority: string;
-};
 
 export type ChatMessage = {
   id?: string;
@@ -438,57 +430,4 @@ function ActionButton({
       {children}
     </button>
   );
-}
-
-export function ChatIssueCardList({ items }: { items: ChatIssueCard[] }) {
-  return (
-    <div className="my-[7px] flex flex-col gap-px overflow-hidden rounded-lg border border-border-subtle bg-border-subtle">
-      {items.map((card) => (
-        <div
-          key={card.id}
-          className="flex cursor-pointer items-center gap-2.5 bg-surface px-3 py-[9px] text-[13px] transition-colors hover:bg-surface-2"
-        >
-          <span className="w-[54px] shrink-0 font-mono text-[11px] text-fg-faint">{card.id}</span>
-          <StatusDot status={card.status} />
-          <span className="flex-1 truncate text-fg">{card.label}</span>
-          <span className="font-mono text-[10px] uppercase tracking-[0.06em] text-fg-muted">
-            {card.priority}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function StatusDot({ status }: { status: ChatIssueCard["status"] }) {
-  if (status === "done") {
-    return (
-      <span className="relative size-[13px] shrink-0 rounded-full border-[1.5px] border-success bg-success">
-        <svg
-          className="absolute inset-0 m-auto"
-          width="9"
-          height="9"
-          viewBox="0 0 14 14"
-          fill="none"
-          stroke="#0d0d0f"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="3,7.5 6,10.5 11,4.5" />
-        </svg>
-      </span>
-    );
-  }
-  if (status === "in-progress") {
-    return (
-      <span
-        className="size-[13px] shrink-0 rounded-full border-[1.5px] border-warning"
-        style={{
-          background: "conic-gradient(var(--color-warning) 50%, transparent 0)",
-        }}
-      />
-    );
-  }
-  return <span className="size-[13px] shrink-0 rounded-full border-[1.5px] border-fg-muted" />;
 }

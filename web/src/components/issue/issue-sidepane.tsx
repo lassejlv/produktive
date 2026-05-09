@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AttachIcon, CopyIcon, StarIcon } from "@/components/chat/icons";
 import { Avatar } from "@/components/issue/avatar";
@@ -14,7 +14,6 @@ import {
   type IssueComment,
   type IssueHistoryEvent,
   createIssueComment,
-  listMembers,
   uploadIssueAttachment,
 } from "@/lib/api";
 import { prepareChatAttachments } from "@/lib/chat-attachments";
@@ -28,17 +27,9 @@ import {
 } from "@/lib/queries/issues";
 import { queryKeys } from "@/lib/queries/keys";
 import { useUpdateIssue } from "@/lib/mutations/issues";
-import { useLabelsQuery } from "@/lib/queries/labels";
-import { useProjectsQuery } from "@/lib/queries/projects";
 import { useIssueStatuses } from "@/lib/use-issue-statuses";
 import { useWorkspaceSlug } from "@/lib/use-workspace-slug";
 import { cn } from "@/lib/utils";
-
-type Lookups = {
-  projects: Map<string, string>;
-  members: Map<string, string>;
-  labels: Map<string, string>;
-};
 
 export function IssueSidepane({
   issueId,
@@ -63,27 +54,11 @@ function IssueSidepaneContent({ issueId, onClose }: { issueId: string; onClose: 
   const issueQuery = useIssueDetailQuery(issueId);
   const historyQuery = useIssueHistoryQuery(issueId);
   const commentsQuery = useIssueCommentsQuery(issueId);
-  const projectsQuery = useProjectsQuery();
-  const labelsQuery = useLabelsQuery();
   const { statuses } = useIssueStatuses();
-  const membersQuery = useQuery({
-    queryKey: queryKeys.members,
-    queryFn: () => listMembers().then((r) => r.members),
-    staleTime: 60_000,
-  });
 
   const issue = issueQuery.data ?? null;
   const history = historyQuery.data ?? [];
   const comments = commentsQuery.data ?? [];
-
-  const _lookups = useMemo<Lookups>(
-    () => ({
-      projects: new Map((projectsQuery.data ?? []).map((p) => [p.id, p.name])),
-      members: new Map((membersQuery.data ?? []).map((m) => [m.id, m.name])),
-      labels: new Map((labelsQuery.data ?? []).map((l) => [l.id, l.name])),
-    }),
-    [projectsQuery.data, membersQuery.data, labelsQuery.data],
-  );
 
   const updateIssueMutation = useUpdateIssue();
 

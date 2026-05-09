@@ -32,7 +32,7 @@ export function SidebarSectionHeader({
   );
 }
 
-export function SectionChevron({ collapsed }: { collapsed: boolean }) {
+function SectionChevron({ collapsed }: { collapsed: boolean }) {
   return (
     <svg
       width="9"
@@ -47,27 +47,6 @@ export function SectionChevron({ collapsed }: { collapsed: boolean }) {
     >
       <path
         d="M3 4.5l3 3 3-3"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-export function ArrowOutIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden>
-      <path
-        d="M4.5 7.5L9 3M5 3h4v4"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9 6v3a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 1 0 011-1h3"
         stroke="currentColor"
         strokeWidth="1.4"
         strokeLinecap="round"

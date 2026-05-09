@@ -53,15 +53,11 @@ export const defaultIssueStatuses: IssueStatus[] = [
   },
 ];
 
-export const statusOptions = defaultIssueStatuses.map((status) => status.key);
-
 export const priorityOptions = ["low", "medium", "high", "urgent"] as const;
 
 export const statusLabel: Record<string, string> = Object.fromEntries(
   defaultIssueStatuses.map((status) => [status.key, status.name]),
 );
-
-export const statusOrder = defaultIssueStatuses.map((status) => status.key);
 
 export type View = "all" | "active" | "backlog" | "done";
 
@@ -83,7 +79,7 @@ export const statusCategory = (statuses: IssueStatus[], key: string) =>
   defaultIssueStatuses.find((status) => status.key === key)?.category ??
   "active";
 
-export const statusesByCategory = (
+const statusesByCategory = (
   statuses: IssueStatus[],
   category: IssueStatus["category"],
 ) => sortedStatuses(statuses).filter((status) => status.category === category);

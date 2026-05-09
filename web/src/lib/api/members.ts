@@ -1,5 +1,6 @@
 import { MembersDocument } from "@/gql/graphql";
 import { graphqlRequest, unwrapGraphQLJson } from "@/lib/graphql/client";
+import type { JsonObject } from "@/lib/json";
 import {
   internalGraphQLGet,
   internalGraphQLMutation,
@@ -196,7 +197,7 @@ export type SecurityEvent = {
   target: SecurityEventUser | null;
   ipAddress: string | null;
   userAgent: string | null;
-  metadata: Record<string, unknown>;
+  metadata: JsonObject;
   createdAt: string;
 };
 

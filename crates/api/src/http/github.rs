@@ -364,7 +364,9 @@ async fn oauth_callback(
         .await?
         .ok_or_else(|| ApiError::BadRequest("GitHub OAuth state expired".to_owned()))?;
     if oauth_state.expires_at < now() {
-        let _ = oauth_state.delete(&state.db).await;
+        if let Err(error) = oauth_state.delete(&state.db).await {
+            tracing::warn!(%error, "failed to delete expired GitHub OAuth state");
+        }
         return Err(ApiError::BadRequest(
             "GitHub OAuth state expired".to_owned(),
         ));
@@ -373,7 +375,9 @@ async fn oauth_callback(
     let token = exchange_oauth_code(&state, &oauth_state, &code).await?;
     let user = github_user(&token.access_token).await?;
     store_connection(&state, &oauth_state, &token, &user).await?;
-    let _ = oauth_state.delete(&state.db).await;
+    if let Err(error) = oauth_state.delete(&state.db).await {
+        tracing::warn!(%error, "failed to delete GitHub OAuth state");
+    }
 
     Ok(Redirect::to(&format!("{redirect_base}&github=oauth_connected")).into_response())
 }

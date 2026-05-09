@@ -1,6 +1,6 @@
 import type { Issue } from "@/lib/api";
 
-export function issueIdentifier(issue: Pick<Issue, "id">): string {
+function issueIdentifier(issue: Pick<Issue, "id">): string {
   return `P-${issue.id.slice(0, 4).toUpperCase()}`;
 }
 
@@ -11,7 +11,7 @@ function escapeXml(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
-export function formatIssueAsPrompt(issue: Issue): string {
+function formatIssueAsPrompt(issue: Issue): string {
   const identifier = issueIdentifier(issue);
   const lines: string[] = [];
 

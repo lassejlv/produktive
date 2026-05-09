@@ -458,7 +458,9 @@ async fn oauth_callback(
         }
     }
     active.update(&state.db).await?;
-    let _ = row.delete(&state.db).await;
+    if let Err(error) = row.delete(&state.db).await {
+        tracing::warn!(%error, "failed to delete MCP OAuth state");
+    }
     Ok(Redirect::to(&format!(
         "{redirect_base}&mcp=oauth_connected"
     )))
