@@ -1,0 +1,17 @@
+[package]
+name = "unstatus-migration"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "migration"
+path = "src/lib.rs"
+
+[[bin]]
+name = "unstatus-migration"
+path = "src/main.rs"
+
+[dependencies]
+sea-orm-migration.workspace = true
+tokio.workspace = true
+async-trait.workspace = true

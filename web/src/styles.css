@@ -1,0 +1,457 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist/index.css";
+@import "@fontsource-variable/geist-mono/index.css";
+@import "@xyflow/react/dist/style.css";
+
+@theme {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* paper cream surfaces */
+  --color-bg: #f7f5f0;
+  --color-bg-row: #efeae0;
+  --color-bg-elev: #ffffff;
+  --color-bg-sunken: #f1ede4;
+
+  /* warm hairlines */
+  --color-border: #e8e3d8;
+  --color-border-hi: #d4cdbe;
+  --color-border-strong: #b8af9d;
+
+  /* warm graphite text */
+  --color-fg: #1a1a17;
+  --color-fg-muted: #6b6b66;
+  --color-fg-dim: #9c9a92;
+
+  /* emerald accent */
+  --color-accent: #10b981;
+  --color-accent-hi: #34d399;
+  --color-accent-soft: #10b9811a;
+  --color-accent-fg: #ffffff;
+  --color-link: #047857;
+
+  /* status */
+  --color-ok: #10b981;
+  --color-warn: #d97706;
+  --color-err: #dc2626;
+  --color-unknown: #9c9a92;
+
+  /* dark canvas viewport (used in light mode; dark mode reuses bg tokens) */
+  --color-canvas-bg: #1a1d24;
+  --color-canvas-surface: #22262f;
+  --color-canvas-border: #2e323c;
+  --color-canvas-border-hi: #3a3f4b;
+  --color-canvas-fg: #eef0f4;
+  --color-canvas-muted: #9aa0ac;
+  --color-canvas-dim: #5f6573;
+  --color-canvas-dot: #2a2e38;
+
+  /* layout metrics — the shell reads these so pages don't hardcode them */
+  --sidebar-w: 220px;
+  --sidebar-w-collapsed: 56px;
+  --topbar-h: 48px;
+  --layout-gutter: 2rem;
+  --layout-content-max: 980px;
+  --layout-content-narrow: 720px;
+  --layout-content-wide: 1200px;
+
+  /* radii + shadows */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --shadow-xs: 0 1px 0 rgba(20, 18, 12, 0.04);
+  --shadow-sm: 0 1px 2px rgba(20, 18, 12, 0.04), 0 1px 0 rgba(20, 18, 12, 0.03);
+  --shadow-md: 0 4px 12px -4px rgba(20, 18, 12, 0.08), 0 1px 2px rgba(20, 18, 12, 0.04);
+  --shadow-lg: 0 12px 32px -12px rgba(20, 18, 12, 0.16), 0 4px 8px -4px rgba(20, 18, 12, 0.06);
+  --shadow-pop: 0 24px 48px -16px rgba(20, 18, 12, 0.22), 0 8px 16px -8px rgba(20, 18, 12, 0.1);
+
+  --ring-accent: 0 0 0 3px color-mix(in srgb, var(--color-accent) 24%, transparent);
+}
+
+/* scoped light theme — re-declares light tokens so a [data-theme="light"]
+   wrapper renders correctly even nested inside a dark ancestor */
+[data-theme="light"] {
+  --color-bg: #f7f5f0;
+  --color-bg-row: #efeae0;
+  --color-bg-elev: #ffffff;
+  --color-bg-sunken: #f1ede4;
+
+  --color-border: #e8e3d8;
+  --color-border-hi: #d4cdbe;
+  --color-border-strong: #b8af9d;
+
+  --color-fg: #1a1a17;
+  --color-fg-muted: #6b6b66;
+  --color-fg-dim: #9c9a92;
+
+  --color-accent: #10b981;
+  --color-accent-hi: #34d399;
+  --color-accent-soft: #10b9811a;
+  --color-accent-fg: #ffffff;
+  --color-link: #047857;
+
+  --color-ok: #10b981;
+  --color-warn: #d97706;
+  --color-err: #dc2626;
+  --color-unknown: #9c9a92;
+
+  --shadow-xs: 0 1px 0 rgba(20, 18, 12, 0.04);
+  --shadow-sm: 0 1px 2px rgba(20, 18, 12, 0.04), 0 1px 0 rgba(20, 18, 12, 0.03);
+  --shadow-md: 0 4px 12px -4px rgba(20, 18, 12, 0.08), 0 1px 2px rgba(20, 18, 12, 0.04);
+  --shadow-lg: 0 12px 32px -12px rgba(20, 18, 12, 0.16), 0 4px 8px -4px rgba(20, 18, 12, 0.06);
+}
+
+/* dark mode overrides — warm slate, not OLED */
+[data-theme="dark"] {
+  --color-bg: #13151a;
+  --color-bg-row: #1f232c;
+  --color-bg-elev: #1c1f27;
+  --color-bg-sunken: #0e1015;
+
+  --color-border: #262a33;
+  --color-border-hi: #32363f;
+  --color-border-strong: #454a55;
+
+  --color-fg: #e8eaf0;
+  --color-fg-muted: #9094a0;
+  --color-fg-dim: #5a5e6a;
+
+  --color-accent: #10b981;
+  --color-accent-hi: #34d399;
+  --color-accent-soft: color-mix(in srgb, #10b981 14%, transparent);
+  --color-accent-fg: #0a0c10;
+  --color-link: #34d399;
+
+  --color-ok: #34d399;
+  --color-warn: #fbbf24;
+  --color-err: #f87171;
+  --color-unknown: #5a5e6a;
+
+  /* canvas blends into shell in dark mode */
+  --color-canvas-bg: #0e1015;
+  --color-canvas-surface: #1c1f27;
+  --color-canvas-border: #262a33;
+  --color-canvas-border-hi: #32363f;
+  --color-canvas-fg: #e8eaf0;
+  --color-canvas-muted: #9094a0;
+  --color-canvas-dim: #5a5e6a;
+  --color-canvas-dot: #262a33;
+
+  --shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.25);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 4px 14px -4px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 14px 36px -12px rgba(0, 0, 0, 0.55), 0 4px 10px -4px rgba(0, 0, 0, 0.4);
+  --shadow-pop: 0 28px 56px -16px rgba(0, 0, 0, 0.7), 0 10px 20px -8px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+  background: var(--color-bg);
+  color: var(--color-fg);
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.link,
+a.link {
+  color: var(--color-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: color-mix(in srgb, var(--color-link) 40%, transparent);
+  transition: text-decoration-color 120ms ease;
+}
+.link:hover,
+a.link:hover {
+  text-decoration-color: var(--color-link);
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 28%, transparent);
+  color: var(--color-fg);
+}
+
+/* refined scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border-hi);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+  background-clip: padding-box;
+}
+
+/* focus rings */
+.ring-focus:focus-visible,
+:where(button, a, input, textarea, select, [role="button"]):focus-visible {
+  outline: none;
+  box-shadow: var(--ring-accent);
+  border-radius: var(--radius-sm);
+}
+
+/* spinner */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.65;
+    transform: scale(1.12);
+  }
+}
+.pulse-dot {
+  animation: pulse-soft 1.8s ease-in-out infinite;
+}
+
+@keyframes blink-cursor {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+.blink-cursor {
+  animation: blink-cursor 1s step-end infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-row) 0%,
+    color-mix(in srgb, var(--color-bg-row) 40%, var(--color-bg-elev)) 50%,
+    var(--color-bg-row) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-in {
+  animation: fade-in 160ms ease-out both;
+}
+
+/* status glows tuned for light surfaces */
+.glow-up {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-ok) 22%, var(--color-border)),
+    0 8px 24px -12px color-mix(in srgb, var(--color-ok) 35%, transparent);
+}
+.glow-down {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-err) 30%, var(--color-border)),
+    0 8px 24px -12px color-mix(in srgb, var(--color-err) 35%, transparent);
+}
+.glow-warn {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-warn) 28%, var(--color-border)),
+    0 8px 24px -12px color-mix(in srgb, var(--color-warn) 35%, transparent);
+}
+.glow-unknown {
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+/* react flow — dark editorial viewport */
+.react-flow {
+  background: var(--color-canvas-bg);
+  --xy-background-pattern-dots-color-default: var(--color-canvas-dot);
+}
+.react-flow__attribution {
+  display: none !important;
+}
+.react-flow__controls {
+  background: var(--color-canvas-surface) !important;
+  border: 1px solid var(--color-canvas-border) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-lg) !important;
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: transparent !important;
+  border-bottom: 1px solid var(--color-canvas-border) !important;
+  color: var(--color-canvas-muted) !important;
+  width: 28px !important;
+  height: 28px !important;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+.react-flow__controls-button:hover {
+  background: color-mix(in srgb, var(--color-canvas-border) 40%, transparent) !important;
+  color: var(--color-canvas-fg) !important;
+}
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
+.react-flow__minimap {
+  background: var(--color-canvas-surface) !important;
+  border: 1px solid var(--color-canvas-border) !important;
+  border-radius: var(--radius-md) !important;
+  overflow: hidden;
+}
+.react-flow__node {
+  cursor: grab;
+}
+.react-flow__node.dragging,
+.react-flow__node:active {
+  cursor: grabbing;
+}
+.react-flow__edge-path {
+  stroke: var(--color-canvas-border-hi);
+}
+
+/* sonner overrides */
+[data-sonner-toaster] {
+  --normal-bg: var(--color-bg-elev);
+  --normal-text: var(--color-fg);
+  --normal-border: var(--color-border);
+  --success-bg: var(--color-bg-elev);
+  --success-text: var(--color-fg);
+  --success-border: color-mix(in srgb, var(--color-ok) 30%, var(--color-border));
+  --error-bg: var(--color-bg-elev);
+  --error-text: var(--color-fg);
+  --error-border: color-mix(in srgb, var(--color-err) 30%, var(--color-border));
+  font-family: var(--font-sans) !important;
+}
+[data-sonner-toast] {
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-lg) !important;
+  backdrop-filter: blur(8px);
+}
+
+/* monaco DSL editor decorations */
+.udsl-error-line {
+  background: color-mix(in srgb, var(--color-err) 8%, transparent);
+}
+.udsl-error-inline {
+  text-decoration: underline wavy var(--color-err);
+  text-underline-offset: 3px;
+}
+.monaco-editor {
+  border-radius: 0;
+}
+.monaco-editor .monaco-scrollable-element > .scrollbar {
+  background: transparent !important;
+}
+
+/* radix dialog overlay animations */
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+[data-state="open"].dialog-overlay {
+  animation: overlay-in 140ms ease-out;
+}
+[data-state="open"].dialog-content {
+  animation: dialog-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}

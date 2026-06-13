@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1.7
+
+FROM rust:1-bookworm AS builder
+
+WORKDIR /app
+
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY crates ./crates
+
+RUN cargo build --release -p unstatus-worker && \
+    cp /app/target/release/unstatus-worker /tmp/unstatus-worker
+
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --shell /usr/sbin/nologin app
+
+COPY --from=builder /tmp/unstatus-worker /usr/local/bin/unstatus-worker
+
+USER app
+
+CMD ["unstatus-worker"]
