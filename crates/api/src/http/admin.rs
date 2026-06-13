@@ -18,9 +18,10 @@ use crate::{
 };
 
 pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/regions", get(list_regions))
-        .route("/regions/{region_id}", patch(update_region))
+    Router::new().route("/regions", get(list_regions)).route(
+        "/regions/{region_id}",
+        patch(update_region).delete(delete_region),
+    )
 }
 
 #[derive(Clone, Debug, Serialize, ToSchema)]
@@ -85,6 +86,30 @@ async fn update_region(
 
     let updated = model.update(&state.db).await?;
     Ok(Json(admin_region_view(updated)))
+}
+
+async fn delete_region(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(region_id): Path<Uuid>,
+) -> ApiResult<Json<crate::http::workspaces::OkResponse>> {
+    require_admin(&state, &auth)?;
+    let row = region::Entity::find_by_id(region_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("region not found"))?;
+    // The control plane's in-process worker probes from this region and every
+    // monitor is assigned to it by default; deleting it would orphan those
+    // assignments, so it can only ever be disabled.
+    if row.slug == state.config.local_region_slug {
+        return Err(ApiError::bad_request(
+            "the control plane's local region cannot be deleted",
+        ));
+    }
+    // monitor_regions / monitor_region_states cascade on delete; historical
+    // `checks` rows keep their region_id (no FK) as immutable telemetry.
+    region::Entity::delete_by_id(row.id).exec(&state.db).await?;
+    Ok(Json(crate::http::workspaces::OkResponse { ok: true }))
 }
 
 fn require_admin(state: &AppState, auth: &AuthUser) -> ApiResult<()> {

@@ -94,6 +94,17 @@ export function useUpdateAdminRegion() {
   });
 }
 
+export function useDeleteAdminRegion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<{ ok: boolean }>(`/admin/regions/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "regions"] });
+      qc.invalidateQueries({ queryKey: ["regions"] });
+    },
+  });
+}
+
 export function useMonitor(wid: string, mid: string) {
   return useQuery({
     queryKey: ["monitor", wid, mid] as const,

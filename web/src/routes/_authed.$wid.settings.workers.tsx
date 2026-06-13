@@ -1,12 +1,19 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { CheckCircle2, PauseCircle, RefreshCw, ServerCog, XCircle } from "lucide-react";
+import { CheckCircle2, PauseCircle, RefreshCw, ServerCog, Trash2, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../components/Button";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { Input } from "../components/Input";
 import { Spinner } from "../components/Spinner";
-import { adminRegionsQuery, meQuery, useAdminRegions, useUpdateAdminRegion } from "../lib/queries";
+import {
+  adminRegionsQuery,
+  meQuery,
+  useAdminRegions,
+  useDeleteAdminRegion,
+  useUpdateAdminRegion,
+} from "../lib/queries";
 import { lastSeen } from "../lib/status";
 import type { AdminRegion } from "../lib/types";
 
@@ -28,7 +35,9 @@ export const Route = createFileRoute("/_authed/$wid/settings/workers")({
 function WorkersAdminPage() {
   const regions = useAdminRegions();
   const update = useUpdateAdminRegion();
+  const remove = useDeleteAdminRegion();
   const [editing, setEditing] = useState<Record<string, string>>({});
+  const [toDelete, setToDelete] = useState<AdminRegion | null>(null);
 
   const sorted = useMemo(
     () =>
@@ -66,6 +75,16 @@ function WorkersAdminPage() {
         onError: (err) => toast.error((err as Error).message),
       },
     );
+  }
+
+  function deleteRegion(region: AdminRegion) {
+    remove.mutate(region.id, {
+      onSuccess: () => {
+        toast.success(`Worker ${region.slug} deleted`);
+        setToDelete(null);
+      },
+      onError: (err) => toast.error((err as Error).message),
+    });
   }
 
   if (regions.isLoading) {
@@ -111,11 +130,27 @@ function WorkersAdminPage() {
               setName={(name) => setEditing((current) => ({ ...current, [region.id]: name }))}
               saveName={() => setName(region)}
               setEnabled={(enabled) => setEnabled(region, enabled)}
-              pending={update.isPending}
+              onDelete={() => setToDelete(region)}
+              pending={update.isPending || remove.isPending}
             />
           ))}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={toDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setToDelete(null);
+        }}
+        title={`Delete worker "${toDelete?.slug}"?`}
+        description="The region is removed and unassigned from every monitor. Stop the worker process first, otherwise it re-registers on its next heartbeat. Historical check data is kept."
+        confirmLabel="Delete worker"
+        destructive
+        pending={remove.isPending}
+        onConfirm={() => {
+          if (toDelete) deleteRegion(toDelete);
+        }}
+      />
     </div>
   );
 }
@@ -126,6 +161,7 @@ function RegionRow({
   setName,
   saveName,
   setEnabled,
+  onDelete,
   pending,
 }: {
   region: AdminRegion;
@@ -133,6 +169,7 @@ function RegionRow({
   setName: (name: string) => void;
   saveName: () => void;
   setEnabled: (enabled: boolean) => void;
+  onDelete: () => void;
   pending: boolean;
 }) {
   const fresh = isFresh(region);
@@ -192,6 +229,15 @@ function RegionRow({
             Enable
           </Button>
         )}
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={pending}
+          onClick={onDelete}
+          aria-label={`Delete worker ${region.slug}`}
+        >
+          <Trash2 size={13} />
+        </Button>
       </div>
     </div>
   );
