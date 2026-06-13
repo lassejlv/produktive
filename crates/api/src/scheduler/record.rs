@@ -32,9 +32,17 @@ struct AggregateRow {
     last_error: Option<String>,
 }
 
+const CHANNEL_KIND_SLACK: i16 = 1;
+const CHANNEL_KIND_DISCORD: i16 = 2;
+
+// Discord embed accent colors (matching the app's --color-err / --color-ok tokens).
+const COLOR_DOWN: i32 = 0xef4444;
+const COLOR_RESOLVED: i32 = 0x22c55e;
+
 #[derive(Clone, FromQueryResult)]
 struct ChannelRow {
     id: Uuid,
+    kind: i16,
     webhook_url: String,
     notify_resolved: bool,
 }
@@ -456,7 +464,7 @@ async fn emit_notification(
     let channels = ChannelRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
-        SELECT id, webhook_url, notify_resolved
+        SELECT id, kind, webhook_url, notify_resolved
         FROM notification_channels
         WHERE workspace_id = $1
           AND enabled = true
@@ -516,11 +524,13 @@ async fn deliver_webhook(
         .resolve_to_addrs(&target.host, &target.addrs)
         .build()?;
 
-    let result = client
-        .post(&channel.webhook_url)
-        .json(&payload)
-        .send()
-        .await;
+    let request = client.post(&channel.webhook_url);
+    let request = match channel.kind {
+        CHANNEL_KIND_SLACK => request.json(&slack_payload(&payload)),
+        CHANNEL_KIND_DISCORD => request.json(&discord_payload(&payload)),
+        _ => request.json(&payload),
+    };
+    let result = request.send().await;
 
     let (status, error, sent_at): (
         i16,
@@ -555,4 +565,109 @@ async fn deliver_webhook(
         .await?;
 
     Ok(())
+}
+
+/// Slack Incoming Webhook payload: a mrkdwn section with a status emoji plus a
+/// context line naming the monitor. `text` is kept as a fallback for clients
+/// that don't render blocks (notifications, etc.).
+fn slack_payload(payload: &WebhookPayload) -> serde_json::Value {
+    let resolved = payload.kind == "incident_resolved";
+    let emoji = if resolved {
+        ":large_green_circle:"
+    } else {
+        ":red_circle:"
+    };
+    serde_json::json!({
+        "text": format!("{emoji} {}", payload.title),
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": format!("{emoji} *{}*\n{}", payload.title, payload.body),
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": format!("Monitor: *{}* · unstatus", payload.monitor_name),
+                    }
+                ]
+            }
+        ]
+    })
+}
+
+/// Discord webhook payload using a single colored embed (red while an incident
+/// is open, green once resolved).
+fn discord_payload(payload: &WebhookPayload) -> serde_json::Value {
+    let resolved = payload.kind == "incident_resolved";
+    let color = if resolved { COLOR_RESOLVED } else { COLOR_DOWN };
+    serde_json::json!({
+        "embeds": [
+            {
+                "title": payload.title,
+                "description": payload.body,
+                "color": color,
+                "footer": { "text": format!("{} · unstatus", payload.monitor_name) },
+                "timestamp": payload.occurred_at.to_rfc3339(),
+            }
+        ]
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample(kind: &str) -> WebhookPayload {
+        WebhookPayload {
+            kind: kind.to_string(),
+            workspace_id: Uuid::nil(),
+            monitor_id: Uuid::nil(),
+            monitor_name: "API".to_string(),
+            incident_id: Uuid::nil(),
+            title: "API is down".to_string(),
+            body: "connection refused".to_string(),
+            occurred_at: chrono::DateTime::parse_from_rfc3339("2026-06-13T19:00:00Z").unwrap(),
+        }
+    }
+
+    #[test]
+    fn slack_payload_uses_mrkdwn_section_and_red_emoji_when_open() {
+        let v = slack_payload(&sample("incident_opened"));
+        assert_eq!(v["blocks"][0]["type"], "section");
+        assert_eq!(v["blocks"][0]["text"]["type"], "mrkdwn");
+        let text = v["blocks"][0]["text"]["text"].as_str().unwrap();
+        assert!(text.contains(":red_circle:"), "{text}");
+        assert!(text.contains("API is down"), "{text}");
+        assert!(text.contains("connection refused"), "{text}");
+        assert!(v["text"].as_str().unwrap().contains("API is down"));
+    }
+
+    #[test]
+    fn slack_payload_uses_green_emoji_when_resolved() {
+        let v = slack_payload(&sample("incident_resolved"));
+        let text = v["blocks"][0]["text"]["text"].as_str().unwrap();
+        assert!(text.contains(":large_green_circle:"), "{text}");
+    }
+
+    #[test]
+    fn discord_payload_colors_embed_by_state() {
+        let opened = discord_payload(&sample("incident_opened"));
+        assert_eq!(opened["embeds"][0]["title"], "API is down");
+        assert_eq!(opened["embeds"][0]["description"], "connection refused");
+        assert_eq!(
+            opened["embeds"][0]["color"].as_i64(),
+            Some(COLOR_DOWN as i64)
+        );
+
+        let resolved = discord_payload(&sample("incident_resolved"));
+        assert_eq!(
+            resolved["embeds"][0]["color"].as_i64(),
+            Some(COLOR_RESOLVED as i64)
+        );
+    }
 }

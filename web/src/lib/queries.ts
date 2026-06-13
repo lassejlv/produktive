@@ -174,6 +174,7 @@ export function useCreateNotificationChannel(wid: string) {
     mutationFn: (body: {
       name: string;
       webhook_url: string;
+      kind?: "webhook" | "slack" | "discord";
       enabled?: boolean;
       notify_resolved?: boolean;
     }) => api.post<NotificationChannel>(`/workspaces/${wid}/notifications/channels`, body),

@@ -266,7 +266,7 @@ export interface NotificationChannel {
   id: Uuid;
   workspace_id: Uuid;
   name: string;
-  kind: "webhook" | "unknown";
+  kind: "webhook" | "slack" | "discord" | "unknown";
   masked_url: string;
   enabled: boolean;
   notify_resolved: boolean;
