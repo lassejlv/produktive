@@ -498,6 +498,8 @@ fn plan_summary(tier: &TierCatalog, current: Option<&str>) -> BillingPlanSummary
     for feature in METERED_FEATURES {
         if let Some(ent) = tier.features.get(feature) {
             items.push(metered_item(feature, ent));
+        } else if unlimited_when_missing(tier, feature) {
+            items.push(unlimited_item(feature));
         }
     }
     for perk in PERK_FEATURES {
@@ -511,6 +513,20 @@ fn plan_summary(tier: &TierCatalog, current: Option<&str>) -> BillingPlanSummary
         description: tier.description.clone(),
         price: Some(price),
         items,
+    }
+}
+
+fn unlimited_when_missing(tier: &TierCatalog, feature: &str) -> bool {
+    tier.tier != "free" && feature == "members"
+}
+
+fn unlimited_item(feature: &str) -> BillingPlanItemSummary {
+    BillingPlanItemSummary {
+        feature_id: feature.to_owned(),
+        included: None,
+        unlimited: true,
+        primary_text: Some(format!("Unlimited {}", feature_noun(feature, 2.0))),
+        secondary_text: None,
     }
 }
 
@@ -555,6 +571,19 @@ async fn build_balances(
     let mut balances = BTreeMap::new();
     for feature in METERED_FEATURES {
         let Some(ent) = catalog.entitlement(tier, feature) else {
+            if tier != "free" && feature == "members" {
+                balances.insert(
+                    feature.to_owned(),
+                    BillingBalanceSummary {
+                        feature_id: feature.to_owned(),
+                        granted: None,
+                        remaining: None,
+                        usage: Some(member_count(state, workspace_id).await?),
+                        unlimited: true,
+                        next_reset_at,
+                    },
+                );
+            }
             continue;
         };
         let usage = match feature {

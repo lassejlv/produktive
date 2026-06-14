@@ -8,6 +8,7 @@ import { EmptyState } from "../components/EmptyState";
 import { Spinner } from "../components/Spinner";
 import {
   formatPlanPrice,
+  planIncludesFeature,
   redirectCheckout,
   summaryPlanItemText,
   type BillingBalanceSummary,
@@ -338,7 +339,7 @@ function CurrentPlanCard({
         <MeteredUsageRow
           label="Events"
           balance={billing.balances.events}
-          hint="1 recorded check = 10 event units"
+          hint="1 recorded check = 2 event units"
         />
       </div>
       <div className="mt-5 flex flex-wrap items-center gap-x-8 gap-y-2">
@@ -353,9 +354,9 @@ function CurrentPlanCard({
 }
 
 function minimumIntervalText(plan?: BillingPlanSummary): string {
-  return summaryPlanItemText(plan, "one_min_checks") !== "Not included"
+  return planIncludesFeature(plan, "one_min_checks")
     ? "1 minute"
-    : summaryPlanItemText(plan, "five_min_checks") !== "Not included"
+    : planIncludesFeature(plan, "five_min_checks")
       ? "5 minutes"
       : "15 minutes";
 }

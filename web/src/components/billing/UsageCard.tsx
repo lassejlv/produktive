@@ -32,7 +32,7 @@ export function UsageCard({
           <MeteredUsageRow
             label="Events"
             balance={billing.balances.events}
-            hint="1 recorded check = 10 event units"
+            hint="1 recorded check = 2 event units"
           />
         </div>
 

@@ -120,6 +120,8 @@ fn catalog_plan(_catalog: &PolarCatalog, tier: &TierCatalog) -> PublicPricingPla
     for feature in METERED_FEATURES {
         if let Some(ent) = tier.features.get(feature) {
             features.push(metered_plan_feature(feature, ent));
+        } else if unlimited_when_missing(tier, feature) {
+            features.push(unlimited_plan_feature(feature));
         }
     }
     for perk in PERK_FEATURES {
@@ -137,6 +139,24 @@ fn catalog_plan(_catalog: &PolarCatalog, tier: &TierCatalog) -> PublicPricingPla
             secondary_text: Some(format!("per {}", tier.interval)),
         }),
         features,
+    }
+}
+
+fn unlimited_when_missing(tier: &TierCatalog, feature: &str) -> bool {
+    tier.tier != "free" && feature == "members"
+}
+
+fn unlimited_plan_feature(feature: &str) -> PublicPlanFeature {
+    PublicPlanFeature {
+        feature_id: feature.to_owned(),
+        name: Some(feature_display_name(feature).to_owned()),
+        feature_type: Some("metered".into()),
+        included: None,
+        unlimited: true,
+        reset_interval: None,
+        primary_text: Some(format!("Unlimited {}", feature_noun(feature, 2.0))),
+        secondary_text: None,
+        usage_price: None,
     }
 }
 
@@ -368,6 +388,19 @@ mod tests {
             .find(|f| f.feature_id == "custom_domain")
             .unwrap();
         assert_eq!(domain.included, Some(1.0));
+    }
+
+    #[test]
+    fn paid_plan_without_member_credit_displays_unlimited_members() {
+        let c = catalog();
+        let plan = catalog_plan(&c, c.tier("pro").unwrap());
+        let members = plan
+            .features
+            .iter()
+            .find(|f| f.feature_id == "members")
+            .unwrap();
+        assert!(members.unlimited);
+        assert_eq!(members.primary_text.as_deref(), Some("Unlimited members"));
     }
 
     #[test]

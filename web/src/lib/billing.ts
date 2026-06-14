@@ -120,7 +120,12 @@ export function planIncludesFeature(
   plan: BillingPlanSummary | undefined,
   featureId: string,
 ): boolean {
-  return summaryPlanItem(plan, featureId) !== undefined;
+  const item = summaryPlanItem(plan, featureId);
+  if (!item) return false;
+  if (item.unlimited) return true;
+  if (item.included != null && item.included > 0) return true;
+  const secondary = item.secondary_text?.toLowerCase() ?? "";
+  return !secondary.includes("upgrade");
 }
 
 export function formatPlanPrice(price: BillingPlanPriceSummary | null | undefined): string {
