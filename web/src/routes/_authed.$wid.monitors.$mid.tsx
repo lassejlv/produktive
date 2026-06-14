@@ -3,7 +3,13 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Check as CheckIcon, Clock, Copy, Pause, Play } from "lucide-react";
 import { toast } from "sonner";
 import { ApiError } from "../lib/api";
-import { useChecks, useMonitor, useStats, useUpdateMonitor } from "../lib/queries";
+import {
+  useChecks,
+  useLatencySeries,
+  useMonitor,
+  useStats,
+  useUpdateMonitor,
+} from "../lib/queries";
 import { monitorStatus, type Check, type MonitorRegion } from "../lib/types";
 import { Button } from "../components/Button";
 import { FullPageSpinner } from "../components/Spinner";
@@ -39,6 +45,7 @@ function MonitorDetail() {
   const monitor = useMonitor(wid, mid);
   const stats = useStats(wid, mid, win, selectedRegion);
   const checks = useChecks(wid, mid, 200, selectedRegion);
+  const latency = useLatencySeries(wid, mid, win, selectedRegion);
   const update = useUpdateMonitor(wid);
 
   const rows = useMemo(() => {
@@ -227,25 +234,22 @@ function MonitorDetail() {
             />
           </div>
         </div>
-        {checks.isLoading ? (
-          <div className="h-[168px] flex items-center justify-center">
+        {latency.isLoading ? (
+          <div className="h-[200px] flex items-center justify-center">
             <FullPageSpinner />
           </div>
-        ) : checks.data && checks.data.length > 0 ? (
+        ) : latency.data && latency.data.length > 0 ? (
           <ResponseTimeChart
-            points={checks.data
-              .slice()
-              .reverse()
-              .map((c) => ({
-                date: new Date(c.time),
-                ms: c.latency_ms,
-                up: c.status === 1,
-                label: c.error_message ?? undefined,
-              }))}
+            points={latency.data.map((p) => ({
+              date: new Date(p.time),
+              ms: p.avg_latency_ms,
+              up: p.down === 0,
+              label: `avg · ${p.total} check${p.total === 1 ? "" : "s"}`,
+            }))}
           />
         ) : (
-          <div className="h-[168px] flex items-center justify-center text-[12px] text-[var(--color-fg-dim)]">
-            No checks recorded yet.
+          <div className="h-[200px] flex items-center justify-center text-[12px] text-[var(--color-fg-dim)]">
+            No checks recorded in this window.
           </div>
         )}
       </div>

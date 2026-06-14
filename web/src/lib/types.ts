@@ -248,6 +248,17 @@ export interface Stats {
   avg_latency_ms: number | null;
 }
 
+/** One time-bucket of the response-time chart over the selected window. */
+export interface LatencyPoint {
+  /** Bucket start, ISO timestamp. */
+  time: Iso;
+  /** Mean response time (ms) over checks in the bucket that recorded a latency; null when none. */
+  avg_latency_ms: number | null;
+  up: number;
+  down: number;
+  total: number;
+}
+
 export type IncidentStatus = "open" | "resolved" | "unknown";
 export type IncidentSeverity =
   | "informational"

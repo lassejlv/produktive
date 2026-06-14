@@ -20,7 +20,15 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/monitors/{id}/checks", get(list_checks))
         .route("/monitors/{id}/stats", get(stats))
+        .route("/monitors/{id}/latency", get(latency_series))
 }
+
+/// Target number of buckets for the response-time chart. The bucket width is
+/// derived from the window so the series always spans the full window with a
+/// bounded, render-friendly number of points regardless of check frequency.
+const LATENCY_TARGET_BUCKETS: i64 = 240;
+/// Floor on bucket width so we never bucket finer than the densest checks.
+const LATENCY_MIN_BUCKET_SECONDS: i64 = 60;
 
 #[derive(Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
@@ -36,6 +44,33 @@ pub struct CheckQuery {
 pub struct StatsQuery {
     pub window: Option<String>,
     pub region: Option<String>,
+}
+
+#[derive(Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct LatencyQuery {
+    pub window: Option<String>,
+    pub region: Option<String>,
+}
+
+#[derive(FromQueryResult)]
+struct LatencyBucketRow {
+    bucket: DateTime<FixedOffset>,
+    avg_latency_ms: Option<f64>,
+    up: i64,
+    down: i64,
+    total: i64,
+}
+
+/// One time-bucket of the response-time chart. `avg_latency_ms` is the mean over
+/// checks in the bucket that recorded a latency; `down > 0` marks an outage band.
+#[derive(Serialize, ToSchema)]
+pub struct LatencyPoint {
+    pub time: DateTime<FixedOffset>,
+    pub avg_latency_ms: Option<i32>,
+    pub up: i64,
+    pub down: i64,
+    pub total: i64,
 }
 
 #[derive(Serialize, FromQueryResult, ToSchema)]
@@ -195,6 +230,74 @@ pub async fn stats(
         uptime_percent: uptime,
         avg_latency_ms: row.avg_latency_ms,
     }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/workspaces/{wid}/monitors/{id}/latency",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("id" = String, Path, description = "monitor id or slug"),
+        LatencyQuery,
+    ),
+    responses(
+        (status = 200, body = [LatencyPoint]),
+        (status = 400, description = "Invalid window"),
+        (status = 404, description = "Monitor not found"),
+    ),
+    security(("bearerAuth" = [])),
+    tag = "checks"
+)]
+pub async fn latency_series(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path((_wid, id)): Path<(String, String)>,
+    Query(q): Query<LatencyQuery>,
+) -> ApiResult<Json<Vec<LatencyPoint>>> {
+    let monitor = resolve_monitor(&state, m.workspace.id, &id).await?;
+    let window = parse_window(q.window.as_deref().unwrap_or("24h"))?;
+    let from = (Utc::now() - window).fixed_offset();
+    let bucket_seconds =
+        (window.num_seconds() / LATENCY_TARGET_BUCKETS).max(LATENCY_MIN_BUCKET_SECONDS);
+
+    let rows = LatencyBucketRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT time_bucket(make_interval(secs => $2::int), c.time) AS bucket,
+               AVG(c.latency_ms)::float8 AS avg_latency_ms,
+               COUNT(*) FILTER (WHERE c.status = 1)::bigint AS up,
+               COUNT(*) FILTER (WHERE c.status = 0)::bigint AS down,
+               COUNT(*)::bigint AS total
+        FROM checks c
+        LEFT JOIN regions r ON r.id = c.region_id
+        WHERE c.monitor_id = $1
+          AND c.time >= $3
+          AND ($4::text IS NULL OR r.slug = $4)
+        GROUP BY bucket
+        ORDER BY bucket ASC
+        "#,
+        [
+            monitor.id.into(),
+            bucket_seconds.into(),
+            from.into(),
+            q.region.map(|region| region.trim().to_lowercase()).into(),
+        ],
+    ))
+    .all(&state.db)
+    .await?;
+
+    let points = rows
+        .into_iter()
+        .map(|r| LatencyPoint {
+            time: r.bucket,
+            avg_latency_ms: r.avg_latency_ms.map(|v| v.round() as i32),
+            up: r.up,
+            down: r.down,
+            total: r.total,
+        })
+        .collect();
+
+    Ok(Json(points))
 }
 
 fn parse_window(s: &str) -> ApiResult<Duration> {

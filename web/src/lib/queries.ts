@@ -15,6 +15,7 @@ import type {
   CustomDomain,
   Incident,
   IncidentSeverity,
+  LatencyPoint,
   Monitor,
   Notification,
   NotificationChannel,
@@ -148,6 +149,19 @@ export function useStats(wid: string, mid: string, window = "24h", region?: stri
       const params = new URLSearchParams({ window });
       if (region && region !== "all") params.set("region", region);
       return api.get<Stats>(`/workspaces/${wid}/monitors/${mid}/stats?${params}`);
+    },
+    refetchInterval: 30_000,
+  });
+}
+
+/** Time-bucketed response-time series for the chart, spanning the given window. */
+export function useLatencySeries(wid: string, mid: string, window = "24h", region?: string) {
+  return useQuery({
+    queryKey: ["latency", wid, mid, window, region ?? "all"] as const,
+    queryFn: () => {
+      const params = new URLSearchParams({ window });
+      if (region && region !== "all") params.set("region", region);
+      return api.get<LatencyPoint[]>(`/workspaces/${wid}/monitors/${mid}/latency?${params}`);
     },
     refetchInterval: 30_000,
   });
