@@ -44,6 +44,7 @@ export interface PublicPricingFeature {
 }
 
 export interface PublicPricingResponse {
+  billing_enabled: boolean;
   plans: PublicPricingPlan[];
   features: PublicPricingFeature[];
   generated_at: string;
@@ -121,4 +122,97 @@ function rowLabel(
 ): string {
   if (supported) return featureLabel(planFeature);
   return catalogFeature?.name ?? planFeature.name ?? planFeature.feature_id;
+}
+
+/** First paid tier, else middle plan when 3+ tiers exist. */
+export function resolveFeaturedPlanIndex(plans: PublicPricingPlan[]): number {
+  if (plans.length === 0) return -1;
+  const paid = plans.findIndex((p) => (p.price?.amount ?? 0) > 0);
+  if (paid >= 0) return paid;
+  if (plans.length >= 3) return 1;
+  return -1;
+}
+
+const HEADLINE_FEATURE_ORDER = [
+  "monitors",
+  "events",
+  "one_min_checks",
+  "five_min_checks",
+  "custom_domain",
+  "multi_region",
+  "remove_branding",
+  "priority_support",
+] as const;
+
+/** Short bullet list for compact plan cards. */
+export function planHeadlineBullets(
+  plan: PublicPricingPlan,
+  catalog: PublicPricingFeature[],
+  max = 4,
+): PlanFeatureRow[] {
+  const rows = buildPlanFeatureRows(plan, catalog);
+  const byId = new Map(rows.map((r) => [r.featureId, r]));
+  const picked: PlanFeatureRow[] = [];
+
+  for (const id of HEADLINE_FEATURE_ORDER) {
+    const row = byId.get(id);
+    if (row?.supported) picked.push(row);
+    if (picked.length >= max) break;
+  }
+
+  if (picked.length < max) {
+    for (const row of rows) {
+      if (picked.some((p) => p.featureId === row.featureId)) continue;
+      if (!row.supported) continue;
+      picked.push(row);
+      if (picked.length >= max) break;
+    }
+  }
+
+  return picked;
+}
+
+export interface ComparisonCell {
+  supported: boolean;
+  text: string;
+}
+
+export interface ComparisonRow {
+  featureId: string;
+  label: string;
+  cells: ComparisonCell[];
+}
+
+export function buildComparisonMatrix(
+  plans: PublicPricingPlan[],
+  catalog: PublicPricingFeature[],
+): ComparisonRow[] {
+  return catalog.map((catalogFeature) => {
+    const cells = plans.map((plan) => {
+      const row = buildPlanFeatureRows(plan, catalog).find(
+        (r) => r.featureId === catalogFeature.id,
+      );
+      if (!row) return { supported: false, text: "—" };
+      if (!row.supported) return { supported: false, text: "—" };
+      return {
+        supported: true,
+        text: cellText(row),
+      };
+    });
+    return {
+      featureId: catalogFeature.id,
+      label: catalogFeature.name ?? catalogFeature.id,
+      cells,
+    };
+  });
+}
+
+function cellText(row: PlanFeatureRow): string {
+  if (row.planFeature.unlimited) return "Unlimited";
+  if (row.planFeature.primary_text) return row.planFeature.primary_text;
+  return row.label;
+}
+
+export function isFreePlan(plan: PublicPricingPlan): boolean {
+  return plan.id === "free" || (plan.price?.amount ?? 0) === 0;
 }

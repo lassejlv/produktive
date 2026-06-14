@@ -302,7 +302,10 @@ function SectionHead({ children, className }: { children: string; className?: st
 }
 
 function severityColor(severity: IncidentSeverity) {
-  if (severity === "down") return "var(--color-err)";
-  if (severity === "degraded") return "var(--color-warn)";
+  if (severity === "down" || severity === "critical") return "var(--color-err)";
+  if (severity === "degraded" || severity === "maintenance" || severity === "minor") {
+    return "var(--color-warn)";
+  }
+  if (severity === "informational") return "var(--color-accent)";
   return "var(--color-unknown)";
 }

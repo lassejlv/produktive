@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import { Button } from "../Button";
 import { Dialog, DialogClose, DialogContent } from "../Dialog";
 import { Spinner } from "../Spinner";
@@ -61,17 +62,43 @@ export function PlanChangeDialog({
         }
       >
         {plan && (
-          <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[12px] text-[var(--color-fg-muted)]">New plan</span>
-              <span className="text-[13px] font-medium text-[var(--color-fg)]">{plan.name}</span>
+          <div className="space-y-3">
+            <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[12px] text-[var(--color-fg-muted)]">New plan</span>
+                <span className="text-[13px] font-medium text-[var(--color-fg)]">{plan.name}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <span className="text-[12px] text-[var(--color-fg-muted)]">Price</span>
+                <span className="text-[13px] font-medium text-[var(--color-fg)] tabular">
+                  {formatPlanPrice(plan.price)}
+                </span>
+              </div>
             </div>
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <span className="text-[12px] text-[var(--color-fg-muted)]">Price</span>
-              <span className="text-[13px] font-medium text-[var(--color-fg)] tabular">
-                {formatPlanPrice(plan.price)}
-              </span>
-            </div>
+
+            {plan.items && plan.items.length > 0 && (
+              <div>
+                <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
+                  Includes
+                </div>
+                <div className="max-h-[220px] space-y-2 overflow-y-auto">
+                  {plan.items.map((item) => (
+                    <div
+                      key={item.feature_id}
+                      className="flex items-start gap-2 text-[12px] text-[var(--color-fg-muted)]"
+                    >
+                      <Check size={13} className="mt-0.5 shrink-0 text-[var(--color-accent)]" />
+                      <span>
+                        {item.primary_text ?? item.feature_id}
+                        {item.secondary_text && (
+                          <span className="text-[var(--color-fg-dim)]"> · {item.secondary_text}</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </DialogContent>

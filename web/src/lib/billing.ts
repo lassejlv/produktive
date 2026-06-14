@@ -35,6 +35,7 @@ export interface BillingBalanceSummary {
 }
 
 export interface BillingSummary {
+  billing_enabled: boolean;
   customer_id: string;
   current_plan_id?: string | null;
   current_plan_name?: string | null;

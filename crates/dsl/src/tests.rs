@@ -55,6 +55,26 @@ fn projects_to_monitor_columns() {
 }
 
 #[test]
+fn projects_query_checker_config() {
+    let doc = parse(
+        r#"
+type postgres
+set params.config {
+  url: "postgres://user:pass@db.example.com/app"
+  query: "select 1"
+}
+"#,
+    )
+    .expect("parse");
+    let p = project(&doc);
+    assert_eq!(
+        p.target.as_deref(),
+        Some("postgres://user:pass@db.example.com/app")
+    );
+    assert_eq!(p.query.as_deref(), Some("select 1"));
+}
+
+#[test]
 fn rejects_env_headers() {
     let validation = parse_and_validate(
         r#"

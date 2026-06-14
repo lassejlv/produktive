@@ -1,18 +1,24 @@
-import { Link, useLocation, useParams } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Activity,
   ChevronsUpDown,
+  Check,
   Globe,
   LayoutDashboard,
   LogOut,
+  Plus,
   ScrollText,
   Settings,
-  Check,
 } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "./Button";
+import { Dialog, DialogClose, DialogContent } from "./Dialog";
+import { Input } from "./Input";
+import { Spinner } from "./Spinner";
 import { cn } from "#/lib/cn";
 import { auth } from "../lib/api";
-import { useMe, useWorkspaces } from "../lib/queries";
+import { useCreateWorkspace, useMe, useWorkspaces } from "../lib/queries";
 
 interface NavItem {
   to: string;
@@ -34,12 +40,17 @@ const SETTINGS: NavItem = { to: "/$wid/settings", label: "Settings", icon: Setti
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { wid } = useParams({ strict: false }) as { wid?: string };
   const loc = useLocation();
+  const navigate = useNavigate();
   const me = useMe();
   const ws = useWorkspaces();
+  const createWorkspace = useCreateWorkspace();
   const [wsOpen, setWsOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState("");
   const wsRef = useRef<HTMLDivElement>(null);
   const current = ws.data?.find((w) => w.id === wid || w.slug === wid);
   const widParam = current?.slug ?? wid;
+  const createsAdditionalWorkspace = (ws.data?.length ?? 0) > 0;
 
   useEffect(() => {
     if (!wsOpen) return;
@@ -49,6 +60,46 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [wsOpen]);
+
+  function submitWorkspace(event: FormEvent) {
+    event.preventDefault();
+    const name = workspaceName.trim();
+    if (!name) {
+      toast.error("Workspace name is required");
+      return;
+    }
+    createWorkspace.mutate(
+      { name },
+      {
+        onSuccess: (workspace) => {
+          setWorkspaceName("");
+          setCreateOpen(false);
+          setWsOpen(false);
+          onClose();
+
+          if (workspace.checkout_url) {
+            toast.success("Workspace created. Redirecting to checkout");
+            window.location.assign(workspace.checkout_url);
+            return;
+          }
+
+          if (workspace.requires_upgrade) {
+            toast.success("Workspace created. Upgrade required");
+            navigate({
+              to: "/$wid/settings/billing",
+              params: { wid: workspace.slug },
+              search: { checkout: undefined },
+            });
+            return;
+          }
+
+          toast.success("Workspace created");
+          navigate({ to: "/$wid", params: { wid: workspace.slug } });
+        },
+        onError: (err) => toast.error((err as Error).message),
+      },
+    );
+  }
 
   return (
     <>
@@ -134,6 +185,21 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                   )}
                 </Link>
               ))}
+              <div className="my-1 border-t border-[var(--color-border)]" />
+              <button
+                type="button"
+                onClick={() => {
+                  setWsOpen(false);
+                  setCreateOpen(true);
+                }}
+                className={cn(
+                  "flex h-8 w-full items-center gap-2 px-3 text-left text-[13px]",
+                  "text-[var(--color-fg-muted)] transition-colors hover:bg-[var(--color-bg-row)] hover:text-[var(--color-fg)]",
+                )}
+              >
+                <Plus size={12} className="shrink-0 text-[var(--color-accent)]" />
+                <span>New workspace</span>
+              </button>
             </div>
           )}
         </div>
@@ -187,6 +253,68 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           </button>
         </div>
       </aside>
+
+      <Dialog
+        open={createOpen}
+        onOpenChange={(next) => {
+          if (!next && createWorkspace.isPending) return;
+          if (!next) setWorkspaceName("");
+          setCreateOpen(next);
+        }}
+      >
+        <DialogContent
+          title="New workspace"
+          description={
+            createsAdditionalWorkspace
+              ? "Additional workspaces require Usage-based when billing is enabled. After creation, you will be sent to checkout and access stays restricted until the upgrade completes."
+              : "Create a separate workspace for another product, team, or status page."
+          }
+          footer={
+            <>
+              <DialogClose asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={createWorkspace.isPending}
+                >
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button
+                type="submit"
+                form="create-workspace-form"
+                variant="primary"
+                size="sm"
+                disabled={createWorkspace.isPending}
+              >
+                {createWorkspace.isPending && <Spinner size={12} thickness={2} />}
+                Create workspace
+              </Button>
+            </>
+          }
+        >
+          <form
+            id="create-workspace-form"
+            onSubmit={submitWorkspace}
+            className="flex flex-col gap-4"
+          >
+            <Input
+              label="Workspace name"
+              placeholder="Acme status"
+              value={workspaceName}
+              onChange={(event) => setWorkspaceName(event.target.value)}
+              autoFocus
+              required
+            />
+            {createsAdditionalWorkspace && (
+              <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2 text-[12px] leading-5 text-[var(--color-fg-muted)]">
+                This workspace will be locked behind Usage-based until checkout completes.
+              </div>
+            )}
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, FileCode, SquarePen } from "lucide-react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Clock, FileCode, Globe, SquarePen } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../components/Button";
 import { Input } from "../components/Input";
@@ -13,9 +13,17 @@ import {
   TcpIcon,
   type ProbeIcon,
 } from "../components/ProbeIcons";
+import { PageActions } from "../components/PageLayout";
 import { Segmented } from "../components/Segmented";
 import { Spinner } from "../components/Spinner";
-import { useCreateMonitor, useRegions, useValidateDsl, type DslError } from "../lib/queries";
+import {
+  useBillingSummary,
+  useCreateMonitor,
+  useRegions,
+  useValidateDsl,
+  type DslError,
+} from "../lib/queries";
+import { planIncludesFeature, type BillingPlanSummary } from "../lib/billing";
 import type { MonitorKind } from "../lib/types";
 import { cn } from "#/lib/cn";
 
@@ -24,7 +32,7 @@ const MonacoDsl = lazy(() => import("../components/MonacoDsl"));
 export const Route = createFileRoute("/_authed/$wid/monitors/new")({
   staticData: {
     title: "New monitor",
-    layout: "bare",
+    description: "Add a probe and where to run it. Rules and alerts can be configured after creation.",
     parent: { label: "Monitors", to: "/$wid/monitors" },
   },
   component: NewMonitorPage,
@@ -34,13 +42,13 @@ const KINDS: { value: MonitorKind; label: string; hint: string; icon: ProbeIcon 
   { value: "http", label: "HTTP", hint: "Web endpoint or API", icon: HttpIcon },
   { value: "tcp", label: "TCP", hint: "Raw socket", icon: TcpIcon },
   { value: "ping", label: "Ping", hint: "ICMP reachability", icon: PingIcon },
-  { value: "postgres", label: "Postgres", hint: "Protocol availability", icon: PostgresIcon },
-  { value: "redis", label: "Redis", hint: "PING probe", icon: RedisIcon },
+  { value: "postgres", label: "Postgres", hint: "SQL query", icon: PostgresIcon },
+  { value: "redis", label: "Redis", hint: "Command probe", icon: RedisIcon },
   { value: "ssh", label: "SSH", hint: "Banner probe", icon: SshIcon },
 ];
 
 type Mode = "form" | "code";
-type IntervalPreset = "15" | "30" | "60" | "300" | "custom";
+type IntervalPreset = "60" | "300" | "900" | "custom";
 
 function NewMonitorPage() {
   const { wid } = Route.useParams();
@@ -50,20 +58,27 @@ function NewMonitorPage() {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<MonitorKind>("http");
   const [target, setTarget] = useState("");
-  const [interval, setInterval] = useState(60);
-  const [intervalPreset, setIntervalPreset] = useState<IntervalPreset>("60");
+  const [postgresQuery, setPostgresQuery] = useState("SELECT 1");
+  const [redisCommand, setRedisCommand] = useState("PING");
+  const [interval, setInterval] = useState(900);
+  const [intervalPreset, setIntervalPreset] = useState<IntervalPreset>("900");
   const [selectedRegions, setSelectedRegions] = useState<string[]>(["eu-west"]);
-  const [source, setSource] = useState<string>(() => defaultTemplate("http", "", 60));
+  const [source, setSource] = useState<string>(() => defaultTemplate("http", "", 900));
   const [parseError, setParseError] = useState<DslError | null>(null);
   const validate = useValidateDsl(wid);
   const regions = useRegions(wid);
+  const billing = useBillingSummary(wid);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentPlan = billing.data?.plans.find((plan) => plan.current);
+  const minimumInterval = minimumIntervalSeconds(currentPlan);
+  const intervalOptions = buildIntervalOptions(minimumInterval);
+  const selectedKind = KINDS.find((k) => k.value === kind);
+  const submitDisabled = create.isPending || (mode === "code" && !!parseError);
 
-  // when switching to code mode the first time, sync from form values
   function switchMode(next: Mode) {
     if (next === "code") {
       const placeholder = target || defaultTarget(kind);
-      setSource(defaultTemplate(kind, placeholder, interval));
+      setSource(defaultTemplate(kind, placeholder, interval, postgresQuery, redisCommand));
     }
     setMode(next);
   }
@@ -96,6 +111,12 @@ function NewMonitorPage() {
     });
   }, [regions.data]);
 
+  useEffect(() => {
+    if (interval >= minimumInterval) return;
+    setInterval(minimumInterval);
+    setIntervalPreset(presetForInterval(minimumInterval));
+  }, [interval, minimumInterval]);
+
   function toggleRegion(slug: string) {
     setSelectedRegions((current) => {
       if (current.includes(slug)) {
@@ -109,19 +130,26 @@ function NewMonitorPage() {
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      toast.error("name is required");
+      toast.error("Name is required");
       return;
     }
     const body =
       mode === "form"
-        ? {
-            name,
-            kind,
-            target,
-            interval_seconds: interval,
-            enabled: true,
-            region_slugs: selectedRegions,
-          }
+        ? kind === "postgres" || kind === "redis"
+          ? {
+              name,
+              dsl_source: defaultTemplate(kind, target, interval, postgresQuery, redisCommand),
+              enabled: true,
+              region_slugs: selectedRegions,
+            }
+          : {
+              name,
+              kind,
+              target,
+              interval_seconds: interval,
+              enabled: true,
+              region_slugs: selectedRegions,
+            }
         : { name, dsl_source: source, enabled: true, region_slugs: selectedRegions };
     create.mutate(body, {
       onSuccess: () => {
@@ -132,237 +160,442 @@ function NewMonitorPage() {
     });
   }
 
+  const regionList =
+    regions.data ?? [
+      { slug: "eu-west", name: "eu-west", capabilities: KINDS.map((k) => k.value) },
+    ];
+
   return (
-    <div className={cn("fade-in px-8 py-8", mode === "form" ? "max-w-[560px]" : "max-w-[900px]")}>
-      <Link
-        to="/$wid/monitors"
-        params={{ wid }}
-        className="text-[12px] text-[var(--color-fg-muted)] no-underline hover:text-[var(--color-fg)] inline-flex items-center gap-1.5 mb-6"
+    <>
+      <PageActions>
+        <Segmented<Mode>
+          value={mode}
+          onChange={switchMode}
+          size="sm"
+          options={[
+            { value: "form", label: "Form", icon: SquarePen },
+            { value: "code", label: "Code", icon: FileCode },
+          ]}
+        />
+        <Button
+          type="submit"
+          form="new-monitor"
+          variant="primary"
+          size="sm"
+          disabled={submitDisabled}
+        >
+          {create.isPending && <Spinner size={12} thickness={2} />}
+          {create.isPending ? "Creating…" : "Create monitor"}
+        </Button>
+      </PageActions>
+
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-8",
+          mode === "form" ? "xl:grid-cols-[minmax(0,640px)_minmax(0,1fr)]" : "max-w-5xl",
+        )}
       >
-        <ArrowLeft size={12} /> Back to monitors
-      </Link>
+        <form id="new-monitor" onSubmit={onSubmit} className="min-w-0">
+          {mode === "form" ? (
+            <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)]">
+              <FieldGroup>
+                <Input
+                  label="Name"
+                  placeholder="api.acme.com"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </FieldGroup>
 
-      <div className="flex items-start justify-between gap-6 mb-7">
-        <div>
-          <h2 className="text-[22px] tracking-tight font-medium mb-1.5 text-[var(--color-fg)]">
-            New monitor
-          </h2>
-          <p className="text-[var(--color-fg-muted)] text-[13.5px]">
-            Pick a probe type and target. You can add monitor-as-code rules afterward.
-          </p>
-        </div>
-        <div className="flex items-center bg-[var(--color-bg-row)] border border-[var(--color-border)] rounded-[var(--radius-md)] p-0.5 shrink-0">
-          <ModeBtn active={mode === "form"} onClick={() => switchMode("form")} icon={SquarePen}>
-            Form
-          </ModeBtn>
-          <ModeBtn active={mode === "code"} onClick={() => switchMode("code")} icon={FileCode}>
-            Code
-          </ModeBtn>
-        </div>
-      </div>
+              <Divider />
 
-      <form onSubmit={onSubmit} className="flex flex-col gap-5">
-        <div className="flex flex-col gap-5 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-5 shadow-[var(--shadow-xs)]">
-          <Input
-            label="Name"
-            placeholder="api.acme.com"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+              <FieldGroup className="flex flex-col gap-4">
+                <div>
+                  <FieldLabel>Probe type</FieldLabel>
+                  <div className="mt-2 grid grid-cols-3 gap-1 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] p-1 sm:grid-cols-6">
+                    {KINDS.map((k) => {
+                      const Icon = k.icon;
+                      const active = kind === k.value;
+                      return (
+                        <button
+                          key={k.value}
+                          type="button"
+                          title={k.hint}
+                          onClick={() => setKind(k.value)}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 rounded-[var(--radius-sm)] px-1 py-2.5 transition-[background-color,color,box-shadow] duration-150",
+                            active
+                              ? "bg-[var(--color-bg-elev)] text-[var(--color-fg)] shadow-[var(--shadow-xs)]"
+                              : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
+                          )}
+                        >
+                          <Icon size={15} className={active ? "text-[var(--color-accent)]" : undefined} />
+                          <span className="text-[11px] font-medium leading-none">{k.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-          {mode === "form" && (
-            <>
-              <div className="flex flex-col gap-2">
-                <span className="text-[12px] font-medium text-[var(--color-fg-muted)] tracking-wide">
-                  Probe type
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {KINDS.map((k) => {
-                    const Icon = k.icon;
-                    const active = kind === k.value;
+                <Input
+                  label="Target"
+                  className="mono"
+                  placeholder={defaultTarget(kind)}
+                  hint={selectedKind ? `${selectedKind.label} endpoint to probe.` : undefined}
+                  required
+                  value={target}
+                  onChange={(e) => setTarget(e.target.value)}
+                />
+
+                {kind === "postgres" && (
+                  <Input
+                    label="SQL query"
+                    className="mono"
+                    placeholder="SELECT 1"
+                    hint="Monitor is up when the query executes successfully."
+                    required
+                    value={postgresQuery}
+                    onChange={(e) => setPostgresQuery(e.target.value)}
+                  />
+                )}
+
+                {kind === "redis" && (
+                  <Input
+                    label="Redis command"
+                    className="mono"
+                    placeholder="PING"
+                    hint="Monitor is up when the command executes successfully."
+                    required
+                    value={redisCommand}
+                    onChange={(e) => setRedisCommand(e.target.value)}
+                  />
+                )}
+              </FieldGroup>
+
+              <Divider />
+
+              <FieldGroup className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                <div>
+                  <FieldLabel>Check interval</FieldLabel>
+                  <div className="mt-2">
+                    <Segmented<IntervalPreset>
+                      value={intervalPreset}
+                      onChange={(v) => {
+                        setIntervalPreset(v);
+                        if (v !== "custom") setInterval(parseInt(v, 10));
+                      }}
+                      options={intervalOptions}
+                      className="w-full"
+                    />
+                  </div>
+                  {intervalPreset === "custom" && (
+                    <div className="mt-3">
+                      <Input
+                        type="number"
+                        label="Custom interval"
+                        min={minimumInterval}
+                        step={60}
+                        value={interval}
+                        onChange={(e) => {
+                          const next = parseInt(e.target.value || String(minimumInterval), 10);
+                          setInterval(
+                            Number.isFinite(next) ? Math.max(minimumInterval, next) : minimumInterval,
+                          );
+                        }}
+                        trailing="seconds"
+                        aria-label="Custom interval in seconds"
+                      />
+                    </div>
+                  )}
+                  <p className="mt-2.5 text-[11px] text-[var(--color-fg-dim)]">
+                    Plan minimum: every {formatInterval(minimumInterval)}.
+                  </p>
+                </div>
+
+                <div>
+                  <FieldLabel>Regions</FieldLabel>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {regionList.map((region) => {
+                      const active = selectedRegions.includes(region.slug);
+                      const supported =
+                        !("capabilities" in region) || region.capabilities.includes(kind);
+                      return (
+                        <button
+                          key={region.slug}
+                          type="button"
+                          disabled={!supported}
+                          onClick={() => toggleRegion(region.slug)}
+                          className={cn(
+                            "h-8 rounded-[var(--radius-sm)] border px-2.5 text-[12px] font-medium transition-colors",
+                            active
+                              ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
+                              : "border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
+                            !supported && "cursor-not-allowed opacity-45",
+                          )}
+                          title={
+                            supported
+                              ? `Run from ${region.name}`
+                              : `${region.name} does not support ${kind} checks`
+                          }
+                        >
+                          {region.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2.5 text-[11px] text-[var(--color-fg-dim)]">
+                    At least one region required.
+                  </p>
+                </div>
+              </FieldGroup>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <Input
+                label="Name"
+                placeholder="api.acme.com"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <FieldLabel>Monitor definition</FieldLabel>
+                  <ValidStatus validating={validate.isPending} error={parseError} />
+                </div>
+                <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-sunken)] shadow-[var(--shadow-xs)]">
+                  <Suspense
+                    fallback={
+                      <div className="flex h-[480px] items-center justify-center text-[12px] text-[var(--color-fg-muted)]">
+                        <Spinner size={16} /> <span className="ml-2">Loading editor…</span>
+                      </div>
+                    }
+                  >
+                    <MonacoDsl
+                      value={source}
+                      onChange={setSource}
+                      errorLine={parseError?.line ?? null}
+                      errorMessage={parseError?.message ?? null}
+                      height={480}
+                    />
+                  </Suspense>
+                  {parseError && (
+                    <div className="border-t border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-err)_8%,var(--color-bg-elev))] px-4 py-2.5 text-[12px] text-[var(--color-err)] mono">
+                      {parseError.line}:{parseError.col} — {parseError.message}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <FieldLabel>Regions</FieldLabel>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {regionList.map((region) => {
+                    const active = selectedRegions.includes(region.slug);
                     return (
                       <button
-                        key={k.value}
+                        key={region.slug}
                         type="button"
-                        onClick={() => setKind(k.value)}
-                        title={k.hint}
+                        onClick={() => toggleRegion(region.slug)}
                         className={cn(
-                          "flex h-[38px] items-center justify-center gap-2 text-[12.5px] font-medium",
-                          "border rounded-[var(--radius-md)] shadow-[var(--shadow-xs)] transition-all",
+                          "h-8 rounded-[var(--radius-sm)] border px-2.5 text-[12px] font-medium transition-colors",
                           active
-                            ? "border-[color-mix(in_srgb,var(--color-accent)_50%,var(--color-border-hi))] bg-[var(--color-accent-soft)] text-[var(--color-accent)]"
-                            : "border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] text-[var(--color-fg)] hover:border-[var(--color-border-strong)]",
+                            ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
+                            : "border-[var(--color-border)] bg-[var(--color-bg-elev)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
                         )}
                       >
-                        <Icon
-                          size={14}
-                          className={
-                            active ? "text-[var(--color-accent)]" : "text-[var(--color-fg-muted)]"
-                          }
-                        />
-                        {k.label}
+                        {region.name}
                       </button>
                     );
                   })}
                 </div>
               </div>
-
-              <Input
-                label="Target"
-                className="mono"
-                placeholder={defaultTarget(kind)}
-                hint={`${KINDS.find((k) => k.value === kind)?.label ?? kind} endpoint to probe.`}
-                required
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
-              />
-
-              <div className="flex flex-col gap-2">
-                <span className="text-[12px] font-medium text-[var(--color-fg-muted)] tracking-wide">
-                  Check interval
-                </span>
-                <div className="flex flex-wrap items-center gap-3">
-                  <Segmented<IntervalPreset>
-                    value={intervalPreset}
-                    onChange={(v) => {
-                      setIntervalPreset(v);
-                      if (v !== "custom") setInterval(parseInt(v, 10));
-                    }}
-                    options={[
-                      { value: "15", label: "15s" },
-                      { value: "30", label: "30s" },
-                      { value: "60", label: "1m" },
-                      { value: "300", label: "5m" },
-                      { value: "custom", label: "Custom" },
-                    ]}
-                  />
-                  {intervalPreset === "custom" && (
-                    <Input
-                      type="number"
-                      min={5}
-                      step={5}
-                      value={interval}
-                      onChange={(e) => setInterval(parseInt(e.target.value || "60", 10))}
-                      trailing="seconds"
-                      className="w-[140px]"
-                      aria-label="Custom interval in seconds"
-                    />
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-
-          {mode === "code" && (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[12px] font-medium text-[var(--color-fg-muted)] tracking-wide">
-                  Monitor definition
-                </span>
-                <ValidStatus validating={validate.isPending} error={parseError} />
-              </div>
-              <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] overflow-hidden shadow-[var(--shadow-sm)]">
-                <Suspense
-                  fallback={
-                    <div className="flex items-center justify-center h-[420px] text-[12px] text-[var(--color-fg-muted)]">
-                      <Spinner size={16} /> <span className="ml-2">loading editor…</span>
-                    </div>
-                  }
-                >
-                  <MonacoDsl
-                    value={source}
-                    onChange={setSource}
-                    errorLine={parseError?.line ?? null}
-                    errorMessage={parseError?.message ?? null}
-                    height={420}
-                  />
-                </Suspense>
-                {parseError && (
-                  <div className="border-t border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-err)_8%,var(--color-bg-elev))] px-4 py-2.5 text-[12px] text-[var(--color-err)] mono">
-                    {parseError.line}:{parseError.col} — {parseError.message}
-                  </div>
-                )}
-              </div>
             </div>
           )}
 
-          <div className="flex flex-col gap-2">
-            <span className="text-[12px] font-medium text-[var(--color-fg-muted)] tracking-wide">
-              Regions
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {(
-                regions.data ?? [
-                  { slug: "eu-west", name: "eu-west", capabilities: KINDS.map((k) => k.value) },
-                ]
-              ).map((region) => {
-                const active = selectedRegions.includes(region.slug);
-                const supported = !("capabilities" in region) || region.capabilities.includes(kind);
-                return (
-                  <button
-                    key={region.slug}
-                    type="button"
-                    disabled={!supported}
-                    onClick={() => toggleRegion(region.slug)}
-                    className={cn(
-                      "h-8 rounded-[var(--radius-sm)] border px-2.5 text-[12px] transition-colors",
-                      active
-                        ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
-                        : "border-[var(--color-border)] bg-[var(--color-bg-elev)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
-                      !supported && "cursor-not-allowed opacity-45",
-                    )}
-                    title={
-                      supported
-                        ? `Run from ${region.name}`
-                        : `${region.name} does not support ${kind} checks`
-                    }
-                  >
-                    {region.name}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+          {create.error && (
+            <p className="mt-3 text-[12px] text-[var(--color-err)]">{(create.error as Error).message}</p>
+          )}
 
-        {create.error && (
-          <div className="text-[var(--color-err)] text-[12px]">
-            {(create.error as Error).message}
+          <div className="mt-4">
+            <Button
+              variant="ghost"
+              type="button"
+              size="sm"
+              onClick={() => nav({ to: "/$wid/monitors", params: { wid } })}
+            >
+              Cancel
+            </Button>
           </div>
+        </form>
+
+        {mode === "form" && (
+          <aside className="hidden xl:block">
+            <MonitorPreview
+              name={name}
+              kind={kind}
+              target={target || defaultTarget(kind)}
+              interval={interval}
+              regions={selectedRegions}
+            />
+          </aside>
         )}
+      </div>
+    </>
+  );
+}
 
-        {/* single obvious primary action */}
-        <div className="flex items-center justify-between">
-          <Button
-            variant="ghost"
-            type="button"
-            onClick={() => nav({ to: "/$wid/monitors", params: { wid } })}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            type="submit"
-            disabled={create.isPending || (mode === "code" && !!parseError)}
-            size="md"
-          >
-            {create.isPending && <Spinner size={12} thickness={2} />}
-            {create.isPending ? "Creating…" : "Create monitor"}
-          </Button>
+function FieldGroup({ className, children }: { className?: string; children: React.ReactNode }) {
+  return <div className={cn("px-4 py-4 sm:px-5 sm:py-5", className)}>{children}</div>;
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="text-[12px] font-medium tracking-wide text-[var(--color-fg-muted)]">
+      {children}
+    </span>
+  );
+}
+
+function Divider() {
+  return <div className="h-px bg-[var(--color-border)]" />;
+}
+
+function MonitorPreview({
+  name,
+  kind,
+  target,
+  interval,
+  regions,
+}: {
+  name: string;
+  kind: MonitorKind;
+  target: string;
+  interval: number;
+  regions: string[];
+}) {
+  const KindIcon = KINDS.find((k) => k.value === kind)?.icon ?? HttpIcon;
+
+  return (
+    <div className="sticky top-6 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-5 shadow-[var(--shadow-xs)]">
+      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
+        Preview
+      </div>
+      <div className="mt-4 flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--color-accent-soft)] text-[var(--color-accent)]">
+          <KindIcon size={16} />
+        </span>
+        <div className="min-w-0">
+          <div className="truncate text-[15px] font-medium tracking-tight text-[var(--color-fg)]">
+            {name.trim() || "Untitled monitor"}
+          </div>
+          <div className="mono mt-1 truncate text-[12px] text-[var(--color-fg-muted)]">{target}</div>
         </div>
-      </form>
+      </div>
+
+      <dl className="mt-5 space-y-3 border-t border-[var(--color-border)] pt-4 text-[12px]">
+        <PreviewRow icon={KindIcon} label="Type" value={kind.toUpperCase()} />
+        <PreviewRow icon={Clock} label="Interval" value={`Every ${formatInterval(interval)}`} />
+        <PreviewRow icon={Globe} label="Regions" value={regions.join(", ") || "—"} />
+      </dl>
     </div>
   );
 }
 
-function defaultTemplate(kind: MonitorKind, target: string, interval: number): string {
+function PreviewRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <dt className="flex items-center gap-2 text-[var(--color-fg-dim)]">
+        <Icon size={12} />
+        {label}
+      </dt>
+      <dd className="truncate font-medium text-[var(--color-fg)]">{value}</dd>
+    </div>
+  );
+}
+
+function minimumIntervalSeconds(plan?: BillingPlanSummary): number {
+  if (planIncludesFeature(plan, "one_min_checks")) return 60;
+  if (planIncludesFeature(plan, "five_min_checks")) return 300;
+  return 900;
+}
+
+function buildIntervalOptions(minimum: number) {
+  return [
+    intervalOption("60", "1m", minimum),
+    intervalOption("300", "5m", minimum),
+    intervalOption("900", "15m", minimum),
+    { value: "custom" as const, label: "Custom" },
+  ];
+}
+
+function intervalOption(value: Exclude<IntervalPreset, "custom">, label: string, minimum: number) {
+  const seconds = parseInt(value, 10);
+  const disabled = seconds < minimum;
+  return {
+    value,
+    label,
+    disabled,
+    title: disabled
+      ? `Requires a plan with ${formatInterval(seconds)} checks`
+      : `Run every ${formatInterval(seconds)}`,
+  };
+}
+
+function presetForInterval(interval: number): IntervalPreset {
+  if (interval <= 60) return "60";
+  if (interval <= 300) return "300";
+  return "900";
+}
+
+function formatInterval(seconds: number): string {
+  if (seconds % 60 !== 0) return `${seconds}s`;
+  const minutes = seconds / 60;
+  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+}
+
+function defaultTemplate(
+  kind: MonitorKind,
+  target: string,
+  interval: number,
+  postgresQuery = "SELECT 1",
+  redisCommand = "PING",
+): string {
   const cfg =
     kind === "http"
       ? `  url: "${target}"\n  timeout: 5s`
       : kind === "ping"
         ? `  host: "${target}"\n  timeout: 5s`
-        : `  host: "${target}"\n  timeout: 5s`;
+        : kind === "postgres"
+          ? `  url: "${target}"\n  query: "${escapeDslString(postgresQuery)}"\n  timeout: 5s`
+          : kind === "redis"
+            ? `  url: "${target}"\n  command: "${escapeDslString(redisCommand)}"\n  timeout: 5s`
+            : `  host: "${target}"\n  timeout: 5s`;
+
+  const rules =
+    kind === "http"
+      ? `  if result.status == 200 -> ok
+  if result.status >= 500 -> down with "5xx response"
+  if result.latency_ms > 2000 -> warn with "slow"
+  else -> ok`
+      : kind === "postgres"
+        ? `  if result.status == 0 -> ok
+  else -> down with "query failed"`
+        : kind === "redis"
+          ? `  if result.status == 0 -> ok
+  else -> down with "command failed"`
+          : `  if result.latency_ms > 2000 -> warn with "slow"
+  else -> ok`;
 
   return `type ${kind}
 
@@ -380,12 +613,13 @@ set schedule.interval ${interval}s
 # }
 
 rules {
-  if result.status == 200 -> ok
-  if result.status >= 500 -> down with "5xx response"
-  if result.latency_ms > 2000 -> warn with "slow"
-  else -> ok
+${rules}
 }
 `;
+}
+
+function escapeDslString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 function defaultTarget(kind: MonitorKind): string {
@@ -397,40 +631,12 @@ function defaultTarget(kind: MonitorKind): string {
     case "ping":
       return "edge-eu.acme.com";
     case "postgres":
-      return "db.acme.com:5432";
+      return "postgres://user:password@db.acme.com:5432/app";
     case "redis":
-      return "cache.acme.com:6379";
+      return "redis://:password@cache.acme.com:6379/0";
     case "ssh":
       return "bastion.acme.com:22";
   }
-}
-
-function ModeBtn({
-  active,
-  onClick,
-  icon: Icon,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: typeof FileCode;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 h-7 px-2.5 text-[12px] rounded-[var(--radius-sm)] transition-colors",
-        active
-          ? "bg-[var(--color-bg-elev)] text-[var(--color-fg)] border border-[var(--color-border)] shadow-[var(--shadow-xs)]"
-          : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] border border-transparent",
-      )}
-    >
-      <Icon size={11} />
-      {children}
-    </button>
-  );
 }
 
 function ValidStatus({ validating, error }: { validating: boolean; error: DslError | null }) {
@@ -444,14 +650,14 @@ function ValidStatus({ validating, error }: { validating: boolean; error: DslErr
   if (error) {
     return (
       <span className="flex items-center gap-1.5 text-[11px] text-[var(--color-err)] mono">
-        <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--color-err)]" />
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--color-err)]" />
         error {error.line}:{error.col}
       </span>
     );
   }
   return (
     <span className="flex items-center gap-1.5 text-[11px] text-[var(--color-ok)] mono">
-      <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--color-ok)]" />
+      <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--color-ok)]" />
       valid
     </span>
   );

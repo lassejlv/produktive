@@ -18,7 +18,11 @@ interface BuiltinPath {
 }
 
 const BUILTINS: BuiltinPath[] = [
-  { label: "result.status", detail: "number", doc: "HTTP status code returned by the probe." },
+  {
+    label: "result.status",
+    detail: "number",
+    doc: "Protocol result code. HTTP uses the response status; query probes use 0 for success.",
+  },
   { label: "result.latency_ms", detail: "number", doc: "Response time in milliseconds." },
   { label: "result.body", detail: "string", doc: "Raw response body (truncated to limit)." },
   { label: "result.error", detail: "string | null", doc: "Probe-level error message, if any." },
@@ -81,6 +85,42 @@ const SNIPPETS: Array<{ label: string; insertText: string; doc: string }> = [
       "}",
     ].join("\n"),
     doc: "Insert a starter rules block.",
+  },
+  {
+    label: "postgres-query-config",
+    insertText: [
+      'type postgres',
+      '',
+      'set params.config {',
+      '  url: "${1:postgres://user:password@db.example.com:5432/app}"',
+      '  query: "${2:SELECT 1}"',
+      '  timeout: 5s',
+      '}',
+      '',
+      'rules {',
+      '  if result.status == 0 -> ok',
+      '  else -> down with "query failed"',
+      '}',
+    ].join("\n"),
+    doc: "Insert a Postgres query monitor.",
+  },
+  {
+    label: "redis-command-config",
+    insertText: [
+      'type redis',
+      '',
+      'set params.config {',
+      '  url: "${1:redis://:password@cache.example.com:6379/0}"',
+      '  command: "${2:PING}"',
+      '  timeout: 5s',
+      '}',
+      '',
+      'rules {',
+      '  if result.status == 0 -> ok',
+      '  else -> down with "command failed"',
+      '}',
+    ].join("\n"),
+    doc: "Insert a Redis command monitor.",
   },
 ];
 

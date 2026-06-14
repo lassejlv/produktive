@@ -17,6 +17,7 @@ import { Route as IncidentsRouteImport } from './routes/incidents'
 import { Route as AuthedRouteImport } from './routes/_authed'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SSlugRouteImport } from './routes/s_.$slug'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as AuthedWidRouteImport } from './routes/_authed.$wid'
 import { Route as SSlugIndexRouteImport } from './routes/s_.$slug.index'
 import { Route as AuthedWidIndexRouteImport } from './routes/_authed.$wid.index'
@@ -72,6 +73,11 @@ const IndexRoute = IndexRouteImport.update({
 const SSlugRoute = SSlugRouteImport.update({
   id: '/s_/$slug',
   path: '/s/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthedWidRoute = AuthedWidRouteImport.update({
@@ -172,6 +178,7 @@ export interface FileRoutesByFullPath {
   '/s': typeof SRoute
   '/signup': typeof SignupRoute
   '/$wid': typeof AuthedWidRouteWithChildren
+  '/invite/$token': typeof InviteTokenRoute
   '/s/$slug': typeof SSlugRouteWithChildren
   '/$wid/incidents': typeof AuthedWidIncidentsRoute
   '/$wid/members': typeof AuthedWidMembersRoute
@@ -197,6 +204,7 @@ export interface FileRoutesByTo {
   '/pricing': typeof PricingRoute
   '/s': typeof SRoute
   '/signup': typeof SignupRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/$wid/incidents': typeof AuthedWidIncidentsRoute
   '/$wid/members': typeof AuthedWidMembersRoute
   '/$wid/status': typeof AuthedWidStatusRoute
@@ -223,6 +231,7 @@ export interface FileRoutesById {
   '/s': typeof SRoute
   '/signup': typeof SignupRoute
   '/_authed/$wid': typeof AuthedWidRouteWithChildren
+  '/invite/$token': typeof InviteTokenRoute
   '/s_/$slug': typeof SSlugRouteWithChildren
   '/_authed/$wid/incidents': typeof AuthedWidIncidentsRoute
   '/_authed/$wid/members': typeof AuthedWidMembersRoute
@@ -251,6 +260,7 @@ export interface FileRouteTypes {
     | '/s'
     | '/signup'
     | '/$wid'
+    | '/invite/$token'
     | '/s/$slug'
     | '/$wid/incidents'
     | '/$wid/members'
@@ -276,6 +286,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/s'
     | '/signup'
+    | '/invite/$token'
     | '/$wid/incidents'
     | '/$wid/members'
     | '/$wid/status'
@@ -301,6 +312,7 @@ export interface FileRouteTypes {
     | '/s'
     | '/signup'
     | '/_authed/$wid'
+    | '/invite/$token'
     | '/s_/$slug'
     | '/_authed/$wid/incidents'
     | '/_authed/$wid/members'
@@ -328,6 +340,7 @@ export interface RootRouteChildren {
   PricingRoute: typeof PricingRoute
   SRoute: typeof SRoute
   SignupRoute: typeof SignupRoute
+  InviteTokenRoute: typeof InviteTokenRoute
   SSlugRoute: typeof SSlugRouteWithChildren
 }
 
@@ -387,6 +400,13 @@ declare module '@tanstack/react-router' {
       path: '/s/$slug'
       fullPath: '/s/$slug'
       preLoaderRoute: typeof SSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authed/$wid': {
@@ -589,6 +609,7 @@ const rootRouteChildren: RootRouteChildren = {
   PricingRoute: PricingRoute,
   SRoute: SRoute,
   SignupRoute: SignupRoute,
+  InviteTokenRoute: InviteTokenRoute,
   SSlugRoute: SSlugRouteWithChildren,
 }
 export const routeTree = rootRouteImport

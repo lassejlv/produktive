@@ -7,6 +7,7 @@ export interface SegmentedOption<T extends string> {
   label?: ReactNode;
   icon?: LucideIcon;
   title?: string;
+  disabled?: boolean;
 }
 
 interface Props<T extends string> {
@@ -43,7 +44,10 @@ export function Segmented<T extends string>({
             key={opt.value}
             type="button"
             title={opt.title}
-            onClick={() => onChange(opt.value)}
+            disabled={opt.disabled}
+            onClick={() => {
+              if (!opt.disabled) onChange(opt.value);
+            }}
             className={cn(
               "inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-sm)] font-medium",
               "transition-[background-color,color,box-shadow] duration-150 ease-out",
@@ -54,6 +58,7 @@ export function Segmented<T extends string>({
               active
                 ? "bg-[var(--color-bg-elev)] text-[var(--color-fg)] shadow-[var(--shadow-xs)] border border-[var(--color-border-hi)]"
                 : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] border border-transparent",
+              opt.disabled && "cursor-not-allowed opacity-45 hover:text-[var(--color-fg-muted)]",
             )}
           >
             {Icon && <Icon size={size === "sm" ? 13 : 14} />}

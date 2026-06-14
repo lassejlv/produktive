@@ -11,7 +11,7 @@ use crate::{
         trim_decimal, FeatureEntitlement, PolarCatalog, TierCatalog, METERED_FEATURES,
         PERK_FEATURES,
     },
-    error::{ApiError, ApiResult},
+    error::ApiResult,
     state::AppState,
 };
 
@@ -21,6 +21,7 @@ pub fn routes() -> Router<AppState> {
 
 #[derive(Serialize, ToSchema)]
 pub struct PublicPricingResponse {
+    pub billing_enabled: bool,
     pub plans: Vec<PublicPricingPlan>,
     pub features: Vec<PublicPricingFeature>,
     pub generated_at: DateTime<chrono::FixedOffset>,
@@ -81,17 +82,21 @@ pub struct PublicPricingFeature {
     path = "/api/pricing/public",
     responses(
         (status = 200, body = PublicPricingResponse),
-        (status = 503, description = "Billing is not configured"),
     ),
     tag = "pricing"
 )]
 pub async fn public_pricing(
     State(state): State<AppState>,
 ) -> ApiResult<Json<PublicPricingResponse>> {
-    let billing = state
-        .billing
-        .as_ref()
-        .ok_or_else(|| ApiError::service_unavailable("billing is not configured"))?;
+    let Some(billing) = state.billing.as_ref() else {
+        let features = build_public_features();
+        return Ok(Json(PublicPricingResponse {
+            billing_enabled: false,
+            plans: vec![self_hosted_plan(&features)],
+            features,
+            generated_at: Utc::now().fixed_offset(),
+        }));
+    };
     let catalog = &billing.catalog;
 
     let mut plans: Vec<PublicPricingPlan> = catalog
@@ -106,10 +111,58 @@ pub async fn public_pricing(
     stack_lower_tier_features(&mut plans);
 
     Ok(Json(PublicPricingResponse {
+        billing_enabled: true,
         plans,
         features,
         generated_at: Utc::now().fixed_offset(),
     }))
+}
+
+fn self_hosted_plan(features: &[PublicPricingFeature]) -> PublicPricingPlan {
+    PublicPricingPlan {
+        id: "self_hosted".to_owned(),
+        name: "Self-hosted".to_owned(),
+        description: Some("Billing is disabled when Polar is not configured.".to_owned()),
+        price: Some(PublicPlanPrice {
+            amount: Some(0.0),
+            interval: None,
+            primary_text: Some("Self-hosted".to_owned()),
+            secondary_text: Some("no billing provider configured".to_owned()),
+        }),
+        features: features
+            .iter()
+            .map(|feature| {
+                if feature.consumable {
+                    PublicPlanFeature {
+                        feature_id: feature.id.clone(),
+                        name: feature.name.clone(),
+                        feature_type: feature.feature_type.clone(),
+                        included: None,
+                        unlimited: true,
+                        reset_interval: None,
+                        primary_text: Some(format!(
+                            "Unlimited {}",
+                            feature.display_plural.as_deref().unwrap_or("usage")
+                        )),
+                        secondary_text: None,
+                        usage_price: None,
+                    }
+                } else {
+                    PublicPlanFeature {
+                        feature_id: feature.id.clone(),
+                        name: feature.name.clone(),
+                        feature_type: feature.feature_type.clone(),
+                        included: Some(1.0),
+                        unlimited: false,
+                        reset_interval: None,
+                        primary_text: feature.name.clone(),
+                        secondary_text: None,
+                        usage_price: None,
+                    }
+                }
+            })
+            .collect(),
+    }
 }
 
 // ---- build from catalog -----------------------------------------------------

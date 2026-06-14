@@ -2,14 +2,12 @@ import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-ro
 import { ArrowRight } from "lucide-react";
 import { Button } from "../components/Button";
 import { PublicStatusByDomain } from "../components/status/PublicStatusByDomain";
-import { ThemeToggle } from "../components/ThemeToggle";
+import { MarketingShell } from "../components/marketing/MarketingShell";
 import { auth } from "../lib/api";
 import { customStatusDomain } from "../lib/custom-domain";
 import { workspacesQuery } from "../lib/queries";
 import { STATUS_COLOR } from "../lib/status";
 import type { MonitorStatus } from "../lib/types";
-
-const GITHUB_URL = "https://github.com/lassejlv/unstatus";
 
 const DSL_EXAMPLE = `type http
 
@@ -47,20 +45,6 @@ export const Route = createFileRoute("/")({
   component: HomePage,
 });
 
-function Wordmark() {
-  return (
-    <div className="flex items-center gap-2">
-      <span
-        className="inline-block w-2 h-2 rounded-full"
-        style={{ background: "var(--color-accent)" }}
-      />
-      <span className="text-[15px] font-semibold tracking-tight text-[var(--color-fg)]">
-        unstatus
-      </span>
-    </div>
-  );
-}
-
 function HomePage() {
   const customDomain = customStatusDomain();
   const nav = useNavigate();
@@ -75,33 +59,8 @@ function HomePage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--color-bg)] relative overflow-hidden">
-      <div
-        className="absolute inset-0 pointer-events-none opacity-[0.35]"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(0deg, transparent 0 31px, color-mix(in srgb, var(--color-border) 60%, transparent) 31px 32px), repeating-linear-gradient(90deg, transparent 0 31px, color-mix(in srgb, var(--color-border) 60%, transparent) 31px 32px)",
-          maskImage: "radial-gradient(70% 55% at 50% 12%, black, transparent 78%)",
-        }}
-      />
-
-      <header className="relative z-10">
-        <div className="max-w-[1080px] mx-auto px-6 h-16 flex items-center justify-between">
-          <Wordmark />
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Button variant="ghost" size="sm" onClick={() => nav({ to: "/login" })}>
-              Sign in
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => nav({ to: "/signup" })}>
-              Get started
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <main className="relative z-10 flex-1">
-        <section className="max-w-[1080px] mx-auto px-6 pt-20 pb-16 sm:pt-24 flex flex-col items-center text-center">
+    <MarketingShell gridMask="hero">
+      <section className="max-w-[1080px] mx-auto px-6 pt-20 pb-16 sm:pt-24 flex flex-col items-center text-center">
           <h1 className="text-[36px] sm:text-[48px] leading-[1.05] tracking-[-0.02em] font-medium text-[var(--color-fg)] max-w-[680px]">
             Health checks you can version.
           </h1>
@@ -160,23 +119,7 @@ function HomePage() {
             />
           </div>
         </section>
-      </main>
-
-      <footer className="relative z-10 border-t border-[var(--color-border)]">
-        <div className="max-w-[1080px] mx-auto px-6 h-14 flex items-center justify-between text-[12px] text-[var(--color-fg-dim)]">
-          <Wordmark />
-          <div className="flex items-center gap-4">
-            <a href={GITHUB_URL} className="link" target="_blank" rel="noreferrer">
-              GitHub
-            </a>
-            <Link to="/pricing" className="link">
-              Pricing
-            </Link>
-            <span className="tabular">© {new Date().getFullYear()} unstatus</span>
-          </div>
-        </div>
-      </footer>
-    </div>
+      </MarketingShell>
   );
 }
 

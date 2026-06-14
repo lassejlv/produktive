@@ -4,6 +4,7 @@ use axum::{
     Extension, Json, Router,
 };
 use chrono::{Duration, Utc};
+use email::OutboundEmail;
 use entity::{
     workspace, workspace_invite,
     workspace_member::{self, WorkspaceRole},
@@ -58,6 +59,7 @@ pub struct InviteCreated {
     pub expires_at: chrono::DateTime<chrono::FixedOffset>,
     pub token: String,
     pub accept_url: String,
+    pub email_sent: bool,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -177,7 +179,18 @@ pub async fn create(
     .insert(&state.db)
     .await?;
 
-    let accept_url = format!("/api/invites/{token}/accept");
+    let accept_url = invite_accept_url(state.config.app_url.as_deref(), &token);
+    let email_sent = send_invite_email(
+        &state,
+        &row.email,
+        &m.workspace.name,
+        &auth.user.email,
+        row.role,
+        &accept_url,
+        m.workspace.id,
+    )
+    .await;
+
     Ok(Json(InviteCreated {
         id: row.id,
         email: row.email,
@@ -185,6 +198,7 @@ pub async fn create(
         expires_at: row.expires_at,
         token,
         accept_url,
+        email_sent,
     }))
 }
 
@@ -242,6 +256,70 @@ pub async fn revoke(
         return Err(ApiError::not_found("invite"));
     }
     Ok(Json(OkResponse { ok: true }))
+}
+
+fn invite_accept_url(app_url: Option<&str>, token: &str) -> String {
+    let path = format!("/invite/{token}");
+    match app_url {
+        Some(base) => format!("{}{}", base.trim_end_matches('/'), path),
+        None => path,
+    }
+}
+
+async fn send_invite_email(
+    state: &AppState,
+    to: &str,
+    workspace_name: &str,
+    inviter_email: &str,
+    role: WorkspaceRole,
+    accept_url: &str,
+    workspace_id: Uuid,
+) -> bool {
+    let role_label = match role {
+        WorkspaceRole::Owner => "owner",
+        WorkspaceRole::Member => "member",
+    };
+    let subject = format!("You have been invited to {workspace_name} on unstatus");
+    let text_body = format!(
+        "{inviter_email} invited you to join {workspace_name} on unstatus as a {role_label}.\n\nAccept the invite:\n{accept_url}\n\nThis invite expires in 7 days."
+    );
+    let workspace_name_html = escape_html(workspace_name);
+    let inviter_email_html = escape_html(inviter_email);
+    let accept_url_html = escape_html(accept_url);
+    let html_body = format!(
+        r#"<p>{inviter_email} invited you to join <strong>{workspace_name}</strong> on unstatus as a {role_label}.</p>
+<p><a href="{accept_url}">Accept the invite</a></p>
+<p>This invite expires in 7 days.</p>"#,
+        inviter_email = inviter_email_html,
+        workspace_name = workspace_name_html,
+        accept_url = accept_url_html,
+    );
+
+    match state
+        .email
+        .send(OutboundEmail {
+            to: to.to_owned(),
+            subject,
+            text_body,
+            html_body: Some(html_body),
+        })
+        .await
+    {
+        Ok(sent) => sent,
+        Err(err) => {
+            tracing::warn!(%err, email = %to, %workspace_id, "failed to send invite email");
+            false
+        }
+    }
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 async fn load_invite(state: &AppState, token: &str) -> ApiResult<workspace_invite::Model> {

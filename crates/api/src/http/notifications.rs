@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    routing::{delete, get},
+    routing::{get, patch, post},
     Extension, Json, Router,
 };
 use chrono::{DateTime, FixedOffset, Utc};
@@ -12,6 +12,7 @@ use uuid::Uuid;
 use crate::{
     error::{ApiError, ApiResult},
     middleware::Membership,
+    notification_webhook::{self, ChannelDelivery},
     state::AppState,
     target,
 };
@@ -20,7 +21,12 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_notifications))
         .route("/channels", get(list_channels).post(create_channel))
-        .route("/channels/{id}", delete(delete_channel))
+        .route(
+            "/channels/{id}",
+            patch(update_channel).delete(delete_channel),
+        )
+        .route("/channels/{id}/test", post(test_channel))
+        .route("/channels/{id}/deliveries", get(list_channel_deliveries))
 }
 
 #[derive(Deserialize, IntoParams)]
@@ -51,8 +57,23 @@ pub struct NotificationChannelView {
     pub masked_url: String,
     pub enabled: bool,
     pub notify_resolved: bool,
+    pub last_delivery_status: Option<String>,
+    pub last_delivery_at: Option<DateTime<FixedOffset>>,
+    pub last_delivery_error: Option<String>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
+}
+
+#[derive(Serialize, FromQueryResult, ToSchema)]
+pub struct NotificationDeliveryView {
+    pub id: Uuid,
+    pub notification_id: Uuid,
+    pub channel_id: Uuid,
+    pub status: String,
+    pub error_message: Option<String>,
+    pub sent_at: Option<DateTime<FixedOffset>>,
+    pub created_at: DateTime<FixedOffset>,
+    pub notification_title: Option<String>,
 }
 
 /// Delivery target type for a notification channel. Stored as a SMALLINT
@@ -112,6 +133,24 @@ pub struct CreateNotificationChannel {
     pub enabled: bool,
     #[serde(default = "default_true")]
     pub notify_resolved: bool,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateNotificationChannel {
+    pub name: Option<String>,
+    pub enabled: Option<bool>,
+    pub notify_resolved: Option<bool>,
+}
+
+#[derive(Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct DeliveryQuery {
+    pub limit: Option<u64>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct TestChannelResponse {
+    pub ok: bool,
 }
 
 fn default_true() -> bool {
@@ -278,6 +317,184 @@ pub async fn delete_channel(
     Ok(Json(OkResponse { ok: true }))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/api/workspaces/{wid}/notifications/channels/{id}",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("id" = Uuid, Path, description = "channel id"),
+    ),
+    request_body = UpdateNotificationChannel,
+    responses(
+        (status = 200, body = NotificationChannelView),
+        (status = 403, description = "Owner only"),
+        (status = 404, description = "Channel not found"),
+    ),
+    security(("bearerAuth" = [])),
+    tag = "notifications"
+)]
+pub async fn update_channel(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path((_wid, id)): Path<(String, Uuid)>,
+    Json(body): Json<UpdateNotificationChannel>,
+) -> ApiResult<Json<NotificationChannelView>> {
+    m.require_owner()?;
+    if body.name.is_none() && body.enabled.is_none() && body.notify_resolved.is_none() {
+        return Err(ApiError::bad_request("no fields to update"));
+    }
+    if let Some(name) = &body.name {
+        if name.trim().is_empty() {
+            return Err(ApiError::bad_request("channel name required"));
+        }
+    }
+
+    let now = Utc::now().fixed_offset();
+    let name = body.name.as_deref().map(str::trim).map(str::to_string);
+    let updated = state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE notification_channels
+            SET
+                name = COALESCE($3, name),
+                enabled = COALESCE($4, enabled),
+                notify_resolved = COALESCE($5, notify_resolved),
+                updated_at = $6
+            WHERE id = $1 AND workspace_id = $2
+            "#,
+            [
+                id.into(),
+                m.workspace.id.into(),
+                name.into(),
+                body.enabled.into(),
+                body.notify_resolved.into(),
+                now.into(),
+            ],
+        ))
+        .await?;
+    if updated.rows_affected() == 0 {
+        return Err(ApiError::not_found("notification channel"));
+    }
+
+    load_channels(&state, m.workspace.id)
+        .await?
+        .into_iter()
+        .find(|c| c.id == id)
+        .ok_or_else(|| ApiError::not_found("notification channel"))
+        .map(Json)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/workspaces/{wid}/notifications/channels/{id}/test",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("id" = Uuid, Path, description = "channel id"),
+    ),
+    responses(
+        (status = 200, body = TestChannelResponse),
+        (status = 400, description = "Delivery failed"),
+        (status = 403, description = "Owner only"),
+        (status = 404, description = "Channel not found"),
+    ),
+    security(("bearerAuth" = [])),
+    tag = "notifications"
+)]
+pub async fn test_channel(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path((_wid, id)): Path<(String, Uuid)>,
+) -> ApiResult<Json<TestChannelResponse>> {
+    m.require_owner()?;
+    let channel = load_channel_delivery(&state, m.workspace.id, id)
+        .await?
+        .ok_or_else(|| ApiError::not_found("notification channel"))?;
+
+    let notification_id = Uuid::now_v7();
+    let now = Utc::now().fixed_offset();
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            INSERT INTO notifications (
+                id, workspace_id, monitor_id, incident_id, kind, title, body, created_at
+            )
+            VALUES ($1, $2, NULL, NULL, 2, $3, $4, $5)
+            "#,
+            [
+                notification_id.into(),
+                m.workspace.id.into(),
+                "Test notification from unstatus".into(),
+                "If you received this, your notification channel is configured correctly.".into(),
+                now.into(),
+            ],
+        ))
+        .await?;
+
+    let payload = notification_webhook::test_payload(m.workspace.id, &m.workspace.name);
+    notification_webhook::deliver_and_record(&state, notification_id, &channel, &payload, now)
+        .await
+        .map_err(|e| ApiError::bad_request(e.to_string()))?;
+
+    Ok(Json(TestChannelResponse { ok: true }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/workspaces/{wid}/notifications/channels/{id}/deliveries",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("id" = Uuid, Path, description = "channel id"),
+        DeliveryQuery,
+    ),
+    responses(
+        (status = 200, body = [NotificationDeliveryView]),
+        (status = 404, description = "Channel not found"),
+    ),
+    security(("bearerAuth" = [])),
+    tag = "notifications"
+)]
+pub async fn list_channel_deliveries(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path((_wid, id)): Path<(String, Uuid)>,
+    Query(q): Query<DeliveryQuery>,
+) -> ApiResult<Json<Vec<NotificationDeliveryView>>> {
+    ensure_channel(&state, m.workspace.id, id).await?;
+    let limit = q.limit.unwrap_or(20).min(100) as i64;
+    let rows = NotificationDeliveryView::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT
+            d.id,
+            d.notification_id,
+            d.channel_id,
+            CASE d.status
+                WHEN 1 THEN 'ok'
+                WHEN 2 THEN 'failed'
+                ELSE 'unknown'
+            END AS status,
+            d.error_message,
+            d.sent_at,
+            d.created_at,
+            n.title AS notification_title
+        FROM notification_deliveries d
+        JOIN notifications n ON n.id = d.notification_id
+        WHERE d.channel_id = $1
+          AND n.workspace_id = $2
+        ORDER BY d.created_at DESC
+        LIMIT $3
+        "#,
+        [id.into(), m.workspace.id.into(), limit.into()],
+    ))
+    .all(&state.db)
+    .await?;
+    Ok(Json(rows))
+}
+
 async fn load_channels(
     state: &AppState,
     workspace_id: Uuid,
@@ -298,6 +515,31 @@ async fn load_channels(
             regexp_replace(webhook_url, '^(https?://[^/?#]+).*$', '\1/...') AS masked_url,
             enabled,
             notify_resolved,
+            (
+                SELECT CASE ld.status
+                    WHEN 1 THEN 'ok'
+                    WHEN 2 THEN 'failed'
+                    ELSE 'unknown'
+                END
+                FROM notification_deliveries ld
+                WHERE ld.channel_id = notification_channels.id
+                ORDER BY ld.created_at DESC
+                LIMIT 1
+            ) AS last_delivery_status,
+            (
+                SELECT COALESCE(ld.sent_at, ld.created_at)
+                FROM notification_deliveries ld
+                WHERE ld.channel_id = notification_channels.id
+                ORDER BY ld.created_at DESC
+                LIMIT 1
+            ) AS last_delivery_at,
+            (
+                SELECT ld.error_message
+                FROM notification_deliveries ld
+                WHERE ld.channel_id = notification_channels.id
+                ORDER BY ld.created_at DESC
+                LIMIT 1
+            ) AS last_delivery_error,
             created_at,
             updated_at
         FROM notification_channels
@@ -309,6 +551,54 @@ async fn load_channels(
     .all(&state.db)
     .await?;
     Ok(rows)
+}
+
+async fn ensure_channel(state: &AppState, workspace_id: Uuid, channel_id: Uuid) -> ApiResult<()> {
+    let exists = state
+        .db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT 1 FROM notification_channels WHERE id = $1 AND workspace_id = $2",
+            [channel_id.into(), workspace_id.into()],
+        ))
+        .await?
+        .is_some();
+    if exists {
+        Ok(())
+    } else {
+        Err(ApiError::not_found("notification channel"))
+    }
+}
+
+async fn load_channel_delivery(
+    state: &AppState,
+    workspace_id: Uuid,
+    channel_id: Uuid,
+) -> ApiResult<Option<ChannelDelivery>> {
+    #[derive(FromQueryResult)]
+    struct Row {
+        id: Uuid,
+        kind: i16,
+        webhook_url: String,
+    }
+
+    let row = Row::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT id, kind, webhook_url
+        FROM notification_channels
+        WHERE id = $1 AND workspace_id = $2
+        "#,
+        [channel_id.into(), workspace_id.into()],
+    ))
+    .one(&state.db)
+    .await?;
+
+    Ok(row.map(|r| ChannelDelivery {
+        id: r.id,
+        kind: r.kind,
+        webhook_url: r.webhook_url,
+    }))
 }
 
 #[cfg(test)]

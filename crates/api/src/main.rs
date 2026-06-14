@@ -4,6 +4,7 @@ mod config;
 mod error;
 mod http;
 mod middleware;
+mod notification_webhook;
 mod openapi;
 mod rate_limit;
 mod regions;

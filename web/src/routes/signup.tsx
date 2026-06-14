@@ -1,13 +1,20 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../components/Button";
 import { Input } from "../components/Input";
 import { Spinner } from "../components/Spinner";
+import { parseLoginRedirect } from "../lib/redirect";
 import { useLogin, useRegister } from "../lib/queries";
 
-export const Route = createFileRoute("/signup")({ component: SignupPage });
+export const Route = createFileRoute("/signup")({
+  component: SignupPage,
+  validateSearch: (s: Record<string, unknown>): { redirect?: string } => {
+    const path = parseLoginRedirect(s.redirect);
+    return path === "/" ? {} : { redirect: path };
+  },
+});
 
 const BENEFITS: [string, string][] = [
   ["HTTP, TCP, Postgres, Redis & more", "Probe almost anything from one place."],
@@ -17,6 +24,7 @@ const BENEFITS: [string, string][] = [
 
 function SignupPage() {
   const nav = useNavigate();
+  const { redirect: redirectTo = "/" } = useSearch({ from: "/signup" });
   const register = useRegister();
   const login = useLogin();
   const [email, setEmail] = useState("");
@@ -85,7 +93,7 @@ function SignupPage() {
                 registered = true;
                 await login.mutateAsync({ email, password });
                 toast.success("Account created");
-                nav({ to: "/", replace: true });
+                nav({ href: redirectTo, replace: true });
               } catch (err) {
                 const message = (err as Error).message;
                 if (registered) {
@@ -138,7 +146,11 @@ function SignupPage() {
 
           <div className="mt-8 text-center text-[13px] text-[var(--color-fg-muted)]">
             Already have an account?{" "}
-            <Link to="/login" className="link">
+            <Link
+              to="/login"
+              search={redirectTo === "/" ? {} : { redirect: redirectTo }}
+              className="link"
+            >
               Sign in
             </Link>
           </div>

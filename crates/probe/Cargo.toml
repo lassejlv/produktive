@@ -11,6 +11,8 @@ unstatus-dsl = { path = "../dsl" }
 
 tokio.workspace = true
 reqwest.workspace = true
+redis.workspace = true
+tokio-postgres.workspace = true
 futures-util.workspace = true
 surge-ping.workspace = true
 rand.workspace = true

@@ -13,6 +13,7 @@ unstatus-migration = { path = "../migration" }
 unstatus-dsl = { path = "../dsl" }
 unstatus-probe = { path = "../probe" }
 polar = { path = "../polar" }
+email = { path = "../email" }
 
 axum.workspace = true
 tokio.workspace = true

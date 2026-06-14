@@ -12,12 +12,24 @@ import {
   useAddIncidentUpdate,
   useCreateIncident,
   useIncidents,
+  useMonitors,
 } from "../lib/queries";
-import type { Incident, IncidentSeverity, IncidentUpdateStatus } from "../lib/types";
+import type { Incident, IncidentSeverity, IncidentUpdateStatus, Monitor } from "../lib/types";
 import { lastSeen } from "../lib/status";
 import { cn } from "#/lib/cn";
 
 type Filter = "open" | "all" | "resolved";
+type ManualIncidentSeverity = Exclude<IncidentSeverity, "unknown">;
+
+const SEVERITY_OPTIONS: Array<{ value: ManualIncidentSeverity; label: string }> = [
+  { value: "informational", label: "Informational" },
+  { value: "maintenance", label: "Maintenance" },
+  { value: "minor", label: "Minor impact" },
+  { value: "degraded", label: "Degraded" },
+  { value: "down", label: "Down" },
+  { value: "critical", label: "Critical" },
+];
+
 const fieldControlClass =
   "w-full rounded-[var(--radius-md)] border border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] px-3 text-[13px] text-[var(--color-fg)] shadow-[var(--shadow-xs)] outline-none transition-[border-color,box-shadow] focus:border-[var(--color-accent)] focus:shadow-[var(--ring-accent)]";
 
@@ -40,6 +52,7 @@ function IncidentsPage() {
     status: Exclude<IncidentUpdateStatus, "unknown">;
   } | null>(null);
   const { data: incidents = [], isLoading } = useIncidents(wid, filter);
+  const { data: monitors = [] } = useMonitors(wid);
   const createIncident = useCreateIncident(wid);
   const addUpdate = useAddIncidentUpdate(wid);
 
@@ -96,6 +109,7 @@ function IncidentsPage() {
 
       <CreateIncidentDialog
         open={createOpen}
+        monitors={monitors}
         pending={createIncident.isPending}
         onOpenChange={(open) => {
           if (!open && createIncident.isPending) return;
@@ -190,7 +204,7 @@ function IncidentRow({
                   background: `color-mix(in srgb, ${color} 10%, transparent)`,
                 }}
               >
-                {incident.severity}
+                {severityLabel(incident.severity)}
               </span>
               {isManual && (
                 <span className="shrink-0 rounded-full bg-[var(--color-bg-row)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
@@ -263,30 +277,39 @@ function IncidentRow({
 
 function CreateIncidentDialog({
   open,
+  monitors,
   pending,
   onOpenChange,
   onSubmit,
 }: {
   open: boolean;
+  monitors: Monitor[];
   pending: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (body: { title: string; message: string; severity: "down" | "degraded" }) => void;
+  onSubmit: (body: {
+    title: string;
+    message: string;
+    severity: ManualIncidentSeverity;
+    monitor_id: string | null;
+  }) => void;
 }) {
   const [title, setTitle] = useState("");
-  const [severity, setSeverity] = useState<"down" | "degraded">("degraded");
+  const [severity, setSeverity] = useState<ManualIncidentSeverity>("degraded");
+  const [monitorId, setMonitorId] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     if (!open) {
       setTitle("");
       setSeverity("degraded");
+      setMonitorId("");
       setMessage("");
     }
   }, [open]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    onSubmit({ title, severity, message });
+    onSubmit({ title, severity, message, monitor_id: monitorId || null });
   }
 
   return (
@@ -323,11 +346,28 @@ function CreateIncidentDialog({
           <Field label="Severity">
             <select
               value={severity}
-              onChange={(event) => setSeverity(event.target.value as "down" | "degraded")}
+              onChange={(event) => setSeverity(event.target.value as ManualIncidentSeverity)}
               className={cn(fieldControlClass, "h-9")}
             >
-              <option value="degraded">Degraded</option>
-              <option value="down">Down</option>
+              {SEVERITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Affected monitor">
+            <select
+              value={monitorId}
+              onChange={(event) => setMonitorId(event.target.value)}
+              className={cn(fieldControlClass, "h-9")}
+            >
+              <option value="">No specific monitor</option>
+              {monitors.map((monitor) => (
+                <option key={monitor.id} value={monitor.id}>
+                  {monitor.name}
+                </option>
+              ))}
             </select>
           </Field>
           <Field label="Initial update">
@@ -438,9 +478,16 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function severityColor(severity: IncidentSeverity) {
-  if (severity === "down") return "var(--color-err)";
-  if (severity === "degraded") return "var(--color-warn)";
+  if (severity === "down" || severity === "critical") return "var(--color-err)";
+  if (severity === "degraded" || severity === "maintenance" || severity === "minor") {
+    return "var(--color-warn)";
+  }
+  if (severity === "informational") return "var(--color-accent)";
   return "var(--color-unknown)";
+}
+
+function severityLabel(severity: IncidentSeverity): string {
+  return SEVERITY_OPTIONS.find((option) => option.value === severity)?.label ?? "Unknown";
 }
 
 function formatDuration(ms: number) {

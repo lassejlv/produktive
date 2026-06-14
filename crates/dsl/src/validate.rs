@@ -120,6 +120,11 @@ fn validate_config_block(value: &Value, diagnostics: &mut Vec<Diagnostic>) {
                 diagnostics,
                 format!("params.config.{} must be a string", entry.key),
             ),
+            "query" | "command" => validate_string(
+                &entry.value,
+                diagnostics,
+                format!("params.config.{} must be a string", entry.key),
+            ),
             "headers" => validate_headers(&entry.value, diagnostics),
             _ => diagnostics.push(Diagnostic::warning(
                 1,

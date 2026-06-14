@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use axum::{
     extract::{Path, Request, State},
+    http::Method,
     middleware::Next,
     response::Response,
 };
@@ -12,7 +13,7 @@ use entity::{
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::{auth::AuthUser, error::ApiError, state::AppState};
+use crate::{auth::AuthUser, billing::workspace_has_paid_plan, error::ApiError, state::AppState};
 
 #[derive(Clone)]
 pub struct Membership {
@@ -50,12 +51,60 @@ pub async fn workspace_guard(
         .await?
         .ok_or(ApiError::Forbidden)?;
 
+    if workspace_upgrade_required(&state, &ws, req.method(), req.uri().path()).await? {
+        return Err(ApiError::payment_required(
+            "additional workspaces require the Usage-based plan",
+        ));
+    }
+
     let _ = auth;
     req.extensions_mut().insert(Membership {
         workspace: ws,
         role: member.role,
     });
     Ok(next.run(req).await)
+}
+
+async fn workspace_upgrade_required(
+    state: &AppState,
+    ws: &workspace::Model,
+    method: &Method,
+    path: &str,
+) -> Result<bool, ApiError> {
+    let Some(billing) = state.billing.as_ref() else {
+        return Ok(false);
+    };
+    if billing.catalog.default_paid_tier().is_none()
+        || ws.is_personal
+        || is_billing_access_path(method, path)
+    {
+        return Ok(false);
+    }
+
+    match workspace_has_paid_plan(state, ws.id).await {
+        Ok(true) => Ok(false),
+        Ok(false) => Ok(true),
+        Err(error) => {
+            tracing::warn!(
+                workspace_id = %ws.id,
+                error = ?error,
+                "could not determine workspace billing plan; restricting workspace access"
+            );
+            Ok(true)
+        }
+    }
+}
+
+fn is_billing_access_path(method: &Method, path: &str) -> bool {
+    if path.contains("/billing") {
+        return true;
+    }
+    if *method != Method::GET {
+        return false;
+    }
+    path.strip_prefix("/api/workspaces/")
+        .map(|rest| !rest.trim_matches('/').contains('/'))
+        .unwrap_or(false)
 }
 
 async fn resolve_workspace(state: &AppState, ident: &str) -> Result<workspace::Model, ApiError> {

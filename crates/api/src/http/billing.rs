@@ -67,6 +67,7 @@ pub struct SetupPaymentBody {
 
 #[derive(Serialize, ToSchema)]
 pub struct BillingSummary {
+    pub billing_enabled: bool,
     pub customer_id: String,
     pub current_plan_id: Option<String>,
     pub current_plan_name: Option<String>,
@@ -130,7 +131,9 @@ pub async fn summary(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
 ) -> ApiResult<Json<BillingSummary>> {
-    let billing = require_billing(&state)?;
+    let Some(billing) = state.billing.as_ref() else {
+        return Ok(Json(disabled_summary(&state, m.workspace.id).await?));
+    };
     let owner_email = load_owner_email(&state, m.workspace.owner_id).await?;
     ensure_customer(&state, &m.workspace, &owner_email).await?;
 
@@ -175,6 +178,7 @@ pub async fn summary(
     .await?;
 
     Ok(Json(BillingSummary {
+        billing_enabled: true,
         customer_id: cstate.id.clone(),
         current_plan_id,
         current_plan_name,
@@ -189,6 +193,96 @@ pub async fn summary(
         plans,
         balances,
     }))
+}
+
+async fn disabled_summary(state: &AppState, workspace_id: uuid::Uuid) -> ApiResult<BillingSummary> {
+    let plan = disabled_plan_summary();
+    let mut balances = BTreeMap::new();
+    balances.insert(
+        "monitors".to_owned(),
+        BillingBalanceSummary {
+            feature_id: "monitors".to_owned(),
+            granted: None,
+            remaining: None,
+            usage: Some(monitor_count(state, workspace_id).await?),
+            unlimited: true,
+            next_reset_at: None,
+        },
+    );
+    balances.insert(
+        "members".to_owned(),
+        BillingBalanceSummary {
+            feature_id: "members".to_owned(),
+            granted: None,
+            remaining: None,
+            usage: Some(member_count(state, workspace_id).await?),
+            unlimited: true,
+            next_reset_at: None,
+        },
+    );
+    balances.insert(
+        "events".to_owned(),
+        BillingBalanceSummary {
+            feature_id: "events".to_owned(),
+            granted: None,
+            remaining: None,
+            usage: None,
+            unlimited: true,
+            next_reset_at: None,
+        },
+    );
+
+    Ok(BillingSummary {
+        billing_enabled: false,
+        customer_id: workspace_id.to_string(),
+        current_plan_id: Some("self_hosted".to_owned()),
+        current_plan_name: Some("Self-hosted".to_owned()),
+        subscription_status: None,
+        subscription_canceled_at: None,
+        subscription_current_period_end: None,
+        scheduled_plan_id: None,
+        scheduled_plan_name: None,
+        stripe_customer_id: None,
+        portal_available: false,
+        plans: vec![plan],
+        balances,
+    })
+}
+
+fn disabled_plan_summary() -> BillingPlanSummary {
+    let mut items = Vec::new();
+    for feature in METERED_FEATURES {
+        items.push(BillingPlanItemSummary {
+            feature_id: feature.to_owned(),
+            included: None,
+            unlimited: true,
+            primary_text: Some(format!("Unlimited {}", feature_noun(feature, 2.0))),
+            secondary_text: None,
+        });
+    }
+    for perk in PERK_FEATURES {
+        items.push(BillingPlanItemSummary {
+            feature_id: perk.to_owned(),
+            included: Some(1.0),
+            unlimited: false,
+            primary_text: Some(perk_label(perk).to_owned()),
+            secondary_text: None,
+        });
+    }
+
+    BillingPlanSummary {
+        id: "self_hosted".to_owned(),
+        name: "Self-hosted".to_owned(),
+        description: Some("Billing is disabled on this server.".to_owned()),
+        price: Some(BillingPlanPriceSummary {
+            amount: Some(0.0),
+            interval: None,
+            primary_text: Some("Self-hosted".to_owned()),
+            secondary_text: Some("no billing provider configured".to_owned()),
+        }),
+        current: true,
+        items,
+    }
 }
 
 #[utoipa::path(

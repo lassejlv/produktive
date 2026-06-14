@@ -4,8 +4,10 @@ use entity::{
     workspace,
     workspace_member::{self, WorkspaceRole},
 };
+use polar::CheckoutCreate;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter,
+    TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -14,6 +16,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::AuthUser,
+    billing::{customer_id, customer_state_for_billing, ensure_customer},
     error::{ApiError, ApiResult},
     middleware::Membership,
     slug,
@@ -44,6 +47,10 @@ pub struct WorkspaceView {
     pub status_page_config: Option<serde_json::Value>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
     pub updated_at: chrono::DateTime<chrono::FixedOffset>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requires_upgrade: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkout_url: Option<String>,
 }
 
 impl WorkspaceView {
@@ -62,7 +69,15 @@ impl WorkspaceView {
             status_page_config: ws.status_page_config,
             created_at: ws.created_at,
             updated_at: ws.updated_at,
+            requires_upgrade: None,
+            checkout_url: None,
         }
+    }
+
+    fn with_upgrade(mut self, requires_upgrade: bool, checkout_url: Option<String>) -> Self {
+        self.requires_upgrade = Some(requires_upgrade);
+        self.checkout_url = checkout_url;
+        self
     }
 }
 
@@ -139,6 +154,16 @@ pub async fn create(
         return Err(ApiError::bad_request("name required"));
     }
 
+    let requires_upgrade = state
+        .billing
+        .as_ref()
+        .is_some_and(|billing| billing.catalog.default_paid_tier().is_some())
+        && workspace_member::Entity::find()
+            .filter(workspace_member::Column::UserId.eq(auth.user.id))
+            .count(&state.db)
+            .await?
+            > 0;
+
     let now = Utc::now().fixed_offset();
     let txn = state.db.begin().await?;
     let workspace_slug = slug::unique_workspace_slug(&txn, &name).await?;
@@ -172,7 +197,53 @@ pub async fn create(
 
     txn.commit().await?;
 
-    Ok(Json(WorkspaceView::build(ws, WorkspaceRole::Owner)))
+    let checkout_url = if requires_upgrade {
+        match create_workspace_checkout(&state, &ws, &auth.user.email).await {
+            Ok(url) => url,
+            Err(error) => {
+                tracing::warn!(
+                    workspace_id = %ws.id,
+                    error = ?error,
+                    "created additional workspace but could not create upgrade checkout"
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    Ok(Json(
+        WorkspaceView::build(ws, WorkspaceRole::Owner).with_upgrade(requires_upgrade, checkout_url),
+    ))
+}
+
+async fn create_workspace_checkout(
+    state: &AppState,
+    ws: &workspace::Model,
+    owner_email: &str,
+) -> ApiResult<Option<String>> {
+    let Some(billing) = state.billing.as_ref() else {
+        return Ok(None);
+    };
+    let Some(tier) = billing.catalog.default_paid_tier() else {
+        return Ok(None);
+    };
+
+    ensure_customer(state, ws, owner_email).await?;
+    let cstate = customer_state_for_billing(state, ws.id).await?;
+    let success_url = state.config.app_url.as_ref().map(|base| {
+        format!(
+            "{}/{}/settings/billing?checkout=success",
+            base.trim_end_matches('/'),
+            ws.slug
+        )
+    });
+    let checkout = CheckoutCreate::new(&tier.product_id, customer_id(ws.id))
+        .success_url(success_url)
+        .subscription_id(cstate.active_subscription().map(|sub| sub.id.clone()));
+    let checkout = billing.client.checkouts().create(checkout).await?;
+    Ok(Some(checkout.url))
 }
 
 #[utoipa::path(

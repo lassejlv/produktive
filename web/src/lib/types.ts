@@ -53,7 +53,7 @@ export interface Monitor {
   updated_at: Iso;
 }
 
-export type WorkspaceRole = "owner" | "admin" | "member";
+export type WorkspaceRole = "owner" | "member";
 
 export type StatusTheme = "auto" | "light" | "dark";
 
@@ -91,6 +91,8 @@ export interface Workspace {
   status_page_config: StatusPageConfig | null;
   created_at: Iso;
   updated_at: Iso;
+  requires_upgrade?: boolean | null;
+  checkout_url?: string | null;
 }
 
 export type WorkspacePatch = Partial<
@@ -245,9 +247,21 @@ export interface Stats {
 }
 
 export type IncidentStatus = "open" | "resolved" | "unknown";
-export type IncidentSeverity = "down" | "degraded" | "unknown";
+export type IncidentSeverity =
+  | "informational"
+  | "maintenance"
+  | "minor"
+  | "degraded"
+  | "down"
+  | "critical"
+  | "unknown";
 export type IncidentSource = "automatic" | "manual";
-export type IncidentUpdateStatus = "investigating" | "identified" | "monitoring" | "resolved" | "unknown";
+export type IncidentUpdateStatus =
+  | "investigating"
+  | "identified"
+  | "monitoring"
+  | "resolved"
+  | "unknown";
 
 export interface Incident {
   id: Uuid;
@@ -296,8 +310,56 @@ export interface NotificationChannel {
   masked_url: string;
   enabled: boolean;
   notify_resolved: boolean;
+  last_delivery_status: "ok" | "failed" | "unknown" | null;
+  last_delivery_at: Iso | null;
+  last_delivery_error: string | null;
   created_at: Iso;
   updated_at: Iso;
+}
+
+export interface NotificationDelivery {
+  id: Uuid;
+  notification_id: Uuid;
+  channel_id: Uuid;
+  status: "ok" | "failed" | "unknown";
+  error_message: string | null;
+  sent_at: Iso | null;
+  created_at: Iso;
+  notification_title: string | null;
+}
+
+export interface WorkspaceMember {
+  user_id: Uuid;
+  email: string;
+  role: WorkspaceRole;
+  created_at: Iso;
+}
+
+export interface WorkspaceInvite {
+  id: Uuid;
+  email: string;
+  role: WorkspaceRole;
+  expires_at: Iso;
+  accepted_at: Iso | null;
+  created_at: Iso;
+}
+
+export interface InviteCreated {
+  id: Uuid;
+  email: string;
+  role: WorkspaceRole;
+  expires_at: Iso;
+  token: string;
+  accept_url: string;
+  email_sent: boolean;
+}
+
+export interface InvitePreview {
+  workspace_id: Uuid;
+  workspace_name: string;
+  email: string;
+  role: WorkspaceRole;
+  expires_at: Iso;
 }
 
 export type MonitorStatus = "up" | "down" | "degraded" | "unknown";

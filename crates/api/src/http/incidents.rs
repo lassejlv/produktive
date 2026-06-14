@@ -36,6 +36,8 @@ pub struct CreateIncidentBody {
     pub message: String,
     #[serde(default)]
     pub severity: Option<String>,
+    #[serde(default)]
+    pub monitor_id: Option<Uuid>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -93,6 +95,11 @@ struct IncidentRow {
     error_message: Option<String>,
 }
 
+#[derive(FromQueryResult)]
+struct ExistsRow {
+    exists: bool,
+}
+
 #[utoipa::path(
     get,
     path = "/api/workspaces/{wid}/incidents",
@@ -138,6 +145,10 @@ pub async fn create(
     let title = clean_text(body.title, 3, 160, "title")?;
     let message = clean_text(body.message, 1, 4_000, "message")?;
     let severity = parse_severity(body.severity.as_deref())?;
+    let monitor_id = body.monitor_id;
+    if let Some(monitor_id) = monitor_id {
+        ensure_workspace_monitor(&state, m.workspace.id, monitor_id).await?;
+    }
     let now = Utc::now().fixed_offset();
     let incident_id = Uuid::now_v7();
     let update_id = Uuid::now_v7();
@@ -151,11 +162,12 @@ pub async fn create(
                 id, workspace_id, monitor_id, title, source, status, severity,
                 started_at, last_seen_at, resolved_at, error_message, created_at, updated_at
             )
-            VALUES ($1, $2, NULL, $3, 1, 0, $4, $5, $5, NULL, $6, $5, $5)
+            VALUES ($1, $2, $3, $4, 1, 0, $5, $6, $6, NULL, $7, $6, $6)
             "#,
             [
                 incident_id.into(),
                 m.workspace.id.into(),
+                monitor_id.into(),
                 title.into(),
                 severity.into(),
                 now.into(),
@@ -294,6 +306,10 @@ async fn incident_rows(
             CASE i.severity
                 WHEN 0 THEN 'down'
                 WHEN 2 THEN 'degraded'
+                WHEN 3 THEN 'maintenance'
+                WHEN 4 THEN 'informational'
+                WHEN 5 THEN 'minor'
+                WHEN 6 THEN 'critical'
                 ELSE 'unknown'
             END AS severity,
             i.started_at,
@@ -313,6 +329,34 @@ async fn incident_rows(
     .await?;
 
     Ok(rows)
+}
+
+async fn ensure_workspace_monitor(
+    state: &AppState,
+    workspace_id: Uuid,
+    monitor_id: Uuid,
+) -> ApiResult<()> {
+    let row = ExistsRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT EXISTS(
+            SELECT 1
+            FROM monitors
+            WHERE id = $1
+              AND workspace_id = $2
+        ) AS exists
+        "#,
+        [monitor_id.into(), workspace_id.into()],
+    ))
+    .one(&state.db)
+    .await?;
+
+    match row {
+        Some(row) if row.exists => Ok(()),
+        _ => Err(ApiError::bad_request(
+            "monitor does not belong to this workspace",
+        )),
+    }
 }
 
 async fn incident_row(
@@ -352,6 +396,10 @@ async fn incident_row(
             CASE i.severity
                 WHEN 0 THEN 'down'
                 WHEN 2 THEN 'degraded'
+                WHEN 3 THEN 'maintenance'
+                WHEN 4 THEN 'informational'
+                WHEN 5 THEN 'minor'
+                WHEN 6 THEN 'critical'
                 ELSE 'unknown'
             END AS severity,
             i.started_at,
@@ -502,7 +550,13 @@ fn parse_severity(raw: Option<&str>) -> ApiResult<i16> {
     match raw.unwrap_or("degraded") {
         "down" => Ok(0),
         "degraded" => Ok(2),
-        _ => Err(ApiError::bad_request("severity must be down or degraded")),
+        "maintenance" => Ok(3),
+        "informational" => Ok(4),
+        "minor" => Ok(5),
+        "critical" => Ok(6),
+        _ => Err(ApiError::bad_request(
+            "severity must be informational, maintenance, minor, degraded, down, or critical",
+        )),
     }
 }
 

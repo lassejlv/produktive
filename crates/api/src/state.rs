@@ -5,6 +5,7 @@ use reqwest::Client;
 use sea_orm::DatabaseConnection;
 use tokio::sync::Semaphore;
 
+use email::EmailClient;
 use polar::Polar;
 
 use crate::{billing::Billing, config::Config};
@@ -22,6 +23,7 @@ pub struct AppState {
     pub config: Config,
     pub http: Client,
     pub redis: RedisState,
+    pub email: EmailClient,
     pub check_semaphore: Arc<Semaphore>,
     pub billing: Option<Billing>,
 }
@@ -47,6 +49,7 @@ impl AppState {
             tracing::warn!("REDIS_URL not set; auth rate limiting is disabled");
             RedisState::Disabled
         };
+        let email = build_email()?;
         let check_semaphore = Arc::new(Semaphore::new(config.scheduler_max_concurrent_checks));
         let billing = build_billing(&config).await;
         Ok(Self {
@@ -54,9 +57,24 @@ impl AppState {
             config,
             http,
             redis,
+            email,
             check_semaphore,
             billing,
         })
+    }
+}
+
+fn build_email() -> anyhow::Result<EmailClient> {
+    match email::EmailConfig::from_env()? {
+        Some(config) => {
+            let client = EmailClient::smtp(config)?;
+            tracing::info!("SMTP email initialized");
+            Ok(client)
+        }
+        None => {
+            tracing::warn!("SMTP_HOST not set; transactional email is disabled");
+            Ok(EmailClient::disabled())
+        }
     }
 }
 

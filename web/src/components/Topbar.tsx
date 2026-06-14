@@ -1,5 +1,5 @@
 import { Link, useParams } from "@tanstack/react-router";
-import { Menu, Search } from "lucide-react";
+import { Menu } from "lucide-react";
 import { useWorkspaces } from "../lib/queries";
 import { useLeafMeta } from "./PageLayout";
 import { Button } from "./Button";
@@ -57,18 +57,6 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          disabled
-          title="Search coming soon"
-          className="hidden cursor-not-allowed items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] px-2.5 text-[12px] text-[var(--color-fg-dim)] opacity-60 shadow-[var(--shadow-xs)] md:flex md:h-8"
-        >
-          <Search size={12} />
-          <span>Search</span>
-          <kbd className="mono rounded border border-[var(--color-border)] bg-[var(--color-bg-sunken)] px-1.5 py-0.5 text-[10px] text-[var(--color-fg-dim)]">
-            ⌘K
-          </kbd>
-        </button>
         <ThemeToggle />
         {widParam && action && (
           <Link to={action.to} params={{ wid: widParam }}>

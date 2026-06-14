@@ -21,8 +21,10 @@ pub async fn validate_monitor(kind: MonitorKind, target: &str) -> ApiResult<Stri
         MonitorKind::Http => validate_http_addrs(target).await?,
         MonitorKind::Tcp => validate_tcp(target).await?,
         MonitorKind::Ping => validate_ping(target).await?,
-        MonitorKind::Postgres => validate_tcp(target).await?,
-        MonitorKind::Redis => validate_tcp(target).await?,
+        MonitorKind::Postgres => {
+            validate_url_or_tcp(target, &["postgres", "postgresql"], 5432).await?
+        }
+        MonitorKind::Redis => validate_url_or_tcp(target, &["redis", "rediss"], 6379).await?,
         MonitorKind::Ssh => validate_tcp(target).await?,
     };
 
@@ -77,6 +79,28 @@ async fn validate_tcp(target: &str) -> ApiResult<Vec<SocketAddr>> {
         .await
         .map(|iter| iter.collect())
         .map_err(|_| ApiError::bad_request("invalid tcp target"))
+}
+
+async fn validate_url_or_tcp(
+    target: &str,
+    schemes: &[&str],
+    default_port: u16,
+) -> ApiResult<Vec<SocketAddr>> {
+    if !target.contains("://") {
+        return validate_tcp(target).await;
+    }
+    let url = Url::parse(target).map_err(|_| ApiError::bad_request("invalid connection url"))?;
+    if !schemes.iter().any(|scheme| *scheme == url.scheme()) {
+        return Err(ApiError::bad_request(format!(
+            "connection url must use {}",
+            schemes.join(" or ")
+        )));
+    }
+    let host = url
+        .host_str()
+        .ok_or_else(|| ApiError::bad_request("connection url host required"))?;
+    let port = url.port().unwrap_or(default_port);
+    resolve_host_port(host, port).await
 }
 
 async fn validate_ping(target: &str) -> ApiResult<Vec<SocketAddr>> {

@@ -14,17 +14,24 @@ import type {
   IncidentUpdateStatus,
   CustomDomain,
   Incident,
+  IncidentSeverity,
   Monitor,
   Notification,
   NotificationChannel,
+  NotificationDelivery,
   OkResponse,
   PublicStatus,
   Region,
   Stats,
   User,
   Workspace,
+  WorkspaceInvite,
+  WorkspaceMember,
   WorkspacePatch,
   CreateMonitorBody,
+  InviteCreated,
+  InvitePreview,
+  WorkspaceRole,
 } from "./types";
 import type { PublicPricingResponse } from "./pricing";
 
@@ -50,6 +57,14 @@ export const workspacesQuery = {
 
 export function useWorkspaces() {
   return useQuery(workspacesQuery);
+}
+
+export function useCreateWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string }) => api.post<Workspace>("/workspaces", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["workspaces"] }),
+  });
 }
 
 export function monitorsQuery(wid: string) {
@@ -153,7 +168,8 @@ export function useIncidents(wid: string, status: "all" | "open" | "resolved" = 
 export interface CreateIncidentInput {
   title: string;
   message: string;
-  severity: "down" | "degraded";
+  severity: Exclude<IncidentSeverity, "unknown">;
+  monitor_id?: string | null;
 }
 
 export interface AddIncidentUpdateInput {
@@ -225,6 +241,138 @@ export function useDeleteNotificationChannel(wid: string) {
     mutationFn: (id: string) =>
       api.del<OkResponse>(`/workspaces/${wid}/notifications/channels/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notification-channels", wid] }),
+  });
+}
+
+export function useUpdateNotificationChannel(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      name?: string;
+      enabled?: boolean;
+      notify_resolved?: boolean;
+    }) => api.patch<NotificationChannel>(`/workspaces/${wid}/notifications/channels/${id}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notification-channels", wid] }),
+  });
+}
+
+export function useTestNotificationChannel(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<OkResponse>(`/workspaces/${wid}/notifications/channels/${id}/test`, {}),
+    onSuccess: (_res, id) => {
+      qc.invalidateQueries({ queryKey: ["notification-channels", wid] });
+      qc.invalidateQueries({ queryKey: ["notification-deliveries", wid, id] });
+    },
+  });
+}
+
+export const notificationDeliveriesQuery = (wid: string, channelId: string) => ({
+  queryKey: ["notification-deliveries", wid, channelId] as const,
+  queryFn: () =>
+    api.get<NotificationDelivery[]>(
+      `/workspaces/${wid}/notifications/channels/${channelId}/deliveries?limit=10`,
+    ),
+});
+
+export function useNotificationDeliveries(wid: string, channelId: string | null) {
+  return useQuery({
+    ...notificationDeliveriesQuery(wid, channelId ?? ""),
+    enabled: !!channelId,
+  });
+}
+
+export const membersQuery = (wid: string) => ({
+  queryKey: ["members", wid] as const,
+  queryFn: () => api.get<WorkspaceMember[]>(`/workspaces/${wid}/members`),
+});
+
+export function useMembers(wid: string) {
+  return useQuery(membersQuery(wid));
+}
+
+export function useUpdateMemberRole(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: WorkspaceRole }) =>
+      api.patch<WorkspaceMember>(`/workspaces/${wid}/members/${userId}`, { role }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["members", wid] });
+      qc.invalidateQueries({ queryKey: ["workspaces"] });
+    },
+  });
+}
+
+export function useRemoveMember(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => api.del<OkResponse>(`/workspaces/${wid}/members/${userId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["members", wid] });
+      qc.invalidateQueries({ queryKey: ["workspaces"] });
+      qc.invalidateQueries({ queryKey: ["billing", wid] });
+      qc.invalidateQueries({ queryKey: ["billing", wid, "summary"] });
+    },
+  });
+}
+
+export const invitesQuery = (wid: string) => ({
+  queryKey: ["invites", wid] as const,
+  queryFn: () => api.get<WorkspaceInvite[]>(`/workspaces/${wid}/invites`),
+});
+
+export function useInvites(wid: string, enabled = true) {
+  return useQuery({ ...invitesQuery(wid), enabled });
+}
+
+export function useCreateInvite(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { email: string; role?: WorkspaceRole }) =>
+      api.post<InviteCreated>(`/workspaces/${wid}/invites`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["invites", wid] });
+      qc.invalidateQueries({ queryKey: ["billing", wid] });
+      qc.invalidateQueries({ queryKey: ["billing", wid, "summary"] });
+    },
+  });
+}
+
+export function useRevokeInvite(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<OkResponse>(`/workspaces/${wid}/invites/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["invites", wid] });
+      qc.invalidateQueries({ queryKey: ["billing", wid] });
+      qc.invalidateQueries({ queryKey: ["billing", wid, "summary"] });
+    },
+  });
+}
+
+export const invitePreviewQuery = (token: string) => ({
+  queryKey: ["invite", token] as const,
+  queryFn: () => api.get<InvitePreview>(`/invites/${token}`),
+  retry: false,
+});
+
+export function useInvitePreview(token: string) {
+  return useQuery(invitePreviewQuery(token));
+}
+
+export function useAcceptInvite(token: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<OkResponse>(`/invites/${token}/accept`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["workspaces"] });
+      qc.invalidateQueries({ queryKey: ["invite", token] });
+    },
   });
 }
 

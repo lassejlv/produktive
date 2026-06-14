@@ -9,6 +9,8 @@ pub struct Projection {
     pub timeout_ms: Option<i32>,
     pub expected_status: Option<i32>,
     pub expected_body_contains: Option<String>,
+    pub query: Option<String>,
+    pub command: Option<String>,
     pub headers: Vec<(String, ProjectedHeaderValue)>,
 }
 
@@ -89,6 +91,16 @@ fn apply_config_block(p: &mut Projection, entries: &[BlockEntry]) {
             "expected_body_contains" | "expected.body" => {
                 if let Value::String(s) = &entry.value {
                     p.expected_body_contains = Some(s.clone());
+                }
+            }
+            "query" => {
+                if let Value::String(s) = &entry.value {
+                    p.query = Some(s.clone());
+                }
+            }
+            "command" => {
+                if let Value::String(s) = &entry.value {
+                    p.command = Some(s.clone());
                 }
             }
             "headers" => {

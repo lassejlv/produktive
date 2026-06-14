@@ -165,6 +165,20 @@ pub async fn require_monitor_interval(
     Ok(())
 }
 
+pub async fn workspace_has_paid_plan(state: &AppState, workspace_id: Uuid) -> ApiResult<bool> {
+    let Some(billing) = state.billing.as_ref() else {
+        return Ok(true);
+    };
+    let cstate = customer_state_for_billing(state, workspace_id).await?;
+    let Some(sub) = cstate.active_subscription() else {
+        return Ok(false);
+    };
+    let Some(tier) = billing.catalog.tier_for_product(&sub.product_id) else {
+        return Ok(false);
+    };
+    Ok(tier != "free" && matches!(sub.status.as_str(), "active" | "trialing" | "past_due"))
+}
+
 /// Report usage to Polar. For `events`, ingest the weighted delta (deduped by
 /// `idempotency_key`); for the `monitors`/`members` gauges, report the current
 /// DB count so the `max`-aggregation meter captures the period peak.

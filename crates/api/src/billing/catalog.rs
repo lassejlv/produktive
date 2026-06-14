@@ -130,6 +130,17 @@ impl PolarCatalog {
         self.tiers.get(slug)
     }
 
+    pub fn default_paid_tier(&self) -> Option<&TierCatalog> {
+        ["usage_based", "usage-based", "usage"]
+            .into_iter()
+            .find_map(|tier| self.tiers.get(tier))
+            .or_else(|| {
+                self.tiers_ordered()
+                    .into_iter()
+                    .find(|tier| tier.tier != "free")
+            })
+    }
+
     pub fn free_product_id(&self) -> Option<&str> {
         self.free_product_id.as_deref()
     }

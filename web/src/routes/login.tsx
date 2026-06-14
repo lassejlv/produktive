@@ -117,7 +117,11 @@ function LoginPage() {
 
         <div className="mt-8 text-[13px] text-[var(--color-fg-muted)] text-center">
           No account?{" "}
-          <Link to="/signup" className="link">
+          <Link
+            to="/signup"
+            search={redirectTo === "/" ? {} : { redirect: redirectTo }}
+            className="link"
+          >
             Create one
           </Link>
         </div>

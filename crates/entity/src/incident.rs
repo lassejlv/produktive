@@ -24,6 +24,14 @@ pub enum IncidentSeverity {
     Down,
     #[sea_orm(num_value = 2)]
     Degraded,
+    #[sea_orm(num_value = 3)]
+    Maintenance,
+    #[sea_orm(num_value = 4)]
+    Informational,
+    #[sea_orm(num_value = 5)]
+    Minor,
+    #[sea_orm(num_value = 6)]
+    Critical,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, ToSchema)]

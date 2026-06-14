@@ -119,11 +119,23 @@ pub async fn run(client: &Client, spec: &ProbeSpec, max_body_bytes: usize) -> Pr
             None => unresolved_target_outcome(),
         },
         (MonitorKind::Postgres, target::ValidatedTarget::Tcp(addrs)) => match first_addr(&addrs) {
-            Some(addr) => postgres_check::run(addr, timeout).await,
+            Some(_) => {
+                let query = dsl_doc
+                    .as_ref()
+                    .and_then(|doc| dsl::project(doc).query)
+                    .unwrap_or_else(|| "SELECT 1".to_owned());
+                postgres_check::run(&spec.target, &query, timeout).await
+            }
             None => unresolved_target_outcome(),
         },
         (MonitorKind::Redis, target::ValidatedTarget::Tcp(addrs)) => match first_addr(&addrs) {
-            Some(addr) => redis_check::run(addr, timeout).await,
+            Some(_) => {
+                let command = dsl_doc
+                    .as_ref()
+                    .and_then(|doc| dsl::project(doc).command)
+                    .unwrap_or_else(|| "PING".to_owned());
+                redis_check::run(&spec.target, &command, timeout).await
+            }
             None => unresolved_target_outcome(),
         },
         (MonitorKind::Ssh, target::ValidatedTarget::Tcp(addrs)) => match first_addr(&addrs) {

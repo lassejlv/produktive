@@ -7,8 +7,17 @@ import { timeAgo } from "./StatusShell";
 const MINI_LIMIT = 5;
 
 function severityColor(incident: PublicIncident): string {
-  if (incident.severity === "degraded") return "var(--color-warn)";
-  if (incident.severity === "down") return "var(--color-err)";
+  if (incident.severity === "down" || incident.severity === "critical") {
+    return "var(--color-err)";
+  }
+  if (
+    incident.severity === "degraded" ||
+    incident.severity === "maintenance" ||
+    incident.severity === "minor"
+  ) {
+    return "var(--color-warn)";
+  }
+  if (incident.severity === "informational") return "var(--color-accent)";
   return "var(--color-unknown)";
 }
 
@@ -42,7 +51,7 @@ export function IncidentRow({ incident }: { incident: PublicIncident }) {
     incident.source === "manual"
       ? incident.title
       : open
-        ? `${incident.monitor_name ?? incident.title} is ${incident.severity}`
+        ? `${incident.monitor_name ?? incident.title} is ${severityLabel(incident.severity)}`
         : `${incident.monitor_name ?? incident.title} recovered`;
   const resolvedAt = incident.resolved_at ?? incident.last_seen_at;
   const lasted = formatDuration(
@@ -92,6 +101,25 @@ export function IncidentRow({ incident }: { incident: PublicIncident }) {
       </div>
     </div>
   );
+}
+
+function severityLabel(severity: PublicIncident["severity"]): string {
+  switch (severity) {
+    case "informational":
+      return "informational";
+    case "maintenance":
+      return "under maintenance";
+    case "minor":
+      return "minorly impacted";
+    case "degraded":
+      return "degraded";
+    case "down":
+      return "down";
+    case "critical":
+      return "critically impacted";
+    default:
+      return "unknown";
+  }
 }
 
 /**

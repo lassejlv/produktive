@@ -166,8 +166,8 @@ fn overall_status<'a>(statuses: impl Iterator<Item = &'a str>) -> &'static str {
     let mut overall = "unknown";
     for s in statuses {
         match s {
-            "down" => return "down",
-            "degraded" => overall = "degraded",
+            "down" | "critical" => return "down",
+            "degraded" | "maintenance" | "minor" => overall = "degraded",
             "up" if overall == "unknown" => overall = "up",
             _ => {}
         }
@@ -469,6 +469,10 @@ async fn public_incidents(state: &AppState, workspace_id: Uuid) -> ApiResult<Vec
             CASE i.severity
                 WHEN 0 THEN 'down'
                 WHEN 2 THEN 'degraded'
+                WHEN 3 THEN 'maintenance'
+                WHEN 4 THEN 'informational'
+                WHEN 5 THEN 'minor'
+                WHEN 6 THEN 'critical'
                 ELSE 'unknown'
             END AS severity,
             i.started_at,
