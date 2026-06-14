@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import Editor, { loader, type OnMount } from "@monaco-editor/react";
+import MonacoEditor, { loader, type OnMount } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
 import { LANG_ID, THEME_DARK, THEME_LIGHT, registerDslLanguage } from "#/lib/dslLanguage";
 import { useTheme } from "#/lib/theme";
@@ -103,7 +103,7 @@ export default function MonacoDsl({
   }, [errorLine, errorMessage]);
 
   return (
-    <Editor
+    <MonacoEditor
       height={height}
       defaultLanguage={LANG_ID}
       language={LANG_ID}

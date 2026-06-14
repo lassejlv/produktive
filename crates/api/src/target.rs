@@ -30,16 +30,6 @@ pub async fn validate_monitor(kind: MonitorKind, target: &str) -> ApiResult<Stri
     Ok(target.to_string())
 }
 
-pub async fn validate_webhook_url(target: &str) -> ApiResult<String> {
-    let target = target.trim();
-    if target.is_empty() {
-        return Err(ApiError::bad_request("webhook url required"));
-    }
-    let validated = validate_http(target).await?;
-    ensure_public_addrs(&validated.addrs)?;
-    Ok(target.to_string())
-}
-
 pub async fn validate_webhook_target(target: &str) -> ApiResult<ValidatedHttpTarget> {
     let target = target.trim();
     if target.is_empty() {

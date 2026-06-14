@@ -55,10 +55,59 @@ pub struct NotificationChannelView {
     pub updated_at: DateTime<FixedOffset>,
 }
 
+/// Delivery target type for a notification channel. Stored as a SMALLINT
+/// (`webhook = 0`, `slack = 1`, `discord = 2`); the wire format is the
+/// lowercase name so the API stays self-describing.
+#[derive(Debug, Clone, Copy, Default, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ChannelKind {
+    #[default]
+    Webhook,
+    Slack,
+    Discord,
+}
+
+impl ChannelKind {
+    fn as_i16(self) -> i16 {
+        match self {
+            ChannelKind::Webhook => 0,
+            ChannelKind::Slack => 1,
+            ChannelKind::Discord => 2,
+        }
+    }
+
+    /// Reject mismatched URLs early (e.g. a Discord URL pasted into a Slack
+    /// channel) so a misconfigured channel fails at create time rather than
+    /// silently dropping every delivery.
+    fn validate_host(self, host: &str) -> ApiResult<()> {
+        let host = host.to_ascii_lowercase();
+        let ok = match self {
+            ChannelKind::Webhook => true,
+            ChannelKind::Slack => host == "hooks.slack.com",
+            ChannelKind::Discord => {
+                host == "discord.com"
+                    || host == "discordapp.com"
+                    || host.ends_with(".discord.com")
+                    || host.ends_with(".discordapp.com")
+            }
+        };
+        if ok {
+            return Ok(());
+        }
+        Err(ApiError::bad_request(match self {
+            ChannelKind::Slack => "slack channel url must point to hooks.slack.com",
+            ChannelKind::Discord => "discord channel url must point to discord.com",
+            ChannelKind::Webhook => "invalid webhook host",
+        }))
+    }
+}
+
 #[derive(Deserialize, ToSchema)]
 pub struct CreateNotificationChannel {
     pub name: String,
     pub webhook_url: String,
+    #[serde(default)]
+    pub kind: ChannelKind,
     #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(default = "default_true")]
@@ -160,7 +209,9 @@ pub async fn create_channel(
     if name.is_empty() {
         return Err(ApiError::bad_request("channel name required"));
     }
-    let webhook_url = target::validate_webhook_url(&body.webhook_url).await?;
+    let webhook_url = body.webhook_url.trim().to_string();
+    let validated = target::validate_webhook_target(&webhook_url).await?;
+    body.kind.validate_host(&validated.host)?;
     let now = Utc::now().fixed_offset();
     let id = Uuid::now_v7();
 
@@ -173,12 +224,13 @@ pub async fn create_channel(
                 id, workspace_id, name, kind, webhook_url, enabled,
                 notify_resolved, created_at, updated_at
             )
-            VALUES ($1, $2, $3, 0, $4, $5, $6, $7, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
             "#,
             [
                 id.into(),
                 m.workspace.id.into(),
                 name.to_string().into(),
+                body.kind.as_i16().into(),
                 webhook_url.into(),
                 body.enabled.into(),
                 body.notify_resolved.into(),
@@ -239,6 +291,8 @@ async fn load_channels(
             name,
             CASE kind
                 WHEN 0 THEN 'webhook'
+                WHEN 1 THEN 'slack'
+                WHEN 2 THEN 'discord'
                 ELSE 'unknown'
             END AS kind,
             regexp_replace(webhook_url, '^(https?://[^/?#]+).*$', '\1/...') AS masked_url,
@@ -255,4 +309,43 @@ async fn load_channels(
     .all(&state.db)
     .await?;
     Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ChannelKind;
+
+    #[test]
+    fn channel_kind_maps_to_stored_smallint() {
+        assert_eq!(ChannelKind::Webhook.as_i16(), 0);
+        assert_eq!(ChannelKind::Slack.as_i16(), 1);
+        assert_eq!(ChannelKind::Discord.as_i16(), 2);
+    }
+
+    #[test]
+    fn slack_requires_hooks_host() {
+        assert!(ChannelKind::Slack.validate_host("hooks.slack.com").is_ok());
+        assert!(ChannelKind::Slack.validate_host("HOOKS.SLACK.COM").is_ok());
+        assert!(ChannelKind::Slack.validate_host("discord.com").is_err());
+    }
+
+    #[test]
+    fn discord_allows_known_hosts_only() {
+        for host in ["discord.com", "discordapp.com", "ptb.discord.com"] {
+            assert!(ChannelKind::Discord.validate_host(host).is_ok(), "{host}");
+        }
+        assert!(ChannelKind::Discord
+            .validate_host("hooks.slack.com")
+            .is_err());
+        assert!(ChannelKind::Discord
+            .validate_host("notdiscord.com.evil.test")
+            .is_err());
+    }
+
+    #[test]
+    fn webhook_accepts_any_public_host() {
+        assert!(ChannelKind::Webhook
+            .validate_host("hooks.example.com")
+            .is_ok());
+    }
 }
