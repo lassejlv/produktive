@@ -151,6 +151,47 @@
   color: var(--color-fg);
 }
 
+/* Vendored bklit line-chart theming (web/src/charts/**). The components read
+   these tokens; we re-point them at our own design tokens. Because every value
+   resolves through var(--color-*), the chart follows the active data-theme
+   automatically — including a scoped-light wrapper nested in a dark ancestor
+   (e.g. the public status page). Keep this in sync with the token taxonomy. */
+:root {
+  /* shadcn fallbacks the components default to */
+  --foreground: var(--color-fg);
+  --muted-foreground: var(--color-fg-muted);
+
+  /* chart surface + text */
+  --chart-background: var(--color-bg-elev);
+  --chart-foreground: var(--color-fg);
+  --chart-foreground-muted: var(--color-fg-muted);
+  --chart-label: var(--color-fg-dim);
+
+  /* grid + crosshair */
+  --chart-grid: var(--color-border);
+  --chart-crosshair: var(--color-border-strong);
+  --chart-brush-border: var(--color-border);
+
+  /* series lines */
+  --chart-line-primary: var(--color-accent);
+  --chart-line-secondary: var(--color-fg-muted);
+
+  /* segment selection (click-drag) */
+  --chart-segment-line: var(--color-border-hi);
+  --chart-segment-background: var(--color-accent-soft);
+
+  /* tooltip indicators */
+  --chart-indicator-color: var(--color-accent);
+  --chart-indicator-secondary-color: var(--color-fg-muted);
+
+  /* marker annotations */
+  --chart-marker-foreground: var(--color-fg);
+  --chart-marker-border: var(--color-border-strong);
+  --chart-marker-background: var(--color-bg-elev);
+  --chart-marker-badge-foreground: var(--color-accent-fg);
+  --chart-marker-badge-background: var(--color-accent);
+}
+
 *,
 *::before,
 *::after {

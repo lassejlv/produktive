@@ -10,7 +10,7 @@ import { FullPageSpinner } from "../components/Spinner";
 import { DslEditor } from "../components/DslEditor";
 import { Segmented } from "../components/Segmented";
 import { StatTile } from "../components/StatTile";
-import { LatencyChart } from "../components/LatencyChart";
+import { ResponseTimeChart } from "../components/ResponseTimeChart";
 import { MonitorMenu } from "../components/MonitorMenu";
 import { PROBE_ICON } from "../components/ProbeIcons";
 import { STATUS_COLOR, STATUS_LABEL } from "../lib/status";
@@ -232,7 +232,17 @@ function MonitorDetail() {
             <FullPageSpinner />
           </div>
         ) : checks.data && checks.data.length > 0 ? (
-          <LatencyChart checks={checks.data} />
+          <ResponseTimeChart
+            points={checks.data
+              .slice()
+              .reverse()
+              .map((c) => ({
+                date: new Date(c.time),
+                ms: c.latency_ms,
+                up: c.status === 1,
+                label: c.error_message ?? undefined,
+              }))}
+          />
         ) : (
           <div className="h-[168px] flex items-center justify-center text-[12px] text-[var(--color-fg-dim)]">
             No checks recorded yet.

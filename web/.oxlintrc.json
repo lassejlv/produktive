@@ -9,5 +9,11 @@
     "react/react-in-jsx-scope": "off",
     "import/no-unassigned-import": "off"
   },
-  "ignorePatterns": ["dist", "node_modules", "src/routeTree.gen.ts"]
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "src/routeTree.gen.ts",
+    "src/charts",
+    "src/components/shimmering-text.tsx"
+  ]
 }

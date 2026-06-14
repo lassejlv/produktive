@@ -38,6 +38,9 @@ pub struct DayBucket {
     pub up: i64,
     pub down: i64,
     pub degraded: i64,
+    /// Mean response time (ms) over checks that recorded a latency that day.
+    /// `None` when no successful checks were recorded.
+    pub avg_latency_ms: Option<i32>,
 }
 
 #[derive(Clone, Serialize, ToSchema)]
@@ -183,6 +186,17 @@ struct DayRow {
     up: i64,
     down: i64,
     degraded: i64,
+    avg_latency_ms: Option<f64>,
+}
+
+/// Per-(monitor, day) aggregate carried from the SQL rollup into each `DayBucket`.
+#[derive(Clone, Copy, Default)]
+struct DayAgg {
+    total: i64,
+    up: i64,
+    down: i64,
+    degraded: i64,
+    avg_latency_ms: Option<f64>,
 }
 
 #[derive(FromQueryResult)]
@@ -302,7 +316,8 @@ async fn status_for_workspace(
                    COUNT(*)::bigint AS total,
                    COUNT(*) FILTER (WHERE status = 1)::bigint AS up,
                    COUNT(*) FILTER (WHERE status = 0)::bigint AS down,
-                   COUNT(*) FILTER (WHERE status = 2)::bigint AS degraded
+                   COUNT(*) FILTER (WHERE status = 2)::bigint AS degraded,
+                   AVG(latency_ms)::double precision AS avg_latency_ms
             FROM checks
             WHERE monitor_id = ANY($1) AND time >= $2
             GROUP BY monitor_id, day
@@ -316,11 +331,17 @@ async fn status_for_workspace(
         .await?
     };
 
-    let mut counts: HashMap<(Uuid, String), (i64, i64, i64, i64)> = HashMap::new();
+    let mut counts: HashMap<(Uuid, String), DayAgg> = HashMap::new();
     for r in &day_rows {
         counts.insert(
             (r.monitor_id, r.day.clone()),
-            (r.total, r.up, r.down, r.degraded),
+            DayAgg {
+                total: r.total,
+                up: r.up,
+                down: r.down,
+                degraded: r.degraded,
+                avg_latency_ms: r.avg_latency_ms,
+            },
         );
     }
     // Oldest-to-newest day axis, shared by every monitor.
@@ -336,16 +357,17 @@ async fn status_for_workspace(
                 .iter()
                 .map(|d| {
                     let date = d.to_string();
-                    let (total, up, down, degraded) = counts
+                    let agg = counts
                         .get(&(m.id, date.clone()))
                         .copied()
-                        .unwrap_or((0, 0, 0, 0));
+                        .unwrap_or_default();
                     DayBucket {
                         date,
-                        total,
-                        up,
-                        down,
-                        degraded,
+                        total: agg.total,
+                        up: agg.up,
+                        down: agg.down,
+                        degraded: agg.degraded,
+                        avg_latency_ms: agg.avg_latency_ms.map(|v| v.round() as i32),
                     }
                 })
                 .collect();

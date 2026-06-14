@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Check, Minus, X } from "lucide-react";
+import { ResponseTimeChart, type ResponseTimePoint } from "../ResponseTimeChart";
 import { STATUS_COLOR } from "../../lib/status";
 import type {
   DayBucket,
@@ -240,6 +241,14 @@ function Medallion({
 
 function MonitorRow({ m }: { m: PublicMonitor }) {
   const uptime = windowUptime(m.history);
+  const latencyPoints: ResponseTimePoint[] = m.history
+    .filter((d) => d.avg_latency_ms != null)
+    .map((d) => ({
+      date: new Date(`${d.date}T00:00:00Z`),
+      ms: d.avg_latency_ms,
+      up: true,
+      label: `avg · ${d.total} checks`,
+    }));
 
   return (
     <div>
@@ -271,6 +280,15 @@ function MonitorRow({ m }: { m: PublicMonitor }) {
         <span>{m.history.length > 0 ? `${m.history.length} days ago` : "—"}</span>
         <span>Today</span>
       </div>
+
+      {latencyPoints.length >= 2 && (
+        <div className="mt-3">
+          <div className="mb-1 text-[10.5px] text-[var(--color-fg-dim)]">
+            Response time · daily avg
+          </div>
+          <ResponseTimeChart points={latencyPoints} height={104} />
+        </div>
+      )}
     </div>
   );
 }

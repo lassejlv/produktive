@@ -153,6 +153,8 @@ export interface DayBucket {
   up: number;
   down: number;
   degraded: number;
+  /** Mean response time (ms) over checks that recorded a latency that day; null when none. */
+  avg_latency_ms: number | null;
 }
 
 export interface PublicMonitor {
