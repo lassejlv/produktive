@@ -334,6 +334,54 @@ select {
     transform: translateY(0);
   }
 }
+
+/* marketing scroll reveal — sections rise in as they enter the viewport */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  will-change: opacity, transform;
+}
+.reveal.reveal-in {
+  animation: reveal-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes reveal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* marketing live ticker — the "now" edge of the hero uptime history */
+@keyframes ticker-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.ticker-pulse {
+  animation: ticker-pulse 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+  .reveal.reveal-in,
+  .ticker-pulse,
+  .pricing-rise,
+  .pulse-dot,
+  .fade-in {
+    animation: none;
+  }
+}
 .pricing-rise {
   animation: pricing-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
