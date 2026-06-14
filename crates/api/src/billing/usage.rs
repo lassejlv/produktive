@@ -17,7 +17,7 @@ use crate::{
 };
 
 /// Each recorded check consumes this many billable "event" units.
-pub const EVENT_UNITS_PER_CHECK: f64 = 10.0;
+pub const EVENT_UNITS_PER_CHECK: f64 = 2.0;
 
 /// The workspace UUID is the Polar customer `external_id`.
 pub fn customer_id(workspace_id: Uuid) -> String {
@@ -438,6 +438,6 @@ mod tests {
 
     #[test]
     fn check_events_are_weighted_for_billing() {
-        assert_eq!(3.0 * EVENT_UNITS_PER_CHECK, 30.0);
+        assert_eq!(3.0 * EVENT_UNITS_PER_CHECK, 6.0);
     }
 }
