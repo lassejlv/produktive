@@ -384,22 +384,24 @@ async fn sync_incident(
 
             if res.rows_affected() == 0 {
                 let incident_id = Uuid::now_v7();
+                let severity_label = if severity == 0 { "down" } else { "degraded" };
                 state
                     .db
                     .execute(Statement::from_sql_and_values(
                         DatabaseBackend::Postgres,
                         r#"
                         INSERT INTO incidents (
-                            id, workspace_id, monitor_id, status, severity,
+                            id, workspace_id, monitor_id, title, source, status, severity,
                             started_at, last_seen_at, resolved_at,
                             error_message, created_at, updated_at
                         )
-                        VALUES ($1, $2, $3, 0, $4, $5, $5, NULL, $6, $5, $5)
+                        VALUES ($1, $2, $3, $4, 0, 0, $5, $6, $6, NULL, $7, $6, $6)
                         "#,
                         [
                             incident_id.into(),
                             monitor.workspace_id.into(),
                             monitor.id.into(),
+                            format!("{} is {severity_label}", monitor.name).into(),
                             severity.into(),
                             now.into(),
                             outcome.error.clone().into(),
@@ -407,7 +409,6 @@ async fn sync_incident(
                     ))
                     .await?;
 
-                let severity_label = if severity == 0 { "down" } else { "degraded" };
                 emit_notification(
                     state,
                     monitor,

@@ -11,6 +11,7 @@ import type {
   AdminRegion,
   AuthResponse,
   Check,
+  IncidentUpdateStatus,
   CustomDomain,
   Incident,
   Monitor,
@@ -147,6 +148,42 @@ export function incidentsQuery(wid: string, status: "all" | "open" | "resolved" 
 
 export function useIncidents(wid: string, status: "all" | "open" | "resolved" = "all") {
   return useQuery(incidentsQuery(wid, status));
+}
+
+export interface CreateIncidentInput {
+  title: string;
+  message: string;
+  severity: "down" | "degraded";
+}
+
+export interface AddIncidentUpdateInput {
+  incidentId: string;
+  message: string;
+  status: Exclude<IncidentUpdateStatus, "unknown">;
+}
+
+export function useCreateIncident(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateIncidentInput) =>
+      api.post<Incident>(`/workspaces/${wid}/incidents`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["incidents", wid] });
+      qc.invalidateQueries({ queryKey: ["public-status"] });
+    },
+  });
+}
+
+export function useAddIncidentUpdate(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ incidentId, ...body }: AddIncidentUpdateInput) =>
+      api.post<Incident>(`/workspaces/${wid}/incidents/${incidentId}/updates`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["incidents", wid] });
+      qc.invalidateQueries({ queryKey: ["public-status"] });
+    },
+  });
 }
 
 export const notificationsQuery = (wid: string) => ({

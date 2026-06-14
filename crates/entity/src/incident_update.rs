@@ -6,43 +6,29 @@ use utoipa::ToSchema;
     Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, ToSchema,
 )]
 #[sea_orm(rs_type = "i16", db_type = "SmallInteger")]
-#[serde(rename_all = "lowercase")]
-pub enum IncidentStatus {
+#[serde(rename_all = "snake_case")]
+pub enum IncidentUpdateStatus {
     #[sea_orm(num_value = 0)]
-    Open,
+    Investigating,
     #[sea_orm(num_value = 1)]
+    Identified,
+    #[sea_orm(num_value = 2)]
+    Monitoring,
+    #[sea_orm(num_value = 3)]
     Resolved,
 }
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, EnumIter, DeriveActiveEnum, Serialize, Deserialize, ToSchema,
-)]
-#[sea_orm(rs_type = "i16", db_type = "SmallInteger")]
-#[serde(rename_all = "lowercase")]
-pub enum IncidentSeverity {
-    #[sea_orm(num_value = 0)]
-    Down,
-    #[sea_orm(num_value = 2)]
-    Degraded,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, ToSchema)]
-#[sea_orm(table_name = "incidents")]
+#[sea_orm(table_name = "incident_updates")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub workspace_id: Uuid,
-    pub monitor_id: Option<Uuid>,
-    pub title: String,
-    pub source: i16,
-    pub status: IncidentStatus,
-    pub severity: IncidentSeverity,
-    pub started_at: chrono::DateTime<chrono::FixedOffset>,
-    pub last_seen_at: chrono::DateTime<chrono::FixedOffset>,
-    pub resolved_at: Option<chrono::DateTime<chrono::FixedOffset>>,
-    pub error_message: Option<String>,
+    pub incident_id: Uuid,
+    pub status: IncidentUpdateStatus,
+    pub message: String,
+    pub created_by: Option<Uuid>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
-    pub updated_at: chrono::DateTime<chrono::FixedOffset>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -55,12 +41,19 @@ pub enum Relation {
     )]
     Workspace,
     #[sea_orm(
-        belongs_to = "super::monitor::Entity",
-        from = "Column::MonitorId",
-        to = "super::monitor::Column::Id",
+        belongs_to = "super::incident::Entity",
+        from = "Column::IncidentId",
+        to = "super::incident::Column::Id",
         on_delete = "Cascade"
     )]
-    Monitor,
+    Incident,
+    #[sea_orm(
+        belongs_to = "super::user::Entity",
+        from = "Column::CreatedBy",
+        to = "super::user::Column::Id",
+        on_delete = "SetNull"
+    )]
+    User,
 }
 
 impl Related<super::workspace::Entity> for Entity {
@@ -69,9 +62,15 @@ impl Related<super::workspace::Entity> for Entity {
     }
 }
 
-impl Related<super::monitor::Entity> for Entity {
+impl Related<super::incident::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Monitor.def()
+        Relation::Incident.def()
+    }
+}
+
+impl Related<super::user::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::User.def()
     }
 }
 

@@ -38,9 +38,12 @@ function formatDuration(ms: number): string {
 export function IncidentRow({ incident }: { incident: PublicIncident }) {
   const open = incident.status === "open";
   const color = severityColor(incident);
-  const title = open
-    ? `${incident.monitor_name} is ${incident.severity}`
-    : `${incident.monitor_name} recovered`;
+  const title =
+    incident.source === "manual"
+      ? incident.title
+      : open
+        ? `${incident.monitor_name ?? incident.title} is ${incident.severity}`
+        : `${incident.monitor_name ?? incident.title} recovered`;
   const resolvedAt = incident.resolved_at ?? incident.last_seen_at;
   const lasted = formatDuration(
     new Date(resolvedAt).getTime() - new Date(incident.started_at).getTime(),
@@ -48,6 +51,8 @@ export function IncidentRow({ incident }: { incident: PublicIncident }) {
   const when = open
     ? `Started ${timeAgo(incident.started_at)}`
     : `Resolved ${timeAgo(resolvedAt)} · lasted ${lasted}`;
+
+  const latest = incident.updates.at(-1);
 
   return (
     <div className="px-4 py-3.5">
@@ -63,6 +68,15 @@ export function IncidentRow({ incident }: { incident: PublicIncident }) {
             </span>
           </div>
           <div className="mt-1 text-[12px] text-[var(--color-fg-muted)]">{when}</div>
+          {latest && (
+            <div className="mt-2 text-[12px] leading-relaxed text-[var(--color-fg-muted)]">
+              <span className="font-medium capitalize text-[var(--color-fg)]">
+                {latest.status.replace("_", " ")}
+              </span>
+              <span className="text-[var(--color-fg-dim)]"> · </span>
+              {latest.message}
+            </div>
+          )}
         </div>
         <span
           className={cn(

@@ -245,12 +245,8 @@ function AttentionRow({ wid, monitor }: { wid: string; monitor: Monitor }) {
 
 function IncidentLine({ wid, incident }: { wid: string; incident: Incident }) {
   const color = severityColor(incident.severity);
-  return (
-    <Link
-      to="/$wid/monitors/$mid"
-      params={{ wid, mid: incident.monitor_slug || incident.monitor_id }}
-      className="flex items-center justify-between gap-4 border-b border-[var(--color-border)] px-4 py-3 no-underline transition-colors last:border-b-0 hover:bg-[var(--color-bg-row)]"
-    >
+  const content = (
+    <>
       <div className="flex min-w-0 items-center gap-3">
         <span
           className="h-2 w-2 shrink-0 rounded-full"
@@ -260,7 +256,7 @@ function IncidentLine({ wid, incident }: { wid: string; incident: Incident }) {
           }}
         />
         <span className="truncate text-[13px] font-medium text-[var(--color-fg)]">
-          {incident.monitor_name}
+          {incident.title || incident.monitor_name || "Incident"}
         </span>
         <span
           className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
@@ -272,8 +268,24 @@ function IncidentLine({ wid, incident }: { wid: string; incident: Incident }) {
       <span className="inline-flex shrink-0 items-center gap-1 text-[12px] text-[var(--color-fg-muted)]">
         <Clock size={12} /> {lastSeen(incident.started_at)}
       </span>
-    </Link>
+    </>
   );
+  const className =
+    "flex items-center justify-between gap-4 border-b border-[var(--color-border)] px-4 py-3 no-underline transition-colors last:border-b-0 hover:bg-[var(--color-bg-row)]";
+
+  if (incident.monitor_id) {
+    return (
+      <Link
+        to="/$wid/monitors/$mid"
+        params={{ wid, mid: incident.monitor_slug || incident.monitor_id }}
+        className={className}
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return <div className={className}>{content}</div>;
 }
 
 function SectionHead({ children, className }: { children: string; className?: string }) {

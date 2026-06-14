@@ -172,14 +172,25 @@ export interface PublicGroup {
 
 export interface PublicIncident {
   id: Uuid;
-  monitor_id: Uuid;
-  monitor_name: string;
-  monitor_slug: string;
+  monitor_id: Uuid | null;
+  monitor_name: string | null;
+  monitor_slug: string | null;
+  title: string;
+  source: "automatic" | "manual";
   status: IncidentStatus;
   severity: IncidentSeverity;
   started_at: Iso;
   last_seen_at: Iso;
   resolved_at: Iso | null;
+  updates: PublicIncidentUpdate[];
+}
+
+export interface PublicIncidentUpdate {
+  id: Uuid;
+  incident_id: Uuid;
+  status: IncidentUpdateStatus;
+  message: string;
+  created_at: Iso;
 }
 
 export type PublicOverall = "up" | "degraded" | "down" | "unknown";
@@ -235,20 +246,34 @@ export interface Stats {
 
 export type IncidentStatus = "open" | "resolved" | "unknown";
 export type IncidentSeverity = "down" | "degraded" | "unknown";
+export type IncidentSource = "automatic" | "manual";
+export type IncidentUpdateStatus = "investigating" | "identified" | "monitoring" | "resolved" | "unknown";
 
 export interface Incident {
   id: Uuid;
   workspace_id: Uuid;
-  monitor_id: Uuid;
-  monitor_name: string;
-  monitor_slug: string;
-  monitor_kind: MonitorKind | "unknown";
+  monitor_id: Uuid | null;
+  monitor_name: string | null;
+  monitor_slug: string | null;
+  monitor_kind: MonitorKind | "unknown" | null;
+  title: string;
+  source: IncidentSource;
   status: IncidentStatus;
   severity: IncidentSeverity;
   started_at: Iso;
   last_seen_at: Iso;
   resolved_at: Iso | null;
   error_message: string | null;
+  updates: IncidentUpdate[];
+}
+
+export interface IncidentUpdate {
+  id: Uuid;
+  incident_id: Uuid;
+  status: IncidentUpdateStatus;
+  message: string;
+  created_by: Uuid | null;
+  created_at: Iso;
 }
 
 export interface Notification {

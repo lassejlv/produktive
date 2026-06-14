@@ -1,6 +1,7 @@
 pub mod check;
 pub mod custom_domain;
 pub mod incident;
+pub mod incident_update;
 pub mod monitor;
 pub mod monitor_region;
 pub mod monitor_region_state;

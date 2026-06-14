@@ -62,14 +62,26 @@ pub struct PublicGroup {
 #[derive(Clone, Serialize, ToSchema)]
 pub struct PublicIncident {
     pub id: Uuid,
-    pub monitor_id: Uuid,
-    pub monitor_name: String,
-    pub monitor_slug: String,
+    pub monitor_id: Option<Uuid>,
+    pub monitor_name: Option<String>,
+    pub monitor_slug: Option<String>,
+    pub title: String,
+    pub source: String,
     pub status: String,
     pub severity: String,
     pub started_at: DateTime<FixedOffset>,
     pub last_seen_at: DateTime<FixedOffset>,
     pub resolved_at: Option<DateTime<FixedOffset>>,
+    pub updates: Vec<PublicIncidentUpdate>,
+}
+
+#[derive(Clone, Serialize, ToSchema)]
+pub struct PublicIncidentUpdate {
+    pub id: Uuid,
+    pub incident_id: Uuid,
+    pub status: String,
+    pub message: String,
+    pub created_at: DateTime<FixedOffset>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -176,14 +188,25 @@ struct DayRow {
 #[derive(FromQueryResult)]
 struct PublicIncidentRow {
     id: Uuid,
-    monitor_id: Uuid,
-    monitor_name: String,
-    monitor_slug: String,
+    monitor_id: Option<Uuid>,
+    monitor_name: Option<String>,
+    monitor_slug: Option<String>,
+    title: String,
+    source: String,
     status: String,
     severity: String,
     started_at: DateTime<FixedOffset>,
     last_seen_at: DateTime<FixedOffset>,
     resolved_at: Option<DateTime<FixedOffset>>,
+}
+
+#[derive(FromQueryResult)]
+struct PublicIncidentUpdateRow {
+    id: Uuid,
+    incident_id: Uuid,
+    status: String,
+    message: String,
+    created_at: DateTime<FixedOffset>,
 }
 
 #[utoipa::path(
@@ -352,15 +375,24 @@ async fn status_for_workspace(
         })
         .collect();
 
-    let overall = overall_status(public_monitors.iter().map(|m| m.status.as_str()));
-
     let style = resolve_style(config.style);
     // Hidden components shouldn't leak through their incidents either.
     let incidents: Vec<PublicIncident> = public_incidents(state, ws.id)
         .await?
         .into_iter()
-        .filter(|i| !hidden.contains(&i.monitor_id))
+        .filter(|i| {
+            i.monitor_id
+                .map_or(true, |monitor_id| !hidden.contains(&monitor_id))
+        })
         .collect();
+    let overall = overall_status(
+        public_monitors.iter().map(|m| m.status.as_str()).chain(
+            incidents
+                .iter()
+                .filter(|incident| incident.status == "open")
+                .map(|incident| incident.severity.as_str()),
+        ),
+    );
 
     // Assemble groups: configured groups first (in stored order), then any
     // unassigned monitors fall into a trailing unnamed group.
@@ -424,6 +456,11 @@ async fn public_incidents(state: &AppState, workspace_id: Uuid) -> ApiResult<Vec
             i.monitor_id,
             m.name AS monitor_name,
             m.slug AS monitor_slug,
+            i.title,
+            CASE i.source
+                WHEN 1 THEN 'manual'
+                ELSE 'automatic'
+            END AS source,
             CASE i.status
                 WHEN 0 THEN 'open'
                 WHEN 1 THEN 'resolved'
@@ -438,9 +475,9 @@ async fn public_incidents(state: &AppState, workspace_id: Uuid) -> ApiResult<Vec
             i.last_seen_at,
             i.resolved_at
         FROM incidents i
-        JOIN monitors m ON m.id = i.monitor_id
+        LEFT JOIN monitors m ON m.id = i.monitor_id
         WHERE i.workspace_id = $1
-          AND m.enabled = true
+          AND (i.monitor_id IS NULL OR m.enabled = true)
           AND (
               i.status = $2
               OR (i.resolved_at IS NOT NULL AND i.resolved_at >= $3)
@@ -459,13 +496,56 @@ async fn public_incidents(state: &AppState, workspace_id: Uuid) -> ApiResult<Vec
     .all(&state.db)
     .await?;
 
+    if rows.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
+    let updates = PublicIncidentUpdateRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT
+            id,
+            incident_id,
+            CASE status
+                WHEN 0 THEN 'investigating'
+                WHEN 1 THEN 'identified'
+                WHEN 2 THEN 'monitoring'
+                WHEN 3 THEN 'resolved'
+                ELSE 'unknown'
+            END AS status,
+            message,
+            created_at
+        FROM incident_updates
+        WHERE workspace_id = $1
+          AND incident_id = ANY($2)
+        ORDER BY created_at ASC
+        "#,
+        [workspace_id.into(), ids.into()],
+    ))
+    .all(&state.db)
+    .await?;
+
     Ok(rows
         .into_iter()
         .map(|row| PublicIncident {
+            updates: updates
+                .iter()
+                .filter(|update| update.incident_id == row.id)
+                .map(|update| PublicIncidentUpdate {
+                    id: update.id,
+                    incident_id: update.incident_id,
+                    status: update.status.clone(),
+                    message: update.message.clone(),
+                    created_at: update.created_at,
+                })
+                .collect(),
             id: row.id,
             monitor_id: row.monitor_id,
             monitor_name: row.monitor_name,
             monitor_slug: row.monitor_slug,
+            title: row.title,
+            source: row.source,
             status: row.status,
             severity: row.severity,
             started_at: row.started_at,
