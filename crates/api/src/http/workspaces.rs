@@ -16,7 +16,9 @@ use uuid::Uuid;
 
 use crate::{
     auth::AuthUser,
-    billing::{customer_id, customer_state_for_billing, ensure_customer},
+    billing::{
+        billing_customer_workspace_id, customer_id, customer_state_for_billing, ensure_customer,
+    },
     error::{ApiError, ApiResult},
     middleware::Membership,
     slug,
@@ -230,8 +232,24 @@ async fn create_workspace_checkout(
         return Ok(None);
     };
 
-    ensure_customer(state, ws, owner_email).await?;
-    let cstate = customer_state_for_billing(state, ws.id).await?;
+    if let Err(error) = ensure_customer(state, ws, owner_email).await {
+        tracing::warn!(
+            workspace_id = %ws.id,
+            error = ?error,
+            "billing customer setup failed before workspace checkout; attempting checkout without subscription state"
+        );
+    }
+    let cstate = match customer_state_for_billing(state, ws.id).await {
+        Ok(cstate) => Some(cstate),
+        Err(error) => {
+            tracing::warn!(
+                workspace_id = %ws.id,
+                error = ?error,
+                "billing customer state unavailable before workspace checkout; continuing without subscription id"
+            );
+            None
+        }
+    };
     let success_url = state.config.app_url.as_ref().map(|base| {
         format!(
             "{}/{}/settings/billing?checkout=success",
@@ -239,9 +257,14 @@ async fn create_workspace_checkout(
             ws.slug
         )
     });
-    let checkout = CheckoutCreate::new(&tier.product_id, customer_id(ws.id))
+    let ext = customer_id(billing_customer_workspace_id(state, ws.id).await?);
+    let checkout = CheckoutCreate::new(&tier.product_id, ext)
         .success_url(success_url)
-        .subscription_id(cstate.active_subscription().map(|sub| sub.id.clone()));
+        .subscription_id(
+            cstate
+                .as_ref()
+                .and_then(|state| state.active_subscription().map(|sub| sub.id.clone())),
+        );
     let checkout = billing.client.checkouts().create(checkout).await?;
     Ok(Some(checkout.url))
 }

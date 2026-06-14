@@ -9,8 +9,9 @@ use uuid::Uuid;
 
 use crate::{
     billing::{
-        customer_state_for_billing, refresh_and_store_customer_state, update_stored_meter_usage,
-        MeterUsageUpdate, PolarCatalog,
+        billing_customer_workspace_id, customer_state_for_billing,
+        refresh_and_store_customer_state, update_stored_meter_usage, MeterUsageUpdate,
+        PolarCatalog,
     },
     error::{ApiError, ApiResult},
     state::AppState,
@@ -19,7 +20,7 @@ use crate::{
 /// Each recorded check consumes this many billable "event" units.
 pub const EVENT_UNITS_PER_CHECK: f64 = 2.0;
 
-/// The workspace UUID is the Polar customer `external_id`.
+/// The billing-customer workspace UUID is the Polar customer `external_id`.
 pub fn customer_id(workspace_id: Uuid) -> String {
     workspace_id.to_string()
 }
@@ -34,7 +35,8 @@ pub async fn ensure_customer(
     let Some(billing) = state.billing.as_ref() else {
         return Ok(());
     };
-    let ext = customer_id(ws.id);
+    let billing_workspace_id = billing_customer_workspace_id(state, ws.id).await?;
+    let ext = customer_id(billing_workspace_id);
 
     // 1. customer exists?
     match billing.client.customers().get_by_external(&ext).await {
@@ -54,14 +56,14 @@ pub async fn ensure_customer(
     }
 
     // 2. active subscription? attach free if not.
-    let cstate = refresh_and_store_customer_state(state, ws.id).await?;
+    let cstate = refresh_and_store_customer_state(state, billing_workspace_id).await?;
     if cstate.active_subscription().is_none() {
         if let Some(free) = billing.catalog.free_product_id() {
             if let Err(e) = billing.client.subscriptions().create(free, &ext).await {
                 tracing::warn!(workspace_id = %ws.id, error = %e, "failed to attach free plan");
             }
-            billing.invalidate(ws.id);
-            if let Err(e) = refresh_and_store_customer_state(state, ws.id).await {
+            billing.invalidate(billing_workspace_id);
+            if let Err(e) = refresh_and_store_customer_state(state, billing_workspace_id).await {
                 tracing::warn!(workspace_id = %ws.id, error = ?e, "failed to refresh billing state after free plan attach");
             }
         }
@@ -69,7 +71,7 @@ pub async fn ensure_customer(
 
     // 3. best-effort usage reconcile (never blocks the caller).
     if let Err(e) = reconcile_usage(state, ws.id).await {
-        tracing::warn!(workspace_id = %ws.id, error = %e, "usage reconcile failed");
+        tracing::warn!(workspace_id = %ws.id, billing_workspace_id = %billing_workspace_id, error = %e, "usage reconcile failed");
     }
     Ok(())
 }
@@ -106,8 +108,8 @@ pub async fn require_metered_feature(
 
     let usage = match feature_id {
         "events" => event_usage(state, workspace_id, &cstate, &entitlement.meter_id).await?,
-        "monitors" => monitor_count(state, workspace_id).await?,
-        "members" => member_count(state, workspace_id).await?,
+        "monitors" => billing_monitor_count(state, workspace_id).await?,
+        "members" => billing_member_count(state, workspace_id).await?,
         _ => 0.0,
     };
 
@@ -192,7 +194,14 @@ pub async fn track_feature_with_key(
     let Some(billing) = state.billing.as_ref() else {
         return;
     };
-    let ext = customer_id(workspace_id);
+    let billing_workspace_id = match billing_customer_workspace_id(state, workspace_id).await {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::warn!(workspace_id = %workspace_id, error = ?e, "failed to resolve billing customer for usage tracking");
+            return;
+        }
+    };
+    let ext = customer_id(billing_workspace_id);
 
     let (event, local_update) = match feature_id {
         "events" => {
@@ -203,14 +212,18 @@ pub async fn track_feature_with_key(
             (event, Some(MeterUsageUpdate::Increment(delta)))
         }
         "monitors" => {
-            let count = monitor_count(state, workspace_id).await.unwrap_or(0.0);
+            let count = billing_monitor_count(state, workspace_id)
+                .await
+                .unwrap_or(0.0);
             (
                 EventCreate::new("monitor", ext).metadata("value", count),
                 Some(MeterUsageUpdate::Set(count)),
             )
         }
         "members" => {
-            let count = member_count(state, workspace_id).await.unwrap_or(0.0);
+            let count = billing_member_count(state, workspace_id)
+                .await
+                .unwrap_or(0.0);
             (
                 EventCreate::new("member", ext).metadata("value", count),
                 Some(MeterUsageUpdate::Set(count)),
@@ -221,7 +234,7 @@ pub async fn track_feature_with_key(
 
     match billing.client.events().ingest(vec![event]).await {
         Ok(response) => {
-            billing.invalidate(workspace_id);
+            billing.invalidate(billing_workspace_id);
             let should_update = feature_id != "events" || response.inserted > 0;
             if should_update {
                 if let Some(update) = local_update {
@@ -257,11 +270,12 @@ pub async fn reconcile_usage(state: &AppState, workspace_id: Uuid) -> ApiResult<
     let Some(billing) = state.billing.as_ref() else {
         return Ok(());
     };
-    let ext = customer_id(workspace_id);
-    let cstate = refresh_and_store_customer_state(state, workspace_id).await?;
+    let billing_workspace_id = billing_customer_workspace_id(state, workspace_id).await?;
+    let ext = customer_id(billing_workspace_id);
+    let cstate = refresh_and_store_customer_state(state, billing_workspace_id).await?;
 
-    let monitor_count = monitor_count(state, workspace_id).await?;
-    let member_count = member_count(state, workspace_id).await?;
+    let monitor_count = billing_monitor_count(state, workspace_id).await?;
+    let member_count = billing_member_count(state, workspace_id).await?;
 
     let mut events = vec![
         EventCreate::new("monitor", ext.clone()).metadata("value", monitor_count),
@@ -301,10 +315,10 @@ pub async fn reconcile_usage(state: &AppState, workspace_id: Uuid) -> ApiResult<
 
     if let Err(e) = billing.client.events().ingest(events).await {
         tracing::warn!(workspace_id = %workspace_id, error = %e, "failed to reconcile Polar usage");
-        billing.invalidate(workspace_id);
-    } else if let Err(e) = refresh_and_store_customer_state(state, workspace_id).await {
+        billing.invalidate(billing_workspace_id);
+    } else if let Err(e) = refresh_and_store_customer_state(state, billing_workspace_id).await {
         tracing::warn!(workspace_id = %workspace_id, error = ?e, "failed to refresh billing state after usage reconcile");
-        billing.invalidate(workspace_id);
+        billing.invalidate(billing_workspace_id);
     }
     Ok(())
 }
@@ -338,6 +352,42 @@ pub(crate) async fn member_count(state: &AppState, workspace_id: Uuid) -> ApiRes
         .await? as f64)
 }
 
+pub async fn billing_monitor_count(state: &AppState, workspace_id: Uuid) -> ApiResult<f64> {
+    let row = CountRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT COUNT(*)::BIGINT AS count
+        FROM monitors m
+        JOIN workspaces owned ON owned.id = m.workspace_id
+        JOIN workspaces current ON current.owner_id = owned.owner_id
+        WHERE current.id = $1
+        "#,
+        [workspace_id.into()],
+    ))
+    .one(&state.db)
+    .await?;
+
+    Ok(row.map(|row| row.count).unwrap_or_default() as f64)
+}
+
+pub async fn billing_member_count(state: &AppState, workspace_id: Uuid) -> ApiResult<f64> {
+    let row = CountRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT COUNT(DISTINCT wm.user_id)::BIGINT AS count
+        FROM workspace_members wm
+        JOIN workspaces owned ON owned.id = wm.workspace_id
+        JOIN workspaces current ON current.owner_id = owned.owner_id
+        WHERE current.id = $1
+        "#,
+        [workspace_id.into()],
+    ))
+    .one(&state.db)
+    .await?;
+
+    Ok(row.map(|row| row.count).unwrap_or_default() as f64)
+}
+
 #[derive(FromQueryResult)]
 struct CountRow {
     count: i64,
@@ -355,7 +405,9 @@ async fn count_checks_in_window(
         SELECT COUNT(*)::BIGINT AS count
         FROM checks c
         JOIN monitors m ON m.id = c.monitor_id
-        WHERE m.workspace_id = $1
+        JOIN workspaces owned ON owned.id = m.workspace_id
+        JOIN workspaces current ON current.owner_id = owned.owner_id
+        WHERE current.id = $1
           AND c.time >= $2
           AND c.time < $3
         "#,

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, FixedOffset, Utc};
-use entity::workspace_billing_state;
+use entity::{workspace, workspace_billing_state};
 use polar::{CustomerState, StateMeter};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult, QueryFilter,
@@ -26,6 +26,28 @@ pub enum MeterUsageUpdate {
     Set(f64),
 }
 
+pub async fn billing_customer_workspace_id(
+    state: &AppState,
+    workspace_id: Uuid,
+) -> ApiResult<Uuid> {
+    let Some(ws) = workspace::Entity::find_by_id(workspace_id)
+        .one(&state.db)
+        .await?
+    else {
+        return Ok(workspace_id);
+    };
+    if ws.is_personal {
+        return Ok(ws.id);
+    }
+
+    let personal = workspace::Entity::find()
+        .filter(workspace::Column::OwnerId.eq(ws.owner_id))
+        .filter(workspace::Column::IsPersonal.eq(true))
+        .one(&state.db)
+        .await?;
+    Ok(personal.map(|ws| ws.id).unwrap_or(ws.id))
+}
+
 pub async fn stored_customer_state(
     state: &AppState,
     workspace_id: Uuid,
@@ -33,7 +55,8 @@ pub async fn stored_customer_state(
     let Some(billing) = state.billing.as_ref() else {
         return Ok(None);
     };
-    let Some(row) = workspace_billing_state::Entity::find_by_id(workspace_id)
+    let billing_workspace_id = billing_customer_workspace_id(state, workspace_id).await?;
+    let Some(row) = workspace_billing_state::Entity::find_by_id(billing_workspace_id)
         .one(&state.db)
         .await?
     else {
@@ -42,13 +65,13 @@ pub async fn stored_customer_state(
     let customer_state = match serde_json::from_value::<CustomerState>(row.customer_state) {
         Ok(state) => state,
         Err(error) => {
-            tracing::warn!(workspace_id = %workspace_id, error = ?error, "stored billing state is invalid");
+            tracing::warn!(workspace_id = %workspace_id, billing_workspace_id = %billing_workspace_id, error = ?error, "stored billing state is invalid");
             return Ok(None);
         }
     };
     let fresh = row.last_synced_at >= Utc::now().fixed_offset() - SNAPSHOT_MAX_AGE;
     let state = if fresh {
-        billing.cache_state(workspace_id, customer_state)
+        billing.cache_state(billing_workspace_id, customer_state)
     } else {
         Arc::new(customer_state)
     };
@@ -59,10 +82,11 @@ pub async fn customer_state_for_billing(
     state: &AppState,
     workspace_id: Uuid,
 ) -> ApiResult<Arc<CustomerState>> {
+    let billing_workspace_id = billing_customer_workspace_id(state, workspace_id).await?;
     if let Some(cached) = state
         .billing
         .as_ref()
-        .and_then(|billing| billing.cached_state(workspace_id))
+        .and_then(|billing| billing.cached_state(billing_workspace_id))
     {
         return Ok(cached);
     }
@@ -86,12 +110,13 @@ pub async fn refresh_and_store_customer_state(
     state: &AppState,
     workspace_id: Uuid,
 ) -> ApiResult<Arc<CustomerState>> {
+    let billing_workspace_id = billing_customer_workspace_id(state, workspace_id).await?;
     let billing = state
         .billing
         .as_ref()
         .ok_or_else(|| ApiError::service_unavailable("billing is not configured"))?;
-    let customer_state = billing.refresh_state(workspace_id).await?;
-    store_customer_state(state, workspace_id, &customer_state, None).await?;
+    let customer_state = billing.refresh_state(billing_workspace_id).await?;
+    store_customer_state(state, billing_workspace_id, &customer_state, None).await?;
     Ok(customer_state)
 }
 
@@ -101,6 +126,7 @@ pub async fn store_customer_state(
     customer_state: &CustomerState,
     last_event_id: Option<&str>,
 ) -> ApiResult<()> {
+    let billing_workspace_id = billing_customer_workspace_id(state, workspace_id).await?;
     let billing = state
         .billing
         .as_ref()
@@ -117,7 +143,7 @@ pub async fn store_customer_state(
     let external_id = customer_state
         .external_id
         .clone()
-        .unwrap_or_else(|| workspace_id.to_string());
+        .unwrap_or_else(|| billing_workspace_id.to_string());
     let customer_state_json = serde_json::to_value(customer_state)
         .map_err(|error| ApiError::Internal(anyhow::anyhow!(error)))?;
 
@@ -149,7 +175,7 @@ pub async fn store_customer_state(
                 updated_at = now()
             "#,
             vec![
-                workspace_id.into(),
+                billing_workspace_id.into(),
                 customer_state.id.clone().into(),
                 external_id.into(),
                 plan_id.into(),
@@ -165,8 +191,8 @@ pub async fn store_customer_state(
         ))
         .await?;
 
-    billing.cache_state(workspace_id, customer_state.clone());
-    sync_monitor_billing_pause(state, workspace_id, customer_state).await?;
+    billing.cache_state(billing_workspace_id, customer_state.clone());
+    sync_monitor_billing_pause(state, billing_workspace_id, customer_state).await?;
     Ok(())
 }
 
@@ -179,11 +205,12 @@ pub async fn update_stored_meter_usage(
     let Some(billing) = state.billing.as_ref() else {
         return Ok(());
     };
+    let billing_workspace_id = billing_customer_workspace_id(state, workspace_id).await?;
     let Some(meter_id) = billing.catalog.meter_id(feature_id) else {
         return Ok(());
     };
     let Some(row) = workspace_billing_state::Entity::find()
-        .filter(workspace_billing_state::Column::WorkspaceId.eq(workspace_id))
+        .filter(workspace_billing_state::Column::WorkspaceId.eq(billing_workspace_id))
         .one(&state.db)
         .await?
     else {
@@ -213,10 +240,10 @@ pub async fn update_stored_meter_usage(
                 updated_at = now()
             WHERE workspace_id = $1
             "#,
-            vec![workspace_id.into(), customer_state_json.into()],
+            vec![billing_workspace_id.into(), customer_state_json.into()],
         ))
         .await?;
-    billing.cache_state(workspace_id, customer_state);
+    billing.cache_state(billing_workspace_id, customer_state);
     Ok(())
 }
 
@@ -287,7 +314,12 @@ async fn sync_monitor_billing_pause(
         UPDATE monitors
         SET billing_paused_at = COALESCE(billing_paused_at, now()),
             updated_at = now()
-        WHERE workspace_id = $1
+        WHERE workspace_id IN (
+            SELECT owned.id
+            FROM workspaces owned
+            JOIN workspaces billing_ws ON billing_ws.owner_id = owned.owner_id
+            WHERE billing_ws.id = $1
+        )
           AND billing_paused_at IS NULL
         "#
     } else {
@@ -295,7 +327,12 @@ async fn sync_monitor_billing_pause(
         UPDATE monitors
         SET billing_paused_at = NULL,
             updated_at = now()
-        WHERE workspace_id = $1
+        WHERE workspace_id IN (
+            SELECT owned.id
+            FROM workspaces owned
+            JOIN workspaces billing_ws ON billing_ws.owner_id = owned.owner_id
+            WHERE billing_ws.id = $1
+        )
           AND billing_paused_at IS NOT NULL
         "#
     };
