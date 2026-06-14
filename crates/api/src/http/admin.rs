@@ -49,7 +49,7 @@ async fn list_regions(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> ApiResult<Json<Vec<AdminRegionView>>> {
-    require_admin(&state, &auth)?;
+    require_admin(&auth)?;
     let rows = region::Entity::find()
         .order_by_asc(region::Column::Slug)
         .all(&state.db)
@@ -63,7 +63,7 @@ async fn update_region(
     Path(region_id): Path<Uuid>,
     Json(body): Json<UpdateRegionBody>,
 ) -> ApiResult<Json<AdminRegionView>> {
-    require_admin(&state, &auth)?;
+    require_admin(&auth)?;
     let row = region::Entity::find_by_id(region_id)
         .one(&state.db)
         .await?
@@ -93,7 +93,7 @@ async fn delete_region(
     auth: AuthUser,
     Path(region_id): Path<Uuid>,
 ) -> ApiResult<Json<crate::http::workspaces::OkResponse>> {
-    require_admin(&state, &auth)?;
+    require_admin(&auth)?;
     let row = region::Entity::find_by_id(region_id)
         .one(&state.db)
         .await?
@@ -112,8 +112,8 @@ async fn delete_region(
     Ok(Json(crate::http::workspaces::OkResponse { ok: true }))
 }
 
-fn require_admin(state: &AppState, auth: &AuthUser) -> ApiResult<()> {
-    if auth.user.is_admin || state.config.is_admin_email(&auth.user.email) {
+fn require_admin(auth: &AuthUser) -> ApiResult<()> {
+    if auth.user.is_admin {
         return Ok(());
     }
     Err(ApiError::Forbidden)
@@ -130,5 +130,39 @@ fn admin_region_view(region: region::Model) -> AdminRegionView {
         capabilities: regions::capabilities(&region.capabilities),
         created_at: region.created_at,
         updated_at: region.updated_at,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::require_admin;
+    use crate::auth::AuthUser;
+    use chrono::Utc;
+    use entity::user;
+    use uuid::Uuid;
+
+    fn auth_user(email: &str, is_admin: bool) -> AuthUser {
+        let now = Utc::now().fixed_offset();
+        AuthUser {
+            user: user::Model {
+                id: Uuid::now_v7(),
+                email: email.to_owned(),
+                password_hash: "hash".to_owned(),
+                is_admin,
+                created_at: now,
+                updated_at: now,
+            },
+            session_id: Uuid::now_v7(),
+        }
+    }
+
+    #[test]
+    fn admin_guard_uses_persisted_admin_flag() {
+        assert!(require_admin(&auth_user("admin@example.com", true)).is_ok());
+    }
+
+    #[test]
+    fn admin_guard_rejects_unflagged_user_even_with_admin_like_email() {
+        assert!(require_admin(&auth_user("admin@example.com", false)).is_err());
     }
 }

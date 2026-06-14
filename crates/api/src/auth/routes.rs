@@ -124,7 +124,7 @@ pub async fn register(
         id: Set(Uuid::now_v7()),
         email: Set(email.clone()),
         password_hash: Set(password::hash(&body.password)?),
-        is_admin: Set(state.config.is_admin_email(&email)),
+        is_admin: Set(registration_admin_flag(&email)),
         created_at: Set(now),
         updated_at: Set(now),
     }
@@ -227,12 +227,9 @@ pub async fn login(
     };
     session_row.insert(&state.db).await?;
 
-    let mut user_view: UserView = user_model.clone().into();
-    user_view.is_admin = user_view.is_admin || state.config.is_admin_email(&user_model.email);
-
     Ok(Json(AuthResponse {
         token,
-        user: user_view,
+        user: user_model.into(),
     }))
 }
 
@@ -265,12 +262,25 @@ pub async fn logout(State(state): State<AppState>, auth: AuthUser) -> ApiResult<
 )]
 pub async fn me(State(state): State<AppState>, auth: AuthUser) -> ApiResult<Json<MeResponse>> {
     let pid = personal_workspace_id(&state.db, auth.user.id).await?;
-    let is_admin = auth.user.is_admin || state.config.is_admin_email(&auth.user.email);
     Ok(Json(MeResponse {
         id: auth.user.id,
         email: auth.user.email,
-        is_admin,
+        is_admin: auth.user.is_admin,
         created_at: auth.user.created_at,
         personal_workspace_id: pid,
     }))
+}
+
+fn registration_admin_flag(_email: &str) -> bool {
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::registration_admin_flag;
+
+    #[test]
+    fn self_service_registration_never_grants_admin_from_email() {
+        assert!(!registration_admin_flag("admin@example.com"));
+    }
 }

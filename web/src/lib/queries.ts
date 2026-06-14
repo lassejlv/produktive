@@ -130,7 +130,7 @@ export function useMonitor(wid: string, mid: string) {
   });
 }
 
-export function useChecks(wid: string, mid: string, limit = 50, region?: string) {
+export function useChecks(wid: string, mid: string, limit = 50, region?: string, enabled = true) {
   return useQuery({
     queryKey: ["checks", wid, mid, limit, region ?? "all"] as const,
     queryFn: () => {
@@ -139,6 +139,7 @@ export function useChecks(wid: string, mid: string, limit = 50, region?: string)
       return api.get<Check[]>(`/workspaces/${wid}/monitors/${mid}/checks?${params}`);
     },
     refetchInterval: 15_000,
+    enabled,
   });
 }
 

@@ -34,7 +34,6 @@ pub struct Config {
     pub billing_reconcile_tick_seconds: u64,
     /// Public app URL for billing checkout redirects (e.g. `http://localhost:5173`).
     pub app_url: Option<String>,
-    pub admin_emails: Vec<String>,
     pub local_region_slug: String,
     pub api_local_worker_enabled: bool,
     pub worker_token: Option<String>,
@@ -160,12 +159,6 @@ impl Config {
             .ok()
             .map(|v| v.trim().trim_end_matches('/').to_owned())
             .filter(|v| !v.is_empty());
-        let admin_emails = std::env::var("ADMIN_EMAILS")
-            .unwrap_or_default()
-            .split(',')
-            .map(|email| email.trim().to_lowercase())
-            .filter(|email| !email.is_empty())
-            .collect();
         let local_region_slug = std::env::var("LOCAL_REGION_SLUG")
             .unwrap_or_else(|_| "eu-west".into())
             .trim()
@@ -215,20 +208,12 @@ impl Config {
             polar_webhook_secret,
             billing_reconcile_tick_seconds,
             app_url,
-            admin_emails,
             local_region_slug,
             api_local_worker_enabled,
             worker_token,
             worker_tokens,
             worker_lease_seconds,
         })
-    }
-
-    pub fn is_admin_email(&self, email: &str) -> bool {
-        let email = email.trim().to_lowercase();
-        self.admin_emails
-            .iter()
-            .any(|candidate| candidate == &email)
     }
 
     pub fn worker_token_for_region(&self, region_slug: &str) -> Option<&str> {
