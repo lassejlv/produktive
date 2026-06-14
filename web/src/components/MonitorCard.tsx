@@ -91,7 +91,7 @@ export const MonitorCard = memo(function MonitorCard({ monitor, canvas }: Props)
           </div>
         </div>
 
-        <UptimeBar enabled={monitor.enabled} status={status} />
+        <UptimeBar enabled={monitor.enabled && !monitor.billing_paused_at} status={status} />
 
         <div className="mt-3 flex items-center justify-between text-[var(--color-fg-dim)] text-[11px]">
           <span className="flex items-center gap-1.5 min-w-0">

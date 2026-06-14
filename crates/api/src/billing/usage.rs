@@ -1,9 +1,6 @@
-use autumn::{
-    AttachParams, Balance, CheckParams, Customer, CustomerParams, GetCustomerParams, ResetInterval,
-    TrackParams,
-};
-use chrono::{DateTime, Duration, Months, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use entity::{monitor, user, workspace, workspace_member};
+use polar::{CustomerCreate, CustomerState, EventCreate, PolarError};
 use sea_orm::{
     ColumnTrait, DatabaseBackend, EntityTrait, FromQueryResult, PaginatorTrait, QueryFilter,
     Statement,
@@ -11,76 +8,143 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::{
+    billing::{
+        customer_state_for_billing, refresh_and_store_customer_state, update_stored_meter_usage,
+        MeterUsageUpdate, PolarCatalog,
+    },
     error::{ApiError, ApiResult},
     state::AppState,
 };
 
+/// Each recorded check consumes this many billable "event" units.
 pub const EVENT_UNITS_PER_CHECK: f64 = 10.0;
 
+/// The workspace UUID is the Polar customer `external_id`.
 pub fn customer_id(workspace_id: Uuid) -> String {
     workspace_id.to_string()
 }
 
+/// Ensure the workspace has a Polar customer and an active subscription
+/// (defaulting to the free tier), then reconcile reported usage.
 pub async fn ensure_customer(
     state: &AppState,
     ws: &workspace::Model,
     owner_email: &str,
 ) -> ApiResult<()> {
-    let Some(autumn) = state.autumn.as_ref() else {
+    let Some(billing) = state.billing.as_ref() else {
         return Ok(());
     };
+    let ext = customer_id(ws.id);
 
-    let cid = customer_id(ws.id);
-    let params = CustomerParams::new(cid.clone())
-        .name(ws.name.clone())
-        .email(owner_email.to_owned())
-        .expand(["subscriptions.plan", "purchases.plan", "balances.feature"])
-        .auto_enable_plan_id("free");
-
-    let customer = autumn.customers().get_or_create(params).await?;
-    if !customer_has_plan(&customer) {
-        autumn
-            .billing()
-            .attach(AttachParams::new(cid, "free"))
-            .await?;
+    // 1. customer exists?
+    match billing.client.customers().get_by_external(&ext).await {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            let create = CustomerCreate::new(owner_email.to_owned())
+                .external_id(ext.clone())
+                .name(ws.name.clone());
+            match billing.client.customers().create(create).await {
+                Ok(_) => {}
+                // Lost a race with a concurrent create — fine, it exists now.
+                Err(PolarError::Api(api)) if api.status.as_u16() == 409 => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Err(e) => return Err(e.into()),
     }
-    reconcile_usage(state, ws.id).await?;
+
+    // 2. active subscription? attach free if not.
+    let cstate = refresh_and_store_customer_state(state, ws.id).await?;
+    if cstate.active_subscription().is_none() {
+        if let Some(free) = billing.catalog.free_product_id() {
+            if let Err(e) = billing.client.subscriptions().create(free, &ext).await {
+                tracing::warn!(workspace_id = %ws.id, error = %e, "failed to attach free plan");
+            }
+            billing.invalidate(ws.id);
+            if let Err(e) = refresh_and_store_customer_state(state, ws.id).await {
+                tracing::warn!(workspace_id = %ws.id, error = ?e, "failed to refresh billing state after free plan attach");
+            }
+        }
+    }
+
+    // 3. best-effort usage reconcile (never blocks the caller).
+    if let Err(e) = reconcile_usage(state, ws.id).await {
+        tracing::warn!(workspace_id = %ws.id, error = %e, "usage reconcile failed");
+    }
     Ok(())
 }
 
+/// Gate a metered feature: allow if the tier permits overage, otherwise enforce
+/// `usage + delta <= included`. Usage is Polar's consumed meter balance for
+/// `events`, or the live DB count for the `monitors`/`members` gauges.
 pub async fn require_metered_feature(
     state: &AppState,
     workspace_id: Uuid,
     feature_id: &str,
     delta: f64,
 ) -> ApiResult<()> {
-    let Some(autumn) = state.autumn.as_ref() else {
+    let Some(billing) = state.billing.as_ref() else {
         return Ok(());
     };
+    // Fail open: a billing outage must not block monitoring or product usage.
+    let cstate = match customer_state_for_billing(state, workspace_id).await {
+        Ok(state) => state,
+        Err(e) => {
+            tracing::warn!(workspace_id = %workspace_id, feature_id, error = ?e, "entitlement check skipped (billing state unavailable)");
+            return Ok(());
+        }
+    };
 
-    let cid = customer_id(workspace_id);
-    let check = autumn
-        .check(CheckParams::new(cid, feature_id).required_balance(delta))
-        .await?;
+    let tier = tier_of(&billing.catalog, &cstate);
+    let Some(entitlement) = billing.catalog.entitlement(tier, feature_id) else {
+        return Ok(()); // unknown feature/tier → no known limit
+    };
 
-    require_allowed(check.allowed, feature_id, "plan limit reached")
+    if entitlement.overage_allowed {
+        return Ok(());
+    }
+
+    let usage = match feature_id {
+        "events" => event_usage(state, workspace_id, &cstate, &entitlement.meter_id).await?,
+        "monitors" => monitor_count(state, workspace_id).await?,
+        "members" => member_count(state, workspace_id).await?,
+        _ => 0.0,
+    };
+
+    if usage + delta <= entitlement.included + f64::EPSILON {
+        Ok(())
+    } else {
+        Err(payment_required(feature_id, "plan limit reached"))
+    }
 }
 
+/// Gate a boolean perk: allowed iff the workspace's current tier includes it.
 pub async fn require_boolean_feature(
     state: &AppState,
     workspace_id: Uuid,
     feature_id: &str,
 ) -> ApiResult<()> {
-    let Some(autumn) = state.autumn.as_ref() else {
+    let Some(billing) = state.billing.as_ref() else {
         return Ok(());
     };
+    let cstate = match customer_state_for_billing(state, workspace_id).await {
+        Ok(state) => state,
+        Err(e) => {
+            tracing::warn!(workspace_id = %workspace_id, feature_id, error = ?e, "perk check skipped (billing state unavailable)");
+            return Ok(());
+        }
+    };
 
-    let cid = customer_id(workspace_id);
-    let check = autumn.check(CheckParams::new(cid, feature_id)).await?;
-
-    require_allowed(check.allowed, feature_id, "your plan does not include")
+    let tier = tier_of(&billing.catalog, &cstate);
+    if billing.catalog.tier_has_perk(tier, feature_id) {
+        Ok(())
+    } else {
+        Err(payment_required(feature_id, "your plan does not include"))
+    }
 }
 
+/// Enforce the plan's minimum check interval via the boolean check-frequency
+/// perks.
 pub async fn require_monitor_interval(
     state: &AppState,
     workspace_id: Uuid,
@@ -101,6 +165,9 @@ pub async fn require_monitor_interval(
     Ok(())
 }
 
+/// Report usage to Polar. For `events`, ingest the weighted delta (deduped by
+/// `idempotency_key`); for the `monitors`/`members` gauges, report the current
+/// DB count so the `max`-aggregation meter captures the period peak.
 pub async fn track_feature_with_key(
     state: &AppState,
     workspace_id: Uuid,
@@ -108,74 +175,123 @@ pub async fn track_feature_with_key(
     delta: f64,
     idempotency_key: Option<String>,
 ) {
-    let Some(autumn) = state.autumn.as_ref() else {
+    let Some(billing) = state.billing.as_ref() else {
         return;
     };
+    let ext = customer_id(workspace_id);
 
-    let cid = customer_id(workspace_id);
-    let mut params = TrackParams::new(cid).feature_id(feature_id).value(delta);
-    if let Some(key) = idempotency_key {
-        params = params.idempotency_key(key);
-    }
+    let (event, local_update) = match feature_id {
+        "events" => {
+            let mut event = EventCreate::new("event", ext).metadata("units", delta);
+            if let Some(key) = idempotency_key {
+                event = event.external_id(key);
+            }
+            (event, Some(MeterUsageUpdate::Increment(delta)))
+        }
+        "monitors" => {
+            let count = monitor_count(state, workspace_id).await.unwrap_or(0.0);
+            (
+                EventCreate::new("monitor", ext).metadata("value", count),
+                Some(MeterUsageUpdate::Set(count)),
+            )
+        }
+        "members" => {
+            let count = member_count(state, workspace_id).await.unwrap_or(0.0);
+            (
+                EventCreate::new("member", ext).metadata("value", count),
+                Some(MeterUsageUpdate::Set(count)),
+            )
+        }
+        _ => return,
+    };
 
-    if let Err(e) = autumn.track(params).await {
-        tracing::warn!(
-            workspace_id = %workspace_id,
-            feature_id,
-            delta,
-            error = %e,
-            "failed to track Autumn usage"
-        );
+    match billing.client.events().ingest(vec![event]).await {
+        Ok(response) => {
+            billing.invalidate(workspace_id);
+            let should_update = feature_id != "events" || response.inserted > 0;
+            if should_update {
+                if let Some(update) = local_update {
+                    if let Err(e) =
+                        update_stored_meter_usage(state, workspace_id, feature_id, update).await
+                    {
+                        tracing::warn!(
+                            workspace_id = %workspace_id,
+                            feature_id,
+                            error = ?e,
+                            "failed to update stored Polar usage"
+                        );
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                workspace_id = %workspace_id,
+                feature_id,
+                delta,
+                error = %e,
+                "failed to track Polar usage"
+            );
+        }
     }
 }
 
+/// Re-report current usage so Polar's meters stay in sync: the gauge counts
+/// (monitors/members) keep the period peak current, and an `events` correction
+/// event heals any per-check ingests dropped during an outage.
 pub async fn reconcile_usage(state: &AppState, workspace_id: Uuid) -> ApiResult<()> {
-    let Some(autumn) = state.autumn.as_ref() else {
+    let Some(billing) = state.billing.as_ref() else {
         return Ok(());
     };
+    let ext = customer_id(workspace_id);
+    let cstate = refresh_and_store_customer_state(state, workspace_id).await?;
 
-    let cid = customer_id(workspace_id);
-    let customer = autumn
-        .customers()
-        .get({
-            let mut params = GetCustomerParams::new(cid.clone());
-            params.expand = Some(vec!["balances.feature".into()]);
-            params
-        })
-        .await?;
+    let monitor_count = monitor_count(state, workspace_id).await?;
+    let member_count = member_count(state, workspace_id).await?;
 
-    let monitor_count = monitor::Entity::find()
-        .filter(monitor::Column::WorkspaceId.eq(workspace_id))
-        .count(&state.db)
-        .await? as f64;
+    let mut events = vec![
+        EventCreate::new("monitor", ext.clone()).metadata("value", monitor_count),
+        EventCreate::new("member", ext.clone()).metadata("value", member_count),
+    ];
 
-    let member_count = workspace_member::Entity::find()
-        .filter(workspace_member::Column::WorkspaceId.eq(workspace_id))
-        .count(&state.db)
-        .await? as f64;
-
-    let event_balance = customer.balances.as_ref().and_then(|b| b.get("events"));
-    let event_count = count_checks_for_balance_window(state, workspace_id, event_balance).await?;
-    let event_units = event_count * EVENT_UNITS_PER_CHECK;
-
-    for (feature_id, db_count) in [
-        ("monitors", monitor_count),
-        ("members", member_count),
-        ("events", event_units),
-    ] {
-        let balance = customer.balances.as_ref().and_then(|b| b.get(feature_id));
-        let autumn_usage = balance_usage(balance);
-        let delta = db_count - autumn_usage;
-        if delta.abs() > f64::EPSILON {
-            // Best-effort: the deterministic idempotency key means Autumn applies this
-            // delta exactly once even when concurrent callers (e.g. the billing page
-            // loading `customer` and `plans` together) race. A racing request gets a 409
-            // "already received" — swallow it rather than failing the user-facing request.
-            let key = reconcile_key(workspace_id, feature_id, db_count, autumn_usage, balance);
-            track_feature_with_key(state, workspace_id, feature_id, delta, Some(key)).await;
+    if let (Some(sub), Some(meter_id)) = (
+        cstate.active_subscription(),
+        billing.catalog.meter_id("events"),
+    ) {
+        if let (Some(start), Some(end)) = (
+            parse_timestamp(sub.current_period_start.as_deref()),
+            parse_timestamp(sub.current_period_end.as_deref()),
+        ) {
+            let checks = count_checks_in_window(state, workspace_id, start, end).await?;
+            let db_units = checks * EVENT_UNITS_PER_CHECK;
+            let consumed = cstate
+                .meter(meter_id)
+                .map(|m| m.consumed_units)
+                .unwrap_or(0.0);
+            let delta = db_units - consumed;
+            if delta > f64::EPSILON {
+                // Deterministic key: a racing reconcile applies the same
+                // correction at most once.
+                let key = format!(
+                    "reconcile-events-{workspace_id}-{}-{db_units}",
+                    end.timestamp()
+                );
+                events.push(
+                    EventCreate::new("event", ext.clone())
+                        .metadata("units", delta)
+                        .external_id(key),
+                );
+            }
         }
     }
 
+    if let Err(e) = billing.client.events().ingest(events).await {
+        tracing::warn!(workspace_id = %workspace_id, error = %e, "failed to reconcile Polar usage");
+        billing.invalidate(workspace_id);
+    } else if let Err(e) = refresh_and_store_customer_state(state, workspace_id).await {
+        tracing::warn!(workspace_id = %workspace_id, error = ?e, "failed to refresh billing state after usage reconcile");
+        billing.invalidate(workspace_id);
+    }
     Ok(())
 }
 
@@ -187,25 +303,25 @@ pub async fn load_owner_email(state: &AppState, owner_id: Uuid) -> ApiResult<Str
         .ok_or_else(|| ApiError::not_found("workspace owner"))
 }
 
-fn balance_usage(balance: Option<&Balance>) -> f64 {
-    balance.and_then(|b| b.usage).unwrap_or(0.0)
+fn tier_of<'a>(catalog: &'a PolarCatalog, state: &CustomerState) -> &'a str {
+    state
+        .active_subscription()
+        .and_then(|sub| catalog.tier_for_product(&sub.product_id))
+        .unwrap_or("free")
 }
 
-fn customer_has_plan(customer: &Customer) -> bool {
-    let has_subscription = customer
-        .subscriptions
-        .as_ref()
-        .is_some_and(|subscriptions| !subscriptions.is_empty());
-    let has_purchase = customer
-        .purchases
-        .as_ref()
-        .is_some_and(|purchases| !purchases.is_empty());
-    let has_balances = customer
-        .balances
-        .as_ref()
-        .is_some_and(|balances| !balances.is_empty());
+pub(crate) async fn monitor_count(state: &AppState, workspace_id: Uuid) -> ApiResult<f64> {
+    Ok(monitor::Entity::find()
+        .filter(monitor::Column::WorkspaceId.eq(workspace_id))
+        .count(&state.db)
+        .await? as f64)
+}
 
-    has_subscription || has_purchase || has_balances
+pub(crate) async fn member_count(state: &AppState, workspace_id: Uuid) -> ApiResult<f64> {
+    Ok(workspace_member::Entity::find()
+        .filter(workspace_member::Column::WorkspaceId.eq(workspace_id))
+        .count(&state.db)
+        .await? as f64)
 }
 
 #[derive(FromQueryResult)]
@@ -213,18 +329,12 @@ struct CountRow {
     count: i64,
 }
 
-async fn count_checks_for_balance_window(
+async fn count_checks_in_window(
     state: &AppState,
     workspace_id: Uuid,
-    balance: Option<&Balance>,
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
 ) -> ApiResult<f64> {
-    let Some(start) = balance.and_then(balance_window_start) else {
-        return Ok(0.0);
-    };
-    let Some(end) = balance.and_then(balance_next_reset) else {
-        return Ok(0.0);
-    };
-
     let row = CountRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
@@ -247,68 +357,45 @@ async fn count_checks_for_balance_window(
     Ok(row.map(|row| row.count).unwrap_or_default() as f64)
 }
 
-fn balance_window_start(balance: &Balance) -> Option<DateTime<Utc>> {
-    let next_reset = balance_next_reset(balance)?;
-    let interval = balance
-        .breakdown
-        .as_ref()
-        .and_then(|breakdown| breakdown.iter().find_map(|part| part.reset.as_ref()))
-        .map(|reset| &reset.interval)
-        .unwrap_or(&ResetInterval::Month);
-
-    let start = match interval {
-        ResetInterval::Minute => next_reset - Duration::minutes(1),
-        ResetInterval::Hour => next_reset - Duration::hours(1),
-        ResetInterval::Day => next_reset - Duration::days(1),
-        ResetInterval::Week => next_reset - Duration::weeks(1),
-        ResetInterval::Month => next_reset.checked_sub_months(Months::new(1))?,
-        ResetInterval::Quarter => next_reset.checked_sub_months(Months::new(3))?,
-        ResetInterval::SemiAnnual => next_reset.checked_sub_months(Months::new(6))?,
-        ResetInterval::Year => next_reset.checked_sub_months(Months::new(12))?,
-        ResetInterval::OneOff | ResetInterval::Multiple => return None,
-    };
-
-    Some(start)
-}
-
-fn balance_next_reset(balance: &Balance) -> Option<DateTime<Utc>> {
-    autumn_timestamp(balance.next_reset_at?)
-}
-
-fn autumn_timestamp(raw: i64) -> Option<DateTime<Utc>> {
-    if raw.abs() >= 10_000_000_000 {
-        Utc.timestamp_millis_opt(raw).single()
-    } else {
-        Utc.timestamp_opt(raw, 0).single()
-    }
-}
-
-fn reconcile_key(
+async fn event_usage(
+    state: &AppState,
     workspace_id: Uuid,
-    feature_id: &str,
-    db_count: f64,
-    autumn_usage: f64,
-    balance: Option<&Balance>,
-) -> String {
-    let reset = balance.and_then(|b| b.next_reset_at).unwrap_or_default();
-    format!("reconcile-{workspace_id}-{feature_id}-{db_count:.6}-{autumn_usage:.6}-{reset}")
+    cstate: &CustomerState,
+    meter_id: &str,
+) -> ApiResult<f64> {
+    let meter_usage = cstate
+        .meter(meter_id)
+        .map(|m| m.consumed_units)
+        .unwrap_or(0.0);
+    let Some(sub) = cstate.active_subscription() else {
+        return Ok(meter_usage);
+    };
+    let (Some(start), Some(end)) = (
+        parse_timestamp(sub.current_period_start.as_deref()),
+        parse_timestamp(sub.current_period_end.as_deref()),
+    ) else {
+        return Ok(meter_usage);
+    };
+    let db_usage =
+        count_checks_in_window(state, workspace_id, start, end).await? * EVENT_UNITS_PER_CHECK;
+    Ok(meter_usage.max(db_usage))
 }
 
-fn require_allowed(allowed: bool, feature_id: &str, reason: &str) -> ApiResult<()> {
-    if allowed {
-        Ok(())
-    } else {
-        let label = feature_label(feature_id);
-        Err(ApiError::payment_required(format!(
-            "{reason} {label}; upgrade your plan to continue"
-        )))
-    }
+fn parse_timestamp(raw: Option<&str>) -> Option<DateTime<Utc>> {
+    raw.and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.with_timezone(&Utc))
+}
+
+fn payment_required(feature_id: &str, reason: &str) -> ApiError {
+    let label = feature_label(feature_id);
+    ApiError::payment_required(format!("{reason} {label}; upgrade your plan to continue"))
 }
 
 fn feature_label(feature_id: &str) -> &'static str {
     match feature_id {
         "monitors" => "monitors",
         "members" => "members",
+        "events" => "checks",
         "custom_domain" => "custom domains",
         "one_min_checks" => "1 minute checks",
         "five_min_checks" => "5 minute checks",
@@ -322,8 +409,6 @@ fn feature_label(feature_id: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use autumn::Reset;
-    use std::collections::BTreeMap;
 
     #[test]
     fn customer_id_is_workspace_uuid() {
@@ -332,115 +417,27 @@ mod tests {
     }
 
     #[test]
-    fn reconcile_key_includes_observed_balance_state() {
-        let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-        assert_eq!(
-            reconcile_key(id, "monitors", 5.0, 2.0, None),
-            "reconcile-550e8400-e29b-41d4-a716-446655440000-monitors-5.000000-2.000000-0"
-        );
+    fn tier_defaults_to_free_without_subscription() {
+        let catalog = PolarCatalog::default();
+        let state: CustomerState = serde_json::from_value(serde_json::json!({
+            "id": "cus_1", "active_subscriptions": [], "granted_benefits": [], "active_meters": []
+        }))
+        .unwrap();
+        assert_eq!(tier_of(&catalog, &state), "free");
     }
+
+    #[test]
+    fn parse_timestamp_reads_rfc3339() {
+        let dt = parse_timestamp(Some("2026-07-13T23:11:54Z")).unwrap();
+        assert_eq!(dt, Utc.with_ymd_and_hms(2026, 7, 13, 23, 11, 54).unwrap());
+        // sub-second precision is preserved
+        assert!(parse_timestamp(Some("2026-07-13T23:11:54.391784Z")).is_some());
+    }
+
+    use chrono::TimeZone;
 
     #[test]
     fn check_events_are_weighted_for_billing() {
         assert_eq!(3.0 * EVENT_UNITS_PER_CHECK, 30.0);
-    }
-
-    #[test]
-    fn customer_without_plan_state_needs_free_backfill() {
-        let customer = Customer {
-            id: Some("cus_123".into()),
-            name: None,
-            email: None,
-            created_at: None,
-            fingerprint: None,
-            stripe_id: None,
-            env: None,
-            metadata: None,
-            send_email_receipts: None,
-            billing_controls: None,
-            subscriptions: Some(vec![]),
-            purchases: Some(vec![]),
-            balances: Some(BTreeMap::new()),
-            flags: None,
-            extra: Default::default(),
-        };
-
-        assert!(!customer_has_plan(&customer));
-    }
-
-    #[test]
-    fn customer_with_balances_is_treated_as_plan_attached() {
-        let mut balances = BTreeMap::new();
-        balances.insert("monitors".into(), balance_with_next_reset(1_779_724_800));
-        let customer = Customer {
-            id: Some("cus_123".into()),
-            name: None,
-            email: None,
-            created_at: None,
-            fingerprint: None,
-            stripe_id: None,
-            env: None,
-            metadata: None,
-            send_email_receipts: None,
-            billing_controls: None,
-            subscriptions: Some(vec![]),
-            purchases: Some(vec![]),
-            balances: Some(balances),
-            flags: None,
-            extra: Default::default(),
-        };
-
-        assert!(customer_has_plan(&customer));
-    }
-
-    #[test]
-    fn monthly_balance_window_uses_previous_calendar_month() {
-        let balance = balance_with_next_reset(1_780_272_000_000);
-        let start = balance_window_start(&balance).expect("monthly reset window");
-
-        assert_eq!(start, Utc.with_ymd_and_hms(2026, 5, 1, 0, 0, 0).unwrap());
-    }
-
-    #[test]
-    fn autumn_timestamp_accepts_seconds_and_milliseconds() {
-        let seconds = autumn_timestamp(1_780_272_000).expect("seconds timestamp");
-        let millis = autumn_timestamp(1_780_272_000_000).expect("millis timestamp");
-
-        assert_eq!(seconds, millis);
-        assert_eq!(millis, Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap());
-    }
-
-    fn balance_with_next_reset(next_reset_at: i64) -> Balance {
-        Balance {
-            feature_id: "events".into(),
-            feature: None,
-            granted: Some(10_000.0),
-            remaining: Some(10_000.0),
-            usage: Some(0.0),
-            unlimited: Some(false),
-            overage_allowed: Some(false),
-            max_purchase: None,
-            next_reset_at: Some(next_reset_at),
-            breakdown: Some(vec![autumn::BalanceBreakdown {
-                id: "balance_123".into(),
-                plan_id: Some("free".into()),
-                included_grant: Some(10_000.0),
-                prepaid_grant: None,
-                remaining: Some(10_000.0),
-                usage: Some(0.0),
-                unlimited: Some(false),
-                reset: Some(Reset {
-                    interval: ResetInterval::Month,
-                    interval_count: Some(1.0),
-                    resets_at: Some(next_reset_at),
-                    extra: Default::default(),
-                }),
-                price: None,
-                expires_at: None,
-                extra: Default::default(),
-            }]),
-            rollovers: None,
-            extra: Default::default(),
-        }
     }
 }

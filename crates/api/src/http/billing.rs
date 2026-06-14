@@ -1,22 +1,24 @@
-use autumn::{
-    AttachParams, CancelAction, CustomerParams, ListPlansParams, OpenCustomerPortalParams,
-    SetupPaymentParams, UpdateSubscriptionParams,
-};
 use axum::{
-    extract::{Query, State},
+    extract::State,
     http::HeaderMap,
     routing::{get, post},
     Extension, Json, Router,
 };
 use std::collections::BTreeMap;
 
+use polar::{CheckoutCreate, CustomerState};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use url::Url;
-use utoipa::{IntoParams, ToSchema};
+use utoipa::ToSchema;
 
 use crate::{
-    billing::{self, ensure_customer, load_owner_email},
+    billing::{
+        self, customer_state_for_billing, ensure_customer, feature_noun, format_thousands,
+        load_owner_email, member_count, monitor_count, overage_text, perk_label,
+        refresh_and_store_customer_state, trim_decimal, Billing, FeatureEntitlement, PolarCatalog,
+        TierCatalog, METERED_FEATURES, PERK_FEATURES,
+    },
     error::{ApiError, ApiResult},
     middleware::Membership,
     state::AppState,
@@ -35,17 +37,11 @@ pub fn routes() -> Router<AppState> {
         .route("/setup-payment", post(setup_payment))
 }
 
-fn require_autumn(state: &AppState) -> ApiResult<&autumn::Autumn> {
+fn require_billing(state: &AppState) -> ApiResult<&Billing> {
     state
-        .autumn
+        .billing
         .as_ref()
         .ok_or_else(|| ApiError::service_unavailable("billing is not configured"))
-}
-
-#[derive(Deserialize, IntoParams, ToSchema)]
-pub struct CustomerQuery {
-    #[param(example = "subscriptions.plan,balances.feature")]
-    pub expand: Option<String>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -59,8 +55,6 @@ pub struct AttachBody {
 pub struct PortalBody {
     #[serde(default)]
     pub return_url: Option<String>,
-    #[serde(default)]
-    pub configuration_id: Option<String>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -136,95 +130,62 @@ pub async fn summary(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
 ) -> ApiResult<Json<BillingSummary>> {
-    let autumn = require_autumn(&state)?;
+    let billing = require_billing(&state)?;
     let owner_email = load_owner_email(&state, m.workspace.owner_id).await?;
     ensure_customer(&state, &m.workspace, &owner_email).await?;
 
-    let customer = autumn
-        .customers()
-        .get({
-            let mut params = autumn::GetCustomerParams::new(billing::customer_id(m.workspace.id));
-            params.expand = Some(vec![
-                "subscriptions.plan".into(),
-                "purchases.plan".into(),
-                "balances.feature".into(),
-            ]);
-            params
-        })
-        .await?;
+    let cstate = customer_state_for_billing(&state, m.workspace.id).await?;
+    let catalog = &billing.catalog;
+    let sub = cstate.active_subscription();
 
-    let current_plan_id = current_plan_id(&customer);
-    let subscription_status = current_subscription_status(&customer);
-    let subscription_canceled_at = current_subscription(&customer)
-        .and_then(|subscription| integer_field(subscription, "canceled_at"));
-    let subscription_current_period_end =
-        current_subscription(&customer).and_then(|subscription| {
-            integer_field(subscription, "current_period_end")
-                .or_else(|| integer_field(subscription, "current_period_ends_at"))
-                .or_else(|| integer_field(subscription, "current_period_end_at"))
-        });
-    let scheduled_plan_id = scheduled_subscription(&customer).and_then(plan_id_from_subscription);
-    let stripe_customer_id = customer.stripe_id.clone().or_else(|| {
-        customer
-            .extra
-            .get("processors")
-            .and_then(|processors| processors.get("stripe"))
-            .and_then(|stripe| string_field(stripe, "id"))
+    let current_plan_id = sub
+        .and_then(|s| catalog.tier_for_product(&s.product_id))
+        .map(str::to_owned)
+        .or_else(|| Some("free".to_owned()));
+    let current_plan_name = current_plan_id
+        .as_deref()
+        .and_then(|tier| catalog.tier(tier))
+        .map(|t| t.name.clone());
+    let subscription_status = sub.map(|s| s.status.clone());
+    let subscription_canceled_at = sub.and_then(|s| {
+        s.cancel_at_period_end
+            .then(|| {
+                parse_epoch(s.canceled_at.as_deref())
+                    .or_else(|| parse_epoch(s.current_period_end.as_deref()))
+            })
+            .flatten()
     });
+    let subscription_current_period_end =
+        sub.and_then(|s| parse_epoch(s.current_period_end.as_deref()));
 
-    let plans = autumn
-        .plans()
-        .list(ListPlansParams {
-            customer_id: Some(billing::customer_id(m.workspace.id)),
-            entity_id: None,
-            include_archived: Some(false),
-        })
-        .await?
-        .list
-        .into_iter()
-        .filter(|plan| !plan.add_on.unwrap_or(false))
-        .map(|plan| plan_summary(plan, current_plan_id.as_deref()))
-        .collect::<Vec<_>>();
+    let is_paid = current_plan_id.as_deref().is_some_and(|t| t != "free")
+        && sub.is_some_and(|s| matches!(s.status.as_str(), "active" | "trialing" | "past_due"));
+    // The web UI keys "paid plan" detection off this field; populate it with the
+    // Polar customer id on paid plans (Polar runs the portal, not Stripe directly).
+    let stripe_customer_id = is_paid.then(|| cstate.id.clone());
 
-    let current_plan_name = plans
-        .iter()
-        .find(|plan| Some(plan.id.as_str()) == current_plan_id.as_deref())
-        .map(|plan| plan.name.clone());
-    let scheduled_plan_name = plans
-        .iter()
-        .find(|plan| Some(plan.id.as_str()) == scheduled_plan_id.as_deref())
-        .map(|plan| plan.name.clone());
-
-    let balances = customer
-        .balances
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(feature_id, balance)| {
-            let summary = BillingBalanceSummary {
-                feature_id: balance.feature_id,
-                granted: balance.granted,
-                remaining: balance.remaining,
-                usage: balance.usage,
-                unlimited: balance.unlimited.unwrap_or(false),
-                next_reset_at: balance.next_reset_at,
-            };
-            (feature_id, summary)
-        })
-        .collect();
+    let plans = build_plans(catalog, current_plan_id.as_deref());
+    let balances = build_balances(
+        &state,
+        m.workspace.id,
+        &cstate,
+        catalog,
+        current_plan_id.as_deref(),
+    )
+    .await?;
 
     Ok(Json(BillingSummary {
-        customer_id: customer
-            .id
-            .unwrap_or_else(|| billing::customer_id(m.workspace.id)),
+        customer_id: cstate.id.clone(),
         current_plan_id,
         current_plan_name,
         subscription_status,
         subscription_canceled_at,
         subscription_current_period_end,
-        scheduled_plan_id,
-        scheduled_plan_name,
-        portal_available: stripe_customer_id.is_some(),
+        // Polar has no "scheduled downgrade" concept; changes apply per its proration rules.
+        scheduled_plan_id: None,
+        scheduled_plan_name: None,
         stripe_customer_id,
+        portal_available: true,
         plans,
         balances,
     }))
@@ -233,7 +194,7 @@ pub async fn summary(
 #[utoipa::path(
     get,
     path = "/api/workspaces/{wid}/billing/customer",
-    params(("wid" = String, Path), CustomerQuery),
+    params(("wid" = String, Path)),
     responses((status = 200, body = Object)),
     security(("bearerAuth" = [])),
     tag = "billing"
@@ -241,28 +202,14 @@ pub async fn summary(
 pub async fn get_customer(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
-    Query(query): Query<CustomerQuery>,
 ) -> ApiResult<Json<Value>> {
     m.require_owner()?;
-    let autumn = require_autumn(&state)?;
     let owner_email = load_owner_email(&state, m.workspace.owner_id).await?;
     ensure_customer(&state, &m.workspace, &owner_email).await?;
 
-    let expand = parse_expand(query.expand.as_deref())
-        .unwrap_or_else(|| vec!["subscriptions.plan".into(), "balances.feature".into()]);
-
-    let customer = autumn
-        .customers()
-        .get_or_create(
-            CustomerParams::new(billing::customer_id(m.workspace.id))
-                .name(m.workspace.name.clone())
-                .email(owner_email)
-                .expand(expand),
-        )
-        .await?;
-
+    let cstate = customer_state_for_billing(&state, m.workspace.id).await?;
     Ok(Json(
-        serde_json::to_value(customer).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?,
+        serde_json::to_value(&*cstate).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?,
     ))
 }
 
@@ -278,22 +225,20 @@ pub async fn list_plans(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
 ) -> ApiResult<Json<Value>> {
-    let autumn = require_autumn(&state)?;
+    let billing = require_billing(&state)?;
     let owner_email = load_owner_email(&state, m.workspace.owner_id).await?;
     ensure_customer(&state, &m.workspace, &owner_email).await?;
 
-    let plans = autumn
-        .plans()
-        .list(ListPlansParams {
-            customer_id: Some(billing::customer_id(m.workspace.id)),
-            entity_id: None,
-            include_archived: Some(false),
-        })
-        .await?;
-
-    Ok(Json(
-        serde_json::to_value(plans).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?,
-    ))
+    let current = customer_state_for_billing(&state, m.workspace.id)
+        .await
+        .ok()
+        .and_then(|s| {
+            s.active_subscription()
+                .and_then(|sub| billing.catalog.tier_for_product(&sub.product_id))
+                .map(str::to_owned)
+        });
+    let plans = build_plans(&billing.catalog, current.as_deref());
+    Ok(Json(json!({ "list": plans })))
 }
 
 #[utoipa::path(
@@ -312,27 +257,72 @@ pub async fn attach(
     Json(body): Json<AttachBody>,
 ) -> ApiResult<Json<Value>> {
     m.require_owner()?;
-    let autumn = require_autumn(&state)?;
+    let billing = require_billing(&state)?;
     let owner_email = load_owner_email(&state, m.workspace.owner_id).await?;
     ensure_customer(&state, &m.workspace, &owner_email).await?;
 
     let plan_id = body.plan_id.trim().to_owned();
-    if plan_id.is_empty() {
-        return Err(ApiError::bad_request("plan_id required"));
-    }
-    ensure_attachable_plan(autumn, m.workspace.id, &plan_id).await?;
+    let Some(target) = billing.catalog.tier(&plan_id) else {
+        return Err(ApiError::bad_request(
+            "plan_id is not available for this workspace",
+        ));
+    };
+    let ext = billing::customer_id(m.workspace.id);
+    let cstate = refresh_and_store_customer_state(&state, m.workspace.id).await?;
+    let sub = cstate.active_subscription();
+    let on_paid = sub.is_some_and(|s| {
+        billing
+            .catalog
+            .tier_for_product(&s.product_id)
+            .is_some_and(|t| t != "free")
+    });
 
+    // Downgrade/attach to free: no checkout.
+    if plan_id == "free" {
+        match sub {
+            Some(s) if on_paid => {
+                billing
+                    .client
+                    .subscriptions()
+                    .change_product(&s.id, &target.product_id)
+                    .await?;
+            }
+            Some(_) => {} // already free
+            None => {
+                billing
+                    .client
+                    .subscriptions()
+                    .create(&target.product_id, &ext)
+                    .await?;
+            }
+        }
+        billing.invalidate(m.workspace.id);
+        refresh_after_subscription_change(&state, m.workspace.id).await;
+        return Ok(Json(json!({})));
+    }
+
+    // Paid target.
+    if let Some(s) = sub {
+        if on_paid {
+            // Switch between paid plans in place (proration handled by Polar).
+            billing
+                .client
+                .subscriptions()
+                .change_product(&s.id, &target.product_id)
+                .await?;
+            billing.invalidate(m.workspace.id);
+            refresh_after_subscription_change(&state, m.workspace.id).await;
+            return Ok(Json(json!({})));
+        }
+    }
+
+    // On free (or no sub): hosted checkout, upgrading the free subscription in place.
     let success_url = billing_return_url(&state, body.success_url, &m.workspace.slug)?;
-
-    let mut params = AttachParams::new(billing::customer_id(m.workspace.id), plan_id);
-    if let Some(success_url) = success_url {
-        params = params.success_url(success_url);
-    }
-
-    let response = autumn.billing().attach(params).await?;
-    Ok(Json(
-        serde_json::to_value(response).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?,
-    ))
+    let checkout = CheckoutCreate::new(&target.product_id, &ext)
+        .success_url(success_url)
+        .subscription_id(sub.map(|s| s.id.clone()));
+    let checkout = billing.client.checkouts().create(checkout).await?;
+    Ok(Json(json!({ "url": checkout.url })))
 }
 
 #[utoipa::path(
@@ -347,7 +337,7 @@ pub async fn cancel_subscription(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
 ) -> ApiResult<Json<Value>> {
-    update_current_subscription(&state, &m, CancelAction::CancelEndOfCycle).await
+    set_cancel(&state, &m, true).await
 }
 
 #[utoipa::path(
@@ -362,7 +352,7 @@ pub async fn renew_subscription(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
 ) -> ApiResult<Json<Value>> {
-    update_current_subscription(&state, &m, CancelAction::Uncancel).await
+    set_cancel(&state, &m, false).await
 }
 
 #[utoipa::path(
@@ -377,55 +367,34 @@ pub async fn cancel_downgrade(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
 ) -> ApiResult<Json<Value>> {
-    update_current_subscription(&state, &m, CancelAction::Uncancel).await
+    // Polar has no scheduled downgrades to undo; reaffirm the subscription.
+    set_cancel(&state, &m, false).await
 }
 
-async fn update_current_subscription(
-    state: &AppState,
-    m: &Membership,
-    cancel_action: CancelAction,
-) -> ApiResult<Json<Value>> {
+async fn set_cancel(state: &AppState, m: &Membership, cancel: bool) -> ApiResult<Json<Value>> {
     m.require_owner()?;
-    let autumn = require_autumn(state)?;
+    let billing = require_billing(state)?;
     let owner_email = load_owner_email(state, m.workspace.owner_id).await?;
     ensure_customer(state, &m.workspace, &owner_email).await?;
 
-    let customer = autumn
-        .customers()
-        .get({
-            let mut params = autumn::GetCustomerParams::new(billing::customer_id(m.workspace.id));
-            params.expand = Some(vec!["subscriptions.plan".into()]);
-            params
-        })
-        .await?;
-    let plan_id = current_plan_id(&customer)
+    let cstate = refresh_and_store_customer_state(state, m.workspace.id).await?;
+    let sub = cstate
+        .active_subscription()
         .ok_or_else(|| ApiError::bad_request("no active subscription to update"))?;
-
-    let response = autumn
-        .billing()
-        .update(UpdateSubscriptionParams {
-            customer_id: billing::customer_id(m.workspace.id),
-            entity_id: None,
-            plan_id: Some(plan_id),
-            subscription_id: None,
-            feature_quantities: None,
-            version: None,
-            customize: None,
-            invoice_mode: None,
-            proration_behavior: None,
-            redirect_mode: None,
-            discounts: None,
-            cancel_action: Some(cancel_action),
-            billing_cycle_anchor: None,
-            no_billing_changes: None,
-            recalculate_balances: None,
-            extra: Default::default(),
-        })
+    billing
+        .client
+        .subscriptions()
+        .set_cancel_at_period_end(&sub.id, cancel)
         .await?;
+    billing.invalidate(m.workspace.id);
+    refresh_after_subscription_change(state, m.workspace.id).await;
+    Ok(Json(json!({})))
+}
 
-    Ok(Json(
-        serde_json::to_value(response).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?,
-    ))
+async fn refresh_after_subscription_change(state: &AppState, workspace_id: uuid::Uuid) {
+    if let Err(e) = refresh_and_store_customer_state(state, workspace_id).await {
+        tracing::warn!(workspace_id = %workspace_id, error = ?e, "failed to refresh billing state after subscription change");
+    }
 }
 
 #[utoipa::path(
@@ -444,24 +413,18 @@ pub async fn open_portal(
     Json(body): Json<PortalBody>,
 ) -> ApiResult<Json<Value>> {
     m.require_owner()?;
-    let autumn = require_autumn(&state)?;
+    let billing = require_billing(&state)?;
     let owner_email = load_owner_email(&state, m.workspace.owner_id).await?;
     ensure_customer(&state, &m.workspace, &owner_email).await?;
 
     let return_url = billing_return_url(&state, body.return_url, &m.workspace.slug)?;
-
-    let response = autumn
-        .billing()
-        .open_customer_portal(OpenCustomerPortalParams {
-            customer_id: billing::customer_id(m.workspace.id),
-            configuration_id: body.configuration_id,
-            return_url,
-        })
+    let ext = billing::customer_id(m.workspace.id);
+    let session = billing
+        .client
+        .customer_sessions()
+        .create(&ext, return_url.as_deref())
         .await?;
-
-    Ok(Json(
-        serde_json::to_value(response).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?,
-    ))
+    Ok(Json(json!({ "url": session.customer_portal_url })))
 }
 
 #[utoipa::path(
@@ -480,228 +443,145 @@ pub async fn setup_payment(
     Json(body): Json<SetupPaymentBody>,
 ) -> ApiResult<Json<Value>> {
     m.require_owner()?;
-    let autumn = require_autumn(&state)?;
+    let billing = require_billing(&state)?;
     let owner_email = load_owner_email(&state, m.workspace.owner_id).await?;
     ensure_customer(&state, &m.workspace, &owner_email).await?;
 
-    let success_url = billing_return_url(&state, body.success_url, &m.workspace.slug)?;
-    let plan_id = match body.plan_id {
-        Some(plan_id) => {
-            let plan_id = plan_id.trim().to_owned();
-            if plan_id.is_empty() {
-                return Err(ApiError::bad_request("plan_id required"));
-            }
-            ensure_attachable_plan(autumn, m.workspace.id, &plan_id).await?;
-            Some(plan_id)
-        }
-        None => None,
+    let cstate = customer_state_for_billing(&state, m.workspace.id).await?;
+    // Resolve the product to set up payment for: explicit plan, else current paid plan.
+    let tier = body
+        .plan_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(str::to_owned)
+        .or_else(|| {
+            cstate
+                .active_subscription()
+                .and_then(|s| billing.catalog.tier_for_product(&s.product_id))
+                .filter(|t| *t != "free")
+                .map(str::to_owned)
+        });
+    let Some(tier) = tier.and_then(|t| billing.catalog.tier(&t).cloned()) else {
+        return Err(ApiError::bad_request("plan_id required"));
     };
 
-    let response = autumn
-        .billing()
-        .setup_payment(SetupPaymentParams {
-            customer_id: billing::customer_id(m.workspace.id),
-            entity_id: None,
-            plan_id,
-            feature_quantities: None,
-            version: None,
-            customize: None,
-            success_url,
-            extra: Default::default(),
-        })
-        .await?;
-
-    Ok(Json(
-        serde_json::to_value(response).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?,
-    ))
+    let success_url = billing_return_url(&state, body.success_url, &m.workspace.slug)?;
+    let ext = billing::customer_id(m.workspace.id);
+    let checkout = CheckoutCreate::new(&tier.product_id, &ext)
+        .success_url(success_url)
+        .subscription_id(cstate.active_subscription().map(|s| s.id.clone()));
+    let checkout = billing.client.checkouts().create(checkout).await?;
+    Ok(Json(json!({ "url": checkout.url })))
 }
 
-fn parse_expand(raw: Option<&str>) -> Option<Vec<String>> {
-    raw.map(|expand| {
-        expand
-            .split(',')
-            .map(str::trim)
-            .filter(|item| !item.is_empty())
-            .map(|item| match item {
-                // Backward-compatible aliases for callers that used the older shorthand.
-                "subscriptions" => "subscriptions.plan",
-                "balances" => "balances.feature",
-                other => other,
-            })
-            .filter(|item| {
-                matches!(
-                    *item,
-                    "invoices"
-                        | "trials_used"
-                        | "rewards"
-                        | "entities"
-                        | "referrals"
-                        | "payment_method"
-                        | "subscriptions.plan"
-                        | "purchases.plan"
-                        | "balances.feature"
-                        | "flags.feature"
-                        | "billing_controls.auto_topups.purchase_limit"
-                )
-            })
-            .map(ToOwned::to_owned)
-            .collect()
-    })
+// ---- summary builders -------------------------------------------------------
+
+fn build_plans(catalog: &PolarCatalog, current: Option<&str>) -> Vec<BillingPlanSummary> {
+    catalog
+        .tiers_ordered()
+        .into_iter()
+        .map(|tier| plan_summary(tier, current))
+        .collect()
 }
 
-fn current_plan_id(customer: &autumn::Customer) -> Option<String> {
-    current_subscription(customer)
-        .and_then(|subscription| {
-            string_field(subscription, "plan_id")
-                .or_else(|| {
-                    subscription
-                        .get("plan")
-                        .and_then(|plan| string_field(plan, "id"))
-                })
-                .or_else(|| {
-                    subscription
-                        .get("product")
-                        .and_then(|plan| string_field(plan, "id"))
-                })
-        })
-        .or_else(|| {
-            customer
-                .purchases
-                .as_ref()
-                .and_then(|purchases| purchases.first())
-                .and_then(|purchase| {
-                    string_field(purchase, "plan_id")
-                        .or_else(|| {
-                            purchase
-                                .get("plan")
-                                .and_then(|plan| string_field(plan, "id"))
-                        })
-                        .or_else(|| {
-                            purchase
-                                .get("product")
-                                .and_then(|plan| string_field(plan, "id"))
-                        })
-                })
-        })
-}
+fn plan_summary(tier: &TierCatalog, current: Option<&str>) -> BillingPlanSummary {
+    let dollars = tier.price_cents as f64 / 100.0;
+    let price = BillingPlanPriceSummary {
+        amount: Some(dollars),
+        interval: Some(tier.interval.clone()),
+        primary_text: Some(format!("${}", trim_decimal(dollars))),
+        secondary_text: Some(format!("per {}", tier.interval)),
+    };
 
-fn current_subscription_status(customer: &autumn::Customer) -> Option<String> {
-    current_subscription(customer).and_then(|subscription| string_field(subscription, "status"))
-}
-
-fn plan_id_from_subscription(subscription: &Value) -> Option<String> {
-    string_field(subscription, "plan_id")
-        .or_else(|| {
-            subscription
-                .get("plan")
-                .and_then(|plan| string_field(plan, "id"))
-        })
-        .or_else(|| {
-            subscription
-                .get("product")
-                .and_then(|plan| string_field(plan, "id"))
-        })
-}
-
-fn current_subscription(customer: &autumn::Customer) -> Option<&Value> {
-    customer
-        .subscriptions
-        .as_ref()
-        .and_then(|subscriptions| {
-            subscriptions.iter().find(|subscription| {
-                matches!(
-                    string_field(subscription, "status").as_deref(),
-                    Some("active" | "trialing" | "past_due")
-                )
-            })
-        })
-        .or_else(|| {
-            customer
-                .subscriptions
-                .as_ref()
-                .and_then(|subscriptions| subscriptions.first())
-        })
-}
-
-fn scheduled_subscription(customer: &autumn::Customer) -> Option<&Value> {
-    customer.subscriptions.as_ref().and_then(|subscriptions| {
-        subscriptions.iter().find(|subscription| {
-            string_field(subscription, "status").as_deref() == Some("scheduled")
-        })
-    })
-}
-
-fn plan_summary(plan: autumn::Plan, current_plan_id: Option<&str>) -> BillingPlanSummary {
-    let price = plan.price.map(|price| {
-        let (primary_text, secondary_text) = display_text(price.display.as_ref());
-        BillingPlanPriceSummary {
-            amount: price.amount,
-            interval: price.interval.and_then(json_string),
-            primary_text,
-            secondary_text,
+    let mut items = Vec::new();
+    for feature in METERED_FEATURES {
+        if let Some(ent) = tier.features.get(feature) {
+            items.push(metered_item(feature, ent));
         }
-    });
+    }
+    for perk in PERK_FEATURES {
+        items.push(perk_item(perk, tier.perks.contains(perk)));
+    }
 
     BillingPlanSummary {
-        current: current_plan_id == Some(plan.id.as_str()),
-        id: plan.id,
-        name: plan.name,
-        description: plan.description,
-        price,
-        items: plan
-            .items
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(plan_item_summary)
-            .collect(),
+        current: current == Some(tier.tier.as_str()),
+        id: tier.tier.clone(),
+        name: tier.name.clone(),
+        description: tier.description.clone(),
+        price: Some(price),
+        items,
     }
 }
 
-fn plan_item_summary(item: Value) -> Option<BillingPlanItemSummary> {
-    let feature_id = string_field(&item, "feature_id")?;
-    let (primary_text, secondary_text) = display_text(item.get("display"));
-    Some(BillingPlanItemSummary {
-        feature_id,
-        included: number_field(&item, "included"),
-        unlimited: item
-            .get("unlimited")
-            .and_then(Value::as_bool)
-            .unwrap_or(false),
-        primary_text,
-        secondary_text,
-    })
-}
-
-fn display_text(value: Option<&Value>) -> (Option<String>, Option<String>) {
-    let primary = value.and_then(|display| string_field(display, "primary_text"));
-    let secondary = value.and_then(|display| string_field(display, "secondary_text"));
-    (primary, secondary)
-}
-
-fn string_field(value: &Value, key: &str) -> Option<String> {
-    value
-        .get(key)
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
-}
-
-fn number_field(value: &Value, key: &str) -> Option<f64> {
-    match value.get(key) {
-        Some(Value::Number(number)) => number.as_f64(),
-        Some(Value::Bool(true)) => Some(1.0),
-        Some(Value::Bool(false)) => Some(0.0),
-        _ => None,
+fn metered_item(feature: &str, ent: &FeatureEntitlement) -> BillingPlanItemSummary {
+    BillingPlanItemSummary {
+        feature_id: feature.to_owned(),
+        included: Some(ent.included),
+        unlimited: false,
+        primary_text: Some(format!(
+            "{} {}",
+            format_thousands(ent.included),
+            feature_noun(feature, ent.included)
+        )),
+        secondary_text: ent
+            .unit_amount_cents
+            .map(|cents| overage_text(feature, cents)),
     }
 }
 
-fn integer_field(value: &Value, key: &str) -> Option<i64> {
-    value.get(key).and_then(Value::as_i64)
+fn perk_item(feature: &str, included: bool) -> BillingPlanItemSummary {
+    BillingPlanItemSummary {
+        feature_id: feature.to_owned(),
+        included: Some(if included { 1.0 } else { 0.0 }),
+        unlimited: false,
+        primary_text: Some(perk_label(feature).to_owned()),
+        secondary_text: (!included).then(|| "upgrade required".to_owned()),
+    }
 }
 
-fn json_string<T: Serialize>(value: T) -> Option<String> {
-    serde_json::to_value(value)
-        .ok()
-        .and_then(|value| value.as_str().map(ToOwned::to_owned))
+async fn build_balances(
+    state: &AppState,
+    workspace_id: uuid::Uuid,
+    cstate: &CustomerState,
+    catalog: &PolarCatalog,
+    current: Option<&str>,
+) -> ApiResult<BTreeMap<String, BillingBalanceSummary>> {
+    let tier = current.unwrap_or("free");
+    let next_reset_at = cstate
+        .active_subscription()
+        .and_then(|s| parse_epoch(s.current_period_end.as_deref()));
+
+    let mut balances = BTreeMap::new();
+    for feature in METERED_FEATURES {
+        let Some(ent) = catalog.entitlement(tier, feature) else {
+            continue;
+        };
+        let usage = match feature {
+            "events" => cstate.meter(&ent.meter_id).map(|m| m.consumed_units),
+            "monitors" => Some(monitor_count(state, workspace_id).await?),
+            "members" => Some(member_count(state, workspace_id).await?),
+            _ => None,
+        };
+        let remaining = usage.map(|u| (ent.included - u).max(0.0));
+        balances.insert(
+            feature.to_owned(),
+            BillingBalanceSummary {
+                feature_id: feature.to_owned(),
+                granted: Some(ent.included),
+                remaining,
+                usage,
+                unlimited: false,
+                next_reset_at,
+            },
+        );
+    }
+    Ok(balances)
+}
+
+fn parse_epoch(raw: Option<&str>) -> Option<i64> {
+    raw.and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.timestamp())
 }
 
 fn billing_return_url(
@@ -745,111 +625,4 @@ fn validate_billing_return_url(state: &AppState, requested: &str) -> ApiResult<S
     }
 
     Ok(requested.to_string())
-}
-
-async fn ensure_attachable_plan(
-    autumn: &autumn::Autumn,
-    workspace_id: uuid::Uuid,
-    plan_id: &str,
-) -> ApiResult<()> {
-    let plans = autumn
-        .plans()
-        .list(ListPlansParams {
-            customer_id: Some(billing::customer_id(workspace_id)),
-            entity_id: None,
-            include_archived: Some(false),
-        })
-        .await?;
-    let allowed = plans.list.into_iter().any(|plan| {
-        plan.id == plan_id && !plan.add_on.unwrap_or(false) && !plan.archived.unwrap_or(false)
-    });
-    if allowed {
-        Ok(())
-    } else {
-        Err(ApiError::bad_request(
-            "plan_id is not available for this workspace",
-        ))
-    }
-}
-
-// billing attach/portal/setup-payment return Autumn JSON payloads
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn current_plan_id_reads_expanded_subscription_plan() {
-        let customer = autumn::Customer {
-            id: Some("cus_123".into()),
-            name: None,
-            email: None,
-            created_at: None,
-            fingerprint: None,
-            stripe_id: None,
-            env: None,
-            metadata: None,
-            send_email_receipts: None,
-            billing_controls: None,
-            subscriptions: Some(vec![json!({
-                "status": "active",
-                "plan": { "id": "pro", "name": "Pro" }
-            })]),
-            purchases: None,
-            balances: None,
-            flags: None,
-            extra: Default::default(),
-        };
-
-        assert_eq!(current_plan_id(&customer).as_deref(), Some("pro"));
-        assert_eq!(
-            current_subscription_status(&customer).as_deref(),
-            Some("active")
-        );
-    }
-
-    #[test]
-    fn current_plan_id_falls_back_to_purchase_plan() {
-        let customer = autumn::Customer {
-            id: Some("cus_123".into()),
-            name: None,
-            email: None,
-            created_at: None,
-            fingerprint: None,
-            stripe_id: None,
-            env: None,
-            metadata: None,
-            send_email_receipts: None,
-            billing_controls: None,
-            subscriptions: Some(vec![]),
-            purchases: Some(vec![json!({
-                "plan_id": "free"
-            })]),
-            balances: None,
-            flags: None,
-            extra: Default::default(),
-        };
-
-        assert_eq!(current_plan_id(&customer).as_deref(), Some("free"));
-    }
-
-    #[test]
-    fn plan_item_summary_keeps_display_and_boolean_grants() {
-        let item = plan_item_summary(json!({
-            "feature_id": "custom_domain",
-            "included": 0,
-            "unlimited": false,
-            "display": {
-                "primary_text": "Custom domain",
-                "secondary_text": "included on Pro"
-            }
-        }))
-        .expect("plan item");
-
-        assert_eq!(item.feature_id, "custom_domain");
-        assert_eq!(item.included, Some(0.0));
-        assert_eq!(item.primary_text.as_deref(), Some("Custom domain"));
-        assert_eq!(item.secondary_text.as_deref(), Some("included on Pro"));
-    }
 }

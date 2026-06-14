@@ -145,6 +145,7 @@ async fn claim_one_due_region(
               AND r.enabled = true
               AND mr.enabled = true
               AND m.enabled = true
+              AND m.billing_paused_at IS NULL
               AND (
                 s.lease_expires_at IS NULL
                 OR s.lease_expires_at < now()

@@ -18,6 +18,7 @@ mod m20260525_000015_add_custom_domain_verification;
 mod m20260601_000016_multi_region_workers;
 mod m20260601_000017_rename_local_region_to_eu_west;
 mod m20260601_000018_add_user_admin_flag;
+mod m20260614_000019_create_polar_billing_state;
 
 pub struct Migrator;
 
@@ -43,6 +44,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260601_000016_multi_region_workers::Migration),
             Box::new(m20260601_000017_rename_local_region_to_eu_west::Migration),
             Box::new(m20260601_000018_add_user_admin_flag::Migration),
+            Box::new(m20260614_000019_create_polar_billing_state::Migration),
         ]
     }
 }

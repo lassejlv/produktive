@@ -2,24 +2,22 @@ use reqwest::StatusCode;
 use serde_json::Value;
 use thiserror::Error;
 
-pub type Result<T> = std::result::Result<T, AutumnError>;
+pub type Result<T> = std::result::Result<T, PolarError>;
 
 #[derive(Debug, Error)]
-pub enum AutumnError {
-    #[error("AUTUMN_SECRET_KEY not set")]
+pub enum PolarError {
+    #[error("POLAR_SECRET_KEY not set")]
     MissingSecretKey,
-    #[error("invalid Autumn base URL: {0}")]
+    #[error("invalid Polar base URL: {0}")]
     InvalidBaseUrl(#[from] url::ParseError),
     #[error("failed to encode request body: {0}")]
     Encode(#[from] serde_json::Error),
-    #[error("Autumn request failed: {0}")]
+    #[error("Polar request failed: {0}")]
     Transport(reqwest::Error),
-    #[error("Autumn API returned {0}")]
+    #[error("Polar API returned {0}")]
     Api(Box<ApiError>),
-    #[error("failed to decode Autumn response: {0}")]
+    #[error("failed to decode Polar response: {0}")]
     Decode(reqwest::Error),
-    #[error("Autumn handler error: {0}")]
-    Handler(String),
 }
 
 #[derive(Debug, Clone)]
@@ -32,14 +30,15 @@ pub struct ApiError {
 impl ApiError {
     pub fn new(status: StatusCode, text: String) -> Self {
         let body = serde_json::from_str(&text).ok();
-
         Self { status, body, text }
     }
 
+    /// Best-effort human message from Polar's error envelope
+    /// (`{"detail": "..."}` or `{"error": "..."}`).
     pub fn message(&self) -> Option<&str> {
         self.body
             .as_ref()
-            .and_then(|body| body.get("message").or_else(|| body.get("error")))
+            .and_then(|body| body.get("detail").or_else(|| body.get("error")))
             .and_then(Value::as_str)
     }
 }
@@ -58,8 +57,8 @@ impl std::fmt::Display for ApiError {
 
 impl std::error::Error for ApiError {}
 
-impl From<reqwest::Error> for AutumnError {
+impl From<reqwest::Error> for PolarError {
     fn from(error: reqwest::Error) -> Self {
-        AutumnError::Transport(error)
+        PolarError::Transport(error)
     }
 }

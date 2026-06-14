@@ -146,7 +146,7 @@ use crate::state::AppState;
         (name = "incidents",  description = "Private incident history"),
         (name = "notifications", description = "Notification history and channels"),
         (name = "custom domains", description = "Caddy-backed custom status domains"),
-        (name = "billing", description = "Autumn billing proxy"),
+        (name = "billing", description = "Polar billing proxy"),
         (name = "pricing", description = "Public pricing metadata"),
         (name = "regions", description = "Probe regions"),
         (name = "invites",    description = "Workspace invites"),

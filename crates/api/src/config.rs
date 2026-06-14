@@ -27,9 +27,11 @@ pub struct Config {
     /// Directory containing the built web frontend (`index.html`, `assets/`, ...).
     /// When `None`, static-file serving is disabled.
     pub web_dist_dir: Option<PathBuf>,
-    pub autumn_secret_key: Option<String>,
-    pub autumn_base_url: Option<String>,
-    pub autumn_api_version: Option<String>,
+    pub polar_secret_key: Option<String>,
+    pub polar_base_url: Option<String>,
+    pub polar_webhook_secret: Option<String>,
+    /// How often the billing reconcile sweep re-reports gauge usage to Polar.
+    pub billing_reconcile_tick_seconds: u64,
     /// Public app URL for billing checkout redirects (e.g. `http://localhost:5173`).
     pub app_url: Option<String>,
     pub admin_emails: Vec<String>,
@@ -135,18 +137,25 @@ impl Config {
             .map(PathBuf::from)
             .filter(|p| p.join("index.html").is_file());
 
-        let autumn_secret_key = std::env::var("AUTUMN_SECRET_KEY")
+        let polar_secret_key = std::env::var("POLAR_SECRET_KEY")
             .ok()
             .map(|v| v.trim().to_owned())
             .filter(|v| !v.is_empty());
-        let autumn_base_url = std::env::var("AUTUMN_BASE_URL")
+        let polar_base_url = std::env::var("POLAR_BASE_URL")
             .ok()
             .map(|v| v.trim().to_owned())
             .filter(|v| !v.is_empty());
-        let autumn_api_version = std::env::var("AUTUMN_API_VERSION")
+        let polar_webhook_secret = std::env::var("POLAR_WEBHOOK_SECRET")
             .ok()
             .map(|v| v.trim().to_owned())
             .filter(|v| !v.is_empty());
+        let billing_reconcile_tick_seconds = std::env::var("BILLING_RECONCILE_TICK_SECONDS")
+            .unwrap_or_else(|_| "86400".into())
+            .parse()
+            .context("BILLING_RECONCILE_TICK_SECONDS must be u64")?;
+        if billing_reconcile_tick_seconds == 0 {
+            return Err(anyhow!("BILLING_RECONCILE_TICK_SECONDS must be at least 1"));
+        }
         let app_url = std::env::var("APP_URL")
             .ok()
             .map(|v| v.trim().trim_end_matches('/').to_owned())
@@ -201,9 +210,10 @@ impl Config {
             custom_domain_proxy_ipv4,
             custom_domain_proxy_ipv6,
             web_dist_dir,
-            autumn_secret_key,
-            autumn_base_url,
-            autumn_api_version,
+            polar_secret_key,
+            polar_base_url,
+            polar_webhook_secret,
+            billing_reconcile_tick_seconds,
             app_url,
             admin_emails,
             local_region_slug,

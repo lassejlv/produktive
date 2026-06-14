@@ -37,6 +37,7 @@ pub struct Model {
     pub expected_status: Option<i32>,
     pub expected_body_contains: Option<String>,
     pub enabled: bool,
+    pub billing_paused_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub last_status: Option<i16>,
     pub last_latency_ms: Option<i32>,
     pub last_checked_at: Option<chrono::DateTime<chrono::FixedOffset>>,

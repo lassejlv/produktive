@@ -174,7 +174,7 @@ export function planChangeDescription(
     return `Switching from ${currentName} to ${nextName} will take effect at the end of the current billing month. Your current plan stays active until then.`;
   }
   if (activePaid) {
-    return `Switching from ${currentName} to ${nextName} may charge your active subscription immediately, including any prorated amount from Stripe.`;
+    return `Switching from ${currentName} to ${nextName} may charge your active subscription immediately, including any prorated amount.`;
   }
   return `Switching to ${nextName} will open checkout if payment is required before the plan is activated.`;
 }

@@ -86,26 +86,26 @@ impl From<jsonwebtoken::errors::Error> for ApiError {
     }
 }
 
-impl From<autumn::AutumnError> for ApiError {
-    fn from(e: autumn::AutumnError) -> Self {
+impl From<polar::PolarError> for ApiError {
+    fn from(e: polar::PolarError) -> Self {
         match e {
-            autumn::AutumnError::Api(api) => {
+            polar::PolarError::Api(api) => {
                 let status = api.status.as_u16();
                 let msg = api.message().unwrap_or("billing request failed").to_owned();
                 match status {
                     402 => ApiError::payment_required(msg),
-                    400 => ApiError::bad_request(msg),
+                    400 | 422 => ApiError::bad_request(msg),
+                    403 => ApiError::Forbidden,
                     404 => ApiError::not_found(msg),
                     409 => ApiError::conflict(msg),
                     429 => ApiError::too_many_requests(msg),
                     503 => ApiError::service_unavailable(msg),
                     _ if api.status.is_client_error() => ApiError::bad_request(msg),
-                    _ => ApiError::Internal(anyhow::anyhow!("Autumn API error: {api}")),
+                    _ => ApiError::Internal(anyhow::anyhow!("Polar API error: {api}")),
                 }
             }
-            autumn::AutumnError::Handler(msg) => ApiError::bad_request(msg),
             other => {
-                tracing::error!(error = %other, "Autumn client error");
+                tracing::error!(error = %other, "Polar client error");
                 ApiError::Internal(anyhow::anyhow!(other))
             }
         }

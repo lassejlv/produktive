@@ -13,4 +13,5 @@ pub mod pricing;
 pub mod public_status;
 pub mod regions;
 pub mod spa_meta;
+pub mod webhooks;
 pub mod workspaces;

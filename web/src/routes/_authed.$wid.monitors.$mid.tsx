@@ -120,6 +120,7 @@ function MonitorDetail() {
               {m.name}
             </h1>
             <Badge color={color}>{STATUS_LABEL[status]}</Badge>
+            {m.billing_paused_at && <Badge color="var(--color-warn)">billing paused</Badge>}
             {!m.enabled && <Badge color="var(--color-unknown)">paused</Badge>}
           </div>
           <CopyTarget target={m.target} />

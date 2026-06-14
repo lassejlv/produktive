@@ -33,7 +33,7 @@ Tests (Rust tests live next to the code they cover):
 - `crates/entity` — SeaORM entities shared by API and migrations.
 - `crates/migration` — SeaORM migrations, named `mYYYYMMDD_NNNNNN_*`. The API runs `Migrator::up` on startup, so a new migration applies automatically on next boot.
 - `crates/dsl` — the monitor DSL: `lex` → `parse` (→ `ast`) → `validate` → `project` (params/headers) / `eval` (rules). `print` re-serializes; `diagnostic` carries errors. No dependency on the API — a pure pipeline.
-- `crates/autumn` — standalone typed client for the Autumn billing API (feature-gated `axum` handler).
+- `crates/polar` — standalone typed client for the [Polar](https://polar.sh) billing API (customers, customer state, event ingestion, checkouts, customer sessions, subscriptions, catalog).
 - `web/src` — Vite + React 19 + TanStack Router (file-based) + TanStack Query + Tailwind v4.
 - `deploy/caddy` — Caddy reverse proxy for custom status-page domains (`just caddy-config` validates).
 
@@ -51,7 +51,7 @@ Either way the actual probe is `unstatus_probe::run(client, spec, max_body_bytes
 
 **DSL ↔ probes** — if a monitor has `dsl_source`, `crates/probe` parses it per check. `project()` resolves HTTP request config/headers (including `env("KEY")` lookups at check time — note: env lookups happen on whichever machine runs the probe) before the probe; afterwards `eval_rules` maps the raw outcome to ok/warn/down.
 
-**Billing** (`crates/api/src/billing/`, `http/billing.rs`, `http/pricing.rs`) — optional Autumn integration; disabled when `AUTUMN_SECRET_KEY` is empty. Features gated: `monitors`, `members`, `events`, `custom_domain`. When touching limits/checkout flows, keep the no-billing path working.
+**Billing** (`crates/api/src/billing/`, `http/billing.rs`, `http/pricing.rs`) — optional [Polar](https://polar.sh) integration; disabled when `POLAR_SECRET_KEY` is empty (or the catalog/API is unreachable at startup). At boot the API loads the Polar product catalog into `PolarCatalog` (`billing/catalog.rs`), keyed off product/meter/benefit `metadata` (`tier`/`feature`/`kind`) so entitlements resolve from the customer's **tier** — Polar grants benefits asynchronously, so don't gate on live grants. The workspace UUID is the Polar customer `external_id`. Enforcement (`billing/usage.rs`): `events` is metered consumption (10 units/check, `sum`), while `monitors`/`members` are current-count gauges enforced against the live DB count and billed on the **monthly peak** (`max` meters) — a daily `billing/sweep.rs` re-reports those counts. Gates **fail open** if Polar is unreachable. Features gated: `events`, `monitors`, `members` (metered), `custom_domain`/`one_min_checks`/`five_min_checks`/`multi_region`/`priority_support`/`remove_branding` (boolean perks). When touching limits/checkout flows, keep the no-billing path working.
 
 **TimescaleDB is required.** The checks migration aborts if the `timescaledb` extension is absent, then `create_hypertable('checks', 'time')`.
 

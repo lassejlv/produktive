@@ -2,8 +2,8 @@
 resolver = "2"
 members = [
     "crates/api",
-    "crates/autumn",
     "crates/dsl",
+    "crates/polar",
     "crates/entity",
     "crates/migration",
     "crates/probe",
@@ -51,6 +51,7 @@ uuid = { version = "1", features = ["v7", "v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+standardwebhooks = "1"
 thiserror = "2"
 anyhow = "1"
 tracing = "0.1"

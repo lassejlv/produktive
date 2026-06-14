@@ -65,7 +65,7 @@ function BillingPage() {
       <EmptyState
         icon={CreditCard}
         title="Billing unavailable"
-        description="Billing is not configured on this server. Set AUTUMN_SECRET_KEY to enable plans and usage limits."
+        description="Billing is not configured on this server. Set POLAR_SECRET_KEY to enable plans and usage limits."
       />
     );
   }
@@ -323,7 +323,7 @@ function CurrentPlanCard({
               >
                 {portalPending && <Spinner size={12} thickness={2} />}
                 <ExternalLink size={13} />
-                Manage in Stripe
+                Manage billing
               </Button>
             )}
           </div>
@@ -618,7 +618,7 @@ function planChangeDescription(
     return `Switching from ${currentName} to ${nextName} will take effect at the end of the current billing month. Your current plan stays active until then.`;
   }
   if (activePaidSubscription) {
-    return `Switching from ${currentName} to ${nextName} may charge your active subscription immediately, including any prorated amount from Stripe.`;
+    return `Switching from ${currentName} to ${nextName} may charge your active subscription immediately, including any prorated amount.`;
   }
   return `Switching to ${nextName} will open checkout if payment is required before the plan is activated.`;
 }

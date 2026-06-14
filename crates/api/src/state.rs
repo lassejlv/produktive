@@ -5,9 +5,9 @@ use reqwest::Client;
 use sea_orm::DatabaseConnection;
 use tokio::sync::Semaphore;
 
-use autumn::Autumn;
+use polar::Polar;
 
-use crate::config::Config;
+use crate::{billing::Billing, config::Config};
 
 #[derive(Clone)]
 pub enum RedisState {
@@ -23,7 +23,7 @@ pub struct AppState {
     pub http: Client,
     pub redis: RedisState,
     pub check_semaphore: Arc<Semaphore>,
-    pub autumn: Option<Autumn>,
+    pub billing: Option<Billing>,
 }
 
 impl AppState {
@@ -48,36 +48,43 @@ impl AppState {
             RedisState::Disabled
         };
         let check_semaphore = Arc::new(Semaphore::new(config.scheduler_max_concurrent_checks));
-        let autumn = build_autumn(&config)?;
+        let billing = build_billing(&config).await;
         Ok(Self {
             db,
             config,
             http,
             redis,
             check_semaphore,
-            autumn,
+            billing,
         })
     }
 }
 
-fn build_autumn(config: &Config) -> anyhow::Result<Option<Autumn>> {
-    let Some(secret_key) = config.autumn_secret_key.as_ref() else {
-        return Ok(None);
-    };
-    let mut builder = Autumn::builder().secret_key(secret_key.clone());
-    if let Some(base_url) = config.autumn_base_url.as_ref() {
+/// Build the Polar billing integration. Billing is optional: a missing key,
+/// an unreachable Polar, or an empty catalog all disable it gracefully rather
+/// than failing startup.
+async fn build_billing(config: &Config) -> Option<Billing> {
+    let secret_key = config.polar_secret_key.as_ref()?;
+    let mut builder = Polar::builder().secret_key(secret_key.clone());
+    if let Some(base_url) = config.polar_base_url.as_ref() {
         builder = builder.base_url(base_url.clone());
     }
-    if let Some(api_version) = config.autumn_api_version.as_ref() {
-        builder = builder.api_version(api_version.clone());
-    }
-    match builder.build() {
-        Ok(client) => {
-            tracing::info!("Autumn billing client initialized");
-            Ok(Some(client))
+    let client = match builder.build() {
+        Ok(client) => client,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to initialize Polar client; billing disabled");
+            return None;
         }
-        Err(e) => Err(anyhow::anyhow!(
-            "failed to initialize Autumn billing client: {e}"
-        )),
+    };
+    match Billing::load(client).await {
+        Ok(Some(billing)) => {
+            tracing::info!("Polar billing initialized");
+            Some(billing)
+        }
+        Ok(None) => None,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to load Polar catalog; billing disabled");
+            None
+        }
     }
 }

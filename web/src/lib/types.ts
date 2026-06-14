@@ -41,6 +41,7 @@ export interface Monitor {
   expected_status: number | null;
   expected_body_contains: string | null;
   enabled: boolean;
+  billing_paused_at: Iso | null;
   last_status: number | null;
   last_latency_ms: number | null;
   last_checked_at: Iso | null;
@@ -277,7 +278,7 @@ export interface NotificationChannel {
 export type MonitorStatus = "up" | "down" | "degraded" | "unknown";
 
 export function monitorStatus(m: Monitor): MonitorStatus {
-  if (!m.enabled) return "unknown";
+  if (!m.enabled || m.billing_paused_at) return "unknown";
   if (m.last_status === null) return "unknown";
   if (m.last_status === 1) return "up";
   if (m.last_status === 2) return "degraded";

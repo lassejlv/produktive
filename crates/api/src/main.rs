@@ -52,6 +52,7 @@ async fn main() -> Result<()> {
 
     scheduler::spawn(state.clone());
     auth::session_cleanup::spawn(state.clone());
+    billing::sweep::spawn(state.clone());
 
     let ws_scoped = Router::new()
         .merge(http::workspaces::scoped_routes())
@@ -83,6 +84,7 @@ async fn main() -> Result<()> {
         )
         .nest("/public", http::public_status::routes())
         .nest("/pricing", http::pricing::routes())
+        .nest("/webhooks", http::webhooks::routes())
         .nest("/internal/workers", http::internal_workers::routes());
 
     let spa_state = state.clone();
