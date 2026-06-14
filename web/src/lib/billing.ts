@@ -249,3 +249,187 @@ export function formatUsageNumber(value: number): string {
     maximumFractionDigits: value < 10 ? 1 : 0,
   }).format(value);
 }
+
+/** Matches backend `EVENT_UNITS_PER_CHECK` in `crates/api/src/billing/usage.rs`. */
+export const EVENT_UNITS_PER_CHECK = 2;
+
+const SECONDS_PER_MONTH = 86400 * 30;
+
+export function estimateMonthlyChecks(intervalSeconds: number, regionCount: number): number {
+  if (intervalSeconds <= 0 || regionCount <= 0) return 0;
+  return Math.floor(SECONDS_PER_MONTH / intervalSeconds) * regionCount;
+}
+
+export function estimateMonthlyEventUnits(checks: number): number {
+  return checks * EVENT_UNITS_PER_CHECK;
+}
+
+export type UsageLimitStatus = "ok" | "warning" | "blocked";
+
+export interface MeterCostLine {
+  label: string;
+  currentText: string;
+  projectedText: string;
+  deltaText: string | null;
+  limitText: string | null;
+  usagePercent: number | null;
+  status: UsageLimitStatus;
+  note: string | null;
+}
+
+export interface MonitorCreateCostEstimate {
+  billingEnabled: boolean;
+  planName: string | null;
+  intervalSeconds: number | null;
+  regionCount: number;
+  monitors: MeterCostLine;
+  events: MeterCostLine;
+  multiRegionBlocked: boolean;
+}
+
+function usageStatus(used: number, limit: number | null, unlimited: boolean): UsageLimitStatus {
+  if (unlimited || limit == null || limit <= 0) return "ok";
+  const projected = used;
+  if (projected > limit) return "blocked";
+  if (projected / limit >= 0.85) return "warning";
+  return "ok";
+}
+
+function formatMeterValue(value: number | null | undefined, unlimited: boolean): string {
+  if (unlimited) return "Unlimited";
+  if (value == null) return "—";
+  return formatUsageNumber(value);
+}
+
+export function buildMonitorCreateCostEstimate(input: {
+  billing: BillingSummary | undefined;
+  currentPlan: BillingPlanSummary | undefined;
+  intervalSeconds: number | null;
+  regionCount: number;
+}): MonitorCreateCostEstimate {
+  const { billing, currentPlan, intervalSeconds, regionCount } = input;
+  const billingEnabled = billing?.billing_enabled ?? false;
+  const planName = billing?.current_plan_name ?? currentPlan?.name ?? null;
+
+  const monitorsBalance = billing?.balances.monitors;
+  const eventsBalance = billing?.balances.events;
+  const monitorsItem = summaryPlanItem(currentPlan, "monitors");
+  const eventsItem = summaryPlanItem(currentPlan, "events");
+
+  const monitorsUnlimited = Boolean(monitorsBalance?.unlimited || monitorsItem?.unlimited);
+  const eventsUnlimited = Boolean(eventsBalance?.unlimited || eventsItem?.unlimited);
+
+  const currentMonitors = monitorsBalance?.usage ?? null;
+  const projectedMonitors = (currentMonitors ?? 0) + 1;
+  const monitorLimit = monitorsBalance?.granted ?? monitorsItem?.included ?? null;
+
+  const monthlyChecks =
+    intervalSeconds != null ? estimateMonthlyChecks(intervalSeconds, regionCount) : 0;
+  const monthlyEventUnits = estimateMonthlyEventUnits(monthlyChecks);
+  const currentEvents = eventsBalance?.usage ?? null;
+  const eventLimit = eventsBalance?.granted ?? eventsItem?.included ?? null;
+
+  const monitorOverLimit =
+    !monitorsUnlimited && monitorLimit != null && projectedMonitors > monitorLimit;
+  const monitorStatus: UsageLimitStatus = monitorOverLimit
+    ? monitorsItem?.secondary_text
+      ? "warning"
+      : "blocked"
+    : usageStatus(projectedMonitors, monitorLimit, monitorsUnlimited);
+
+  const eventsMayExceed =
+    currentEvents != null &&
+    eventLimit != null &&
+    !eventsUnlimited &&
+    intervalSeconds != null &&
+    currentEvents + monthlyEventUnits > eventLimit;
+
+  const eventStatus: UsageLimitStatus = !intervalSeconds
+    ? "ok"
+    : eventsMayExceed
+      ? eventsItem?.secondary_text
+        ? "warning"
+        : "blocked"
+      : currentEvents != null && eventLimit != null && !eventsUnlimited
+        ? usageStatus(currentEvents + monthlyEventUnits, eventLimit, eventsUnlimited)
+        : "ok";
+
+  const multiRegionBlocked =
+    billingEnabled &&
+    regionCount > 1 &&
+    !planIncludesFeature(currentPlan, "multi_region");
+
+  let monitorNote: string | null = null;
+  if (!billingEnabled) {
+    monitorNote = "Billing is not configured on this server.";
+  } else if (monitorOverLimit && monitorsItem?.secondary_text) {
+    monitorNote = monitorsItem.secondary_text;
+  } else if (monitorStatus === "blocked") {
+    monitorNote = "You are at the monitor limit for this plan.";
+  }
+
+  let eventsNote: string | null = null;
+  if (intervalSeconds == null) {
+    eventsNote = "Set a check interval to estimate event usage.";
+  } else if (!billingEnabled) {
+    eventsNote = "Event metering is disabled in self-hosted mode.";
+  } else {
+    eventsNote = `${formatUsageNumber(monthlyChecks)} checks/month × ${EVENT_UNITS_PER_CHECK} event units per check. ${nextResetText(eventsBalance)}.`;
+    if (eventStatus === "blocked" && eventsItem?.secondary_text) {
+      eventsNote = `${eventsNote} ${eventsItem.secondary_text}`;
+    }
+  }
+
+  return {
+    billingEnabled,
+    planName,
+    intervalSeconds,
+    regionCount,
+    multiRegionBlocked,
+    monitors: {
+      label: "Monitors",
+      currentText: formatMeterValue(currentMonitors, monitorsUnlimited),
+      projectedText: formatMeterValue(projectedMonitors, monitorsUnlimited),
+      deltaText: monitorsUnlimited ? null : "+1 monitor",
+      limitText:
+        monitorsUnlimited || monitorLimit == null
+          ? null
+          : `${formatUsageNumber(monitorLimit)} included`,
+      usagePercent:
+        monitorsUnlimited || monitorLimit == null
+          ? null
+          : Math.min(100, (projectedMonitors / monitorLimit) * 100),
+      status: monitorStatus,
+      note: monitorNote,
+    },
+    events: {
+      label: "Events (est.)",
+      currentText: formatMeterValue(currentEvents, eventsUnlimited),
+      projectedText:
+        intervalSeconds != null
+          ? `+${formatUsageNumber(monthlyEventUnits)}`
+          : "—",
+      deltaText: intervalSeconds != null ? "per month" : null,
+      limitText:
+        eventsUnlimited || eventLimit == null
+          ? null
+          : `${formatUsageNumber(eventLimit)} this period`,
+      usagePercent:
+        eventsUnlimited ||
+        eventLimit == null ||
+        currentEvents == null ||
+        intervalSeconds == null
+          ? null
+          : Math.min(100, ((currentEvents + monthlyEventUnits) / eventLimit) * 100),
+      status: eventStatus,
+      note: eventsNote,
+    },
+  };
+}
+
+export function parseDslIntervalSeconds(source: string): number | null {
+  const match = source.match(/set\s+schedule\.interval\s+(\d+)\s*s/i);
+  if (!match) return null;
+  const seconds = parseInt(match[1], 10);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}

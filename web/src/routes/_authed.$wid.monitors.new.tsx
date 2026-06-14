@@ -1,5 +1,5 @@
-import { Suspense, lazy, useEffect, useRef, useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Clock, FileCode, Globe, SquarePen } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../components/Button";
@@ -21,9 +21,18 @@ import {
   useCreateMonitor,
   useRegions,
   useValidateDsl,
+  useWorkspaces,
   type DslError,
 } from "../lib/queries";
-import { planIncludesFeature, type BillingPlanSummary } from "../lib/billing";
+import {
+  buildMonitorCreateCostEstimate,
+  parseDslIntervalSeconds,
+  planIncludesFeature,
+  type BillingPlanSummary,
+  type MeterCostLine,
+  type MonitorCreateCostEstimate,
+  type UsageLimitStatus,
+} from "../lib/billing";
 import type { MonitorKind } from "../lib/types";
 import { cn } from "#/lib/cn";
 
@@ -32,7 +41,8 @@ const MonacoDsl = lazy(() => import("../components/MonacoDsl"));
 export const Route = createFileRoute("/_authed/$wid/monitors/new")({
   staticData: {
     title: "New monitor",
-    description: "Add a probe and where to run it. Rules and alerts can be configured after creation.",
+    description:
+      "Add a probe and where to run it. Rules and alerts can be configured after creation.",
     parent: { label: "Monitors", to: "/$wid/monitors" },
   },
   component: NewMonitorPage,
@@ -68,12 +78,29 @@ function NewMonitorPage() {
   const validate = useValidateDsl(wid);
   const regions = useRegions(wid);
   const billing = useBillingSummary(wid);
+  const workspaces = useWorkspaces();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const workspace = workspaces.data?.find((item) => item.id === wid || item.slug === wid);
+  const canChangeRegions = workspace?.role === "owner";
   const currentPlan = billing.data?.plans.find((plan) => plan.current);
   const minimumInterval = minimumIntervalSeconds(currentPlan);
   const intervalOptions = buildIntervalOptions(minimumInterval);
   const selectedKind = KINDS.find((k) => k.value === kind);
   const submitDisabled = create.isPending || (mode === "code" && !!parseError);
+  const effectiveInterval = useMemo(() => {
+    if (mode === "form") return interval;
+    return parseDslIntervalSeconds(source) ?? null;
+  }, [mode, interval, source]);
+  const costEstimate = useMemo(
+    () =>
+      buildMonitorCreateCostEstimate({
+        billing: billing.data,
+        currentPlan,
+        intervalSeconds: effectiveInterval,
+        regionCount: selectedRegions.length,
+      }),
+    [billing.data, currentPlan, effectiveInterval, selectedRegions.length],
+  );
 
   function switchMode(next: Mode) {
     if (next === "code") {
@@ -118,6 +145,7 @@ function NewMonitorPage() {
   }, [interval, minimumInterval]);
 
   function toggleRegion(slug: string) {
+    if (!canChangeRegions) return;
     setSelectedRegions((current) => {
       if (current.includes(slug)) {
         const next = current.filter((value) => value !== slug);
@@ -160,10 +188,9 @@ function NewMonitorPage() {
     });
   }
 
-  const regionList =
-    regions.data ?? [
-      { slug: "eu-west", name: "eu-west", capabilities: KINDS.map((k) => k.value) },
-    ];
+  const regionList = regions.data ?? [
+    { slug: "eu-west", name: "eu-west", capabilities: KINDS.map((k) => k.value) },
+  ];
 
   return (
     <>
@@ -192,7 +219,9 @@ function NewMonitorPage() {
       <div
         className={cn(
           "grid grid-cols-1 gap-8",
-          mode === "form" ? "xl:grid-cols-[minmax(0,640px)_minmax(0,1fr)]" : "max-w-5xl",
+          mode === "form"
+            ? "xl:grid-cols-[minmax(0,640px)_minmax(280px,320px)]"
+            : "max-w-5xl xl:max-w-none xl:grid-cols-[minmax(0,1fr)_300px]",
         )}
       >
         <form id="new-monitor" onSubmit={onSubmit} className="min-w-0">
@@ -230,7 +259,10 @@ function NewMonitorPage() {
                               : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
                           )}
                         >
-                          <Icon size={15} className={active ? "text-[var(--color-accent)]" : undefined} />
+                          <Icon
+                            size={15}
+                            className={active ? "text-[var(--color-accent)]" : undefined}
+                          />
                           <span className="text-[11px] font-medium leading-none">{k.label}</span>
                         </button>
                       );
@@ -300,7 +332,9 @@ function NewMonitorPage() {
                         onChange={(e) => {
                           const next = parseInt(e.target.value || String(minimumInterval), 10);
                           setInterval(
-                            Number.isFinite(next) ? Math.max(minimumInterval, next) : minimumInterval,
+                            Number.isFinite(next)
+                              ? Math.max(minimumInterval, next)
+                              : minimumInterval,
                           );
                         }}
                         trailing="seconds"
@@ -324,7 +358,7 @@ function NewMonitorPage() {
                         <button
                           key={region.slug}
                           type="button"
-                          disabled={!supported}
+                          disabled={!supported || !canChangeRegions}
                           onClick={() => toggleRegion(region.slug)}
                           className={cn(
                             "h-8 rounded-[var(--radius-sm)] border px-2.5 text-[12px] font-medium transition-colors",
@@ -332,11 +366,14 @@ function NewMonitorPage() {
                               ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                               : "border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
                             !supported && "cursor-not-allowed opacity-45",
+                            !canChangeRegions && "cursor-not-allowed opacity-70",
                           )}
                           title={
-                            supported
-                              ? `Run from ${region.name}`
-                              : `${region.name} does not support ${kind} checks`
+                            !canChangeRegions
+                              ? "Only workspace owners can change monitor regions"
+                              : supported
+                                ? `Run from ${region.name}`
+                                : `${region.name} does not support ${kind} checks`
                           }
                         >
                           {region.name}
@@ -345,7 +382,9 @@ function NewMonitorPage() {
                     })}
                   </div>
                   <p className="mt-2.5 text-[11px] text-[var(--color-fg-dim)]">
-                    At least one region required.
+                    {canChangeRegions
+                      ? "At least one region required."
+                      : "Only workspace owners can change monitor regions."}
                   </p>
                 </div>
               </FieldGroup>
@@ -398,12 +437,14 @@ function NewMonitorPage() {
                       <button
                         key={region.slug}
                         type="button"
+                        disabled={!canChangeRegions}
                         onClick={() => toggleRegion(region.slug)}
                         className={cn(
                           "h-8 rounded-[var(--radius-sm)] border px-2.5 text-[12px] font-medium transition-colors",
                           active
                             ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                             : "border-[var(--color-border)] bg-[var(--color-bg-elev)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
+                          !canChangeRegions && "cursor-not-allowed opacity-70",
                         )}
                       >
                         {region.name}
@@ -411,12 +452,19 @@ function NewMonitorPage() {
                     );
                   })}
                 </div>
+                <p className="mt-2.5 text-[11px] text-[var(--color-fg-dim)]">
+                  {canChangeRegions
+                    ? "At least one region required."
+                    : "Only workspace owners can change monitor regions."}
+                </p>
               </div>
             </div>
           )}
 
           {create.error && (
-            <p className="mt-3 text-[12px] text-[var(--color-err)]">{(create.error as Error).message}</p>
+            <p className="mt-3 text-[12px] text-[var(--color-err)]">
+              {(create.error as Error).message}
+            </p>
           )}
 
           <div className="mt-4">
@@ -431,8 +479,8 @@ function NewMonitorPage() {
           </div>
         </form>
 
-        {mode === "form" && (
-          <aside className="hidden xl:block">
+        <aside className="flex flex-col gap-4 xl:sticky xl:top-6 xl:self-start">
+          {mode === "form" && (
             <MonitorPreview
               name={name}
               kind={kind}
@@ -440,8 +488,9 @@ function NewMonitorPage() {
               interval={interval}
               regions={selectedRegions}
             />
-          </aside>
-        )}
+          )}
+          <MonitorCostPanel wid={wid} estimate={costEstimate} billingLoading={billing.isLoading} />
+        </aside>
       </div>
     </>
   );
@@ -491,7 +540,9 @@ function MonitorPreview({
           <div className="truncate text-[15px] font-medium tracking-tight text-[var(--color-fg)]">
             {name.trim() || "Untitled monitor"}
           </div>
-          <div className="mono mt-1 truncate text-[12px] text-[var(--color-fg-muted)]">{target}</div>
+          <div className="mono mt-1 truncate text-[12px] text-[var(--color-fg-muted)]">
+            {target}
+          </div>
         </div>
       </div>
 
@@ -522,6 +573,123 @@ function PreviewRow({
       <dd className="truncate font-medium text-[var(--color-fg)]">{value}</dd>
     </div>
   );
+}
+
+function MonitorCostPanel({
+  wid,
+  estimate,
+  billingLoading,
+}: {
+  wid: string;
+  estimate: MonitorCreateCostEstimate;
+  billingLoading: boolean;
+}) {
+  return (
+    <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-5 shadow-[var(--shadow-xs)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
+            Estimated cost
+          </div>
+          {estimate.planName && (
+            <p className="mt-1 text-[12px] text-[var(--color-fg-muted)]">
+              {estimate.planName} plan
+            </p>
+          )}
+        </div>
+        <Link
+          to="/$wid/settings/billing"
+          params={{ wid }}
+          search={{ checkout: undefined }}
+          className="text-[11px] text-[var(--color-link)] no-underline hover:underline"
+        >
+          Billing
+        </Link>
+      </div>
+
+      {billingLoading ? (
+        <div className="mt-4 flex items-center gap-2 text-[12px] text-[var(--color-fg-muted)]">
+          <Spinner size={12} /> Loading usage…
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <CostMeterRow line={estimate.monitors} />
+          <CostMeterRow line={estimate.events} />
+          {estimate.multiRegionBlocked && (
+            <p className="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-warn)_35%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-warn)_8%,var(--color-bg-elev))] px-3 py-2 text-[11px] leading-relaxed text-[var(--color-warn)]">
+              Multiple regions require a plan with multi-region checks.
+            </p>
+          )}
+          {!estimate.billingEnabled && (
+            <p className="text-[11px] leading-relaxed text-[var(--color-fg-dim)]">
+              Self-hosted — no metered billing or plan limits.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CostMeterRow({ line }: { line: MeterCostLine }) {
+  const accent = statusAccent(line.status);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[12px] font-medium text-[var(--color-fg-muted)]">{line.label}</span>
+        {line.deltaText && (
+          <span className="mono text-[10px] uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
+            {line.deltaText}
+          </span>
+        )}
+      </div>
+      <div className="mt-1.5 flex items-baseline justify-between gap-3">
+        <span className="tabular text-[18px] font-medium tracking-tight text-[var(--color-fg)]">
+          {line.projectedText}
+        </span>
+        {line.currentText !== line.projectedText && line.currentText !== "—" && (
+          <span className="tabular text-[11px] text-[var(--color-fg-dim)]">
+            now {line.currentText}
+          </span>
+        )}
+      </div>
+      {line.limitText && line.usagePercent != null && (
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-bg-row)]">
+          <div
+            className="h-full rounded-full transition-[width] duration-300"
+            style={{
+              width: `${line.usagePercent}%`,
+              background: accent,
+            }}
+          />
+        </div>
+      )}
+      {line.limitText && (
+        <p className="mt-1.5 text-[11px] text-[var(--color-fg-dim)]">{line.limitText}</p>
+      )}
+      {line.note && (
+        <p
+          className={cn(
+            "mt-2 text-[11px] leading-relaxed",
+            line.status === "blocked"
+              ? "text-[var(--color-err)]"
+              : line.status === "warning"
+                ? "text-[var(--color-warn)]"
+                : "text-[var(--color-fg-dim)]",
+          )}
+        >
+          {line.note}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function statusAccent(status: UsageLimitStatus): string {
+  if (status === "blocked") return "var(--color-err)";
+  if (status === "warning") return "var(--color-warn)";
+  return "var(--color-accent)";
 }
 
 function minimumIntervalSeconds(plan?: BillingPlanSummary): number {

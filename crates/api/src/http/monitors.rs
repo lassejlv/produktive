@@ -349,6 +349,9 @@ pub async fn create(
     let target = target::validate_monitor(kind.clone(), &target_in).await?;
     require_monitor_interval(&state, m.workspace.id, interval_in).await?;
     let region_slugs = regions::normalize_requested_slugs(body.region_slugs.clone());
+    if region_selection_requires_owner(&region_slugs) {
+        m.require_owner()?;
+    }
     regions::validate_requested_regions(&state, m.workspace.id, &kind, &region_slugs).await?;
     let monitor_slug = slug::unique_monitor_slug(&state.db, m.workspace.id, &body.name).await?;
 
@@ -493,6 +496,9 @@ pub async fn update(
         .region_slugs
         .as_ref()
         .map(|slugs| regions::normalize_requested_slugs(Some(slugs.clone())));
+    if requested_region_slugs.is_some() {
+        m.require_owner()?;
+    }
     if let Some(slugs) = requested_region_slugs.as_ref() {
         regions::validate_requested_regions(&state, m.workspace.id, &next_kind, slugs).await?;
     } else if target_or_kind_changed {
@@ -552,6 +558,13 @@ pub async fn update(
             .await?;
     }
     Ok(Json(monitor_view(&state, row).await?))
+}
+
+fn region_selection_requires_owner(slugs: &[String]) -> bool {
+    slugs.len() != 1
+        || slugs
+            .first()
+            .is_none_or(|slug| slug != regions::DEFAULT_REGION_SLUG)
 }
 
 #[utoipa::path(
@@ -762,5 +775,20 @@ fn type_kind_to_monitor_kind(k: TypeKind) -> MonitorKind {
         TypeKind::Postgres => MonitorKind::Postgres,
         TypeKind::Redis => MonitorKind::Redis,
         TypeKind::Ssh => MonitorKind::Ssh,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::region_selection_requires_owner;
+
+    #[test]
+    fn non_default_or_multi_region_selection_requires_owner() {
+        assert!(!region_selection_requires_owner(&["eu-west".to_owned()]));
+        assert!(region_selection_requires_owner(&["us-east".to_owned()]));
+        assert!(region_selection_requires_owner(&[
+            "eu-west".to_owned(),
+            "us-east".to_owned(),
+        ]));
     }
 }

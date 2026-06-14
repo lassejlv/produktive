@@ -209,7 +209,7 @@ pub async fn add_update(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
     auth: AuthUser,
-    Path(id): Path<Uuid>,
+    Path((_wid, id)): Path<(String, Uuid)>,
     Json(body): Json<IncidentUpdateBody>,
 ) -> ApiResult<Json<IncidentView>> {
     let message = clean_text(body.message, 1, 4_000, "message")?;
