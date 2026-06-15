@@ -2741,6 +2741,7 @@ dependencies = [
  "produktive-dsl",
  "produktive-entity",
  "produktive-logging",
+ "produktive-logs",
  "produktive-probe",
  "rand 0.8.6",
  "redis",
@@ -2798,6 +2799,19 @@ dependencies = [
  "tokio",
  "utoipa",
  "uuid",
+]
+
+[[package]]
+name = "produktive-logs"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "url",
 ]
 
 [[package]]

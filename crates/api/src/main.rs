@@ -4,6 +4,7 @@ mod config;
 mod error;
 mod http;
 mod log_alerts;
+mod logship;
 mod middleware;
 mod notification_webhook;
 mod openapi;
@@ -21,18 +22,21 @@ use sea_orm::{ConnectOptions, Database};
 use std::net::SocketAddr;
 use std::time::Duration;
 use tower_http::{
+    catch_panic::CatchPanicLayer,
     cors::CorsLayer,
     services::{ServeDir, ServeFile},
     trace::TraceLayer,
 };
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{
+    filter::LevelFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer,
+};
 
 use crate::{config::Config, state::AppState};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let _ = dotenvy::dotenv();
-    init_tracing();
+    let log_ship = init_tracing();
 
     let config = Config::from_env()?;
 
@@ -96,6 +100,7 @@ async fn main() -> Result<()> {
     let mut app = Router::new()
         .nest("/api", api)
         .layer(TraceLayer::new_for_http())
+        .layer(CatchPanicLayer::new())
         .layer(cors_layer(&config)?)
         .with_state(state);
 
@@ -124,6 +129,11 @@ async fn main() -> Result<()> {
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
+
+    // Flush any buffered log events (e.g. a final error) before exit.
+    if let Some(guard) = log_ship {
+        guard.shutdown().await;
+    }
 
     Ok(())
 }
@@ -155,15 +165,29 @@ fn cors_layer(config: &Config) -> Result<CorsLayer> {
         ]))
 }
 
-fn init_tracing() {
+fn init_tracing() -> Option<logship::LogShipGuard> {
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("produktive_api=info,tower_http=info,sea_orm=warn"));
+
+    // Optional: ship WARN/ERROR events to a Produktive log project. The EnvFilter
+    // scopes only stdout verbosity; the shipping layer gets its own WARN+ filter
+    // so it captures errors from *every* target, not just those the console
+    // filter allows. `None` (no PRODUKTIVE_LOG_TOKEN) is a no-op layer.
+    let (ship_layer, guard) = match logship::ProduktiveLayer::from_env() {
+        Some((layer, guard)) => (Some(layer.with_filter(LevelFilter::WARN)), Some(guard)),
+        None => (None, None),
+    };
+
     tracing_subscriber::registry()
-        .with(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                EnvFilter::new("produktive_api=info,tower_http=info,sea_orm=warn")
-            }),
-        )
-        .with(tracing_subscriber::fmt::layer().compact())
+        .with(fmt::layer().compact().with_filter(env_filter))
+        .with(ship_layer)
         .init();
+
+    // Route panics (handlers and background tasks alike) through tracing — and
+    // thus the shipping layer — before the default hook prints them.
+    logship::install_panic_hook();
+
+    guard
 }
 
 async fn shutdown_signal() {
