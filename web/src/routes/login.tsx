@@ -6,7 +6,7 @@ import { Input } from "../components/Input";
 import { auth } from "../lib/api";
 import { BRAND_NAME, BRAND_TAGLINE } from "../lib/brand";
 import { parseLoginRedirect } from "../lib/redirect";
-import { useLogin } from "../lib/queries";
+import { useAuthConfig, useLogin } from "../lib/queries";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -24,6 +24,8 @@ function LoginPage() {
   const nav = useNavigate();
   const { redirect: redirectTo = "/", oauth_token: oauthToken } = useSearch({ from: "/login" });
   const login = useLogin();
+  const authConfig = useAuthConfig();
+  const githubEnabled = authConfig.data?.github_enabled ?? false;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -55,21 +57,25 @@ function LoginPage() {
           Sign in
         </h1>
 
-        <Button
-          render={<a href={githubLoginHref} />}
-          variant="secondary"
-          size="lg"
-          className="w-full"
-        >
-          <GitHubMark />
-          Continue with GitHub
-        </Button>
+        {githubEnabled && (
+          <>
+            <Button
+              render={<a href={githubLoginHref} />}
+              variant="secondary"
+              size="lg"
+              className="w-full"
+            >
+              <GitHubMark />
+              Continue with GitHub
+            </Button>
 
-        <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
-          <span className="h-px flex-1 bg-[var(--color-border)]" />
-          <span>Email</span>
-          <span className="h-px flex-1 bg-[var(--color-border)]" />
-        </div>
+            <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-muted)]">
+              <span className="h-px flex-1 bg-[var(--color-border)]" />
+              <span>Email</span>
+              <span className="h-px flex-1 bg-[var(--color-border)]" />
+            </div>
+          </>
+        )}
 
         <form
           className="flex flex-col gap-4"

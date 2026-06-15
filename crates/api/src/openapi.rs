@@ -17,6 +17,7 @@ use crate::state::AppState;
         crate::http::health::health,
         crate::auth::routes::register,
         crate::auth::routes::login,
+        crate::auth::routes::auth_config,
         crate::auth::routes::github_start,
         crate::auth::routes::github_callback,
         crate::auth::routes::logout,
@@ -76,6 +77,7 @@ use crate::state::AppState;
     components(schemas(
         crate::http::health::HealthResponse,
         crate::auth::routes::CredsPayload,
+        crate::auth::routes::AuthConfig,
         crate::auth::routes::GithubStartQuery,
         crate::auth::routes::GithubCallbackQuery,
         crate::auth::routes::UserView,

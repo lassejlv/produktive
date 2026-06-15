@@ -30,6 +30,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/register", post(register))
         .route("/login", post(login))
+        .route("/config", get(auth_config))
         .route("/github/start", get(github_start))
         .route("/github/callback", get(github_callback))
         .route("/logout", post(logout))
@@ -40,6 +41,25 @@ pub fn routes() -> Router<AppState> {
 pub struct CredsPayload {
     pub email: String,
     pub password: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct AuthConfig {
+    /// Whether GitHub OAuth login is configured on this server.
+    pub github_enabled: bool,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/auth/config",
+    responses((status = 200, body = AuthConfig)),
+    tag = "auth"
+)]
+pub async fn auth_config(State(state): State<AppState>) -> Json<AuthConfig> {
+    Json(AuthConfig {
+        github_enabled: state.config.github_client_id.is_some()
+            && state.config.github_client_secret.is_some(),
+    })
 }
 
 #[derive(Serialize, ToSchema)]

@@ -9,10 +9,24 @@ import {
   RefreshCcw,
   Search,
   Trash2,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { toast } from "#/lib/toast";
 import { Button } from "#/components/ui/button";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "#/components/ui/input-group";
+import { Input as UIInput } from "#/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "#/components/ui/select";
 import {
   Sheet,
   SheetDescription,
@@ -41,8 +55,19 @@ import type { LogAlertRule, LogProject, LogSearchEvent } from "../lib/types";
 import { lastSeen } from "../lib/status";
 import { cn } from "#/lib/cn";
 
-const fieldControlClass =
-  "w-full rounded-[var(--radius-md)] border border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] px-3 text-[13px] text-[var(--color-fg)] shadow-[var(--shadow-xs)] outline-none transition-[border-color,box-shadow] focus:border-[var(--color-accent)] focus:shadow-[var(--ring-accent)]";
+const toolbarControlClass = cn(
+  "h-8 min-w-0 rounded-[var(--radius-md)]",
+  "border-[var(--color-border-hi)] bg-[var(--color-bg-elev)]",
+  "!shadow-none !before:hidden",
+  "focus-within:border-[var(--color-accent)] focus-within:!ring-2 focus-within:ring-[var(--ring-accent)]",
+  "focus-visible:border-[var(--color-accent)] focus-visible:!ring-2 focus-visible:ring-[var(--ring-accent)]",
+);
+
+const fieldControlClass = cn(
+  "h-8 w-full rounded-[var(--radius-md)] border border-[var(--color-border-hi)] bg-[var(--color-bg-elev)]",
+  "px-2.5 text-[12px] text-[var(--color-fg)] shadow-[var(--shadow-xs)] outline-none",
+  "focus:border-[var(--color-accent)] focus:shadow-[var(--ring-accent)]",
+);
 
 type LevelFilter = "all" | "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 type TimeRange = "15m" | "1h" | "6h" | "24h";
@@ -223,15 +248,16 @@ function LogExplorer({
 
   const search = useLogSearch(wid, project.slug, input);
   const events = search.data?.events ?? [];
-  const selectedEvent =
-    events.find((event) => event.event_id === filters.event) ?? events[0] ?? null;
+  const selectedEvent = filters.event
+    ? (events.find((event) => event.event_id === filters.event) ?? null)
+    : null;
 
   useEffect(() => {
     if (!events.length) {
       if (filters.event) updateSelectedEvent(undefined);
       return;
     }
-    if (!filters.event || !events.some((event) => event.event_id === filters.event)) {
+    if (filters.event && !events.some((event) => event.event_id === filters.event)) {
       updateSelectedEvent(events[0].event_id);
     }
   }, [events, filters.event, updateSelectedEvent]);
@@ -244,126 +270,143 @@ function LogExplorer({
 
   return (
     <div className="fade-in flex min-h-0 flex-1 flex-col bg-[var(--color-bg)]">
-      <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <Button
-            render={<Link to="/$wid/logs" params={{ wid }} />}
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Back to log projects"
-          >
-            <ArrowLeft size={15} />
-          </Button>
+      <header className="shrink-0 border-b border-[var(--color-border)] px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h1 className="truncate text-[16px] font-medium text-[var(--color-fg)]">
+            <div className="flex min-w-0 items-center gap-2">
+              <Link
+                to="/$wid/logs"
+                params={{ wid }}
+                className="shrink-0 text-[var(--color-fg-muted)] no-underline hover:text-[var(--color-fg)]"
+                aria-label="Back to log projects"
+              >
+                <ArrowLeft size={14} />
+              </Link>
+              <h1 className="truncate text-[15px] font-medium text-[var(--color-fg)]">
                 {project.name}
               </h1>
-              <span className="mono rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] text-[var(--color-fg-muted)]">
-                {project.slug}
-              </span>
             </div>
-            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--color-fg-muted)]">
-              <span>{formatCompact(project.event_count_24h)} events in 24h</span>
-              <span>{formatBytes(project.bytes_ingested_24h)} in 24h</span>
-              <span>
-                {project.last_ingested_at
-                  ? `last ${lastSeen(project.last_ingested_at)}`
-                  : "no events yet"}
-              </span>
-            </div>
+            <p className="mt-1 text-[12px] text-[var(--color-fg-dim)]">
+              {formatCompact(project.event_count_24h)} events · {formatBytes(project.bytes_ingested_24h)}
+              {project.last_ingested_at
+                ? ` · last ${lastSeen(project.last_ingested_at)}`
+                : " · no events yet"}
+              <span className="text-[var(--color-fg-dim)]"> · beta</span>
+            </p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <ToolButton
-            tool="tokens"
-            icon={KeyRound}
-            label="Tokens"
-            onClick={() => onSheetChange("tokens")}
-          />
-          <ToolButton
-            tool="alerts"
-            icon={Bell}
-            label="Alerts"
-            onClick={() => onSheetChange("alerts")}
-          />
-          <ToolButton
-            tool="project"
-            icon={MoreHorizontal}
-            label="Project"
-            onClick={() => onSheetChange("project")}
-          />
+          <div className="flex items-center gap-0.5">
+            <ToolButton
+              tool="tokens"
+              icon={KeyRound}
+              label="Tokens"
+              onClick={() => onSheetChange("tokens")}
+            />
+            <ToolButton
+              tool="alerts"
+              icon={Bell}
+              label="Alerts"
+              onClick={() => onSheetChange("alerts")}
+            />
+            <ToolButton
+              tool="project"
+              icon={MoreHorizontal}
+              label="Project"
+              onClick={() => onSheetChange("project")}
+            />
+          </div>
         </div>
       </header>
 
       <form
         onSubmit={submit}
-        className="grid shrink-0 gap-2 border-b border-[var(--color-border)] bg-[var(--color-bg)] p-3 lg:grid-cols-[minmax(240px,1fr)_120px_150px_120px_auto]"
+        className="grid shrink-0 grid-cols-2 gap-2 border-b border-[var(--color-border)] px-4 py-2 sm:grid-cols-[minmax(0,1fr)_6rem_7rem_5rem_auto_auto] sm:items-center"
       >
-        <Input
-          aria-label="Search query"
-          value={draft.q}
-          onChange={(event) => setDraft((current) => ({ ...current, q: event.target.value }))}
-          placeholder="message, request id, trace id"
-          leading={<Search size={14} />}
-        />
-        <select
-          aria-label="Level"
+        <InputGroup className={cn(toolbarControlClass, "col-span-2 sm:col-span-1")}>
+          <InputGroupAddon>
+            <Search size={13} className="text-[var(--color-fg-dim)]" />
+          </InputGroupAddon>
+          <InputGroupInput
+            size="sm"
+            aria-label="Search query"
+            value={draft.q}
+            onChange={(event) => setDraft((current) => ({ ...current, q: event.target.value }))}
+            placeholder="Search logs…"
+          />
+        </InputGroup>
+
+        <Select
           value={draft.level}
-          onChange={(event) =>
-            setDraft((current) => ({ ...current, level: event.target.value as LevelFilter }))
-          }
-          className={cn(fieldControlClass, "h-9")}
+          onValueChange={(value) => {
+            if (!value || !isLevelFilter(value)) return;
+            setDraft((current) => ({ ...current, level: value }));
+          }}
         >
-          {LEVELS.map((level) => (
-            <option key={level} value={level}>
-              {level}
-            </option>
-          ))}
-        </select>
-        <Input
+          <SelectTrigger size="sm" className={cn(toolbarControlClass, "w-full")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {LEVELS.map((level) => (
+              <SelectItem key={level} value={level}>
+                {level}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <UIInput
+          size="sm"
           aria-label="Service"
           value={draft.service}
           onChange={(event) => setDraft((current) => ({ ...current, service: event.target.value }))}
           placeholder="service"
+          className={cn(toolbarControlClass, "w-full")}
         />
-        <select
-          aria-label="Time range"
+
+        <Select
           value={draft.range}
-          onChange={(event) =>
-            setDraft((current) => ({ ...current, range: event.target.value as TimeRange }))
-          }
-          className={cn(fieldControlClass, "h-9")}
+          onValueChange={(value) => {
+            if (!value || !isTimeRange(value)) return;
+            setDraft((current) => ({ ...current, range: value }));
+          }}
         >
-          {RANGES.map((range) => (
-            <option key={range.value} value={range.value}>
-              {range.label}
-            </option>
-          ))}
-        </select>
-        <div className="flex gap-2">
-          <Button type="submit" variant="default" size="sm" disabled={search.isFetching}>
-            {search.isFetching && <Spinner className="size-3" />}
-            Search
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={search.isFetching}
-            onClick={() => {
-              setSubmittedAt(Date.now());
-              search.refetch();
-            }}
-            aria-label="Refresh logs"
-          >
-            <RefreshCcw size={13} />
-          </Button>
-        </div>
+          <SelectTrigger size="sm" className={cn(toolbarControlClass, "w-full")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RANGES.map((range) => (
+              <SelectItem key={range.value} value={range.value}>
+                {range.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Button
+          type="submit"
+          variant="secondary"
+          size="sm"
+          disabled={search.isFetching}
+          className="col-span-2 sm:col-span-1"
+        >
+          {search.isFetching ? <Spinner className="size-3" /> : "Run"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={search.isFetching}
+          className="justify-self-end text-[var(--color-fg-muted)] sm:justify-self-auto"
+          onClick={() => {
+            setSubmittedAt(Date.now());
+            search.refetch();
+          }}
+          aria-label="Refresh logs"
+        >
+          <RefreshCcw size={13} />
+        </Button>
       </form>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="relative min-h-0 min-w-0 flex-1">
         <EventStream
           loading={search.isLoading}
           fetching={search.isFetching}
@@ -371,7 +414,20 @@ function LogExplorer({
           selectedEventId={selectedEvent?.event_id ?? null}
           onSelect={(eventId) => updateSelectedEvent(eventId)}
         />
-        <EventInspector event={selectedEvent} />
+        {selectedEvent && (
+          <>
+            <button
+              type="button"
+              className="fade-in absolute inset-0 z-10 hidden bg-[color-mix(in_srgb,var(--color-bg)_55%,transparent)] xl:block"
+              onClick={() => updateSelectedEvent(undefined)}
+              aria-label="Close event details"
+            />
+            <EventInspector
+              event={selectedEvent}
+              onClose={() => updateSelectedEvent(undefined)}
+            />
+          </>
+        )}
       </div>
 
       <ExplorerSheet
@@ -411,16 +467,10 @@ function EventStream({
 }) {
   return (
     <section className="flex min-h-0 min-w-0 flex-col">
-      <div className="grid shrink-0 grid-cols-[150px_86px_150px_minmax(0,1fr)] border-b border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)] max-md:hidden">
-        <span>Time</span>
-        <span>Level</span>
-        <span>Service</span>
-        <span>Message</span>
-      </div>
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         {fetching && !loading && (
-          <div className="absolute right-3 top-3 z-10 rounded-full border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-2 py-1 text-[11px] text-[var(--color-fg-muted)] shadow-[var(--shadow-sm)]">
-            updating
+          <div className="absolute right-3 top-2 z-10 text-[11px] text-[var(--color-fg-dim)]">
+            updating…
           </div>
         )}
         {loading ? (
@@ -460,86 +510,121 @@ function EventRow({
       type="button"
       onClick={onClick}
       className={cn(
-        "grid w-full gap-2 px-3 py-2.5 text-left transition-colors md:grid-cols-[150px_86px_150px_minmax(0,1fr)]",
-        selected ? "bg-[var(--color-accent-soft)]" : "hover:bg-[var(--color-bg-row)]",
+        "mono flex w-full min-w-0 items-baseline gap-2 px-4 py-1.5 text-left text-[12px] transition-colors",
+        selected ? "bg-[var(--color-bg-row)]" : "hover:bg-[var(--color-bg-row)]/60",
       )}
     >
-      <div className="mono text-[11px] text-[var(--color-fg-dim)]">
+      <span className="shrink-0 tabular text-[var(--color-fg-dim)]">
         {new Date(event.timestamp).toLocaleTimeString()}
-      </div>
-      <div>
-        <LevelBadge level={event.level} />
-      </div>
-      <div className="min-w-0 truncate text-[12px] text-[var(--color-fg-muted)]">
-        {event.service ?? "unknown"}
-      </div>
-      <div className="min-w-0">
-        <div className="truncate text-[13px] text-[var(--color-fg)]">{event.message}</div>
-      </div>
+      </span>
+      <LevelBadge level={event.level} />
+      {event.service && (
+        <span className="shrink-0 truncate text-[var(--color-fg-dim)]">{event.service}</span>
+      )}
+      <span className="min-w-0 truncate text-[var(--color-fg)]">{event.message}</span>
     </button>
   );
 }
 
-function EventInspector({ event }: { event: LogSearchEvent | null }) {
+function EventInspector({
+  event,
+  onClose,
+}: {
+  event: LogSearchEvent;
+  onClose: () => void;
+}) {
+  const payload = eventPayload(event);
+  const meta = [
+    ["received", new Date(event.received_at).toLocaleString()],
+    ["environment", event.environment],
+    ["operation", event.operation],
+    ["request", event.request_id],
+    ["trace", event.trace_id],
+  ].filter(([, value]) => value) as Array<[string, string]>;
+
   return (
-    <aside className="hidden min-h-0 min-w-0 overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-bg-elev)] xl:flex xl:flex-col">
-      <div className="shrink-0 border-b border-[var(--color-border)] px-4 py-3">
-        <div className="text-[13px] font-medium text-[var(--color-fg)]">Event detail</div>
-      </div>
-      {event ? (
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4">
-          <div className="min-w-0 space-y-4">
-            <InspectorGroup
-              rows={[
-                ["timestamp", new Date(event.timestamp).toLocaleString()],
-                ["received", new Date(event.received_at).toLocaleString()],
-                ["level", event.level],
-                ["service", event.service],
-                ["environment", event.environment],
-                ["operation", event.operation],
-                ["request", event.request_id],
-                ["trace", event.trace_id],
-              ]}
-            />
-            <JsonBlock title="Fields" value={event.fields} />
-            <JsonBlock title="Event" value={event.event} />
+    <aside className="fade-in pointer-events-auto absolute bottom-4 right-4 top-4 z-20 hidden w-[min(400px,42vw)] xl:flex xl:flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-xl)] border border-[var(--color-border-strong)] bg-[color-mix(in_srgb,var(--color-bg-elev)_90%,transparent)] shadow-[var(--shadow-pop)] ring-1 ring-[color-mix(in_srgb,var(--color-fg)_8%,transparent)] backdrop-blur-xl">
+        <div className="flex items-start gap-3 border-b border-[var(--color-border)] px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <LevelBadge level={event.level} />
+              {event.service && (
+                <span className="mono truncate text-[11px] text-[var(--color-fg-dim)]">
+                  {event.service}
+                </span>
+              )}
+            </div>
+            <p className="mt-2 text-[13px] leading-snug text-[var(--color-fg)]">{event.message}</p>
+            <p className="mono mt-1.5 text-[11px] text-[var(--color-fg-dim)]">
+              {new Date(event.timestamp).toLocaleString()}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0 text-[var(--color-fg-muted)]"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <X size={14} />
+          </Button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div className="space-y-4">
+            {meta.length > 0 && (
+              <dl className="grid gap-2">
+                {meta.map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)] gap-2 text-[11px]"
+                  >
+                    <dt className="text-[var(--color-fg-dim)]">{label}</dt>
+                    <dd className="mono min-w-0 overflow-x-auto whitespace-nowrap text-[var(--color-fg)]">
+                      {value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {payload && <JsonBlock title={payload.title} value={payload.value} />}
           </div>
         </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-[13px] text-[var(--color-fg-muted)]">
-          Select an event.
-        </div>
-      )}
+      </div>
     </aside>
   );
 }
 
-function InspectorGroup({ rows }: { rows: Array<[string, string | null]> }) {
-  return (
-    <div className="min-w-0 divide-y divide-[var(--color-border)] rounded-[var(--radius-md)] border border-[var(--color-border)]">
-      {rows
-        .filter(([, value]) => value)
-        .map(([label, value]) => (
-          <div key={label} className="grid min-w-0 grid-cols-[88px_minmax(0,1fr)] gap-3 px-3 py-2">
-            <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
-              {label}
-            </div>
-            <div className="mono min-w-0 overflow-x-auto whitespace-nowrap text-[11px] text-[var(--color-fg)]">
-              {value}
-            </div>
-          </div>
-        ))}
-    </div>
-  );
+function eventPayload(event: LogSearchEvent): { title: string; value: unknown } | null {
+  const fieldsJson = hasJsonContent(event.fields) ? formatJson(event.fields) : null;
+  const eventJson = hasJsonContent(event.event) ? formatJson(event.event) : null;
+
+  if (fieldsJson && eventJson) {
+    if (fieldsJson === eventJson) return { title: "Payload", value: event.fields };
+    return { title: "Event", value: event.event };
+  }
+  if (fieldsJson) return { title: "Fields", value: event.fields };
+  if (eventJson) return { title: "Event", value: event.event };
+  return null;
+}
+
+function hasJsonContent(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return Object.keys(value as object).length > 0;
+  }
+  return true;
 }
 
 function JsonBlock({ title, value }: { title: string; value: unknown }) {
   return (
     <div className="min-w-0">
-      <div className="mb-2 text-[10px] uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
+      <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
         {title}
       </div>
-      <pre className="mono max-h-[42vh] max-w-full overflow-auto rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] p-3 text-[11px] leading-5 text-[var(--color-fg)]">
+      <pre className="mono max-h-[38vh] max-w-full overflow-auto rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-[11px] leading-5 text-[var(--color-fg)]">
         {formatJson(value)}
       </pre>
     </div>
@@ -614,30 +699,28 @@ function TokensSheet({ wid, project }: { wid: string; project: LogProject }) {
         </form>
 
         {createdToken && (
-          <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] p-3">
-            <div className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
-              New token
-            </div>
+          <div className="mt-4 rounded-[var(--radius-md)] bg-[var(--color-bg-row)] p-3">
+            <div className="text-[11px] text-[var(--color-fg-dim)]">New token</div>
             <div className="mt-2 flex items-center gap-2">
-              <code className="mono min-w-0 flex-1 truncate rounded-[var(--radius-sm)] bg-[var(--color-bg-elev)] px-2 py-1 text-[12px] text-[var(--color-fg)]">
+              <code className="mono min-w-0 flex-1 truncate text-[12px] text-[var(--color-fg)]">
                 {createdToken}
               </code>
               <Button
                 type="button"
-                variant="secondary"
-                size="sm"
+                variant="ghost"
+                size="xs"
                 onClick={() => {
                   navigator.clipboard.writeText(createdToken);
                   toast.success("Token copied");
                 }}
               >
-                <Copy size={13} /> Copy
+                <Copy size={12} /> Copy
               </Button>
             </div>
           </div>
         )}
 
-        <div className="mt-5 divide-y divide-[var(--color-border)] rounded-[var(--radius-md)] border border-[var(--color-border)]">
+        <div className="mt-5 divide-y divide-[var(--color-border)] border-y border-[var(--color-border)]">
           {tokens.isLoading ? (
             <SheetListSkeleton />
           ) : tokens.data?.length ? (
@@ -783,7 +866,7 @@ function AlertsSheet({ wid, project }: { wid: string; project: LogProject }) {
           </div>
         </form>
 
-        <div className="mt-5 divide-y divide-[var(--color-border)] rounded-[var(--radius-md)] border border-[var(--color-border)]">
+        <div className="mt-5 divide-y divide-[var(--color-border)] border-y border-[var(--color-border)]">
           {alerts.isLoading ? (
             <SheetListSkeleton />
           ) : alerts.data?.length ? (
@@ -891,12 +974,13 @@ function ToolButton({
   return (
     <Button
       type="button"
-      variant="secondary"
-      size="sm"
+      variant="ghost"
+      size="xs"
+      className="text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
       onClick={onClick}
       data-testid={`log-tool-${tool}`}
     >
-      <Icon size={13} /> {label}
+      <Icon size={12} /> {label}
     </Button>
   );
 }
@@ -904,11 +988,8 @@ function ToolButton({
 function LevelBadge({ level }: { level: string }) {
   return (
     <span
-      className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em]"
-      style={{
-        color: levelColor(level),
-        background: `color-mix(in srgb, ${levelColor(level)} 10%, transparent)`,
-      }}
+      className="mono shrink-0 pt-0.5 text-[10px] font-medium uppercase"
+      style={{ color: levelColor(level) }}
     >
       {level}
     </span>
@@ -917,11 +998,9 @@ function LevelBadge({ level }: { level: string }) {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2">
-      <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
-        {label}
-      </div>
-      <div className="mt-1 text-[15px] font-medium text-[var(--color-fg)]">{value}</div>
+    <div className="py-1">
+      <div className="text-[11px] text-[var(--color-fg-dim)]">{label}</div>
+      <div className="mt-0.5 text-[14px] text-[var(--color-fg)]">{value}</div>
     </div>
   );
 }
@@ -929,39 +1008,29 @@ function Metric({ label, value }: { label: string; value: string }) {
 function LogExplorerSkeleton() {
   return (
     <div className="fade-in flex min-h-0 flex-1 flex-col bg-[var(--color-bg)]">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Skeleton className="size-8 rounded-lg" />
+      <header className="shrink-0 border-b border-[var(--color-border)] px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
           <div className="space-y-2">
             <Skeleton className="h-4 w-44" />
-            <Skeleton className="h-3 w-72" />
+            <Skeleton className="h-3 w-56" />
           </div>
-        </div>
-        <div className="flex gap-2">
-          <Skeleton className="h-8 w-20 rounded-lg" />
-          <Skeleton className="h-8 w-20 rounded-lg" />
-          <Skeleton className="h-8 w-20 rounded-lg" />
+          <div className="flex gap-1">
+            <Skeleton className="h-7 w-16 rounded-md" />
+            <Skeleton className="h-7 w-16 rounded-md" />
+            <Skeleton className="h-7 w-16 rounded-md" />
+          </div>
         </div>
       </header>
-      <div className="grid shrink-0 gap-2 border-b border-[var(--color-border)] p-3 lg:grid-cols-[minmax(240px,1fr)_120px_150px_120px_auto]">
-        <Skeleton className="h-9 rounded-lg" />
-        <Skeleton className="h-9 rounded-lg" />
-        <Skeleton className="h-9 rounded-lg" />
-        <Skeleton className="h-9 rounded-lg" />
-        <Skeleton className="h-9 w-28 rounded-lg" />
+      <div className="grid shrink-0 grid-cols-2 gap-2 border-b border-[var(--color-border)] px-4 py-2 sm:grid-cols-[minmax(0,1fr)_6rem_7rem_5rem_auto_auto]">
+        <Skeleton className="col-span-2 h-8 rounded-[var(--radius-md)] sm:col-span-1" />
+        <Skeleton className="h-8 rounded-[var(--radius-md)]" />
+        <Skeleton className="h-8 rounded-[var(--radius-md)]" />
+        <Skeleton className="h-8 rounded-[var(--radius-md)]" />
+        <Skeleton className="col-span-2 h-8 rounded-[var(--radius-md)] sm:col-span-1" />
+        <Skeleton className="size-8 justify-self-end rounded-[var(--radius-md)] sm:justify-self-auto" />
       </div>
-      <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="relative min-h-0 flex-1">
         <EventStreamSkeleton />
-        <aside className="hidden border-l border-[var(--color-border)] bg-[var(--color-bg-elev)] xl:block">
-          <div className="space-y-3 border-b border-[var(--color-border)] p-4">
-            <Skeleton className="h-4 w-28" />
-            <Skeleton className="h-3 w-full" />
-          </div>
-          <div className="space-y-4 p-4">
-            <Skeleton className="h-48 rounded-lg" />
-            <Skeleton className="h-36 rounded-lg" />
-          </div>
-        </aside>
       </div>
     </div>
   );
@@ -971,16 +1040,11 @@ function EventStreamSkeleton() {
   return (
     <div className="min-h-72 divide-y divide-[var(--color-border)]">
       {Array.from({ length: 12 }).map((_, index) => (
-        <div
-          key={index}
-          className="grid gap-2 px-3 py-3 md:grid-cols-[150px_86px_150px_minmax(0,1fr)]"
-        >
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="h-5 w-14 rounded-full" />
-          <Skeleton className="h-3 w-20" />
-          <div className="space-y-2">
+        <div key={index} className="flex gap-3 px-4 py-2">
+          <Skeleton className="h-3 w-14" />
+          <Skeleton className="h-3 w-10" />
+          <div className="min-w-0 flex-1 space-y-1.5">
             <Skeleton className="h-3 w-full" />
-            <Skeleton className="h-3 w-2/3" />
           </div>
         </div>
       ))}

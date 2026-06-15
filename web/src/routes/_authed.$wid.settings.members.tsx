@@ -94,19 +94,12 @@ function MembersSettingsPage() {
             Manage who can access {current?.name ?? "this workspace"}.
           </p>
         </div>
-        {isOwner && !current?.is_personal && (
+        {isOwner && (
           <Button variant="default" size="sm" onClick={() => setInviteOpen(true)}>
             <MailPlus size={13} /> Invite member
           </Button>
         )}
       </div>
-
-      {current?.is_personal && (
-        <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2 text-[12px] text-[var(--color-fg-muted)]">
-          Personal workspaces cannot invite additional members. Create a team workspace from the
-          workspace switcher to collaborate.
-        </div>
-      )}
 
       <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)]">
         {(members.data ?? []).map((member) => {
@@ -176,7 +169,7 @@ function MembersSettingsPage() {
         })}
       </div>
 
-      {isOwner && !current?.is_personal && (
+      {isOwner && (
         <PendingInvites
           invites={invites.data ?? []}
           loading={invites.isLoading}

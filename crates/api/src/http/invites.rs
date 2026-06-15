@@ -106,7 +106,7 @@ pub struct OkResponse {
     request_body = CreateInviteBody,
     responses(
         (status = 200, body = InviteCreated, description = "Token returned exactly once"),
-        (status = 400, description = "Invalid email / personal workspace"),
+        (status = 400, description = "Invalid email"),
         (status = 403, description = "Owner only"),
         (status = 409, description = "Invite already pending for this email"),
     ),
@@ -120,11 +120,6 @@ pub async fn create(
     Json(body): Json<CreateInviteBody>,
 ) -> ApiResult<Json<InviteCreated>> {
     m.require_owner()?;
-    if m.workspace.is_personal {
-        return Err(ApiError::bad_request(
-            "personal workspace cannot have invites",
-        ));
-    }
     let email = body.email.trim().to_lowercase();
     if !email.contains('@') {
         return Err(ApiError::bad_request("invalid email"));

@@ -1,5 +1,5 @@
-import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Link, useLocation, useParams } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   ChevronsUpDown,
@@ -8,17 +8,12 @@ import {
   Globe,
   LayoutDashboard,
   LogOut,
-  Plus,
   ScrollText,
   Settings,
 } from "lucide-react";
-import { toast } from "#/lib/toast";
 import { motion } from "motion/react";
 import { AnimatedIcon, type IconGesture } from "./AnimatedIcon";
 import { Button } from "#/components/ui/button";
-import { Dialog, DialogClose, DialogContent } from "./Dialog";
-import { Input } from "./Input";
-import { Spinner } from "#/components/ui/spinner";
 import {
   Sidebar,
   SidebarContent,
@@ -37,7 +32,7 @@ import {
 import { cn } from "#/lib/cn";
 import { BRAND_NAME } from "#/lib/brand";
 import { auth } from "../lib/api";
-import { useCreateWorkspace, useMe, useWorkspaces } from "../lib/queries";
+import { useMe, useWorkspaces } from "../lib/queries";
 
 interface NavItem {
   to: string;
@@ -81,18 +76,13 @@ const SETTINGS: NavItem = {
 export function AppSidebar() {
   const { wid } = useParams({ strict: false }) as { wid?: string };
   const loc = useLocation();
-  const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
   const me = useMe();
   const ws = useWorkspaces();
-  const createWorkspace = useCreateWorkspace();
   const [wsOpen, setWsOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [workspaceName, setWorkspaceName] = useState("");
   const wsRef = useRef<HTMLDivElement>(null);
   const current = ws.data?.find((w) => w.id === wid || w.slug === wid);
   const widParam = current?.slug ?? wid;
-  const createsAdditionalWorkspace = (ws.data?.length ?? 0) > 0;
 
   // Close the mobile sheet after navigating.
   const closeOnNavigate = () => {
@@ -108,58 +98,11 @@ export function AppSidebar() {
     return () => document.removeEventListener("mousedown", onClick);
   }, [wsOpen]);
 
-  function submitWorkspace(event: FormEvent) {
-    event.preventDefault();
-    const name = workspaceName.trim();
-    if (!name) {
-      toast.error("Workspace name is required");
-      return;
-    }
-    createWorkspace.mutate(
-      { name },
-      {
-        onSuccess: (workspace) => {
-          setWorkspaceName("");
-          setCreateOpen(false);
-          setWsOpen(false);
-          setOpenMobile(false);
-
-          if (workspace.checkout_url) {
-            toast.success("Workspace created. Redirecting to checkout");
-            window.location.assign(workspace.checkout_url);
-            return;
-          }
-
-          if (workspace.requires_upgrade) {
-            toast.success("Workspace created. Upgrade required");
-            navigate({
-              to: "/$wid/settings/billing",
-              params: { wid: workspace.slug },
-              search: { checkout: undefined },
-            });
-            return;
-          }
-
-          toast.success("Workspace created");
-          navigate({ to: "/$wid", params: { wid: workspace.slug } });
-        },
-        onError: (err) => toast.error((err as Error).message),
-      },
-    );
-  }
-
   return (
     <>
       <Sidebar collapsible="icon" variant="floating">
         <SidebarHeader className="gap-2">
-          <div className="flex h-8 items-center gap-2 px-1">
-            <span
-              className="pulse-dot inline-block h-2 w-2 shrink-0 rounded-full"
-              style={{
-                background: "var(--color-accent)",
-                boxShadow: "0 0 12px color-mix(in srgb, var(--color-accent) 70%, transparent)",
-              }}
-            />
+          <div className="flex h-8 items-center px-1">
             <span className="text-[14px] font-semibold tracking-tight text-[var(--color-fg)] group-data-[collapsible=icon]:hidden">
               {BRAND_NAME}
             </span>
@@ -220,36 +163,6 @@ export function AppSidebar() {
                     )}
                   </Link>
                 ))}
-                <div className="my-1 border-t border-[var(--color-border)]" />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setWsOpen(false);
-                    setCreateOpen(true);
-                  }}
-                  className={cn(
-                    "h-8 w-full justify-start px-3 text-[13px]",
-                    "text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-row)] hover:text-[var(--color-fg)]",
-                  )}
-                >
-                  <motion.span
-                    initial="rest"
-                    animate="rest"
-                    whileHover="hover"
-                    className="flex w-full items-center gap-2"
-                  >
-                    <AnimatedIcon
-                      icon={Plus}
-                      animation="pop"
-                      trigger="group"
-                      size={12}
-                      className="text-[var(--color-accent)]"
-                    />
-                    <span>New workspace</span>
-                  </motion.span>
-                </Button>
               </div>
             )}
           </div>
@@ -304,20 +217,15 @@ export function AppSidebar() {
           <SidebarSeparator />
 
           <div className="flex items-center justify-between gap-2 px-1 py-1 group-data-[collapsible=icon]:flex-col">
-            <div className="flex min-w-0 items-center gap-2">
-              <span
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-                style={{
-                  background: "var(--color-accent-soft)",
-                  color: "var(--color-accent)",
-                }}
-              >
-                {(me.data?.email ?? "?")[0]?.toUpperCase()}
-              </span>
-              <span className="truncate text-[12px] text-[var(--color-fg-muted)] group-data-[collapsible=icon]:hidden">
-                {me.data?.email ?? "—"}
-              </span>
-            </div>
+            <span
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
+              style={{
+                background: "var(--color-accent-soft)",
+                color: "var(--color-accent)",
+              }}
+            >
+              {(me.data?.email ?? "?")[0]?.toUpperCase()}
+            </span>
             <Button
               type="button"
               variant="ghost"
@@ -336,68 +244,6 @@ export function AppSidebar() {
 
         <SidebarRail />
       </Sidebar>
-
-      <Dialog
-        open={createOpen}
-        onOpenChange={(next) => {
-          if (!next && createWorkspace.isPending) return;
-          if (!next) setWorkspaceName("");
-          setCreateOpen(next);
-        }}
-      >
-        <DialogContent
-          title="New workspace"
-          description={
-            createsAdditionalWorkspace
-              ? "Additional workspaces require Usage-based when billing is enabled. After creation, you will be sent to checkout and access stays restricted until the upgrade completes."
-              : "Create a separate workspace for another product, team, or status page."
-          }
-          footer={
-            <>
-              <DialogClose asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={createWorkspace.isPending}
-                >
-                  Cancel
-                </Button>
-              </DialogClose>
-              <Button
-                type="submit"
-                form="create-workspace-form"
-                variant="default"
-                size="sm"
-                disabled={createWorkspace.isPending}
-              >
-                {createWorkspace.isPending && <Spinner className="size-3" />}
-                Create workspace
-              </Button>
-            </>
-          }
-        >
-          <form
-            id="create-workspace-form"
-            onSubmit={submitWorkspace}
-            className="flex flex-col gap-4"
-          >
-            <Input
-              label="Workspace name"
-              placeholder="Acme status"
-              value={workspaceName}
-              onChange={(event) => setWorkspaceName(event.target.value)}
-              autoFocus
-              required
-            />
-            {createsAdditionalWorkspace && (
-              <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2 text-[12px] leading-5 text-[var(--color-fg-muted)]">
-                This workspace will be locked behind Usage-based until checkout completes.
-              </div>
-            )}
-          </form>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

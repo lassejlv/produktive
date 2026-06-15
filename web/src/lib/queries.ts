@@ -58,6 +58,19 @@ export function useMe() {
   return useQuery(meQuery);
 }
 
+export interface AuthConfig {
+  github_enabled: boolean;
+}
+
+export const authConfigQuery = {
+  queryKey: ["auth-config"] as const,
+  queryFn: () => api.get<AuthConfig>("/auth/config"),
+};
+
+export function useAuthConfig() {
+  return useQuery(authConfigQuery);
+}
+
 export const workspacesQuery = {
   queryKey: ["workspaces"] as const,
   queryFn: () => api.get<Workspace[]>("/workspaces"),
