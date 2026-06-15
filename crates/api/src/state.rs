@@ -7,6 +7,7 @@ use tokio::sync::Semaphore;
 
 use email::EmailClient;
 use polar::Polar;
+use produktive_logging::{LogStore, LogStoreOptions};
 
 use crate::{billing::Billing, config::Config};
 
@@ -26,6 +27,7 @@ pub struct AppState {
     pub email: EmailClient,
     pub check_semaphore: Arc<Semaphore>,
     pub billing: Option<Billing>,
+    pub logs: LogStore,
 }
 
 impl AppState {
@@ -52,6 +54,17 @@ impl AppState {
         let email = build_email()?;
         let check_semaphore = Arc::new(Semaphore::new(config.scheduler_max_concurrent_checks));
         let billing = build_billing(&config).await;
+        let logs = LogStore::new(LogStoreOptions {
+            storage_uri: config.log_storage_uri.clone(),
+            duckdb_path: config
+                .log_duckdb_path
+                .as_ref()
+                .map(|path| path.display().to_string()),
+            s3_region: config.log_s3_region.clone(),
+            s3_endpoint: config.log_s3_endpoint.clone(),
+            s3_access_key_id: config.log_s3_access_key_id.clone(),
+            s3_secret_access_key: config.log_s3_secret_access_key.clone(),
+        })?;
         Ok(Self {
             db,
             config,
@@ -60,6 +73,7 @@ impl AppState {
             email,
             check_semaphore,
             billing,
+            logs,
         })
     }
 }

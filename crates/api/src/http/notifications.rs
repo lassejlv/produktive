@@ -191,6 +191,7 @@ pub async fn list_notifications(
             CASE n.kind
                 WHEN 0 THEN 'incident_opened'
                 WHEN 1 THEN 'incident_resolved'
+                WHEN 3 THEN 'log_alert_fired'
                 ELSE 'unknown'
             END AS kind,
             n.title,

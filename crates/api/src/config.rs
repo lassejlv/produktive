@@ -42,6 +42,17 @@ pub struct Config {
     pub worker_token: Option<String>,
     pub worker_tokens: BTreeMap<String, String>,
     pub worker_lease_seconds: u64,
+    /// Local directory or S3-compatible URI that holds Parquet log datasets.
+    pub log_storage_uri: String,
+    /// Optional DuckDB database path used as a scratch/control connection.
+    pub log_duckdb_path: Option<PathBuf>,
+    pub log_ingest_max_batch_events: usize,
+    pub log_ingest_max_body_bytes: usize,
+    pub log_alert_tick_seconds: u64,
+    pub log_s3_region: Option<String>,
+    pub log_s3_endpoint: Option<String>,
+    pub log_s3_access_key_id: Option<String>,
+    pub log_s3_secret_access_key: Option<String>,
 }
 
 impl Config {
@@ -197,6 +208,56 @@ impl Config {
         if worker_lease_seconds == 0 {
             return Err(anyhow!("WORKER_LEASE_SECONDS must be at least 1"));
         }
+        let log_storage_uri = std::env::var("LOG_STORAGE_URI")
+            .unwrap_or_else(|_| "./var/logs".into())
+            .trim()
+            .trim_end_matches('/')
+            .to_owned();
+        if log_storage_uri.is_empty() {
+            return Err(anyhow!("LOG_STORAGE_URI must not be empty"));
+        }
+        let log_duckdb_path = std::env::var("LOG_DUCKDB_PATH")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from);
+        let log_ingest_max_batch_events = std::env::var("LOG_INGEST_MAX_BATCH_EVENTS")
+            .unwrap_or_else(|_| "1000".into())
+            .parse()
+            .context("LOG_INGEST_MAX_BATCH_EVENTS must be usize")?;
+        if log_ingest_max_batch_events == 0 {
+            return Err(anyhow!("LOG_INGEST_MAX_BATCH_EVENTS must be at least 1"));
+        }
+        let log_ingest_max_body_bytes = std::env::var("LOG_INGEST_MAX_BODY_BYTES")
+            .unwrap_or_else(|_| "1048576".into())
+            .parse()
+            .context("LOG_INGEST_MAX_BODY_BYTES must be usize")?;
+        if log_ingest_max_body_bytes == 0 {
+            return Err(anyhow!("LOG_INGEST_MAX_BODY_BYTES must be at least 1"));
+        }
+        let log_alert_tick_seconds = std::env::var("LOG_ALERT_TICK_SECONDS")
+            .unwrap_or_else(|_| "60".into())
+            .parse()
+            .context("LOG_ALERT_TICK_SECONDS must be u64")?;
+        if log_alert_tick_seconds == 0 {
+            return Err(anyhow!("LOG_ALERT_TICK_SECONDS must be at least 1"));
+        }
+        let log_s3_region = std::env::var("LOG_S3_REGION")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let log_s3_endpoint = std::env::var("LOG_S3_ENDPOINT")
+            .ok()
+            .map(|v| v.trim().trim_end_matches('/').to_owned())
+            .filter(|v| !v.is_empty());
+        let log_s3_access_key_id = std::env::var("LOG_S3_ACCESS_KEY_ID")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let log_s3_secret_access_key = std::env::var("LOG_S3_SECRET_ACCESS_KEY")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
 
         Ok(Self {
             database_url,
@@ -231,6 +292,15 @@ impl Config {
             worker_token,
             worker_tokens,
             worker_lease_seconds,
+            log_storage_uri,
+            log_duckdb_path,
+            log_ingest_max_batch_events,
+            log_ingest_max_body_bytes,
+            log_alert_tick_seconds,
+            log_s3_region,
+            log_s3_endpoint,
+            log_s3_access_key_id,
+            log_s3_secret_access_key,
         })
     }
 

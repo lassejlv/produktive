@@ -18,6 +18,21 @@ export interface AdminRegion extends Region {
   updated_at: Iso;
 }
 
+export interface AdminLogBucket {
+  id: Uuid;
+  name: string;
+  storage_uri: string;
+  region: string | null;
+  endpoint: string | null;
+  access_key_id: string | null;
+  secret_configured: boolean;
+  enabled: boolean;
+  max_projects: number;
+  project_count: number;
+  created_at: Iso;
+  updated_at: Iso;
+}
+
 export interface MonitorRegion {
   id: Uuid;
   slug: string;
@@ -327,7 +342,7 @@ export interface Notification {
   monitor_id: Uuid | null;
   monitor_name: string | null;
   incident_id: Uuid | null;
-  kind: "incident_opened" | "incident_resolved" | "unknown";
+  kind: "incident_opened" | "incident_resolved" | "log_alert_fired" | "unknown";
   title: string;
   body: string;
   created_at: Iso;
@@ -357,6 +372,82 @@ export interface NotificationDelivery {
   sent_at: Iso | null;
   created_at: Iso;
   notification_title: string | null;
+}
+
+export interface LogProject {
+  id: Uuid;
+  workspace_id: Uuid;
+  bucket_id: Uuid | null;
+  bucket_name: string | null;
+  bucket_storage_uri: string | null;
+  slug: string;
+  name: string;
+  description: string | null;
+  retention_days: number;
+  created_at: Iso;
+  updated_at: Iso;
+  event_count_24h: number;
+  bytes_ingested_24h: number;
+  last_ingested_at: Iso | null;
+}
+
+export interface LogIngestToken {
+  id: Uuid;
+  workspace_id: Uuid;
+  project_id: Uuid;
+  name: string;
+  token_prefix: string;
+  last_used_at: Iso | null;
+  expires_at: Iso | null;
+  revoked_at: Iso | null;
+  created_at: Iso;
+}
+
+export interface CreatedLogIngestToken {
+  token: string;
+  token_view: LogIngestToken;
+}
+
+export interface LogAlertRule {
+  id: Uuid;
+  workspace_id: Uuid;
+  project_id: Uuid;
+  name: string;
+  query: string;
+  level: string | null;
+  threshold_count: number;
+  window_seconds: number;
+  enabled: boolean;
+  last_evaluated_at: Iso | null;
+  last_fired_at: Iso | null;
+  created_at: Iso;
+  updated_at: Iso;
+}
+
+export interface LogSearchEvent {
+  event_id: string;
+  timestamp: Iso;
+  received_at: Iso;
+  level: string;
+  message: string;
+  service: string | null;
+  environment: string | null;
+  operation: string | null;
+  request_id: string | null;
+  trace_id: string | null;
+  source: string;
+  event: unknown;
+  fields: unknown;
+}
+
+export interface LogStorageInfo {
+  storage_uri: string;
+  backend: "local" | "s3" | string;
+}
+
+export interface LogSearchResponse {
+  events: LogSearchEvent[];
+  storage: LogStorageInfo;
 }
 
 export interface WorkspaceMember {

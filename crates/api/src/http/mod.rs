@@ -6,6 +6,7 @@ pub mod health;
 pub mod incidents;
 pub mod internal_workers;
 pub mod invites;
+pub mod logs;
 pub mod members;
 pub mod monitors;
 pub mod notifications;

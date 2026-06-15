@@ -21,6 +21,7 @@ mod m20260601_000018_add_user_admin_flag;
 mod m20260614_000019_create_polar_billing_state;
 mod m20260614_000020_manual_incidents;
 mod m20260615_000021_add_github_login;
+mod m20260615_000022_create_log_projects;
 
 pub struct Migrator;
 
@@ -49,6 +50,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260614_000019_create_polar_billing_state::Migration),
             Box::new(m20260614_000020_manual_incidents::Migration),
             Box::new(m20260615_000021_add_github_login::Migration),
+            Box::new(m20260615_000022_create_log_projects::Migration),
         ]
     }
 }

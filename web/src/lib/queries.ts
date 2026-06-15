@@ -8,6 +8,7 @@ import type {
   BillingSummary,
 } from "./billing";
 import type {
+  AdminLogBucket,
   AdminRegion,
   AuthResponse,
   Check,
@@ -16,6 +17,11 @@ import type {
   Incident,
   IncidentSeverity,
   LatencyPoint,
+  CreatedLogIngestToken,
+  LogAlertRule,
+  LogIngestToken,
+  LogProject,
+  LogSearchResponse,
   Monitor,
   Notification,
   NotificationChannel,
@@ -120,6 +126,57 @@ export function useDeleteAdminRegion() {
       qc.invalidateQueries({ queryKey: ["admin", "regions"] });
       qc.invalidateQueries({ queryKey: ["regions"] });
     },
+  });
+}
+
+export const adminLogBucketsQuery = {
+  queryKey: ["admin", "log-buckets"] as const,
+  queryFn: () => api.get<AdminLogBucket[]>("/admin/log-buckets"),
+};
+
+export function useAdminLogBuckets(enabled = true) {
+  return useQuery({ ...adminLogBucketsQuery, enabled });
+}
+
+export interface CreateLogBucketInput {
+  name: string;
+  storage_uri: string;
+  region?: string | null;
+  endpoint?: string | null;
+  access_key_id?: string | null;
+  secret_access_key?: string | null;
+  enabled?: boolean;
+  max_projects?: number;
+}
+
+export type UpdateLogBucketInput = Partial<CreateLogBucketInput> & { id: string };
+
+export function useCreateLogBucket() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateLogBucketInput) =>
+      api.post<AdminLogBucket>("/admin/log-buckets", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "log-buckets"] }),
+  });
+}
+
+export function useUpdateLogBucket() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: UpdateLogBucketInput) =>
+      api.patch<AdminLogBucket>(`/admin/log-buckets/${id}`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "log-buckets"] });
+      qc.invalidateQueries({ queryKey: ["logs"] });
+    },
+  });
+}
+
+export function useDeleteLogBucket() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<OkResponse>(`/admin/log-buckets/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "log-buckets"] }),
   });
 }
 
@@ -300,6 +357,135 @@ export function useNotificationDeliveries(wid: string, channelId: string | null)
   return useQuery({
     ...notificationDeliveriesQuery(wid, channelId ?? ""),
     enabled: !!channelId,
+  });
+}
+
+export const logProjectsQuery = (wid: string) => ({
+  queryKey: ["logs", wid, "projects"] as const,
+  queryFn: () => api.get<LogProject[]>(`/workspaces/${wid}/logs/projects`),
+});
+
+export function useLogProjects(wid: string) {
+  return useQuery(logProjectsQuery(wid));
+}
+
+export function useCreateLogProject(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      name: string;
+      slug?: string;
+      description?: string;
+      retention_days?: number;
+    }) => api.post<LogProject>(`/workspaces/${wid}/logs/projects`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["logs", wid, "projects"] }),
+  });
+}
+
+export function useDeleteLogProject(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (project: string) =>
+      api.del<OkResponse>(`/workspaces/${wid}/logs/projects/${project}`),
+    onSuccess: (_result, project) => {
+      qc.setQueryData<LogProject[]>(["logs", wid, "projects"], (current) =>
+        current?.filter((item) => item.id !== project && item.slug !== project),
+      );
+      qc.invalidateQueries({ queryKey: ["logs", wid, "projects"] });
+    },
+  });
+}
+
+export const logTokensQuery = (wid: string, project: string) => ({
+  queryKey: ["logs", wid, project, "tokens"] as const,
+  queryFn: () => api.get<LogIngestToken[]>(`/workspaces/${wid}/logs/projects/${project}/tokens`),
+});
+
+export function useLogTokens(wid: string, project: string | null) {
+  return useQuery({ ...logTokensQuery(wid, project ?? ""), enabled: !!project });
+}
+
+export function useCreateLogToken(wid: string, project: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; expires_at?: string | null }) =>
+      api.post<CreatedLogIngestToken>(`/workspaces/${wid}/logs/projects/${project}/tokens`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["logs", wid, project, "tokens"] }),
+  });
+}
+
+export function useRevokeLogToken(wid: string, project: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.del<OkResponse>(`/workspaces/${wid}/logs/projects/${project}/tokens/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["logs", wid, project, "tokens"] }),
+  });
+}
+
+export interface LogSearchInput {
+  from?: string;
+  to?: string;
+  q?: string;
+  level?: string;
+  service?: string;
+  limit?: number;
+}
+
+export const logSearchQuery = (wid: string, project: string, input: LogSearchInput) => ({
+  queryKey: ["logs", wid, project, "events", input] as const,
+  queryFn: () => {
+    const params = new URLSearchParams();
+    if (input.from) params.set("from", input.from);
+    if (input.to) params.set("to", input.to);
+    if (input.q) params.set("q", input.q);
+    if (input.level && input.level !== "all") params.set("level", input.level);
+    if (input.service) params.set("service", input.service);
+    if (input.limit) params.set("limit", String(input.limit));
+    return api.get<LogSearchResponse>(
+      `/workspaces/${wid}/logs/projects/${project}/events?${params}`,
+    );
+  },
+});
+
+export function useLogSearch(wid: string, project: string | null, input: LogSearchInput) {
+  return useQuery({
+    ...logSearchQuery(wid, project ?? "", input),
+    enabled: !!project,
+    refetchInterval: 15_000,
+  });
+}
+
+export const logAlertsQuery = (wid: string, project: string) => ({
+  queryKey: ["logs", wid, project, "alerts"] as const,
+  queryFn: () => api.get<LogAlertRule[]>(`/workspaces/${wid}/logs/projects/${project}/alerts`),
+});
+
+export function useLogAlerts(wid: string, project: string | null) {
+  return useQuery({ ...logAlertsQuery(wid, project ?? ""), enabled: !!project });
+}
+
+export function useCreateLogAlert(wid: string, project: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      name: string;
+      query?: string;
+      level?: string | null;
+      threshold_count?: number;
+      window_seconds?: number;
+      enabled?: boolean;
+    }) => api.post<LogAlertRule>(`/workspaces/${wid}/logs/projects/${project}/alerts`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["logs", wid, project, "alerts"] }),
+  });
+}
+
+export function useDeleteLogAlert(wid: string, project: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.del<OkResponse>(`/workspaces/${wid}/logs/projects/${project}/alerts/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["logs", wid, project, "alerts"] }),
   });
 }
 

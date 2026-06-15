@@ -3,6 +3,7 @@ mod billing;
 mod config;
 mod error;
 mod http;
+mod log_alerts;
 mod middleware;
 mod notification_webhook;
 mod openapi;
@@ -52,6 +53,7 @@ async fn main() -> Result<()> {
     let state = AppState::new(db, config.clone()).await?;
 
     scheduler::spawn(state.clone());
+    log_alerts::spawn(state.clone());
     auth::session_cleanup::spawn(state.clone());
     billing::sweep::spawn(state.clone());
 
@@ -62,6 +64,7 @@ async fn main() -> Result<()> {
         .nest("/incidents", http::incidents::routes())
         .nest("/monitors", http::monitors::routes())
         .nest("/notifications", http::notifications::routes())
+        .nest("/logs", http::logs::workspace_routes())
         .nest("/custom-domains", http::custom_domains::routes())
         .nest("/billing", http::billing::routes())
         .nest("/regions", http::regions::routes())
@@ -85,6 +88,7 @@ async fn main() -> Result<()> {
         )
         .nest("/public", http::public_status::routes())
         .nest("/pricing", http::pricing::routes())
+        .nest("/logs", http::logs::ingest_routes())
         .nest("/webhooks", http::webhooks::routes())
         .nest("/internal/workers", http::internal_workers::routes());
 

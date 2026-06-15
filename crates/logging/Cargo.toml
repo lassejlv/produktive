@@ -1,0 +1,18 @@
+[package]
+name = "produktive-logging"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "produktive_logging"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+duckdb.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+utoipa.workspace = true
+uuid.workspace = true

@@ -20,6 +20,7 @@ const TABS: SettingsTab[] = [
   { to: "/$wid/settings/notifications", label: "Notifications" },
   { to: "/$wid/settings/billing", label: "Billing" },
   { to: "/$wid/settings/workers", label: "Workers", adminOnly: true },
+  { to: "/$wid/settings/log-storage", label: "Log storage", adminOnly: true },
 ];
 
 function SettingsLayout() {

@@ -1,14 +1,10 @@
-import {
-  Link,
-  useLocation,
-  useNavigate,
-  useParams,
-} from "@tanstack/react-router";
+import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Activity,
   ChevronsUpDown,
   Check,
+  Database,
   Globe,
   LayoutDashboard,
   LogOut,
@@ -61,6 +57,7 @@ const MAIN: NavItem[] = [
     anim: "pop",
   },
   { to: "/$wid/monitors", label: "Monitors", icon: Activity, anim: "pulse" },
+  { to: "/$wid/logs", label: "Logs", icon: Database, anim: "pop" },
   {
     to: "/$wid/incidents",
     label: "Incidents",
@@ -156,8 +153,7 @@ export function AppSidebar() {
               className="pulse-dot inline-block h-2 w-2 shrink-0 rounded-full"
               style={{
                 background: "var(--color-accent)",
-                boxShadow:
-                  "0 0 12px color-mix(in srgb, var(--color-accent) 70%, transparent)",
+                boxShadow: "0 0 12px color-mix(in srgb, var(--color-accent) 70%, transparent)",
               }}
             />
             <span className="text-[14px] font-semibold tracking-tight text-[var(--color-fg)] group-data-[collapsible=icon]:hidden">
@@ -165,10 +161,7 @@ export function AppSidebar() {
             </span>
           </div>
 
-          <div
-            ref={wsRef}
-            className="relative group-data-[collapsible=icon]:hidden"
-          >
+          <div ref={wsRef} className="relative group-data-[collapsible=icon]:hidden">
             <Button
               type="button"
               variant="secondary"
@@ -190,14 +183,9 @@ export function AppSidebar() {
                 >
                   {(current?.name ?? "?")[0]?.toUpperCase()}
                 </span>
-                <span className="truncate text-[var(--color-fg)]">
-                  {current?.name ?? "—"}
-                </span>
+                <span className="truncate text-[var(--color-fg)]">{current?.name ?? "—"}</span>
               </span>
-              <ChevronsUpDown
-                size={13}
-                className="shrink-0 text-[var(--color-fg-muted)]"
-              />
+              <ChevronsUpDown size={13} className="shrink-0 text-[var(--color-fg-muted)]" />
             </Button>
             {wsOpen && ws.data && (
               <div className="fade-in absolute left-0 right-0 top-11 z-20 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] py-1 shadow-[var(--shadow-lg)]">
@@ -220,16 +208,11 @@ export function AppSidebar() {
                     <span className="flex items-center gap-2 truncate">
                       {w.name}
                       {w.is_personal && (
-                        <span className="text-[11px] text-[var(--color-fg-dim)]">
-                          personal
-                        </span>
+                        <span className="text-[11px] text-[var(--color-fg-dim)]">personal</span>
                       )}
                     </span>
                     {w.id === current?.id && (
-                      <Check
-                        size={12}
-                        className="shrink-0 text-[var(--color-accent)]"
-                      />
+                      <Check size={12} className="shrink-0 text-[var(--color-accent)]" />
                     )}
                   </Link>
                 ))}
@@ -367,9 +350,7 @@ export function AppSidebar() {
                 size="sm"
                 disabled={createWorkspace.isPending}
               >
-                {createWorkspace.isPending && (
-                  <Spinner className="size-3" />
-                )}
+                {createWorkspace.isPending && <Spinner className="size-3" />}
                 Create workspace
               </Button>
             </>
@@ -390,8 +371,7 @@ export function AppSidebar() {
             />
             {createsAdditionalWorkspace && (
               <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2 text-[12px] leading-5 text-[var(--color-fg-muted)]">
-                This workspace will be locked behind Usage-based until checkout
-                completes.
+                This workspace will be locked behind Usage-based until checkout completes.
               </div>
             )}
           </form>
@@ -431,15 +411,9 @@ function NavMenuButton({
             animation={item.anim ?? "pop"}
             trigger="group"
             size={16}
-            className={
-              active
-                ? "text-[var(--color-accent)]"
-                : "text-[var(--color-fg-dim)]"
-            }
+            className={active ? "text-[var(--color-accent)]" : "text-[var(--color-fg-dim)]"}
           />
-          <span className="group-data-[collapsible=icon]:hidden">
-            {item.label}
-          </span>
+          <span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
         </motion.span>
       </SidebarMenuButton>
     </SidebarMenuItem>
