@@ -892,6 +892,25 @@ function AlertsSheet({ wid, project }: { wid: string; project: LogProject }) {
   );
 }
 
+function InspectorGroup({ rows }: { rows: Array<[string, string | null]> }) {
+  return (
+    <div className="min-w-0 divide-y divide-[var(--color-border)] rounded-[var(--radius-md)] border border-[var(--color-border)]">
+      {rows
+        .filter(([, value]) => value)
+        .map(([label, value]) => (
+          <div key={label} className="grid min-w-0 grid-cols-[88px_minmax(0,1fr)] gap-3 px-3 py-2">
+            <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
+              {label}
+            </div>
+            <div className="mono min-w-0 overflow-x-auto whitespace-nowrap text-[11px] text-[var(--color-fg)]">
+              {value}
+            </div>
+          </div>
+        ))}
+    </div>
+  );
+}
+
 function ProjectSheet({ project, onDelete }: { project: LogProject; onDelete: () => void }) {
   return (
     <>
