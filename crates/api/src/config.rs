@@ -34,6 +34,9 @@ pub struct Config {
     pub billing_reconcile_tick_seconds: u64,
     /// Public app URL for billing checkout redirects (e.g. `http://localhost:5173`).
     pub app_url: Option<String>,
+    pub github_client_id: Option<String>,
+    pub github_client_secret: Option<String>,
+    pub github_redirect_url: Option<String>,
     pub local_region_slug: String,
     pub api_local_worker_enabled: bool,
     pub worker_token: Option<String>,
@@ -159,6 +162,18 @@ impl Config {
             .ok()
             .map(|v| v.trim().trim_end_matches('/').to_owned())
             .filter(|v| !v.is_empty());
+        let github_client_id = std::env::var("GITHUB_CLIENT_ID")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let github_client_secret = std::env::var("GITHUB_CLIENT_SECRET")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let github_redirect_url = std::env::var("GITHUB_REDIRECT_URL")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
         let local_region_slug = std::env::var("LOCAL_REGION_SLUG")
             .unwrap_or_else(|_| "eu-west".into())
             .trim()
@@ -208,6 +223,9 @@ impl Config {
             polar_webhook_secret,
             billing_reconcile_tick_seconds,
             app_url,
+            github_client_id,
+            github_client_secret,
+            github_redirect_url,
             local_region_slug,
             api_local_worker_enabled,
             worker_token,
