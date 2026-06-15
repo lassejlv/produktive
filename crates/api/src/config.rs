@@ -49,6 +49,11 @@ pub struct Config {
     pub log_ingest_max_batch_events: usize,
     pub log_ingest_max_body_bytes: usize,
     pub log_alert_tick_seconds: u64,
+    /// Dedicated Redis/Upstash URL for log hot-cache data. Never falls back to REDIS_URL.
+    pub log_redis_url: Option<String>,
+    pub log_redis_ttl_seconds: usize,
+    pub log_search_cache_ttl_seconds: usize,
+    pub log_redis_search_scan_limit: usize,
     pub log_s3_region: Option<String>,
     pub log_s3_endpoint: Option<String>,
     pub log_s3_access_key_id: Option<String>,
@@ -242,6 +247,28 @@ impl Config {
         if log_alert_tick_seconds == 0 {
             return Err(anyhow!("LOG_ALERT_TICK_SECONDS must be at least 1"));
         }
+        let log_redis_url = std::env::var("LOG_REDIS_URL")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let log_redis_ttl_seconds = std::env::var("LOG_REDIS_TTL_SECONDS")
+            .unwrap_or_else(|_| "1800".into())
+            .parse()
+            .context("LOG_REDIS_TTL_SECONDS must be usize")?;
+        if log_redis_ttl_seconds == 0 {
+            return Err(anyhow!("LOG_REDIS_TTL_SECONDS must be at least 1"));
+        }
+        let log_search_cache_ttl_seconds = std::env::var("LOG_SEARCH_CACHE_TTL_SECONDS")
+            .unwrap_or_else(|_| "15".into())
+            .parse()
+            .context("LOG_SEARCH_CACHE_TTL_SECONDS must be usize")?;
+        let log_redis_search_scan_limit = std::env::var("LOG_REDIS_SEARCH_SCAN_LIMIT")
+            .unwrap_or_else(|_| "5000".into())
+            .parse()
+            .context("LOG_REDIS_SEARCH_SCAN_LIMIT must be usize")?;
+        if log_redis_search_scan_limit == 0 {
+            return Err(anyhow!("LOG_REDIS_SEARCH_SCAN_LIMIT must be at least 1"));
+        }
         let log_s3_region = std::env::var("LOG_S3_REGION")
             .ok()
             .map(|v| v.trim().to_owned())
@@ -297,6 +324,10 @@ impl Config {
             log_ingest_max_batch_events,
             log_ingest_max_body_bytes,
             log_alert_tick_seconds,
+            log_redis_url,
+            log_redis_ttl_seconds,
+            log_search_cache_ttl_seconds,
+            log_redis_search_scan_limit,
             log_s3_region,
             log_s3_endpoint,
             log_s3_access_key_id,

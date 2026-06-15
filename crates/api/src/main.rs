@@ -4,6 +4,7 @@ mod config;
 mod error;
 mod http;
 mod log_alerts;
+mod log_hot_cache;
 mod logship;
 mod middleware;
 mod notification_webhook;

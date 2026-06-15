@@ -399,26 +399,45 @@ pub async fn search_events(
     let limit = query.limit.unwrap_or(100).min(1000) as usize;
     let storage = project_storage_options(&state, project.id).await?;
     let storage_info = log_storage_info(storage.as_ref(), state.logs.info());
+    let request = SearchRequest {
+        workspace_id: m.workspace.id,
+        project_id: project.id,
+        from_ms: from.timestamp_millis(),
+        to_ms: to.timestamp_millis(),
+        limit,
+        query: query.q,
+        level: query.level,
+        service: query.service,
+    };
+
+    if let Some(cache) = state.log_hot_cache.as_ref() {
+        match cache.search(&request).await {
+            Ok(Some(events)) => {
+                return Ok(Json(LogSearchResponse {
+                    events,
+                    storage: storage_info,
+                }));
+            }
+            Ok(None) => {}
+            Err(error) => {
+                tracing::warn!(project_id = %project.id, error = ?error, "log hot cache search failed");
+            }
+        }
+    }
+
     let events = state
         .logs
-        .search_with(
-            storage,
-            SearchRequest {
-                workspace_id: m.workspace.id,
-                project_id: project.id,
-                from_ms: from.timestamp_millis(),
-                to_ms: to.timestamp_millis(),
-                limit,
-                query: query.q,
-                level: query.level,
-                service: query.service,
-            },
-        )
+        .search_with(storage, request.clone())
         .await
         .map_err(|error| {
             tracing::error!(project_id = %project.id, error = ?error, "log search failed");
             ApiError::service_unavailable("log search failed")
         })?;
+    if let Some(cache) = state.log_hot_cache.as_ref() {
+        if let Err(error) = cache.cache_search_result(&request, &events).await {
+            tracing::warn!(project_id = %project.id, error = ?error, "log search cache write failed");
+        }
+    }
     Ok(Json(LogSearchResponse {
         events,
         storage: storage_info,
@@ -591,6 +610,7 @@ pub async fn ingest(
         return Err(ApiError::bad_request("no log events supplied"));
     }
 
+    let cache_events = events.clone();
     state
         .logs
         .append_with(
@@ -606,6 +626,15 @@ pub async fn ingest(
             tracing::error!(project_id = %target.project_id, error = ?error, "log ingest write failed");
             ApiError::service_unavailable("log ingest failed")
         })?;
+
+    if let Some(cache) = state.log_hot_cache.as_ref() {
+        if let Err(error) = cache
+            .append(target.workspace_id, target.project_id, &cache_events)
+            .await
+        {
+            tracing::warn!(project_id = %target.project_id, error = ?error, "log hot cache append failed");
+        }
+    }
 
     record_ingest_usage(&state, &target, accepted, body.len()).await?;
     Ok(Json(IngestResponse {

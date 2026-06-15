@@ -9,7 +9,11 @@ use email::EmailClient;
 use polar::Polar;
 use produktive_logging::{LogStore, LogStoreOptions};
 
-use crate::{billing::Billing, config::Config};
+use crate::{
+    billing::Billing,
+    config::Config,
+    log_hot_cache::{LogHotCache, LogHotCacheOptions},
+};
 
 #[derive(Clone)]
 pub enum RedisState {
@@ -28,6 +32,7 @@ pub struct AppState {
     pub check_semaphore: Arc<Semaphore>,
     pub billing: Option<Billing>,
     pub logs: LogStore,
+    pub log_hot_cache: Option<LogHotCache>,
 }
 
 impl AppState {
@@ -54,6 +59,7 @@ impl AppState {
         let email = build_email()?;
         let check_semaphore = Arc::new(Semaphore::new(config.scheduler_max_concurrent_checks));
         let billing = build_billing(&config).await;
+        let log_hot_cache = build_log_hot_cache(&config).await;
         let logs = LogStore::new(LogStoreOptions {
             storage_uri: config.log_storage_uri.clone(),
             duckdb_path: config
@@ -74,6 +80,7 @@ impl AppState {
             check_semaphore,
             billing,
             logs,
+            log_hot_cache,
         })
     }
 }
@@ -116,6 +123,30 @@ async fn build_billing(config: &Config) -> Option<Billing> {
         Ok(None) => None,
         Err(e) => {
             tracing::error!(error = %e, "failed to load Polar catalog; billing disabled");
+            None
+        }
+    }
+}
+
+async fn build_log_hot_cache(config: &Config) -> Option<LogHotCache> {
+    let Some(url) = config.log_redis_url.as_ref() else {
+        tracing::info!("LOG_REDIS_URL not set; log hot cache is disabled");
+        return None;
+    };
+    match LogHotCache::connect(LogHotCacheOptions {
+        url: url.clone(),
+        ttl_seconds: config.log_redis_ttl_seconds,
+        search_cache_ttl_seconds: config.log_search_cache_ttl_seconds,
+        search_scan_limit: config.log_redis_search_scan_limit,
+    })
+    .await
+    {
+        Ok(cache) => {
+            tracing::info!("log hot cache initialized");
+            Some(cache)
+        }
+        Err(error) => {
+            tracing::error!(error = ?error, "LOG_REDIS_URL configured but log hot cache is unavailable");
             None
         }
     }

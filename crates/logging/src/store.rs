@@ -5,7 +5,7 @@ use chrono::{DateTime, Datelike, FixedOffset, TimeZone, Timelike, Utc};
 use duckdb::{params, Connection};
 use futures_util::{StreamExt, TryStreamExt};
 use object_store::{aws::AmazonS3Builder, path::Path as ObjectPath, ObjectStore};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -60,7 +60,7 @@ pub struct SearchRequest {
     pub service: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, ToSchema)]
 pub struct SearchEvent {
     pub event_id: String,
     pub timestamp: DateTime<FixedOffset>,

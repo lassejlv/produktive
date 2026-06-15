@@ -109,22 +109,39 @@ async fn evaluate_rule(state: &AppState, rule: AlertRuleRow) -> anyhow::Result<(
     let window_seconds = rule.window_seconds.clamp(60, 86_400);
     let window_start = now - Duration::seconds(window_seconds as i64);
     let threshold = rule.threshold_count.max(1) as usize;
-    let events = state
-        .logs
-        .search_with(
-            storage_options(state, &rule),
-            SearchRequest {
-                workspace_id: rule.workspace_id,
-                project_id: rule.project_id,
-                from_ms: window_start.timestamp_millis(),
-                to_ms: now.timestamp_millis(),
-                limit: threshold,
-                query: clean_query(&rule.query),
-                level: rule.level.clone(),
-                service: None,
-            },
-        )
-        .await?;
+    let request = SearchRequest {
+        workspace_id: rule.workspace_id,
+        project_id: rule.project_id,
+        from_ms: window_start.timestamp_millis(),
+        to_ms: now.timestamp_millis(),
+        limit: threshold,
+        query: clean_query(&rule.query),
+        level: rule.level.clone(),
+        service: None,
+    };
+    let events = if let Some(cache) = state.log_hot_cache.as_ref() {
+        match cache.search(&request).await {
+            Ok(Some(events)) => events,
+            Ok(None) => {
+                state
+                    .logs
+                    .search_with(storage_options(state, &rule), request.clone())
+                    .await?
+            }
+            Err(error) => {
+                tracing::warn!(rule_id = %rule.id, error = ?error, "log alert hot cache search failed");
+                state
+                    .logs
+                    .search_with(storage_options(state, &rule), request.clone())
+                    .await?
+            }
+        }
+    } else {
+        state
+            .logs
+            .search_with(storage_options(state, &rule), request.clone())
+            .await?
+    };
     let matched_count = events.len() as i64;
     let should_fire = matched_count >= threshold as i64 && outside_cooldown(&rule, now);
     if should_fire {
