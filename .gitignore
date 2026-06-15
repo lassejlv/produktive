@@ -1,5 +1,7 @@
 /target
 /var
+node_modules
+dist
 .env
 .DS_Store
 docs/

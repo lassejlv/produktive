@@ -1,0 +1,35 @@
+{
+  "name": "@produktive/logs",
+  "version": "0.1.0",
+  "description": "Produktive log ingestion SDK for JavaScript and TypeScript.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lassejlv/produktive.git",
+    "directory": "sdk/typescript"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "types": "./dist/index.d.mts",
+  "module": "./dist/index.mjs",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown",
+    "test": "bun test",
+    "typecheck": "tsc -p tsconfig.test.json"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "tsdown": "^0.16.7",
+    "typescript": "^5.7.2"
+  }
+}
