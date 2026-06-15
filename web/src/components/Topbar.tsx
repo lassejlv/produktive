@@ -1,6 +1,5 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import { useWorkspaces } from "../lib/queries";
 import { useLeafMeta } from "./PageLayout";
 import { AnimatedIcon } from "./AnimatedIcon";
 import { Button } from "#/components/ui/button";
@@ -9,9 +8,6 @@ import { SidebarTrigger } from "./ui/sidebar";
 
 export function Topbar() {
   const { wid } = useParams({ strict: false }) as { wid?: string };
-  const ws = useWorkspaces();
-  const current = ws.data?.find((w) => w.id === wid || w.slug === wid);
-  const widParam = current?.slug ?? wid;
   const meta = useLeafMeta();
   const action = meta.primaryAction;
   const ActionIcon = action?.icon;
@@ -20,30 +16,18 @@ export function Topbar() {
     <div className="sticky top-0 z-10 flex h-[var(--topbar-h)] shrink-0 items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg)]/80 px-3 backdrop-blur-md md:px-5">
       <div className="flex min-w-0 items-center gap-2 text-[13.5px]">
         <SidebarTrigger className="-ml-1 text-[var(--color-fg-muted)]" />
-        {widParam && (
+        {meta.parent && wid && (
           <Link
-            to="/$wid"
-            params={{ wid: widParam }}
+            to={meta.parent.to}
+            params={{ wid }}
             className="truncate text-[var(--color-fg-muted)] no-underline transition-colors hover:text-[var(--color-fg)]"
           >
-            {current?.name ?? "—"}
+            {meta.parent.label}
           </Link>
-        )}
-        {meta.parent && widParam && (
-          <>
-            <Crumb />
-            <Link
-              to={meta.parent.to}
-              params={{ wid: widParam }}
-              className="truncate text-[var(--color-fg-muted)] no-underline transition-colors hover:text-[var(--color-fg)]"
-            >
-              {meta.parent.label}
-            </Link>
-          </>
         )}
         {meta.title && (
           <>
-            <Crumb />
+            {meta.parent && <Crumb />}
             <span className="truncate font-medium tracking-tight text-[var(--color-fg)]">
               {meta.title}
             </span>
@@ -53,8 +37,8 @@ export function Topbar() {
 
       <div className="flex shrink-0 items-center gap-2">
         <ThemeToggle />
-        {widParam && action && (
-          <Link to={action.to} params={{ wid: widParam }}>
+        {wid && action && (
+          <Link to={action.to} params={{ wid }}>
             <Button variant="default" size="sm">
               <motion.span
                 initial="rest"

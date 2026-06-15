@@ -371,7 +371,7 @@ function LogExplorer({
           selectedEventId={selectedEvent?.event_id ?? null}
           onSelect={(eventId) => updateSelectedEvent(eventId)}
         />
-        <EventInspector event={selectedEvent} storage={search.data?.storage} />
+        <EventInspector event={selectedEvent} />
       </div>
 
       <ExplorerSheet
@@ -475,33 +475,16 @@ function EventRow({
       </div>
       <div className="min-w-0">
         <div className="truncate text-[13px] text-[var(--color-fg)]">{event.message}</div>
-        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--color-fg-muted)]">
-          {event.environment && <span>{event.environment}</span>}
-          {event.operation && <span>{event.operation}</span>}
-          {event.request_id && <span className="mono">request {event.request_id}</span>}
-          {event.trace_id && <span className="mono">trace {event.trace_id}</span>}
-        </div>
       </div>
     </button>
   );
 }
 
-function EventInspector({
-  event,
-  storage,
-}: {
-  event: LogSearchEvent | null;
-  storage?: { storage_uri: string; backend: string };
-}) {
+function EventInspector({ event }: { event: LogSearchEvent | null }) {
   return (
     <aside className="hidden min-h-0 min-w-0 overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-bg-elev)] xl:flex xl:flex-col">
       <div className="shrink-0 border-b border-[var(--color-border)] px-4 py-3">
         <div className="text-[13px] font-medium text-[var(--color-fg)]">Event detail</div>
-        {storage && (
-          <div className="mono mt-1 overflow-x-auto whitespace-nowrap text-[10px] text-[var(--color-fg-muted)]">
-            {storage.backend}: {storage.storage_uri}
-          </div>
-        )}
       </div>
       {event ? (
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4">

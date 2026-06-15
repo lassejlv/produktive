@@ -1,22 +1,30 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Button } from "#/components/ui/button";
-import { ThemeToggle } from "../ThemeToggle";
 import { auth } from "../../lib/api";
+import { BRAND_NAME } from "../../lib/brand";
 import { useMe, useWorkspaces } from "../../lib/queries";
 import { cn } from "#/lib/cn";
 
 const GITHUB_URL = "https://github.com/lassejlv/unstatus";
 
-export function MarketingWordmark({ linked = true }: { linked?: boolean }) {
+export function MarketingWordmark({
+  linked = true,
+  dot = true,
+}: {
+  linked?: boolean;
+  dot?: boolean;
+}) {
   const inner = (
     <>
-      <span
-        className="inline-block h-2 w-2 rounded-full transition-shadow duration-300 group-hover:shadow-[0_0_10px_color-mix(in_srgb,var(--color-accent)_55%,transparent)]"
-        style={{ background: "var(--color-accent)" }}
-      />
+      {dot && (
+        <span
+          className="inline-block h-2 w-2 rounded-full transition-shadow duration-300 group-hover:shadow-[0_0_10px_color-mix(in_srgb,var(--color-accent)_55%,transparent)]"
+          style={{ background: "var(--color-accent)" }}
+        />
+      )}
       <span className="text-[15px] font-semibold tracking-tight text-[var(--color-fg)]">
-        Produktive
+        {BRAND_NAME}
       </span>
     </>
   );
@@ -72,9 +80,8 @@ export function MarketingShell({
 
       <header className="relative z-10">
         <div className="mx-auto flex h-16 max-w-[1080px] items-center justify-between px-6">
-          <MarketingWordmark />
+          <MarketingWordmark dot={false} />
           <div className="flex items-center gap-2">
-            <ThemeToggle />
             {signedIn && workspace ? (
               <Button
                 variant="default"

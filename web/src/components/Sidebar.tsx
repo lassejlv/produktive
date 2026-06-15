@@ -4,7 +4,7 @@ import {
   Activity,
   ChevronsUpDown,
   Check,
-  Database,
+  FolderTree,
   Globe,
   LayoutDashboard,
   LogOut,
@@ -35,6 +35,7 @@ import {
   useSidebar,
 } from "./ui/sidebar";
 import { cn } from "#/lib/cn";
+import { BRAND_NAME } from "#/lib/brand";
 import { auth } from "../lib/api";
 import { useCreateWorkspace, useMe, useWorkspaces } from "../lib/queries";
 
@@ -48,7 +49,7 @@ interface NavItem {
   exact?: boolean;
 }
 
-const MAIN: NavItem[] = [
+const UPTIME: NavItem[] = [
   {
     to: "/$wid",
     label: "Overview",
@@ -57,7 +58,6 @@ const MAIN: NavItem[] = [
     anim: "pop",
   },
   { to: "/$wid/monitors", label: "Monitors", icon: Activity, anim: "pulse" },
-  { to: "/$wid/logs", label: "Logs", icon: Database, anim: "pop" },
   {
     to: "/$wid/incidents",
     label: "Incidents",
@@ -65,6 +65,10 @@ const MAIN: NavItem[] = [
     anim: "wiggle",
   },
   { to: "/$wid/status", label: "Status page", icon: Globe, anim: "spin" },
+];
+
+const LOGGING: NavItem[] = [
+  { to: "/$wid/logs", label: "Projects", icon: FolderTree, anim: "pop" },
 ];
 
 const SETTINGS: NavItem = {
@@ -157,7 +161,7 @@ export function AppSidebar() {
               }}
             />
             <span className="text-[14px] font-semibold tracking-tight text-[var(--color-fg)] group-data-[collapsible=icon]:hidden">
-              Produktive
+              {BRAND_NAME}
             </span>
           </div>
 
@@ -256,7 +260,24 @@ export function AppSidebar() {
             <SidebarGroupLabel>Uptime</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {MAIN.map((it) => (
+                {UPTIME.map((it) => (
+                  <NavMenuButton
+                    key={it.to}
+                    item={it}
+                    wid={widParam}
+                    active={isActive(loc.pathname, it, wid, widParam)}
+                    onNavigate={closeOnNavigate}
+                  />
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup>
+            <SidebarGroupLabel>Logging</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {LOGGING.map((it) => (
                   <NavMenuButton
                     key={it.to}
                     item={it}

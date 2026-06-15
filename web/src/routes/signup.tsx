@@ -1,9 +1,9 @@
 import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { Check } from "lucide-react";
 import { useState } from "react";
 import { toast } from "#/lib/toast";
 import { Button } from "#/components/ui/button";
 import { Input } from "../components/Input";
+import { BRAND_NAME, BRAND_TAGLINE } from "../lib/brand";
 import { parseLoginRedirect } from "../lib/redirect";
 import { useLogin, useRegister } from "../lib/queries";
 
@@ -14,12 +14,6 @@ export const Route = createFileRoute("/signup")({
     return path === "/" ? {} : { redirect: path };
   },
 });
-
-const BENEFITS: [string, string][] = [
-  ["HTTP, TCP, Postgres, Redis & more", "Probe almost anything from one place."],
-  ["Monitor-as-code rules", "Decide up / warn / down with a tiny DSL."],
-  ["Public status pages", "Share uptime on your own domain in a click."],
-];
 
 function SignupPage() {
   const nav = useNavigate();
@@ -33,38 +27,9 @@ function SignupPage() {
 
   return (
     <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
-      {/* brand / value panel */}
-      <aside className="relative hidden flex-col justify-between overflow-hidden border-r border-[var(--color-border)] bg-[var(--color-bg-sunken)] p-14 lg:flex">
+      {/* brand panel */}
+      <aside className="hidden flex-col items-center justify-center border-r border-[var(--color-border)] bg-[var(--color-bg-sunken)] p-14 lg:flex">
         <Brand />
-        <div className="flex max-w-[380px] flex-col gap-7">
-          <h1 className="text-[30px] font-medium leading-[1.15] tracking-tight text-[var(--color-fg)]">
-            Monitoring that
-            <br />
-            just works.
-          </h1>
-          <div className="flex flex-col gap-4">
-            {BENEFITS.map(([title, detail]) => (
-              <div key={title} className="flex items-start gap-3">
-                <span
-                  className="mt-px flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full"
-                  style={{ background: "var(--color-accent-soft)" }}
-                >
-                  <Check size={13} className="text-[var(--color-accent)]" />
-                </span>
-                <div>
-                  <div className="text-[13.5px] font-medium text-[var(--color-fg)]">{title}</div>
-                  <div className="mt-px text-[12.5px] text-[var(--color-fg-muted)]">{detail}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <span className="h-[7px] w-[7px] rounded-full bg-[var(--color-ok)]" />
-          <span className="mono text-[11.5px] text-[var(--color-fg-dim)]">
-            open source · multi-region probes · monitor-as-code
-          </span>
-        </div>
       </aside>
 
       {/* form */}
@@ -160,17 +125,20 @@ function SignupPage() {
 
 function Brand() {
   return (
-    <div className="flex items-center gap-2">
-      <span
-        className="pulse-dot inline-block h-2 w-2 rounded-full"
-        style={{
-          background: "var(--color-accent)",
-          boxShadow: "0 0 12px color-mix(in srgb, var(--color-accent) 60%, transparent)",
-        }}
-      />
-      <span className="text-[15px] font-semibold tracking-tight text-[var(--color-fg)]">
-        Produktive
-      </span>
+    <div>
+      <div className="flex items-center gap-2">
+        <span
+          className="pulse-dot inline-block h-2 w-2 rounded-full"
+          style={{
+            background: "var(--color-accent)",
+            boxShadow: "0 0 12px color-mix(in srgb, var(--color-accent) 60%, transparent)",
+          }}
+        />
+        <span className="text-[15px] font-semibold tracking-tight text-[var(--color-fg)]">
+          {BRAND_NAME}
+        </span>
+      </div>
+      <p className="mt-2 text-[13px] text-[var(--color-fg-muted)]">{BRAND_TAGLINE}</p>
     </div>
   );
 }

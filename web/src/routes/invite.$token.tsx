@@ -6,6 +6,7 @@ import { toast } from "#/lib/toast";
 import { Button } from "#/components/ui/button";
 import { Spinner } from "#/components/ui/spinner";
 import { auth } from "../lib/api";
+import { BRAND_NAME } from "../lib/brand";
 import { authRedirectTarget } from "../lib/redirect";
 import {
   invitePreviewQuery,
@@ -74,7 +75,7 @@ function InvitePage() {
             }}
           />
           <span className="text-[14px] font-semibold tracking-tight text-[var(--color-fg)]">
-            Produktive
+            {BRAND_NAME}
           </span>
         </div>
 

@@ -1,10 +1,12 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useState } from "react";
+import { Link, createFileRoute, redirect } from "@tanstack/react-router";
+import { ArrowRight } from "lucide-react";
+import { motion } from "motion/react";
 import { Button } from "#/components/ui/button";
-import { Input } from "#/components/ui/input";
-import { PublicStatusByDomain } from "../components/status/PublicStatusByDomain";
+import { AnimatedIcon } from "../components/AnimatedIcon";
 import { MarketingShell } from "../components/marketing/MarketingShell";
+import { PublicStatusByDomain } from "../components/status/PublicStatusByDomain";
 import { auth } from "../lib/api";
+import { BRAND_TAGLINE } from "../lib/brand";
 import { customStatusDomain } from "../lib/custom-domain";
 import { workspacesQuery } from "../lib/queries";
 
@@ -27,6 +29,8 @@ export const Route = createFileRoute("/")({
   component: HomePage,
 });
 
+const PLATFORM = ["Uptime", "Logging", "Status pages"];
+
 function HomePage() {
   const customDomain = customStatusDomain();
 
@@ -41,41 +45,61 @@ function HomePage() {
 
   return (
     <MarketingShell gridMask="hero">
-      <ComingSoon />
+      <Landing />
     </MarketingShell>
   );
 }
 
-function ComingSoon() {
-  const [email, setEmail] = useState("");
-
+function Landing() {
   return (
-    <section className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-md flex-col items-center justify-center px-6 py-20 text-center">
-      <h1 className="text-3xl font-medium tracking-tight text-foreground sm:text-4xl">
-        Coming soon
-      </h1>
-      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-        Monitor-as-code uptime checks and status pages. Join the waitlist to hear when we launch.
-      </p>
+    <section className="mx-auto flex min-h-[calc(100dvh-8rem)] max-w-[1080px] flex-col justify-between px-6 pb-10 pt-16 sm:pt-24">
+      <div className="pricing-rise max-w-[560px]">
+        <h1 className="text-[40px] font-medium leading-[1.02] tracking-[-0.04em] text-[var(--color-fg)] sm:text-[52px]">
+          {BRAND_TAGLINE}
+        </h1>
 
-      <form
-        className="mt-8 flex w-full flex-col gap-2 sm:flex-row"
-        onSubmit={(event) => {
-          event.preventDefault();
-        }}
-      >
-        <Input
-          type="email"
-          placeholder="you@company.com"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          autoComplete="email"
-          className="h-10 flex-1"
-        />
-        <Button type="submit" className="h-10 shrink-0 sm:px-5">
-          Join waitlist
-        </Button>
-      </form>
+        <p className="mt-5 max-w-[440px] text-[15px] leading-[1.65] text-[var(--color-fg-muted)]">
+          Monitor endpoints from distributed regions, ingest and search application logs, and publish
+          status pages your users can trust.
+        </p>
+
+        <div className="mt-9 flex flex-wrap items-center gap-3">
+          <Link to="/signup">
+            <Button variant="default" size="default">
+              <motion.span
+                initial="rest"
+                animate="rest"
+                whileHover="hover"
+                className="inline-flex items-center gap-1.5"
+              >
+                Get started
+                <AnimatedIcon icon={ArrowRight} animation="slideX" trigger="group" size={14} />
+              </motion.span>
+            </Button>
+          </Link>
+          <Link to="/pricing">
+            <Button variant="ghost" size="default">
+              Pricing
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      <div className="pricing-rise-2 mt-20 border-t border-[var(--color-border)] pt-8 sm:mt-0">
+        <p className="mono text-[11px] uppercase tracking-[0.12em] text-[var(--color-fg-dim)]">
+          Platform
+        </p>
+        <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
+          {PLATFORM.map((item) => (
+            <li
+              key={item}
+              className="text-[13px] tracking-tight text-[var(--color-fg-muted)]"
+            >
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }

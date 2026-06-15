@@ -10,7 +10,6 @@ import { Button } from "#/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { PageActions } from "../components/PageLayout";
 import { Spinner } from "#/components/ui/spinner";
-import { StatTile } from "../components/StatTile";
 import {
   hasActivePaidSubscription,
   nextResetText,
@@ -19,10 +18,8 @@ import {
   redirectCheckout,
   usageNumbers,
   type BillingAction,
-  type BillingBalanceSummary,
   type BillingPlanSummary,
 } from "../lib/billing";
-import { cn } from "#/lib/cn";
 import {
   useBillingAttach,
   useBillingCancel,
@@ -54,9 +51,6 @@ function BillingPage() {
 
   const [selectedPlan, setSelectedPlan] = useState<BillingPlanSummary | null>(null);
   const [billingAction, setBillingAction] = useState<BillingAction | null>(null);
-  const [expandedUsage, setExpandedUsage] = useState<"monitors" | "members" | "events" | null>(
-    null,
-  );
 
   const summary = useBillingSummary(wid);
   const attach = useBillingAttach(wid);
@@ -106,7 +100,7 @@ function BillingPage() {
 
   if (!billing.billing_enabled) {
     return (
-      <div className="flex flex-col gap-7">
+      <div className="flex flex-col gap-6">
         <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-5 shadow-[var(--shadow-xs)]">
           <div className="flex items-start gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] text-[var(--color-fg-muted)]">
@@ -124,11 +118,7 @@ function BillingPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <UsageStatTile label="Monitors" usage={monitors} />
-          <UsageStatTile label="Members" usage={members} />
-          <UsageStatTile label="Events" usage={events} sub="Unlimited" />
-        </div>
+        <UsageCard monitors={monitors} members={members} events={events} eventsSub="Unlimited" />
 
         <CurrentPlanCard
           planId={currentPlanId}
@@ -189,44 +179,13 @@ function BillingPage() {
         )}
       </PageActions>
 
-      <div className="flex flex-col gap-7">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <UsageStatTile
-            label="Monitors"
-            usage={monitors}
-            expanded={expandedUsage === "monitors"}
-            onToggle={() => setExpandedUsage((v) => (v === "monitors" ? null : "monitors"))}
-          />
-          <UsageStatTile
-            label="Members"
-            usage={members}
-            expanded={expandedUsage === "members"}
-            onToggle={() => setExpandedUsage((v) => (v === "members" ? null : "members"))}
-          />
-          <UsageStatTile
-            label="Events"
-            usage={events}
-            sub={nextResetText(billing.balances.events)}
-            hint="2 units per check"
-            expanded={expandedUsage === "events"}
-            onToggle={() => setExpandedUsage((v) => (v === "events" ? null : "events"))}
-          />
-        </div>
-
-        {expandedUsage && (
-          <UsageDetailPanel
-            label={expandedUsage.charAt(0).toUpperCase() + expandedUsage.slice(1)}
-            usage={
-              expandedUsage === "monitors"
-                ? monitors
-                : expandedUsage === "members"
-                  ? members
-                  : events
-            }
-            balance={billing.balances[expandedUsage]}
-            hint={expandedUsage === "events" ? "1 recorded check = 2 event units" : undefined}
-          />
-        )}
+      <div className="flex flex-col gap-6">
+        <UsageCard
+          monitors={monitors}
+          members={members}
+          events={events}
+          eventsSub={nextResetText(billing.balances.events)}
+        />
 
         <CurrentPlanCard
           planId={currentPlanId}
@@ -321,84 +280,55 @@ function BillingPage() {
   );
 }
 
-function UsageStatTile({
+function UsageCard({
+  monitors,
+  members,
+  events,
+  eventsSub,
+}: {
+  monitors: ReturnType<typeof usageNumbers>;
+  members: ReturnType<typeof usageNumbers>;
+  events: ReturnType<typeof usageNumbers>;
+  eventsSub?: string;
+}) {
+  return (
+    <div className="divide-y divide-[var(--color-border)] rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)]">
+      <UsageRow label="Monitors" usage={monitors} />
+      <UsageRow label="Members" usage={members} />
+      <UsageRow label="Events" usage={events} sub={eventsSub} />
+    </div>
+  );
+}
+
+function UsageRow({
   label,
   usage,
   sub,
-  hint,
-  expanded,
-  onToggle,
 }: {
   label: string;
   usage: ReturnType<typeof usageNumbers>;
   sub?: string;
-  hint?: string;
-  expanded?: boolean;
-  onToggle?: () => void;
 }) {
-  const percent = usage.percent ?? 0;
-  const accent =
-    percent >= 90
-      ? "var(--color-err)"
-      : percent >= 70
-        ? "var(--color-warn)"
-        : usage.primaryText === "Unlimited"
-          ? undefined
-          : "var(--color-accent)";
-
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      onClick={onToggle}
-      className={cn(
-        "h-auto w-full justify-start border-0 p-0 text-left shadow-none transition-[box-shadow,border-color] duration-150",
-        onToggle && "cursor-pointer hover:shadow-[var(--shadow-sm)]",
-        expanded && "ring-1 ring-[color-mix(in_srgb,var(--color-accent)_35%,transparent)]",
-      )}
-    >
-      <StatTile
-        label={label}
-        value={usage.primaryText}
-        sub={sub ?? hint ?? usage.remainingText}
-        accent={accent}
-        className="h-full"
-      />
-    </Button>
-  );
-}
-
-function UsageDetailPanel({
-  label,
-  usage,
-  balance,
-  hint,
-}: {
-  label: string;
-  usage: ReturnType<typeof usageNumbers>;
-  balance: BillingBalanceSummary | null | undefined;
-  hint?: string;
-}) {
-  const width = usage.percent == null ? 0 : Math.min(100, Math.max(0, usage.percent));
+  const showBar = usage.percent != null && usage.primaryText !== "Unlimited";
+  const width = Math.min(100, Math.max(0, usage.percent ?? 0));
   const barColor =
     width >= 90 ? "var(--color-err)" : width >= 70 ? "var(--color-warn)" : "var(--color-accent)";
 
   return (
-    <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-3.5 shadow-[var(--shadow-xs)]">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-[13px] font-medium text-[var(--color-fg)]">{label} usage</div>
-        <div className="tabular text-[13px] text-[var(--color-fg-muted)]">{usage.primaryText}</div>
+    <div className="px-4 py-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[13px] text-[var(--color-fg)]">{label}</span>
+        <span className="tabular text-[12px] text-[var(--color-fg-muted)]">{usage.primaryText}</span>
       </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--color-bg-sunken)]">
-        <div
-          className="h-full rounded-full transition-[width] duration-300"
-          style={{ width: `${width}%`, background: barColor }}
-        />
-      </div>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--color-fg-dim)]">
-        <span>{hint ?? usage.remainingText}</span>
-        {balance?.next_reset_at != null && <span>{nextResetText(balance)}</span>}
-      </div>
+      {showBar && (
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-bg-sunken)]">
+          <div
+            className="h-full rounded-full transition-[width] duration-300"
+            style={{ width: `${width}%`, background: barColor }}
+          />
+        </div>
+      )}
+      {sub && <div className="mt-1.5 text-[11px] text-[var(--color-fg-dim)]">{sub}</div>}
     </div>
   );
 }

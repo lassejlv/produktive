@@ -4,6 +4,7 @@ import { toast } from "#/lib/toast";
 import { Button } from "#/components/ui/button";
 import { Input } from "../components/Input";
 import { auth } from "../lib/api";
+import { BRAND_NAME, BRAND_TAGLINE } from "../lib/brand";
 import { parseLoginRedirect } from "../lib/redirect";
 import { useLogin } from "../lib/queries";
 
@@ -38,43 +39,21 @@ function LoginPage() {
   }`;
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-6 relative overflow-hidden bg-[var(--color-bg)]">
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage:
-            "radial-gradient(60% 50% at 50% 0%, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 70%)",
-        }}
-      />
-      <div
-        className="absolute inset-0 pointer-events-none opacity-[0.35]"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(0deg, transparent 0 23px, color-mix(in srgb, var(--color-border) 60%, transparent) 23px 24px), repeating-linear-gradient(90deg, transparent 0 23px, color-mix(in srgb, var(--color-border) 60%, transparent) 23px 24px)",
-          maskImage: "radial-gradient(60% 50% at 50% 30%, black, transparent 80%)",
-        }}
-      />
-      <div className="w-full max-w-[380px] relative">
-        <div className="mb-10">
-          <div className="flex items-center gap-2 mb-10">
-            <span
-              className="inline-block w-2 h-2 rounded-full pulse-dot"
-              style={{
-                background: "var(--color-accent)",
-                boxShadow: "0 0 12px color-mix(in srgb, var(--color-accent) 60%, transparent)",
-              }}
-            />
-            <span className="text-[15px] font-semibold tracking-tight text-[var(--color-fg)]">
-              Produktive
-            </span>
-          </div>
-          <h1 className="text-[26px] leading-[1.15] tracking-tight font-medium text-[var(--color-fg)]">
-            Welcome back
-          </h1>
-          <p className="text-[var(--color-fg-muted)] text-[13.5px] mt-2">
-            Sign in to continue to your workspace.
-          </p>
+    <div className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] p-6">
+      <div className="w-full max-w-[360px]">
+        <div className="mb-8">
+          <Link
+            to="/"
+            className="text-[15px] font-semibold tracking-tight text-[var(--color-fg)] no-underline"
+          >
+            {BRAND_NAME}
+          </Link>
+          <p className="mt-1 text-[13px] text-[var(--color-fg-muted)]">{BRAND_TAGLINE}</p>
         </div>
+
+        <h1 className="mb-6 text-[20px] font-semibold tracking-tight text-[var(--color-fg)]">
+          Sign in
+        </h1>
 
         <Button
           render={<a href={githubLoginHref} />}
@@ -145,7 +124,7 @@ function LoginPage() {
           </Button>
         </form>
 
-        <div className="mt-8 text-[13px] text-[var(--color-fg-muted)] text-center">
+        <div className="mt-8 text-center text-[13px] text-[var(--color-fg-muted)]">
           No account?{" "}
           <Link
             to="/signup"
