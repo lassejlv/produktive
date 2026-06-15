@@ -1,8 +1,8 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { Play, FileCode, Braces, Sparkles } from "lucide-react";
-import { toast } from "sonner";
-import { Button } from "./Button";
-import { Spinner } from "./Spinner";
+import { toast } from "#/lib/toast";
+import { Button } from "#/components/ui/button";
+import { Spinner } from "#/components/ui/spinner";
 import { useTestDsl, useUpdateMonitor, useValidateDsl, type DslError } from "../lib/queries";
 import type { MonitorKind } from "../lib/types";
 import { cn } from "#/lib/cn";
@@ -97,7 +97,7 @@ export function DslEditor({
 
   function onSave() {
     update.mutate(
-      { id: mid, patch: { dsl_source: source } as never },
+      { id: mid, patch: { dsl_source: source } },
       {
         onSuccess: () => {
           toast.success("DSL saved");
@@ -111,7 +111,7 @@ export function DslEditor({
   function onClear() {
     if (!confirm("Clear DSL and revert to form-based config?")) return;
     update.mutate(
-      { id: mid, patch: { dsl_source: null } as never },
+      { id: mid, patch: { dsl_source: null } },
       {
         onSuccess: () => {
           toast.success("DSL cleared");
@@ -173,7 +173,7 @@ export function DslEditor({
             onClick={onTest}
             disabled={test.isPending || !!parseError}
           >
-            {test.isPending ? <Spinner size={11} thickness={2} /> : <Play size={11} />}
+            {test.isPending ? <Spinner className="size-2.75" /> : <Play size={11} />}
             Test
           </Button>
           {initialSource && (
@@ -182,12 +182,12 @@ export function DslEditor({
             </Button>
           )}
           <Button
-            variant="primary"
+            variant="default"
             size="sm"
             onClick={onSave}
             disabled={update.isPending || !!parseError || !dirty}
           >
-            {update.isPending && <Spinner size={11} thickness={2} />}
+            {update.isPending && <Spinner className="size-2.75" />}
             Save
           </Button>
         </div>
@@ -198,7 +198,7 @@ export function DslEditor({
           <Suspense
             fallback={
               <div className="flex items-center justify-center h-[360px] text-[12px] text-[var(--color-fg-muted)]">
-                <Spinner size={16} /> <span className="ml-2">loading editor…</span>
+                <Spinner className="size-4" /> <span className="ml-2">loading editor…</span>
               </div>
             }
           >
@@ -248,11 +248,13 @@ function TabBtn({
   children: React.ReactNode;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="sm"
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1.5 h-7 px-2.5 text-[12px] rounded-[var(--radius-sm)] transition-colors",
+        "h-7 px-2.5 text-[12px] rounded-[var(--radius-sm)] shadow-none",
         active
           ? "bg-[var(--color-bg-elev)] text-[var(--color-fg)] border border-[var(--color-border)] shadow-[var(--shadow-xs)]"
           : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] border border-transparent",
@@ -260,7 +262,7 @@ function TabBtn({
     >
       <Icon size={11} />
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -268,7 +270,7 @@ function StatusIndicator({ validating, error }: { validating: boolean; error: Ds
   if (validating) {
     return (
       <span className="flex items-center gap-1.5 text-[11px] text-[var(--color-fg-muted)] mono">
-        <Spinner size={10} thickness={2} /> checking…
+        <Spinner className="size-2.5" /> checking…
       </span>
     );
   }

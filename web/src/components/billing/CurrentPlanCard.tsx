@@ -1,4 +1,4 @@
-import { Button } from "../Button";
+import { Button } from "#/components/ui/button";
 import {
   formatPlanPrice,
   minimumIntervalLabel,
@@ -90,7 +90,7 @@ export function CurrentPlanCard({
             {isPaidPlan && hasScheduledCancellation && (
               <Button
                 type="button"
-                variant="primary"
+                variant="default"
                 size="sm"
                 disabled={actionPending}
                 onClick={onRenew}

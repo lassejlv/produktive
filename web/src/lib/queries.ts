@@ -30,6 +30,7 @@ import type {
   WorkspaceMember,
   WorkspacePatch,
   CreateMonitorBody,
+  UpdateMonitorBody,
   InviteCreated,
   InvitePreview,
   WorkspaceRole,
@@ -554,7 +555,7 @@ export function useTestDsl(wid: string, mid: string) {
 export function useUpdateMonitor(wid: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Partial<Monitor> }) =>
+    mutationFn: ({ id, patch }: { id: string; patch: UpdateMonitorBody }) =>
       api.patch<Monitor>(`/workspaces/${wid}/monitors/${id}`, patch),
     onSuccess: (m) => {
       qc.setQueryData<Monitor[]>(["monitors", wid], (old) =>

@@ -1,6 +1,5 @@
-import { Button } from "../Button";
+import { Button } from "#/components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "../Dialog";
-import { Spinner } from "../Spinner";
 import type { BillingAction, BillingSummary } from "../../lib/billing";
 
 export function BillingActionDialog({
@@ -49,11 +48,11 @@ export function BillingActionDialog({
             </DialogClose>
             <Button
               type="button"
-              variant={action === "cancel" ? "danger" : "primary"}
+              variant={action === "cancel" ? "destructive" : "default"}
               disabled={pending || !action}
+              loading={pending}
               onClick={onConfirm}
             >
-              {pending && <Spinner size={12} thickness={2} />}
               {confirmLabel}
             </Button>
           </>

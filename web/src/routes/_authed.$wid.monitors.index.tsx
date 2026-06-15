@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { toast } from "sonner";
+import { toast } from "#/lib/toast";
 import {
   Background,
   BackgroundVariant,
@@ -18,7 +18,7 @@ import { monitorStatus, type Monitor, type MonitorStatus } from "../lib/types";
 import { STATUS_COLOR } from "../lib/status";
 import { monitorsQuery, useMonitors, useUpdateMonitor } from "../lib/queries";
 import { Plus } from "lucide-react";
-import { Button } from "../components/Button";
+import { Button } from "#/components/ui/button";
 
 export const Route = createFileRoute("/_authed/$wid/monitors/")({
   staticData: {
@@ -196,12 +196,14 @@ function CanvasToolbar({
         {pills.map((p) => {
           const active = filter === p.value;
           return (
-            <button
+            <Button
               key={p.value}
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => onFilter(p.value)}
               className={cn(
-                "flex h-[30px] items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium transition-colors",
+                "h-[30px] rounded-full px-3 text-[12px] font-medium shadow-none",
                 active
                   ? "border-[var(--color-canvas-border-hi)] bg-[var(--color-canvas-surface)] text-[var(--color-canvas-fg)] shadow-[var(--shadow-md)]"
                   : "border-transparent bg-[color-mix(in_srgb,var(--color-canvas-surface)_75%,transparent)] text-[var(--color-canvas-muted)] hover:text-[var(--color-canvas-fg)]",
@@ -215,7 +217,7 @@ function CanvasToolbar({
               )}
               {p.label}
               <span className="tabular text-[11px] text-[var(--color-canvas-dim)]">{p.n}</span>
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -271,9 +273,9 @@ function EmptyCanvas({ onCreate }: { onCreate: () => void }) {
           No monitors yet
         </h2>
         <p className="text-[var(--color-canvas-muted)] text-[13.5px] mb-7 leading-relaxed">
-          Add your first endpoint and unstatus will start pinging it on the interval you choose.
+          Add your first endpoint and Produktive will start pinging it on the interval you choose.
         </p>
-        <Button variant="primary" size="lg" onClick={onCreate}>
+        <Button variant="default" size="lg" onClick={onCreate}>
           <Plus size={14} /> New monitor
         </Button>
       </div>

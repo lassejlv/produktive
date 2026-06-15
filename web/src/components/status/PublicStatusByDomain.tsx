@@ -1,4 +1,4 @@
-import { FullPageSpinner } from "../Spinner";
+import { FullPageSpinner } from "#/components/FullPageSpinner";
 import { usePublicStatusByDomain } from "../../lib/queries";
 import { DEFAULT_STATUS_STYLE } from "../../lib/types";
 import { IncidentsView } from "./IncidentsView";

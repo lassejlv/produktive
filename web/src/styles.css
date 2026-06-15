@@ -3,48 +3,13 @@
 @import "@fontsource-variable/geist-mono/index.css";
 @import "@xyflow/react/dist/style.css";
 
+/* shadcn/Coss components emit `dark:` utilities — point that variant at the
+   app's existing data-theme switch instead of a `.dark` class. */
+@custom-variant dark (&:is([data-theme="dark"] *));
+
 @theme {
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
-
-  /* paper cream surfaces */
-  --color-bg: #f7f5f0;
-  --color-bg-row: #efeae0;
-  --color-bg-elev: #ffffff;
-  --color-bg-sunken: #f1ede4;
-
-  /* warm hairlines */
-  --color-border: #e8e3d8;
-  --color-border-hi: #d4cdbe;
-  --color-border-strong: #b8af9d;
-
-  /* warm graphite text */
-  --color-fg: #1a1a17;
-  --color-fg-muted: #6b6b66;
-  --color-fg-dim: #9c9a92;
-
-  /* emerald accent */
-  --color-accent: #10b981;
-  --color-accent-hi: #34d399;
-  --color-accent-soft: #10b9811a;
-  --color-accent-fg: #ffffff;
-  --color-link: #047857;
-
-  /* status */
-  --color-ok: #10b981;
-  --color-warn: #d97706;
-  --color-err: #dc2626;
-  --color-unknown: #9c9a92;
-
-  /* dark canvas viewport (used in light mode; dark mode reuses bg tokens) */
-  --color-canvas-bg: #1a1d24;
-  --color-canvas-surface: #22262f;
-  --color-canvas-border: #2e323c;
-  --color-canvas-border-hi: #3a3f4b;
-  --color-canvas-fg: #eef0f4;
-  --color-canvas-muted: #9aa0ac;
-  --color-canvas-dim: #5f6573;
-  --color-canvas-dot: #2a2e38;
 
   /* layout metrics — the shell reads these so pages don't hardcode them */
   --sidebar-w: 220px;
@@ -60,84 +25,153 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
+  --radius-2xl: 16px;
 
-  --shadow-xs: 0 1px 0 rgba(20, 18, 12, 0.04);
-  --shadow-sm: 0 1px 2px rgba(20, 18, 12, 0.04), 0 1px 0 rgba(20, 18, 12, 0.03);
-  --shadow-md: 0 4px 12px -4px rgba(20, 18, 12, 0.08), 0 1px 2px rgba(20, 18, 12, 0.04);
-  --shadow-lg: 0 12px 32px -12px rgba(20, 18, 12, 0.16), 0 4px 8px -4px rgba(20, 18, 12, 0.06);
-  --shadow-pop: 0 24px 48px -16px rgba(20, 18, 12, 0.22), 0 8px 16px -8px rgba(20, 18, 12, 0.1);
+  --shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05), 0 1px 0 rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 4px 12px -4px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 12px 32px -12px rgba(0, 0, 0, 0.12), 0 4px 8px -4px rgba(0, 0, 0, 0.06);
+  --shadow-pop: 0 24px 48px -16px rgba(0, 0, 0, 0.16), 0 8px 16px -8px rgba(0, 0, 0, 0.08);
 
-  --ring-accent: 0 0 0 3px color-mix(in srgb, var(--color-accent) 24%, transparent);
+  --ring-accent: 0 0 0 3px color-mix(in srgb, var(--ring) 24%, transparent);
 }
 
-/* scoped light theme — re-declares light tokens so a [data-theme="light"]
-   wrapper renders correctly even nested inside a dark ancestor */
+/* shadcn / coss neutral palette (@coss/style) + legacy --color-* aliases so existing
+   components keep working without a mass TSX migration. */
+:root,
 [data-theme="light"] {
-  --color-bg: #f7f5f0;
-  --color-bg-row: #efeae0;
-  --color-bg-elev: #ffffff;
-  --color-bg-sunken: #f1ede4;
+  --accent: --alpha(var(--color-black) / 4%);
+  --accent-foreground: var(--color-neutral-800);
+  --background: var(--color-white);
+  --border: --alpha(var(--color-black) / 8%);
+  --card: var(--color-white);
+  --card-foreground: var(--color-neutral-800);
+  --destructive: var(--color-red-500);
+  --destructive-foreground: var(--color-red-700);
+  --foreground: var(--color-neutral-800);
+  --info: var(--color-blue-500);
+  --info-foreground: var(--color-blue-700);
+  --input: --alpha(var(--color-black) / 10%);
+  --muted: --alpha(var(--color-black) / 4%);
+  --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-black));
+  --popover: var(--color-white);
+  --popover-foreground: var(--color-neutral-800);
+  --primary: var(--color-neutral-800);
+  --primary-foreground: var(--color-neutral-50);
+  --ring: var(--color-neutral-400);
+  --secondary: --alpha(var(--color-black) / 4%);
+  --secondary-foreground: var(--color-neutral-800);
+  --success: var(--color-emerald-500);
+  --success-foreground: var(--color-emerald-700);
+  --warning: var(--color-amber-500);
+  --warning-foreground: var(--color-amber-700);
+  --radius: 0.625rem;
 
-  --color-border: #e8e3d8;
-  --color-border-hi: #d4cdbe;
-  --color-border-strong: #b8af9d;
+  --sidebar: var(--color-neutral-50);
+  --sidebar-accent: --alpha(var(--color-black) / 4%);
+  --sidebar-accent-foreground: var(--color-neutral-800);
+  --sidebar-border: --alpha(var(--color-black) / 6%);
+  --sidebar-foreground: color-mix(in srgb, var(--color-neutral-800) 64%, var(--sidebar));
+  --sidebar-primary: var(--color-neutral-800);
+  --sidebar-primary-foreground: var(--color-neutral-50);
+  --sidebar-ring: var(--color-neutral-400);
 
-  --color-fg: #1a1a17;
-  --color-fg-muted: #6b6b66;
-  --color-fg-dim: #9c9a92;
+  --color-bg: var(--background);
+  --color-bg-elev: var(--card);
+  --color-bg-row: var(--muted);
+  --color-bg-sunken: var(--secondary);
+  --color-border: var(--border);
+  --color-border-hi: color-mix(in srgb, var(--foreground) 12%, var(--border));
+  --color-border-strong: color-mix(in srgb, var(--foreground) 22%, var(--border));
+  --color-fg: var(--foreground);
+  --color-fg-muted: var(--muted-foreground);
+  --color-fg-dim: color-mix(in srgb, var(--muted-foreground) 70%, var(--background));
+  --color-accent: var(--primary);
+  --color-accent-hi: color-mix(in srgb, var(--primary) 82%, var(--background));
+  --color-accent-soft: color-mix(in srgb, var(--primary) 10%, transparent);
+  --color-accent-fg: var(--primary-foreground);
+  --color-link: var(--primary);
+  --color-ok: var(--success);
+  --color-warn: var(--warning);
+  --color-err: var(--destructive);
+  --color-unknown: var(--muted-foreground);
 
-  --color-accent: #10b981;
-  --color-accent-hi: #34d399;
-  --color-accent-soft: #10b9811a;
-  --color-accent-fg: #ffffff;
-  --color-link: #047857;
-
-  --color-ok: #10b981;
-  --color-warn: #d97706;
-  --color-err: #dc2626;
-  --color-unknown: #9c9a92;
-
-  --shadow-xs: 0 1px 0 rgba(20, 18, 12, 0.04);
-  --shadow-sm: 0 1px 2px rgba(20, 18, 12, 0.04), 0 1px 0 rgba(20, 18, 12, 0.03);
-  --shadow-md: 0 4px 12px -4px rgba(20, 18, 12, 0.08), 0 1px 2px rgba(20, 18, 12, 0.04);
-  --shadow-lg: 0 12px 32px -12px rgba(20, 18, 12, 0.16), 0 4px 8px -4px rgba(20, 18, 12, 0.06);
+  /* React Flow canvas — always a dark neutral viewport (distinct from the light shell) */
+  --color-canvas-bg: var(--color-neutral-950);
+  --color-canvas-surface: color-mix(in srgb, var(--color-neutral-900) 75%, var(--color-neutral-950));
+  --color-canvas-border: --alpha(var(--color-white) / 8%);
+  --color-canvas-border-hi: --alpha(var(--color-white) / 14%);
+  --color-canvas-fg: var(--color-neutral-100);
+  --color-canvas-muted: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-white));
+  --color-canvas-dim: color-mix(in srgb, var(--color-neutral-500) 50%, var(--color-neutral-950));
+  --color-canvas-dot: --alpha(var(--color-white) / 6%);
 }
 
-/* dark mode overrides — warm slate, not OLED */
 [data-theme="dark"] {
-  --color-bg: #13151a;
-  --color-bg-row: #1f232c;
-  --color-bg-elev: #1c1f27;
-  --color-bg-sunken: #0e1015;
+  --accent: --alpha(var(--color-white) / 4%);
+  --accent-foreground: var(--color-neutral-100);
+  --background: color-mix(in srgb, var(--color-neutral-950) 95%, var(--color-white));
+  --border: --alpha(var(--color-white) / 6%);
+  --card: color-mix(in srgb, var(--background) 98%, var(--color-white));
+  --card-foreground: var(--color-neutral-100);
+  --destructive: color-mix(in srgb, var(--color-red-500) 90%, var(--color-white));
+  --destructive-foreground: var(--color-red-400);
+  --foreground: var(--color-neutral-100);
+  --info: var(--color-blue-500);
+  --info-foreground: var(--color-blue-400);
+  --input: --alpha(var(--color-white) / 8%);
+  --muted: --alpha(var(--color-white) / 4%);
+  --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-white));
+  --popover: color-mix(in srgb, var(--background) 98%, var(--color-white));
+  --popover-foreground: var(--color-neutral-100);
+  --primary: var(--color-neutral-100);
+  --primary-foreground: var(--color-neutral-800);
+  --ring: var(--color-neutral-500);
+  --secondary: --alpha(var(--color-white) / 4%);
+  --secondary-foreground: var(--color-neutral-100);
+  --success: var(--color-emerald-500);
+  --success-foreground: var(--color-emerald-400);
+  --warning: var(--color-amber-500);
+  --warning-foreground: var(--color-amber-400);
 
-  --color-border: #262a33;
-  --color-border-hi: #32363f;
-  --color-border-strong: #454a55;
+  --sidebar: color-mix(in srgb, var(--color-neutral-950) 97%, var(--color-white));
+  --sidebar-accent: --alpha(var(--color-white) / 4%);
+  --sidebar-accent-foreground: var(--color-neutral-100);
+  --sidebar-border: --alpha(var(--color-white) / 5%);
+  --sidebar-foreground: color-mix(in srgb, var(--color-neutral-100) 64%, var(--sidebar));
+  --sidebar-primary: var(--color-neutral-100);
+  --sidebar-primary-foreground: var(--color-neutral-800);
+  --sidebar-ring: var(--color-neutral-400);
 
-  --color-fg: #e8eaf0;
-  --color-fg-muted: #9094a0;
-  --color-fg-dim: #5a5e6a;
+  --color-bg: var(--background);
+  --color-bg-elev: var(--card);
+  --color-bg-row: var(--muted);
+  --color-bg-sunken: var(--secondary);
+  --color-border: var(--border);
+  --color-border-hi: color-mix(in srgb, var(--foreground) 12%, var(--border));
+  --color-border-strong: color-mix(in srgb, var(--foreground) 22%, var(--border));
+  --color-fg: var(--foreground);
+  --color-fg-muted: var(--muted-foreground);
+  --color-fg-dim: color-mix(in srgb, var(--muted-foreground) 70%, var(--background));
+  --color-accent: var(--primary);
+  --color-accent-hi: color-mix(in srgb, var(--primary) 82%, var(--background));
+  --color-accent-soft: color-mix(in srgb, var(--primary) 10%, transparent);
+  --color-accent-fg: var(--primary-foreground);
+  --color-link: var(--primary);
+  --color-ok: var(--success);
+  --color-warn: var(--warning);
+  --color-err: var(--destructive);
+  --color-unknown: var(--muted-foreground);
 
-  --color-accent: #10b981;
-  --color-accent-hi: #34d399;
-  --color-accent-soft: color-mix(in srgb, #10b981 14%, transparent);
-  --color-accent-fg: #0a0c10;
-  --color-link: #34d399;
-
-  --color-ok: #34d399;
-  --color-warn: #fbbf24;
-  --color-err: #f87171;
-  --color-unknown: #5a5e6a;
-
-  /* canvas blends into shell in dark mode */
-  --color-canvas-bg: #0e1015;
-  --color-canvas-surface: #1c1f27;
-  --color-canvas-border: #262a33;
-  --color-canvas-border-hi: #32363f;
-  --color-canvas-fg: #e8eaf0;
-  --color-canvas-muted: #9094a0;
-  --color-canvas-dim: #5a5e6a;
-  --color-canvas-dot: #262a33;
+  /* React Flow canvas — sunken below the dark shell */
+  --color-canvas-bg: color-mix(in srgb, var(--color-neutral-950) 90%, black);
+  --color-canvas-surface: color-mix(in srgb, var(--color-neutral-950) 65%, var(--background));
+  --color-canvas-border: --alpha(var(--color-white) / 6%);
+  --color-canvas-border-hi: --alpha(var(--color-white) / 11%);
+  --color-canvas-fg: var(--foreground);
+  --color-canvas-muted: var(--muted-foreground);
+  --color-canvas-dim: color-mix(in srgb, var(--muted-foreground) 55%, var(--color-canvas-bg));
+  --color-canvas-dot: --alpha(var(--color-white) / 5%);
 
   --shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.25);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(0, 0, 0, 0.25);
@@ -146,45 +180,21 @@
   --shadow-pop: 0 28px 56px -16px rgba(0, 0, 0, 0.7), 0 10px 20px -8px rgba(0, 0, 0, 0.5);
 }
 
-[data-theme="dark"] body {
-  background: var(--color-bg);
-  color: var(--color-fg);
-}
-
-/* Vendored bklit line-chart theming (web/src/charts/**). The components read
-   these tokens; we re-point them at our own design tokens. Because every value
-   resolves through var(--color-*), the chart follows the active data-theme
-   automatically — including a scoped-light wrapper nested in a dark ancestor
-   (e.g. the public status page). Keep this in sync with the token taxonomy. */
+/* Vendored bklit line-chart theming (web/src/charts/**). */
 :root {
-  /* shadcn fallbacks the components default to */
-  --foreground: var(--color-fg);
-  --muted-foreground: var(--color-fg-muted);
-
-  /* chart surface + text */
   --chart-background: var(--color-bg-elev);
   --chart-foreground: var(--color-fg);
   --chart-foreground-muted: var(--color-fg-muted);
   --chart-label: var(--color-fg-dim);
-
-  /* grid + crosshair */
   --chart-grid: var(--color-border);
   --chart-crosshair: var(--color-border-strong);
   --chart-brush-border: var(--color-border);
-
-  /* series lines */
   --chart-line-primary: var(--color-accent);
   --chart-line-secondary: var(--color-fg-muted);
-
-  /* segment selection (click-drag) */
   --chart-segment-line: var(--color-border-hi);
   --chart-segment-background: var(--color-accent-soft);
-
-  /* tooltip indicators */
   --chart-indicator-color: var(--color-accent);
   --chart-indicator-secondary-color: var(--color-fg-muted);
-
-  /* marker annotations */
   --chart-marker-foreground: var(--color-fg);
   --chart-marker-border: var(--color-border-strong);
   --chart-marker-background: var(--color-bg-elev);
@@ -202,8 +212,8 @@ html,
 body,
 #app {
   min-height: 100%;
-  background: var(--color-bg);
-  color: var(--color-fg);
+  background: var(--background);
+  color: var(--foreground);
 }
 
 body {
@@ -258,8 +268,8 @@ select {
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--color-accent) 28%, transparent);
-  color: var(--color-fg);
+  background: color-mix(in srgb, var(--primary) 28%, transparent);
+  color: var(--foreground);
 }
 
 /* refined scrollbars */
@@ -459,7 +469,7 @@ select {
   box-shadow: inset 0 0 0 1px var(--color-border);
 }
 
-/* react flow — dark editorial viewport */
+/* react flow — neutral canvas viewport */
 .react-flow {
   background: var(--color-canvas-bg);
   --xy-background-pattern-dots-color-default: var(--color-canvas-dot);
@@ -510,26 +520,6 @@ select {
 .react-flow__edge-path {
   stroke: var(--color-canvas-border-hi);
 }
-
-/* sonner overrides */
-[data-sonner-toaster] {
-  --normal-bg: var(--color-bg-elev);
-  --normal-text: var(--color-fg);
-  --normal-border: var(--color-border);
-  --success-bg: var(--color-bg-elev);
-  --success-text: var(--color-fg);
-  --success-border: color-mix(in srgb, var(--color-ok) 30%, var(--color-border));
-  --error-bg: var(--color-bg-elev);
-  --error-text: var(--color-fg);
-  --error-border: color-mix(in srgb, var(--color-err) 30%, var(--color-border));
-  font-family: var(--font-sans) !important;
-}
-[data-sonner-toast] {
-  border-radius: var(--radius-md) !important;
-  box-shadow: var(--shadow-lg) !important;
-  backdrop-filter: blur(8px);
-}
-
 /* monaco DSL editor decorations */
 .udsl-error-line {
   background: color-mix(in srgb, var(--color-err) 8%, transparent);
@@ -545,28 +535,47 @@ select {
   background: transparent !important;
 }
 
-/* radix dialog overlay animations */
-@keyframes overlay-in {
-  from {
-    opacity: 0;
+@theme inline {
+  --animate-skeleton: skeleton 2s -1s infinite linear;
+
+  /* Expose shadcn/Coss tokens as Tailwind utilities. Legacy --color-* aliases
+     live on :root / [data-theme] for var(--color-*) usage in existing components. */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning: var(--warning);
+  --color-success-foreground: var(--success-foreground);
+  --color-success: var(--success);
+  --color-info-foreground: var(--info-foreground);
+  --color-info: var(--info);
+  --color-border: var(--border);
+
+  @keyframes skeleton {
+    to {
+      background-position: -200% 0;
+    }
   }
-  to {
-    opacity: 1;
-  }
-}
-@keyframes dialog-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -48%) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-[data-state="open"].dialog-overlay {
-  animation: overlay-in 140ms ease-out;
-}
-[data-state="open"].dialog-content {
-  animation: dialog-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
 }

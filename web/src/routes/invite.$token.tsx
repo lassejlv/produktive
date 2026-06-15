@@ -2,9 +2,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { Check, Mail, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
-import { toast } from "sonner";
-import { Button } from "../components/Button";
-import { Spinner } from "../components/Spinner";
+import { toast } from "#/lib/toast";
+import { Button } from "#/components/ui/button";
+import { Spinner } from "#/components/ui/spinner";
 import { auth } from "../lib/api";
 import { authRedirectTarget } from "../lib/redirect";
 import {
@@ -74,13 +74,13 @@ function InvitePage() {
             }}
           />
           <span className="text-[14px] font-semibold tracking-tight text-[var(--color-fg)]">
-            unstatus
+            Produktive
           </span>
         </div>
 
         {preview.isLoading ? (
           <div className="flex h-32 items-center justify-center text-[12px] text-[var(--color-fg-muted)]">
-            <Spinner size={14} /> <span className="ml-2">Loading invite...</span>
+            <Spinner className="size-3.5" /> <span className="ml-2">Loading invite...</span>
           </div>
         ) : preview.error ? (
           <InviteState
@@ -99,8 +99,8 @@ function InvitePage() {
               <Link to="/" className="link text-[13px]">
                 Not now
               </Link>
-              <Button variant="primary" onClick={acceptInvite} disabled={accept.isPending}>
-                {accept.isPending && <Spinner size={12} thickness={2} />}
+              <Button variant="default" onClick={acceptInvite} disabled={accept.isPending}>
+                {accept.isPending && <Spinner className="size-3" />}
                 <Check size={13} /> Accept invite
               </Button>
             </div>

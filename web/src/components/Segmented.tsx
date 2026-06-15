@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { Button } from "#/components/ui/button";
 import { cn } from "#/lib/cn";
 
 export interface SegmentedOption<T extends string> {
@@ -40,16 +41,18 @@ export function Segmented<T extends string>({
         const active = opt.value === value;
         const Icon = opt.icon;
         return (
-          <button
+          <Button
             key={opt.value}
             type="button"
+            variant="ghost"
+            size="sm"
             title={opt.title}
             disabled={opt.disabled}
             onClick={() => {
               if (!opt.disabled) onChange(opt.value);
             }}
             className={cn(
-              "inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-sm)] font-medium",
+              "rounded-[var(--radius-sm)] font-medium shadow-none",
               "transition-[background-color,color,box-shadow] duration-150 ease-out",
               h,
               pad,
@@ -63,7 +66,7 @@ export function Segmented<T extends string>({
           >
             {Icon && <Icon size={size === "sm" ? 13 : 14} />}
             {opt.label}
-          </button>
+          </Button>
         );
       })}
     </div>

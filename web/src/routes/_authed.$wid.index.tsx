@@ -1,8 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { Activity, ArrowRight, ChevronRight, Clock, Plus } from "lucide-react";
+import { motion } from "motion/react";
 import { cn } from "#/lib/cn";
-import { Button } from "../components/Button";
+import { AnimatedIcon } from "../components/AnimatedIcon";
+import { Button } from "#/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { StatTile } from "../components/StatTile";
 import { PROBE_ICON } from "../components/ProbeIcons";
@@ -80,10 +82,10 @@ function OverviewPage() {
       <EmptyState
         icon={Activity}
         title="No monitors yet"
-        description="Add your first endpoint and unstatus will start pinging it on the interval you choose."
+        description="Add your first endpoint and Produktive will start pinging it on the interval you choose."
         action={
           <Link to="/$wid/monitors/new" params={{ wid }}>
-            <Button variant="primary" size="lg">
+            <Button variant="default" size="lg">
               <Plus size={14} /> New monitor
             </Button>
           </Link>
@@ -267,12 +269,14 @@ function StatusFilterBar({
       {pills.map((p) => {
         const active = value === p.value;
         return (
-          <button
+          <Button
             key={p.value}
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => onChange(active && p.value !== "all" ? "all" : p.value)}
             className={cn(
-              "flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-medium transition-colors",
+              "h-7 rounded-full px-2.5 text-[12px] font-medium shadow-none",
               active
                 ? "border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] text-[var(--color-fg)] shadow-[var(--shadow-xs)]"
                 : "border-transparent text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-row)] hover:text-[var(--color-fg)]",
@@ -283,7 +287,7 @@ function StatusFilterBar({
             )}
             {p.label}
             <span className="tabular text-[11px] text-[var(--color-fg-dim)]">{p.n}</span>
-          </button>
+          </Button>
         );
       })}
     </div>
@@ -302,7 +306,7 @@ function MonitorRow({ wid, monitor, trends }: { wid: string; monitor: Monitor; t
     <Link
       to="/$wid/monitors/$mid"
       params={{ wid, mid: monitor.slug || monitor.id }}
-      className="flex items-center gap-4 border-b border-[var(--color-border)] px-4 py-3 no-underline transition-colors last:border-b-0 hover:bg-[var(--color-bg-row)]"
+      className="block border-b border-[var(--color-border)] no-underline transition-colors last:border-b-0 hover:bg-[var(--color-bg-row)]"
       style={{
         boxShadow:
           status === "down"
@@ -312,79 +316,92 @@ function MonitorRow({ wid, monitor, trends }: { wid: string; monitor: Monitor; t
               : undefined,
       }}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2.5">
-        <span
-          className={cn("h-2 w-2 shrink-0 rounded-full", status === "up" && "pulse-dot")}
-          style={{
-            background: color,
-            boxShadow: `0 0 10px color-mix(in srgb, ${color} 60%, transparent)`,
-          }}
-        />
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-[13.5px] font-medium text-[var(--color-fg)]">
-              {monitor.name}
-            </span>
-            {paused && (
-              <span className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--color-bg-row)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
-                {monitor.billing_paused_at ? "paused" : "off"}
+      <motion.div
+        initial="rest"
+        animate="rest"
+        whileHover="hover"
+        className="flex items-center gap-4 px-4 py-3"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <span
+            className={cn("h-2 w-2 shrink-0 rounded-full", status === "up" && "pulse-dot")}
+            style={{
+              background: color,
+              boxShadow: `0 0 10px color-mix(in srgb, ${color} 60%, transparent)`,
+            }}
+          />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-[13.5px] font-medium text-[var(--color-fg)]">
+                {monitor.name}
+              </span>
+              {paused && (
+                <span className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--color-bg-row)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
+                  {monitor.billing_paused_at ? "paused" : "off"}
+                </span>
+              )}
+            </div>
+            <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-[var(--color-fg-dim)]">
+              <KindIcon size={11} className="shrink-0" />
+              <span className="mono truncate">{monitor.target}</span>
+            </div>
+          </div>
+        </div>
+
+        {monitor.regions.length > 1 && (
+          <div className="hidden shrink-0 items-center gap-1 lg:flex" title="Per-region status">
+            {monitor.regions.slice(0, 5).map((r) => (
+              <span
+                key={r.id}
+                className="h-[6px] w-[6px] rounded-full"
+                style={{ background: regionColor(r.last_status) }}
+                title={`${r.name}: ${regionLabel(r.last_status)}`}
+              />
+            ))}
+            {monitor.regions.length > 5 && (
+              <span className="text-[10px] text-[var(--color-fg-dim)]">
+                +{monitor.regions.length - 5}
               </span>
             )}
           </div>
-          <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-[var(--color-fg-dim)]">
-            <KindIcon size={11} className="shrink-0" />
-            <span className="mono truncate">{monitor.target}</span>
-          </div>
-        </div>
-      </div>
-
-      {monitor.regions.length > 1 && (
-        <div className="hidden shrink-0 items-center gap-1 lg:flex" title="Per-region status">
-          {monitor.regions.slice(0, 5).map((r) => (
-            <span
-              key={r.id}
-              className="h-[6px] w-[6px] rounded-full"
-              style={{ background: regionColor(r.last_status) }}
-              title={`${r.name}: ${regionLabel(r.last_status)}`}
-            />
-          ))}
-          {monitor.regions.length > 5 && (
-            <span className="text-[10px] text-[var(--color-fg-dim)]">
-              +{monitor.regions.length - 5}
-            </span>
-          )}
-        </div>
-      )}
-
-      {trends && (
-        <div className="hidden shrink-0 md:block">
-          <Sparkline checks={checks} status={status} />
-        </div>
-      )}
-
-      <span className="mono tabular w-[52px] shrink-0 text-right text-[13px] text-[var(--color-fg)]">
-        {monitor.last_latency_ms != null ? (
-          <>
-            {monitor.last_latency_ms}
-            <span className="text-[10px] text-[var(--color-fg-dim)]">ms</span>
-          </>
-        ) : (
-          <span className="text-[var(--color-fg-dim)]">—</span>
         )}
-      </span>
 
-      <span className="tabular hidden w-[64px] shrink-0 text-right text-[11.5px] text-[var(--color-fg-dim)] sm:block">
-        {lastSeen(monitor.last_checked_at)}
-      </span>
+        {trends && (
+          <div className="hidden shrink-0 md:block">
+            <Sparkline checks={checks} status={status} />
+          </div>
+        )}
 
-      <span
-        className="hidden w-[84px] shrink-0 text-right text-[10.5px] font-semibold uppercase tracking-[0.08em] sm:block"
-        style={{ color }}
-      >
-        {STATUS_LABEL[status]}
-      </span>
+        <span className="mono tabular w-[52px] shrink-0 text-right text-[13px] text-[var(--color-fg)]">
+          {monitor.last_latency_ms != null ? (
+            <>
+              {monitor.last_latency_ms}
+              <span className="text-[10px] text-[var(--color-fg-dim)]">ms</span>
+            </>
+          ) : (
+            <span className="text-[var(--color-fg-dim)]">—</span>
+          )}
+        </span>
 
-      <ChevronRight size={14} className="shrink-0 text-[var(--color-fg-dim)]" />
+        <span className="tabular hidden w-[64px] shrink-0 text-right text-[11.5px] text-[var(--color-fg-dim)] sm:block">
+          {lastSeen(monitor.last_checked_at)}
+        </span>
+
+        <span
+          className="hidden w-[84px] shrink-0 text-right text-[10.5px] font-semibold uppercase tracking-[0.08em] sm:block"
+          style={{ color }}
+        >
+          {STATUS_LABEL[status]}
+        </span>
+
+        <AnimatedIcon
+          icon={ChevronRight}
+          animation="slideX"
+          trigger="group"
+          size={14}
+          className="text-[var(--color-fg-dim)]"
+        />
+      </motion.div>
     </Link>
   );
 }

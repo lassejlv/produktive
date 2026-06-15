@@ -1,7 +1,6 @@
 import { Check } from "lucide-react";
-import { Button } from "../Button";
+import { Button } from "#/components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "../Dialog";
-import { Spinner } from "../Spinner";
 import {
   formatPlanPrice,
   planChangeDescription,
@@ -54,8 +53,13 @@ export function PlanChangeDialog({
                 Cancel
               </Button>
             </DialogClose>
-            <Button type="button" variant="primary" disabled={pending || !plan} onClick={onConfirm}>
-              {pending && <Spinner size={12} thickness={2} />}
+            <Button
+              type="button"
+              variant="default"
+              disabled={pending || !plan}
+              loading={pending}
+              onClick={onConfirm}
+            >
               {changeKind === "downgrade" ? "Confirm downgrade" : "Confirm change"}
             </Button>
           </>

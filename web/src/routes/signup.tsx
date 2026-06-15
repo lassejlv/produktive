@@ -1,10 +1,9 @@
 import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Check } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
-import { Button } from "../components/Button";
+import { toast } from "#/lib/toast";
+import { Button } from "#/components/ui/button";
 import { Input } from "../components/Input";
-import { Spinner } from "../components/Spinner";
 import { parseLoginRedirect } from "../lib/redirect";
 import { useLogin, useRegister } from "../lib/queries";
 
@@ -133,13 +132,12 @@ function SignupPage() {
             )}
 
             <Button
-              variant="primary"
+              variant="default"
               size="lg"
               type="submit"
-              disabled={submitting}
+              loading={submitting}
               className="mt-3 w-full"
             >
-              {submitting && <Spinner size={13} thickness={2} />}
               {submitting ? "Creating account…" : "Create account"}
             </Button>
           </form>
@@ -171,7 +169,7 @@ function Brand() {
         }}
       />
       <span className="text-[15px] font-semibold tracking-tight text-[var(--color-fg)]">
-        unstatus
+        Produktive
       </span>
     </div>
   );

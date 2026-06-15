@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { usePublicStatus } from "../lib/queries";
 import { DEFAULT_STATUS_STYLE } from "../lib/types";
-import { FullPageSpinner } from "../components/Spinner";
+import { FullPageSpinner } from "#/components/FullPageSpinner";
 import { IncidentsView } from "../components/status/IncidentsView";
 import { PublicStatusError } from "../components/status/PublicStatusError";
 

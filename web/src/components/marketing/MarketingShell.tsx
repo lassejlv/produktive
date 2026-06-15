@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
-import { Button } from "../Button";
+import { Button } from "#/components/ui/button";
 import { ThemeToggle } from "../ThemeToggle";
 import { auth } from "../../lib/api";
 import { useMe, useWorkspaces } from "../../lib/queries";
@@ -16,7 +16,7 @@ export function MarketingWordmark({ linked = true }: { linked?: boolean }) {
         style={{ background: "var(--color-accent)" }}
       />
       <span className="text-[15px] font-semibold tracking-tight text-[var(--color-fg)]">
-        unstatus
+        Produktive
       </span>
     </>
   );
@@ -77,7 +77,7 @@ export function MarketingShell({
             <ThemeToggle />
             {signedIn && workspace ? (
               <Button
-                variant="primary"
+                variant="default"
                 size="sm"
                 onClick={() => nav({ to: "/$wid/monitors", params: { wid: workspace.slug } })}
               >
@@ -88,7 +88,7 @@ export function MarketingShell({
                 <Button variant="ghost" size="sm" onClick={() => nav({ to: "/login" })}>
                   Sign in
                 </Button>
-                <Button variant="primary" size="sm" onClick={() => nav({ to: "/signup" })}>
+                <Button variant="default" size="sm" onClick={() => nav({ to: "/signup" })}>
                   Get started
                 </Button>
               </>

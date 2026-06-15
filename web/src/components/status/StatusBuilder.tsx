@@ -1,5 +1,6 @@
 import { useRef, useState, type DragEvent } from "react";
 import { Eye, EyeOff, GripVertical, Plus, Trash2, X } from "lucide-react";
+import { Button } from "#/components/ui/button";
 import { cn } from "#/lib/cn";
 import { monitorStatus, type Monitor, type StatusGroup } from "../../lib/types";
 import { STATUS_COLOR } from "../../lib/status";
@@ -131,14 +132,16 @@ export function StatusBuilder({ monitors, groups, onChange, hidden, onToggleHidd
             <span className="mono tabular text-[11px] text-[var(--color-fg-dim)] shrink-0">
               {g.monitor_ids.length}
             </span>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-xs"
               onClick={() => onChange(groups.filter((x) => x.id !== g.id))}
-              className="text-[var(--color-fg-dim)] hover:text-[var(--color-err)] p-1 rounded-[var(--radius-sm)] hover:bg-[var(--color-bg-row)] shrink-0"
+              className="shrink-0 text-[var(--color-fg-dim)] hover:text-[var(--color-err)] hover:bg-[var(--color-bg-row)]"
               title="Delete group"
             >
               <Trash2 size={13} />
-            </button>
+            </Button>
           </div>
 
           {/* group body */}
@@ -175,13 +178,15 @@ export function StatusBuilder({ monitors, groups, onChange, hidden, onToggleHidd
         </div>
       ))}
 
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
         onClick={() => onChange([...groups, { id: newId(), name: "New group", monitor_ids: [] }])}
-        className="self-start inline-flex items-center gap-1.5 h-8 px-3 rounded-[var(--radius-md)] border border-dashed border-[var(--color-border-hi)] text-[12px] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:border-[var(--color-border-strong)] transition-colors"
+        className="self-start border-dashed border-[var(--color-border-hi)] text-[12px] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:border-[var(--color-border-strong)]"
       >
         <Plus size={13} /> Add group
-      </button>
+      </Button>
 
       {/* unassigned pool */}
       <div
@@ -279,14 +284,16 @@ function MonitorItem({
       />
       <span className="flex-1 min-w-0 truncate text-[13px] text-[var(--color-fg)]">{m.name}</span>
       <VisibilityToggle hidden={hidden} onToggle={onToggleHidden} />
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-xs"
         onClick={onRemove}
-        className="opacity-0 group-hover:opacity-100 text-[var(--color-fg-dim)] hover:text-[var(--color-err)] p-1 rounded-[var(--radius-sm)] shrink-0 transition-opacity"
+        className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 text-[var(--color-fg-dim)] hover:text-[var(--color-err)]"
         title="Unassign"
       >
         <X size={13} />
-      </button>
+      </Button>
     </div>
   );
 }
@@ -294,11 +301,13 @@ function MonitorItem({
 /** Toggles whether a component appears on the public status page. */
 function VisibilityToggle({ hidden, onToggle }: { hidden: boolean; onToggle: () => void }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="icon-xs"
       onClick={onToggle}
       className={cn(
-        "p-1 rounded-[var(--radius-sm)] shrink-0 hover:bg-[var(--color-bg-row)]",
+        "shrink-0 hover:bg-[var(--color-bg-row)]",
         hidden
           ? "text-[var(--color-fg-dim)] hover:text-[var(--color-fg)]"
           : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
@@ -307,6 +316,6 @@ function VisibilityToggle({ hidden, onToggle }: { hidden: boolean; onToggle: () 
       aria-pressed={hidden}
     >
       {hidden ? <EyeOff size={13} /> : <Eye size={13} />}
-    </button>
+    </Button>
   );
 }

@@ -1,5 +1,4 @@
-import { Button } from "../Button";
-import { Spinner } from "../Spinner";
+import { Button } from "#/components/ui/button";
 import {
   formatPlanPrice,
   minimumIntervalLabel,
@@ -106,8 +105,14 @@ function PlanTableRow({
 
       <div className="flex justify-start md:justify-end">
         {isOwner && !current ? (
-          <Button type="button" variant="subtle" size="sm" disabled={pending} onClick={onSelect}>
-            {pending && <Spinner size={12} thickness={2} />}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={pending}
+            loading={pending}
+            onClick={onSelect}
+          >
             {actionLabel}
           </Button>
         ) : (

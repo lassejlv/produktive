@@ -1,6 +1,6 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ArrowRight, Check, Code2, Globe2, Layers, Radio } from "lucide-react";
-import { Button } from "../components/Button";
+import { Button } from "#/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { MarketingShell } from "../components/marketing/MarketingShell";
 import { PricingComparisonTable } from "../components/marketing/PricingComparisonTable";
@@ -206,8 +206,8 @@ function PricingPage() {
               {!authed && (
                 <Button
                   type="button"
-                  variant="primary"
-                  size="md"
+                  variant="default"
+                  size="default"
                   className="mt-6 gap-2"
                   onClick={() => nav({ to: "/signup" })}
                 >
@@ -349,8 +349,8 @@ function PlanTierCard({
 
       <Button
         type="button"
-        variant={featured ? "primary" : "secondary"}
-        size="md"
+        variant={featured ? "default" : "secondary"}
+        size="default"
         className={cn("mt-7 w-full", featured && "gap-2")}
         onClick={() => {
           if (cta.to === "/$wid/settings/billing" && cta.params) {

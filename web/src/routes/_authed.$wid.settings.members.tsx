@@ -1,13 +1,20 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Clock3, Copy, MailPlus, Trash2, UserRound, Users } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { toast } from "sonner";
-import { Button } from "../components/Button";
+import { toast } from "#/lib/toast";
+import { Button } from "#/components/ui/button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Dialog, DialogClose, DialogContent } from "../components/Dialog";
 import { EmptyState } from "../components/EmptyState";
 import { Input } from "../components/Input";
-import { Spinner } from "../components/Spinner";
+import { Spinner } from "#/components/ui/spinner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "#/components/ui/select";
 import { cn } from "../lib/cn";
 import {
   useCreateInvite,
@@ -63,7 +70,7 @@ function MembersSettingsPage() {
   if (loading) {
     return (
       <div className="flex h-40 items-center justify-center text-[12px] text-[var(--color-fg-muted)]">
-        <Spinner size={14} /> <span className="ml-2">Loading members...</span>
+        <Spinner className="size-3.5" /> <span className="ml-2">Loading members...</span>
       </div>
     );
   }
@@ -88,7 +95,7 @@ function MembersSettingsPage() {
           </p>
         </div>
         {isOwner && !current?.is_personal && (
-          <Button variant="primary" size="sm" onClick={() => setInviteOpen(true)}>
+          <Button variant="default" size="sm" onClick={() => setInviteOpen(true)}>
             <MailPlus size={13} /> Invite member
           </Button>
         )}
@@ -129,28 +136,35 @@ function MembersSettingsPage() {
                 </div>
               </div>
 
-              <select
+              <Select
                 value={member.role}
                 disabled={!isOwner || updateRole.isPending}
-                onChange={(event) => {
-                  const role = event.target.value as WorkspaceRole;
-                  if (role === member.role) return;
+                onValueChange={(role) => {
+                  const nextRole = role as WorkspaceRole;
+                  if (nextRole === member.role) return;
                   updateRole.mutate(
-                    { userId: member.user_id, role },
+                    { userId: member.user_id, role: nextRole },
                     {
                       onSuccess: () => toast.success("Role updated"),
                       onError: (err) => toast.error((err as Error).message),
                     },
                   );
                 }}
-                className={cn(fieldControlClass, "h-8 w-[112px] text-[12px] capitalize")}
               >
-                <option value="owner">Owner</option>
-                <option value="member">Member</option>
-              </select>
+                <SelectTrigger
+                  className={cn(fieldControlClass, "h-8 w-[112px] text-[12px] capitalize")}
+                  size="sm"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="owner">Owner</SelectItem>
+                  <SelectItem value="member">Member</SelectItem>
+                </SelectContent>
+              </Select>
 
               <Button
-                variant={self ? "secondary" : "danger"}
+                variant={self ? "secondary" : "destructive"}
                 size="xs"
                 disabled={!canRemove || removeMember.isPending}
                 onClick={() => setRemoveTarget(member)}
@@ -226,7 +240,7 @@ function PendingInvites({
 
       {loading ? (
         <div className="flex h-16 items-center justify-center text-[12px] text-[var(--color-fg-muted)]">
-          <Spinner size={14} /> <span className="ml-2">Loading invites...</span>
+          <Spinner className="size-3.5" /> <span className="ml-2">Loading invites...</span>
         </div>
       ) : invites.length === 0 ? (
         <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-4 text-center text-[12px] text-[var(--color-fg-dim)]">
@@ -249,7 +263,7 @@ function PendingInvites({
                 </div>
               </div>
               <Button
-                variant="danger"
+                variant="destructive"
                 size="xs"
                 disabled={pending}
                 onClick={() => onRevoke(invite)}
@@ -320,11 +334,11 @@ function InviteMemberDialog({
             <Button
               type="submit"
               form="invite-member-form"
-              variant="primary"
+              variant="default"
               size="sm"
               disabled={createInvite.isPending}
             >
-              {createInvite.isPending && <Spinner size={12} thickness={2} />}
+              {createInvite.isPending && <Spinner className="size-3" />}
               Send invite
             </Button>
           </>
@@ -344,14 +358,18 @@ function InviteMemberDialog({
             <span className="text-[12px] font-medium tracking-wide text-[var(--color-fg-muted)]">
               Role
             </span>
-            <select
+            <Select
               value={role}
-              onChange={(event) => setRole(event.target.value as WorkspaceRole)}
-              className={cn(fieldControlClass, "h-9")}
+              onValueChange={(value) => setRole(value as WorkspaceRole)}
             >
-              <option value="member">Member</option>
-              <option value="owner">Owner</option>
-            </select>
+              <SelectTrigger className={cn(fieldControlClass, "h-9")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="member">Member</SelectItem>
+                <SelectItem value="owner">Owner</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
 
           {createdInvite && (

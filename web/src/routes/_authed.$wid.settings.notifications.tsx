@@ -15,15 +15,15 @@ import {
   Webhook,
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { toast } from "sonner";
-import { Button } from "../components/Button";
+import { toast } from "#/lib/toast";
+import { Button } from "#/components/ui/button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Dialog, DialogClose, DialogContent } from "../components/Dialog";
 import { EmptyState } from "../components/EmptyState";
 import { Input } from "../components/Input";
 import { PageActions } from "../components/PageLayout";
 import { Segmented } from "../components/Segmented";
-import { Spinner } from "../components/Spinner";
+import { Spinner } from "#/components/ui/spinner";
 import { StatTile } from "../components/StatTile";
 import { cn } from "#/lib/cn";
 import {
@@ -115,7 +115,7 @@ function SettingsPage() {
     <>
       <PageActions>
         {isOwner && (
-          <Button type="button" variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
+          <Button type="button" variant="default" size="sm" onClick={() => setCreateOpen(true)}>
             <Plus size={14} /> Add channel
           </Button>
         )}
@@ -179,7 +179,7 @@ function SettingsPage() {
                 description="Add a webhook, Slack, or Discord channel to receive incident open and recovery events."
                 action={
                   isOwner ? (
-                    <Button type="button" variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
+                    <Button type="button" variant="default" size="sm" onClick={() => setCreateOpen(true)}>
                       <Plus size={14} /> Add your first channel
                     </Button>
                   ) : undefined
@@ -369,7 +369,7 @@ function ChannelRow({
             }
             aria-label={`Test channel ${channel.name}`}
           >
-            {test.isPending ? <Spinner size={12} thickness={2} /> : <Send size={13} />}
+            {test.isPending ? <Spinner className="size-3" /> : <Send size={13} />}
           </Button>
           <Button
             type="button"
@@ -625,11 +625,11 @@ function AddChannelDialog({
             <Button
               type="submit"
               form="add-notification-channel"
-              variant="primary"
+              variant="default"
               size="sm"
               disabled={create.isPending}
             >
-              {create.isPending && <Spinner size={12} thickness={2} />}
+              {create.isPending && <Spinner className="size-3" />}
               Add channel
             </Button>
           </>
@@ -695,7 +695,7 @@ function AddChannelDialog({
 function LoadingBlock({ label }: { label: string }) {
   return (
     <div className="flex h-24 items-center justify-center text-[12px] text-[var(--color-fg-muted)]">
-      <Spinner size={14} /> <span className="ml-2">{label}</span>
+      <Spinner className="size-3.5" /> <span className="ml-2">{label}</span>
     </div>
   );
 }

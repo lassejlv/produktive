@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Check as CheckIcon, Clock, Copy, Pause, Play } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "#/lib/toast";
 import { ApiError } from "../lib/api";
 import {
   useChecks,
@@ -11,9 +11,17 @@ import {
   useUpdateMonitor,
 } from "../lib/queries";
 import { monitorStatus, type Check, type MonitorRegion } from "../lib/types";
-import { Button } from "../components/Button";
-import { FullPageSpinner } from "../components/Spinner";
+import { Button } from "#/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "#/components/ui/select";
+import { FullPageSpinner } from "#/components/FullPageSpinner";
 import { DslEditor } from "../components/DslEditor";
+import { MonitorSettingsForm } from "../components/MonitorSettingsForm";
 import { Segmented } from "../components/Segmented";
 import { StatTile } from "../components/StatTile";
 import { ResponseTimeChart } from "../components/ResponseTimeChart";
@@ -32,7 +40,7 @@ export const Route = createFileRoute("/_authed/$wid/monitors/$mid")({
 });
 
 type Win = "24h" | "7d" | "30d";
-type Tab = "checks" | "config";
+type Tab = "checks" | "settings" | "code";
 type CheckFilter = "all" | "fail";
 
 function MonitorDetail() {
@@ -144,7 +152,7 @@ function MonitorDetail() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button
-            variant={m.enabled ? "secondary" : "primary"}
+            variant={m.enabled ? "secondary" : "default"}
             size="sm"
             disabled={update.isPending}
             onClick={() =>
@@ -209,18 +217,25 @@ function MonitorDetail() {
           <span className="text-[12px] font-medium text-[var(--color-fg)]">Response time</span>
           <div className="flex items-center gap-2">
             {regions.length > 1 && (
-              <select
+              <Select
                 value={selectedRegion}
-                onChange={(event) => setSelectedRegion(event.target.value)}
-                className="h-8 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-2 text-[12px] text-[var(--color-fg)]"
+                onValueChange={(value) => value != null && setSelectedRegion(value)}
               >
-                <option value="all">All regions</option>
-                {regions.map((region) => (
-                  <option key={region.slug} value={region.slug}>
-                    {region.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  size="sm"
+                  className="h-8 w-auto min-w-0 rounded-[var(--radius-sm)] border-[var(--color-border)] bg-[var(--color-bg-elev)] px-2 text-[12px] text-[var(--color-fg)]"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All regions</SelectItem>
+                  {regions.map((region) => (
+                    <SelectItem key={region.slug} value={region.slug}>
+                      {region.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
             <Segmented<Win>
               size="sm"
@@ -259,12 +274,17 @@ function MonitorDetail() {
         <TabButton active={tab === "checks"} onClick={() => setTab("checks")}>
           Recent checks
         </TabButton>
-        <TabButton active={tab === "config"} onClick={() => setTab("config")}>
-          Configuration
+        <TabButton active={tab === "settings"} onClick={() => setTab("settings")}>
+          Settings
+        </TabButton>
+        <TabButton active={tab === "code"} onClick={() => setTab("code")}>
+          Code
         </TabButton>
       </div>
 
-      {tab === "config" ? (
+      {tab === "settings" ? (
+        <MonitorSettingsForm wid={wid} monitor={m} onEditCode={() => setTab("code")} />
+      ) : tab === "code" ? (
         <DslEditor
           wid={wid}
           mid={mid}
@@ -395,15 +415,17 @@ function ChecksTable({
 function CopyTarget({ target }: { target: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="sm"
       onClick={() => {
         navigator.clipboard?.writeText(target).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1400);
         });
       }}
-      className="group mt-2 inline-flex items-center gap-2 mono text-[12px] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] max-w-full"
+      className="group mt-2 h-auto max-w-full justify-start px-0 mono text-[12px] text-[var(--color-fg-muted)] hover:bg-transparent hover:text-[var(--color-fg)]"
       title="Copy target"
     >
       <span className="truncate">{target}</span>
@@ -415,7 +437,7 @@ function CopyTarget({ target }: { target: string }) {
           className="text-[var(--color-fg-dim)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
         />
       )}
-    </button>
+    </Button>
   );
 }
 
@@ -457,11 +479,13 @@ function TabButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="sm"
       onClick={onClick}
       className={cn(
-        "relative px-3 h-9 text-[13px] font-medium transition-colors -mb-px",
+        "relative -mb-px h-9 px-3 text-[13px] font-medium shadow-none",
         active
           ? "text-[var(--color-fg)]"
           : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
@@ -471,7 +495,7 @@ function TabButton({
       {active && (
         <span className="absolute left-0 right-0 -bottom-px h-[2px] bg-[var(--color-accent)] rounded-full" />
       )}
-    </button>
+    </Button>
   );
 }
 

@@ -1,12 +1,19 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { AlertTriangle, CheckCircle2, Clock, MessageSquare, Plus, ScrollText } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { toast } from "sonner";
-import { Button } from "../components/Button";
+import { toast } from "#/lib/toast";
+import { Button } from "#/components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "../components/Dialog";
 import { EmptyState } from "../components/EmptyState";
 import { PageActions } from "../components/PageLayout";
-import { Spinner } from "../components/Spinner";
+import { Spinner } from "#/components/ui/spinner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "#/components/ui/select";
 import {
   incidentsQuery,
   useAddIncidentUpdate,
@@ -62,22 +69,24 @@ function IncidentsPage() {
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] p-0.5">
             {(["open", "all", "resolved"] as const).map((value) => (
-              <button
+              <Button
                 key={value}
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setFilter(value)}
                 className={cn(
-                  "h-7 rounded-[var(--radius-sm)] px-2.5 text-[12px] capitalize transition-colors",
+                  "h-7 rounded-[var(--radius-sm)] px-2.5 text-[12px] capitalize shadow-none",
                   filter === value
                     ? "border border-[var(--color-border)] bg-[var(--color-bg-elev)] text-[var(--color-fg)] shadow-[var(--shadow-xs)]"
                     : "border border-transparent text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
                 )}
               >
                 {value}
-              </button>
+              </Button>
             ))}
           </div>
-          <Button type="button" variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
+          <Button type="button" variant="default" size="sm" onClick={() => setCreateOpen(true)}>
             <Plus size={14} /> Open incident
           </Button>
         </div>
@@ -85,7 +94,7 @@ function IncidentsPage() {
 
       {isLoading ? (
         <div className="flex h-[280px] items-center justify-center text-[12px] text-[var(--color-fg-muted)]">
-          <Spinner size={16} /> <span className="ml-2">loading incidents...</span>
+          <Spinner className="size-4" /> <span className="ml-2">loading incidents...</span>
         </div>
       ) : incidents.length === 0 ? (
         <EmptyState
@@ -264,7 +273,7 @@ function IncidentRow({
               <Button type="button" variant="secondary" size="sm" onClick={onUpdate}>
                 <MessageSquare size={13} /> Update
               </Button>
-              <Button type="button" variant="primary" size="sm" onClick={onResolve}>
+              <Button type="button" variant="default" size="sm" onClick={onResolve}>
                 Resolve
               </Button>
             </div>
@@ -325,8 +334,8 @@ function CreateIncidentDialog({
                 Cancel
               </Button>
             </DialogClose>
-            <Button type="submit" form="open-incident-form" variant="primary" disabled={pending}>
-              {pending && <Spinner size={12} thickness={2} />}
+            <Button type="submit" form="open-incident-form" variant="default" disabled={pending}>
+              {pending && <Spinner className="size-3" />}
               Open incident
             </Button>
           </>
@@ -344,31 +353,39 @@ function CreateIncidentDialog({
             />
           </Field>
           <Field label="Severity">
-            <select
+            <Select
               value={severity}
-              onChange={(event) => setSeverity(event.target.value as ManualIncidentSeverity)}
-              className={cn(fieldControlClass, "h-9")}
+              onValueChange={(value) => setSeverity(value as ManualIncidentSeverity)}
             >
-              {SEVERITY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className={cn(fieldControlClass, "h-9")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SEVERITY_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="Affected monitor">
-            <select
-              value={monitorId}
-              onChange={(event) => setMonitorId(event.target.value)}
-              className={cn(fieldControlClass, "h-9")}
+            <Select
+              value={monitorId || "none"}
+              onValueChange={(value) => setMonitorId(value === "none" || value == null ? "" : value)}
             >
-              <option value="">No specific monitor</option>
-              {monitors.map((monitor) => (
-                <option key={monitor.id} value={monitor.id}>
-                  {monitor.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className={cn(fieldControlClass, "h-9")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No specific monitor</SelectItem>
+                {monitors.map((monitor) => (
+                  <SelectItem key={monitor.id} value={monitor.id}>
+                    {monitor.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="Initial update">
             <textarea
@@ -431,8 +448,8 @@ function IncidentUpdateDialog({
                 Cancel
               </Button>
             </DialogClose>
-            <Button type="submit" form="incident-update-form" variant="primary" disabled={pending}>
-              {pending && <Spinner size={12} thickness={2} />}
+            <Button type="submit" form="incident-update-form" variant="default" disabled={pending}>
+              {pending && <Spinner className="size-3" />}
               {status === "resolved" ? "Resolve incident" : "Post update"}
             </Button>
           </>
@@ -440,18 +457,22 @@ function IncidentUpdateDialog({
       >
         <form id="incident-update-form" onSubmit={submit} className="space-y-4">
           <Field label="Status">
-            <select
+            <Select
               value={status}
-              onChange={(event) =>
-                setStatus(event.target.value as Exclude<IncidentUpdateStatus, "unknown">)
+              onValueChange={(value) =>
+                setStatus(value as Exclude<IncidentUpdateStatus, "unknown">)
               }
-              className={cn(fieldControlClass, "h-9")}
             >
-              <option value="investigating">Investigating</option>
-              <option value="identified">Identified</option>
-              <option value="monitoring">Monitoring</option>
-              <option value="resolved">Resolved</option>
-            </select>
+              <SelectTrigger className={cn(fieldControlClass, "h-9")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="investigating">Investigating</SelectItem>
+                <SelectItem value="identified">Identified</SelectItem>
+                <SelectItem value="monitoring">Monitoring</SelectItem>
+                <SelectItem value="resolved">Resolved</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="Update">
             <textarea

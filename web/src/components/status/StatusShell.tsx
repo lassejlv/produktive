@@ -28,7 +28,7 @@ export function StatusShell({
   const effTheme = useEffectiveTheme(style.theme);
 
   // The SPA ships one global <title>; public pages override it so tabs and
-  // history entries read as the customer's page, not as unstatus.
+  // history entries read as the customer's page, not as Produktive.
   useEffect(() => {
     if (preview || !documentTitle) return;
     document.title = documentTitle;
@@ -80,7 +80,7 @@ export function StatusShell({
             />
           ) : (
             <span className="text-[13px] font-semibold tracking-tight text-[var(--color-fg-muted)]">
-              unstatus
+              Produktive
             </span>
           )}
           {generatedAt && (
@@ -101,7 +101,7 @@ export function StatusShell({
             className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-3 py-1.5 text-[11px] tracking-tight text-[var(--color-fg-dim)] no-underline shadow-[var(--shadow-xs)] transition-colors hover:text-[var(--color-fg-muted)]"
           >
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
-            Powered by unstatus
+            Powered by Produktive
           </a>
         </footer>
       </div>

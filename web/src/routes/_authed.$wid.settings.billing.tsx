@@ -1,15 +1,15 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { CreditCard, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "#/lib/toast";
 import { BillingActionDialog } from "../components/billing/BillingActionDialog";
 import { CurrentPlanCard } from "../components/billing/CurrentPlanCard";
 import { PlanChangeDialog } from "../components/billing/PlanChangeDialog";
 import { PlanTable } from "../components/billing/PlanTable";
-import { Button } from "../components/Button";
+import { Button } from "#/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { PageActions } from "../components/PageLayout";
-import { Spinner } from "../components/Spinner";
+import { Spinner } from "#/components/ui/spinner";
 import { StatTile } from "../components/StatTile";
 import {
   hasActivePaidSubscription,
@@ -75,7 +75,7 @@ function BillingPage() {
   if (summary.isLoading) {
     return (
       <div className="flex h-40 items-center justify-center text-[12px] text-[var(--color-fg-muted)]">
-        <Spinner size={16} /> <span className="ml-2">Loading billing…</span>
+        <Spinner className="size-4" /> <span className="ml-2">Loading billing…</span>
       </div>
     );
   }
@@ -169,7 +169,7 @@ function BillingPage() {
             disabled={portal.isPending}
             onClick={openPortal}
           >
-            {portal.isPending && <Spinner size={12} thickness={2} />}
+            {portal.isPending && <Spinner className="size-3" />}
             <ExternalLink size={13} />
             Manage billing
           </Button>
@@ -182,7 +182,7 @@ function BillingPage() {
             disabled={setupPayment.isPending}
             onClick={openSetupPayment}
           >
-            {setupPayment.isPending && <Spinner size={12} thickness={2} />}
+            {setupPayment.isPending && <Spinner className="size-3" />}
             <ExternalLink size={13} />
             Set up payment
           </Button>
@@ -347,11 +347,12 @@ function UsageStatTile({
           : "var(--color-accent)";
 
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
       onClick={onToggle}
       className={cn(
-        "w-full text-left transition-[box-shadow,border-color] duration-150",
+        "h-auto w-full justify-start border-0 p-0 text-left shadow-none transition-[box-shadow,border-color] duration-150",
         onToggle && "cursor-pointer hover:shadow-[var(--shadow-sm)]",
         expanded && "ring-1 ring-[color-mix(in_srgb,var(--color-accent)_35%,transparent)]",
       )}
@@ -363,7 +364,7 @@ function UsageStatTile({
         accent={accent}
         className="h-full"
       />
-    </button>
+    </Button>
   );
 }
 

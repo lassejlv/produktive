@@ -1,8 +1,7 @@
 import { Suspense, lazy } from "react";
 import { Outlet, createRootRouteWithContext } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
-import { Toaster } from "sonner";
-import { useTheme } from "../lib/theme";
+import { ToastProvider } from "#/components/ui/toast";
 
 import "../styles.css";
 
@@ -31,23 +30,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootComponent() {
-  const { theme } = useTheme();
   return (
-    <>
+    <ToastProvider position="bottom-right">
       <Outlet />
-      <Toaster
-        position="bottom-right"
-        theme={theme}
-        closeButton
-        toastOptions={{
-          duration: 3500,
-        }}
-      />
       {Devtools && (
         <Suspense fallback={null}>
           <Devtools />
         </Suspense>
       )}
-    </>
+    </ToastProvider>
   );
 }

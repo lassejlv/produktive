@@ -1,7 +1,8 @@
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { ExternalLink, MoreVertical, Pause, Play, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "#/lib/toast";
+import { Button } from "#/components/ui/button";
 import { cn } from "#/lib/cn";
 import type { Monitor } from "../lib/types";
 import { useDeleteMonitor, useUpdateMonitor } from "../lib/queries";
@@ -41,9 +42,11 @@ export function MonitorMenu({ monitor, canvas }: Props) {
 
   return (
     <div className="relative" ref={ref} {...stop}>
-      <button
+      <Button
         type="button"
-        className="text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-bg-row)] p-1 rounded-[var(--radius-sm)] transition-colors"
+        variant="ghost"
+        size="icon-xs"
+        className="text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-bg-row)]"
         aria-label="Monitor actions"
         aria-expanded={menu}
         aria-haspopup="menu"
@@ -55,7 +58,7 @@ export function MonitorMenu({ monitor, canvas }: Props) {
         }}
       >
         <MoreVertical size={14} />
-      </button>
+      </Button>
 
       {menu && (
         <div
@@ -72,8 +75,10 @@ export function MonitorMenu({ monitor, canvas }: Props) {
           >
             <ExternalLink size={12} className="text-[var(--color-fg-muted)]" /> Open detail
           </Link>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             role="menuitem"
             onClick={(e) => {
               e.preventDefault();
@@ -87,7 +92,7 @@ export function MonitorMenu({ monitor, canvas }: Props) {
               );
               setMenu(false);
             }}
-            className="flex items-center gap-2 px-3 h-8 w-full text-left text-[13px] text-[var(--color-fg)] hover:bg-[var(--color-bg-row)]"
+            className="h-8 w-full justify-start px-3 text-[13px] text-[var(--color-fg)] hover:bg-[var(--color-bg-row)]"
           >
             {monitor.enabled ? (
               <Pause size={12} className="text-[var(--color-fg-muted)]" />
@@ -95,10 +100,12 @@ export function MonitorMenu({ monitor, canvas }: Props) {
               <Play size={12} className="text-[var(--color-fg-muted)]" />
             )}
             {monitor.enabled ? "Pause" : "Resume"}
-          </button>
+          </Button>
           <div className="h-px my-1 bg-[var(--color-border)]" />
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             role="menuitem"
             onClick={(e) => {
               e.preventDefault();
@@ -106,12 +113,12 @@ export function MonitorMenu({ monitor, canvas }: Props) {
               setConfirmOpen(true);
             }}
             className={cn(
-              "flex items-center gap-2 px-3 h-8 w-full text-left text-[13px] text-[var(--color-err)]",
+              "h-8 w-full justify-start px-3 text-[13px] text-[var(--color-err)]",
               "hover:bg-[color-mix(in_srgb,var(--color-err)_8%,transparent)]",
             )}
           >
             <Trash2 size={12} /> Delete
-          </button>
+          </Button>
         </div>
       )}
 

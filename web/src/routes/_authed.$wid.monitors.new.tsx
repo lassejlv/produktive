@@ -1,8 +1,8 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Clock, FileCode, Globe, SquarePen } from "lucide-react";
-import { toast } from "sonner";
-import { Button } from "../components/Button";
+import { toast } from "#/lib/toast";
+import { Button } from "#/components/ui/button";
 import { Input } from "../components/Input";
 import {
   HttpIcon,
@@ -15,7 +15,7 @@ import {
 } from "../components/ProbeIcons";
 import { PageActions } from "../components/PageLayout";
 import { Segmented } from "../components/Segmented";
-import { Spinner } from "../components/Spinner";
+import { Spinner } from "#/components/ui/spinner";
 import {
   useBillingSummary,
   useCreateMonitor,
@@ -27,12 +27,17 @@ import {
 import {
   buildMonitorCreateCostEstimate,
   parseDslIntervalSeconds,
-  planIncludesFeature,
-  type BillingPlanSummary,
   type MeterCostLine,
   type MonitorCreateCostEstimate,
   type UsageLimitStatus,
 } from "../lib/billing";
+import {
+  buildIntervalOptions,
+  formatInterval,
+  minimumIntervalSeconds,
+  presetForInterval,
+  type IntervalPreset,
+} from "../lib/monitorInterval";
 import type { MonitorKind } from "../lib/types";
 import { cn } from "#/lib/cn";
 
@@ -58,7 +63,6 @@ const KINDS: { value: MonitorKind; label: string; hint: string; icon: ProbeIcon 
 ];
 
 type Mode = "form" | "code";
-type IntervalPreset = "60" | "300" | "900" | "custom";
 
 function NewMonitorPage() {
   const { wid } = Route.useParams();
@@ -207,11 +211,11 @@ function NewMonitorPage() {
         <Button
           type="submit"
           form="new-monitor"
-          variant="primary"
+          variant="default"
           size="sm"
           disabled={submitDisabled}
         >
-          {create.isPending && <Spinner size={12} thickness={2} />}
+          {create.isPending && <Spinner className="size-3" />}
           {create.isPending ? "Creating…" : "Create monitor"}
         </Button>
       </PageActions>
@@ -247,13 +251,15 @@ function NewMonitorPage() {
                       const Icon = k.icon;
                       const active = kind === k.value;
                       return (
-                        <button
+                        <Button
                           key={k.value}
                           type="button"
+                          variant="ghost"
+                          size="sm"
                           title={k.hint}
                           onClick={() => setKind(k.value)}
                           className={cn(
-                            "flex flex-col items-center gap-1.5 rounded-[var(--radius-sm)] px-1 py-2.5 transition-[background-color,color,box-shadow] duration-150",
+                            "h-auto flex-col gap-1.5 rounded-[var(--radius-sm)] px-1 py-2.5 shadow-none",
                             active
                               ? "bg-[var(--color-bg-elev)] text-[var(--color-fg)] shadow-[var(--shadow-xs)]"
                               : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
@@ -264,7 +270,7 @@ function NewMonitorPage() {
                             className={active ? "text-[var(--color-accent)]" : undefined}
                           />
                           <span className="text-[11px] font-medium leading-none">{k.label}</span>
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>
@@ -355,13 +361,15 @@ function NewMonitorPage() {
                       const supported =
                         !("capabilities" in region) || region.capabilities.includes(kind);
                       return (
-                        <button
+                        <Button
                           key={region.slug}
                           type="button"
+                          variant="secondary"
+                          size="sm"
                           disabled={!supported || !canChangeRegions}
                           onClick={() => toggleRegion(region.slug)}
                           className={cn(
-                            "h-8 rounded-[var(--radius-sm)] border px-2.5 text-[12px] font-medium transition-colors",
+                            "h-8 rounded-[var(--radius-sm)] px-2.5 text-[12px] font-medium shadow-none",
                             active
                               ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                               : "border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
@@ -377,7 +385,7 @@ function NewMonitorPage() {
                           }
                         >
                           {region.name}
-                        </button>
+                        </Button>
                       );
                     })}
                   </div>
@@ -408,7 +416,7 @@ function NewMonitorPage() {
                   <Suspense
                     fallback={
                       <div className="flex h-[480px] items-center justify-center text-[12px] text-[var(--color-fg-muted)]">
-                        <Spinner size={16} /> <span className="ml-2">Loading editor…</span>
+                        <Spinner className="size-4" /> <span className="ml-2">Loading editor…</span>
                       </div>
                     }
                   >
@@ -434,13 +442,15 @@ function NewMonitorPage() {
                   {regionList.map((region) => {
                     const active = selectedRegions.includes(region.slug);
                     return (
-                      <button
+                      <Button
                         key={region.slug}
                         type="button"
+                        variant="secondary"
+                        size="sm"
                         disabled={!canChangeRegions}
                         onClick={() => toggleRegion(region.slug)}
                         className={cn(
-                          "h-8 rounded-[var(--radius-sm)] border px-2.5 text-[12px] font-medium transition-colors",
+                          "h-8 rounded-[var(--radius-sm)] px-2.5 text-[12px] font-medium shadow-none",
                           active
                             ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] text-[var(--color-fg)]"
                             : "border-[var(--color-border)] bg-[var(--color-bg-elev)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]",
@@ -448,7 +458,7 @@ function NewMonitorPage() {
                         )}
                       >
                         {region.name}
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
@@ -609,7 +619,7 @@ function MonitorCostPanel({
 
       {billingLoading ? (
         <div className="mt-4 flex items-center gap-2 text-[12px] text-[var(--color-fg-muted)]">
-          <Spinner size={12} /> Loading usage…
+          <Spinner className="size-3" /> Loading usage…
         </div>
       ) : (
         <div className="mt-4 space-y-4">
@@ -692,46 +702,6 @@ function statusAccent(status: UsageLimitStatus): string {
   return "var(--color-accent)";
 }
 
-function minimumIntervalSeconds(plan?: BillingPlanSummary): number {
-  if (planIncludesFeature(plan, "one_min_checks")) return 60;
-  if (planIncludesFeature(plan, "five_min_checks")) return 300;
-  return 900;
-}
-
-function buildIntervalOptions(minimum: number) {
-  return [
-    intervalOption("60", "1m", minimum),
-    intervalOption("300", "5m", minimum),
-    intervalOption("900", "15m", minimum),
-    { value: "custom" as const, label: "Custom" },
-  ];
-}
-
-function intervalOption(value: Exclude<IntervalPreset, "custom">, label: string, minimum: number) {
-  const seconds = parseInt(value, 10);
-  const disabled = seconds < minimum;
-  return {
-    value,
-    label,
-    disabled,
-    title: disabled
-      ? `Requires a plan with ${formatInterval(seconds)} checks`
-      : `Run every ${formatInterval(seconds)}`,
-  };
-}
-
-function presetForInterval(interval: number): IntervalPreset {
-  if (interval <= 60) return "60";
-  if (interval <= 300) return "300";
-  return "900";
-}
-
-function formatInterval(seconds: number): string {
-  if (seconds % 60 !== 0) return `${seconds}s`;
-  const minutes = seconds / 60;
-  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
-}
-
 function defaultTemplate(
   kind: MonitorKind,
   target: string,
@@ -811,7 +781,7 @@ function ValidStatus({ validating, error }: { validating: boolean; error: DslErr
   if (validating) {
     return (
       <span className="flex items-center gap-1.5 text-[11px] text-[var(--color-fg-muted)] mono">
-        <Spinner size={10} thickness={2} /> checking…
+        <Spinner className="size-2.5" /> checking…
       </span>
     );
   }

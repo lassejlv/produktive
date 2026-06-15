@@ -1,12 +1,12 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { CheckCircle2, PauseCircle, RefreshCw, ServerCog, Trash2, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
-import { Button } from "../components/Button";
+import { toast } from "#/lib/toast";
+import { Button } from "#/components/ui/button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { Input } from "../components/Input";
-import { Spinner } from "../components/Spinner";
+import { Spinner } from "#/components/ui/spinner";
 import {
   adminRegionsQuery,
   meQuery,
@@ -90,7 +90,7 @@ function WorkersAdminPage() {
   if (regions.isLoading) {
     return (
       <div className="flex h-40 items-center justify-center text-[13px] text-[var(--color-fg-muted)]">
-        <Spinner size={15} />
+        <Spinner className="size-3.75" />
         <span className="ml-2">loading workers...</span>
       </div>
     );
@@ -221,11 +221,11 @@ function RegionRow({
 
       <div className="flex justify-start gap-2 lg:justify-end">
         {region.enabled ? (
-          <Button size="sm" variant="danger" disabled={pending} onClick={() => setEnabled(false)}>
+          <Button size="sm" variant="destructive" disabled={pending} onClick={() => setEnabled(false)}>
             Disable
           </Button>
         ) : (
-          <Button size="sm" variant="primary" disabled={pending} onClick={() => setEnabled(true)}>
+          <Button size="sm" variant="default" disabled={pending} onClick={() => setEnabled(true)}>
             Enable
           </Button>
         )}

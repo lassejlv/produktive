@@ -124,6 +124,24 @@ export type CreateMonitorBody =
       region_slugs: string[];
     };
 
+/** Partial update for a monitor. Mirrors the backend `UpdateMonitor` struct — every
+ * field is optional, and `null` on a nullable field clears it (e.g. `dsl_source: null`
+ * reverts to form-based config). */
+export interface UpdateMonitorBody {
+  name?: string;
+  kind?: MonitorKind;
+  target?: string;
+  interval_seconds?: number;
+  timeout_ms?: number;
+  expected_status?: number | null;
+  expected_body_contains?: string | null;
+  enabled?: boolean;
+  canvas_x?: number;
+  canvas_y?: number;
+  dsl_source?: string | null;
+  region_slugs?: string[];
+}
+
 export interface CustomDomain {
   id: Uuid;
   workspace_id: Uuid;

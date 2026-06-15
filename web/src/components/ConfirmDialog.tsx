@@ -1,7 +1,14 @@
 import type { ReactNode } from "react";
-import { Button } from "#/components/Button";
-import { Dialog, DialogContent } from "#/components/Dialog";
-import { Spinner } from "#/components/Spinner";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "#/components/ui/alert-dialog";
+import { Button } from "#/components/ui/button";
 
 interface Props {
   open: boolean;
@@ -27,33 +34,33 @@ export function ConfirmDialog({
   onConfirm,
 }: Props) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        size="sm"
-        title={title}
-        description={description}
-        footer={
-          <>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-              disabled={pending}
-            >
-              {cancelLabel}
-            </Button>
-            <Button
-              type="button"
-              variant={destructive ? "danger" : "primary"}
-              onClick={onConfirm}
-              disabled={pending}
-            >
-              {pending && <Spinner size={12} thickness={2} />}
-              {confirmLabel}
-            </Button>
-          </>
-        }
-      />
-    </Dialog>
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogPopup className="max-w-[380px]">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          {description ? (
+            <AlertDialogDescription>{description}</AlertDialogDescription>
+          ) : null}
+        </AlertDialogHeader>
+        <AlertDialogFooter variant="bare">
+          <AlertDialogClose
+            render={
+              <Button type="button" variant="ghost" disabled={pending}>
+                {cancelLabel}
+              </Button>
+            }
+          />
+          <Button
+            type="button"
+            variant={destructive ? "destructive" : "default"}
+            onClick={onConfirm}
+            disabled={pending}
+            loading={pending}
+          >
+            {confirmLabel}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogPopup>
+    </AlertDialog>
   );
 }

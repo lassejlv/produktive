@@ -11,11 +11,11 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
-import { toast } from "sonner";
-import { Button } from "../components/Button";
+import { toast } from "#/lib/toast";
+import { Button } from "#/components/ui/button";
 import { Input } from "../components/Input";
 import { PageSkeleton } from "../components/PageLayout";
-import { Spinner } from "../components/Spinner";
+import { Spinner } from "#/components/ui/spinner";
 import { Segmented } from "../components/Segmented";
 import { StatusBuilder } from "../components/status/StatusBuilder";
 import { StatusView } from "../components/status/StatusView";
@@ -192,8 +192,8 @@ function StatusPageSettings() {
                   <ExternalLink size={13} /> Preview
                 </Button>
               )}
-              <Button variant="primary" size="sm" onClick={save} disabled={update.isPending}>
-                {update.isPending && <Spinner size={12} thickness={2} />}
+              <Button variant="default" size="sm" onClick={save} disabled={update.isPending}>
+                {update.isPending && <Spinner className="size-3" />}
                 {update.isPending ? "Saving…" : "Save changes"}
               </Button>
             </>
@@ -280,13 +280,15 @@ function StatusPageSettings() {
                   const sel = (style.accent ?? null) === a.value;
                   const c = a.value ?? "#10b981";
                   return (
-                    <button
+                    <Button
                       key={a.label}
                       type="button"
+                      variant="ghost"
+                      size="xs"
                       title={a.label}
                       onClick={() => patchStyle({ accent: a.value })}
                       className={cn(
-                        "w-7 h-7 rounded-full border transition-transform hover:scale-110",
+                        "size-7 min-w-7 rounded-full border p-0 transition-transform hover:scale-110",
                         sel
                           ? "ring-2 ring-offset-2 ring-offset-[var(--color-bg)]"
                           : "border-[var(--color-border-hi)]",
@@ -373,7 +375,7 @@ function StatusPageSettings() {
                     });
                   }}
                 >
-                  {createDomain.isPending && <Spinner size={12} thickness={2} />}
+                  {createDomain.isPending && <Spinner className="size-3" />}
                   Add
                 </Button>
               </div>
@@ -502,7 +504,7 @@ function CustomDomainRow({
           </Button>
           {!verified && (
             <Button type="button" size="xs" onClick={onVerify} disabled={isVerifying}>
-              {isVerifying && <Spinner size={12} thickness={2} />}
+              {isVerifying && <Spinner className="size-3" />}
               Verify
             </Button>
           )}
@@ -626,11 +628,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="sm"
       onClick={() => onChange(!value)}
       className={cn(
-        "relative w-10 h-6 rounded-full border transition-all shrink-0",
+        "relative h-6 w-10 shrink-0 rounded-full border p-0 shadow-none transition-all",
         value
           ? "bg-[var(--color-accent)] border-[var(--color-accent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]"
           : "bg-[var(--color-bg-sunken)] border-[var(--color-border-hi)]",
@@ -646,6 +650,6 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
         )}
         style={{ left: value ? "20px" : "2px" }}
       />
-    </button>
+    </Button>
   );
 }

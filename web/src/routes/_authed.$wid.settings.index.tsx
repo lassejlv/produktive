@@ -1,12 +1,12 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
-import { Button } from "../components/Button";
+import { toast } from "#/lib/toast";
+import { Button } from "#/components/ui/button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Input } from "../components/Input";
 import { PageActions } from "../components/PageLayout";
-import { Spinner } from "../components/Spinner";
+import { Spinner } from "#/components/ui/spinner";
 import { useDeleteWorkspace, useUpdateWorkspace, useWorkspaces } from "../lib/queries";
 
 export const Route = createFileRoute("/_authed/$wid/settings/")({
@@ -62,11 +62,11 @@ function GeneralSettingsPage() {
           <Button
             type="submit"
             form="general-settings"
-            variant="primary"
+            variant="default"
             size="sm"
             disabled={!dirty || update.isPending}
           >
-            {update.isPending && <Spinner size={12} thickness={2} />}
+            {update.isPending && <Spinner className="size-3" />}
             Save changes
           </Button>
         )}
@@ -120,7 +120,7 @@ function GeneralSettingsPage() {
             </p>
             <div className="mt-4">
               <Button
-                variant="danger"
+                variant="destructive"
                 size="sm"
                 disabled={!isOwner || current?.is_personal}
                 onClick={() => setConfirmOpen(true)}
