@@ -1,7 +1,7 @@
 //! Server-side `<title>`/meta injection for public status pages.
 //!
 //! The SPA ships one global title and OG description, so a link to
-//! `status.acme.com` (or `/s/acme`) unfurls as unstatus marketing copy instead
+//! `status.acme.com` (or `/s/acme`) unfurls as produktive marketing copy instead
 //! of "Acme — Status". These routes sit in front of the static `ServeDir`
 //! fallback and rewrite the built `index.html` per workspace before serving
 //! it. Lookups are best-effort: any miss or DB error serves the stock shell
@@ -172,12 +172,12 @@ mod tests {
     const SHELL: &str = r#"<!doctype html>
 <html>
   <head>
-    <title>unstatus — uptime monitoring</title>
+    <title>produktive — uptime monitoring</title>
     <meta
       name="description"
       content="Probe HTTP, TCP, ICMP."
     />
-    <meta property="og:title" content="unstatus — uptime monitoring" />
+    <meta property="og:title" content="produktive — uptime monitoring" />
     <meta property="og:description" content="Probe HTTP, TCP, ICMP." />
   </head>
   <body></body>
@@ -187,7 +187,7 @@ mod tests {
     fn rewrites_title_and_meta() {
         let out = set_title(SHELL, "Acme — Status");
         assert!(out.contains("<title>Acme — Status</title>"));
-        assert!(!out.contains("<title>unstatus"));
+        assert!(!out.contains("<title>produktive"));
 
         let out = set_meta_content(&out, "property=\"og:title\"", "Acme — Status");
         assert!(out.contains(r#"property="og:title" content="Acme — Status""#));

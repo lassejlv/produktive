@@ -1,13 +1,13 @@
 [package]
-name = "unstatus-probe"
+name = "produktive-probe"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [dependencies]
-unstatus-entity = { path = "../entity" }
-unstatus-dsl = { path = "../dsl" }
+produktive-entity = { path = "../entity" }
+produktive-dsl = { path = "../dsl" }
 
 tokio.workspace = true
 reqwest.workspace = true

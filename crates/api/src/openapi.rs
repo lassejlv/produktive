@@ -9,7 +9,7 @@ use crate::state::AppState;
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "unstatus API",
+        title = "produktive API",
         version = "0.1.0",
         description = "Uptime tracker API. Per-user workspaces, monitors (HTTP/TCP/Ping), and TimescaleDB-backed checks."
     ),

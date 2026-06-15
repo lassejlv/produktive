@@ -1,10 +1,10 @@
 use chrono::Utc;
 use entity::monitor;
+use produktive_probe::ProbeOutcome;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseBackend, EntityTrait,
     FromQueryResult, Statement,
 };
-use unstatus_probe::ProbeOutcome;
 use uuid::Uuid;
 
 use crate::{

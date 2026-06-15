@@ -1,7 +1,7 @@
 {
 	email {$ACME_EMAIL}
 	on_demand_tls {
-		ask {$UNSTATUS_ORIGIN}/api/public/custom-domains/authorize
+		ask {$PRODUKTIVE_ORIGIN}/api/public/custom-domains/authorize
 	}
 }
 
@@ -14,8 +14,8 @@ https:// {
 		on_demand
 	}
 
-	reverse_proxy {$UNSTATUS_ORIGIN} {
-		header_up Host unstatus.app
+	reverse_proxy {$PRODUKTIVE_ORIGIN} {
+		header_up Host produktive.app
 		header_up X-Forwarded-Proto https
 	}
 }

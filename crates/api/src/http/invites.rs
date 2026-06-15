@@ -279,15 +279,15 @@ async fn send_invite_email(
         WorkspaceRole::Owner => "owner",
         WorkspaceRole::Member => "member",
     };
-    let subject = format!("You have been invited to {workspace_name} on unstatus");
+    let subject = format!("You have been invited to {workspace_name} on produktive");
     let text_body = format!(
-        "{inviter_email} invited you to join {workspace_name} on unstatus as a {role_label}.\n\nAccept the invite:\n{accept_url}\n\nThis invite expires in 7 days."
+        "{inviter_email} invited you to join {workspace_name} on produktive as a {role_label}.\n\nAccept the invite:\n{accept_url}\n\nThis invite expires in 7 days."
     );
     let workspace_name_html = escape_html(workspace_name);
     let inviter_email_html = escape_html(inviter_email);
     let accept_url_html = escape_html(accept_url);
     let html_body = format!(
-        r#"<p>{inviter_email} invited you to join <strong>{workspace_name}</strong> on unstatus as a {role_label}.</p>
+        r#"<p>{inviter_email} invited you to join <strong>{workspace_name}</strong> on produktive as a {role_label}.</p>
 <p><a href="{accept_url}">Accept the invite</a></p>
 <p>This invite expires in 7 days.</p>"#,
         inviter_email = inviter_email_html,

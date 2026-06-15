@@ -119,7 +119,7 @@ impl Config {
             return Err(anyhow!("SESSION_CLEANUP_TICK_SECONDS must be at least 1"));
         }
         let custom_domain_cname_target = std::env::var("CUSTOM_DOMAIN_CNAME_TARGET")
-            .unwrap_or_else(|_| "custom.unstatus.network".into())
+            .unwrap_or_else(|_| "custom.produktive.app".into())
             .trim()
             .trim_end_matches('.')
             .to_lowercase();

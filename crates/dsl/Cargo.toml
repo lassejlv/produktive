@@ -1,5 +1,5 @@
 [package]
-name = "unstatus-dsl"
+name = "produktive-dsl"
 edition.workspace = true
 version.workspace = true
 license.workspace = true

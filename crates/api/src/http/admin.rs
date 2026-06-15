@@ -147,6 +147,7 @@ mod tests {
             user: user::Model {
                 id: Uuid::now_v7(),
                 email: email.to_owned(),
+                github_id: None,
                 password_hash: "hash".to_owned(),
                 is_admin,
                 created_at: now,

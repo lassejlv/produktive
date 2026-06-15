@@ -1,6 +1,6 @@
 //! Minimal typed async client for the [Polar](https://polar.sh) billing API.
 //!
-//! Covers the server-side surface `unstatus` needs to gate features, meter
+//! Covers the server-side surface `produktive` needs to gate features, meter
 //! usage, run checkout, and open the customer portal: customers + customer
 //! state, event ingestion, checkout sessions, customer sessions, subscriptions,
 //! and a read-only product catalog loader. It is a thin REST wrapper — a pure

@@ -2171,6 +2171,103 @@ dependencies = [
 ]
 
 [[package]]
+name = "produktive-api"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "argon2",
+ "async-trait",
+ "axum",
+ "chrono",
+ "dotenvy",
+ "email",
+ "futures-util",
+ "hex",
+ "jsonwebtoken",
+ "polar",
+ "produktive-dsl",
+ "produktive-entity",
+ "produktive-probe",
+ "rand 0.8.6",
+ "redis",
+ "reqwest",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "standardwebhooks",
+ "surge-ping",
+ "thiserror 2.0.18",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "unstatus-migration",
+ "url",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "produktive-dsl"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "produktive-entity"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "sea-orm",
+ "serde",
+ "serde_json",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "produktive-probe"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures-util",
+ "produktive-dsl",
+ "produktive-entity",
+ "rand 0.8.6",
+ "redis",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "surge-ping",
+ "tokio",
+ "tokio-postgres",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "produktive-worker"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dotenvy",
+ "produktive-probe",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "ptr_meta"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3783,109 +3880,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
-name = "unstatus-api"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "argon2",
- "async-trait",
- "axum",
- "chrono",
- "dotenvy",
- "email",
- "futures-util",
- "hex",
- "jsonwebtoken",
- "polar",
- "rand 0.8.6",
- "redis",
- "reqwest",
- "sea-orm",
- "sea-orm-migration",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "standardwebhooks",
- "surge-ping",
- "thiserror 2.0.18",
- "tokio",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "unstatus-dsl",
- "unstatus-entity",
- "unstatus-migration",
- "unstatus-probe",
- "url",
- "utoipa",
- "uuid",
-]
-
-[[package]]
-name = "unstatus-dsl"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "unstatus-entity"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "sea-orm",
- "serde",
- "serde_json",
- "utoipa",
- "uuid",
-]
-
-[[package]]
 name = "unstatus-migration"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "sea-orm-migration",
  "tokio",
-]
-
-[[package]]
-name = "unstatus-probe"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "futures-util",
- "rand 0.8.6",
- "redis",
- "reqwest",
- "serde",
- "serde_json",
- "surge-ping",
- "tokio",
- "tokio-postgres",
- "tracing",
- "unstatus-dsl",
- "unstatus-entity",
- "url",
- "uuid",
-]
-
-[[package]]
-name = "unstatus-worker"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "dotenvy",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "unstatus-probe",
- "uuid",
 ]
 
 [[package]]

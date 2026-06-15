@@ -9,9 +9,9 @@ pub mod tcp_check;
 use std::{net::SocketAddr, time::Duration};
 
 use entity::monitor::{self, MonitorKind};
+use produktive_dsl as dsl;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use unstatus_dsl as dsl;
 use uuid::Uuid;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -290,14 +290,14 @@ set params.config {
 
     #[test]
     fn rejects_env_request_headers_from_stored_dsl() {
-        std::env::set_var("UNSTATUS_PROBE_TEST_SECRET", "should-not-leak");
+        std::env::set_var("PRODUKTIVE_PROBE_TEST_SECRET", "should-not-leak");
         let doc = dsl::parse(
             r#"
 type http
 set params.config {
   url: "https://example.com"
   headers: {
-    "x-api-key": env("UNSTATUS_PROBE_TEST_SECRET")
+    "x-api-key": env("PRODUKTIVE_PROBE_TEST_SECRET")
   }
 }
 "#,
@@ -306,6 +306,6 @@ set params.config {
 
         let err = resolve_request_headers(&doc).expect_err("env headers must be rejected");
         assert_eq!(err, "header `x-api-key` cannot use env()");
-        std::env::remove_var("UNSTATUS_PROBE_TEST_SECRET");
+        std::env::remove_var("PRODUKTIVE_PROBE_TEST_SECRET");
     }
 }

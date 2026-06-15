@@ -13,7 +13,7 @@ use crate::{
 const DEFAULT_BASE_URL: &str = "https://api.polar.sh";
 /// Polar's edge rejects blank / bot user agents (HTTP 403, Cloudflare code 1010),
 /// so the client always sends a real one.
-const DEFAULT_USER_AGENT: &str = "unstatus-polar/0.1";
+const DEFAULT_USER_AGENT: &str = "produktive-polar/0.1";
 
 #[derive(Clone, Debug)]
 pub struct Polar {
@@ -222,7 +222,7 @@ mod tests {
         assert_eq!(customer.id, "cus_1");
         assert!(request.starts_with("POST /v1/customers/ HTTP/1.1"));
         assert!(lower.contains("authorization: bearer polar_sk_test"));
-        assert!(lower.contains("user-agent: unstatus-polar/0.1"));
+        assert!(lower.contains("user-agent: produktive-polar/0.1"));
         assert!(request.contains(r#""external_id":"ws_1""#));
         // organization_id must never be sent (org-scoped tokens reject it).
         assert!(!lower.contains("organization_id"));

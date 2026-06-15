@@ -39,7 +39,7 @@ pub fn test_payload(workspace_id: Uuid, workspace_name: &str) -> WebhookPayload 
         monitor_id: None,
         monitor_name: workspace_name.to_string(),
         incident_id: None,
-        title: "Test notification from unstatus".to_string(),
+        title: "Test notification from produktive".to_string(),
         body: "If you received this, your notification channel is configured correctly."
             .to_string(),
         occurred_at: now,
@@ -55,7 +55,7 @@ pub async fn deliver_and_record(
 ) -> anyhow::Result<()> {
     let target = crate::target::validate_webhook_target(&channel.webhook_url).await?;
     let client = reqwest::Client::builder()
-        .user_agent("unstatus/0.1")
+        .user_agent("produktive/0.1")
         .timeout(Duration::from_secs(30))
         .redirect(reqwest::redirect::Policy::none())
         .resolve_to_addrs(&target.host, &target.addrs)
@@ -128,7 +128,7 @@ fn slack_payload(payload: &WebhookPayload) -> serde_json::Value {
                 "elements": [
                     {
                         "type": "mrkdwn",
-                        "text": format!("Monitor: *{}* · unstatus", payload.monitor_name),
+                        "text": format!("Monitor: *{}* · produktive", payload.monitor_name),
                     }
                 ]
             }
@@ -145,7 +145,7 @@ fn discord_payload(payload: &WebhookPayload) -> serde_json::Value {
                 "title": payload.title,
                 "description": payload.body,
                 "color": color,
-                "footer": { "text": format!("{} · unstatus", payload.monitor_name) },
+                "footer": { "text": format!("{} · produktive", payload.monitor_name) },
                 "timestamp": payload.occurred_at.to_rfc3339(),
             }
         ]

@@ -240,7 +240,7 @@ async fn validate_region_selection(
             return Err(ApiError::bad_request(format!(
                 "region `{}` does not support {} checks",
                 region.slug,
-                unstatus_probe::monitor_kind_name(kind)
+                produktive_probe::monitor_kind_name(kind)
             )));
         }
     }
@@ -279,7 +279,7 @@ pub fn normalize_requested_slugs(requested_slugs: Option<Vec<String>>) -> Vec<St
 }
 
 fn region_supports_kind(region: &region::Model, kind: &MonitorKind) -> bool {
-    let capability = unstatus_probe::monitor_kind_name(kind);
+    let capability = produktive_probe::monitor_kind_name(kind);
     capabilities(&region.capabilities)
         .iter()
         .any(|candidate| candidate == capability)

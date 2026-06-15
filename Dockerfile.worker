@@ -7,8 +7,8 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates ./crates
 
-RUN cargo build --release -p unstatus-worker && \
-    cp /app/target/release/unstatus-worker /tmp/unstatus-worker
+RUN cargo build --release -p produktive-worker && \
+    cp /app/target/release/produktive-worker /tmp/produktive-worker
 
 FROM debian:bookworm-slim AS runtime
 
@@ -18,8 +18,8 @@ RUN apt-get update && \
 
 RUN useradd --create-home --shell /usr/sbin/nologin app
 
-COPY --from=builder /tmp/unstatus-worker /usr/local/bin/unstatus-worker
+COPY --from=builder /tmp/produktive-worker /usr/local/bin/produktive-worker
 
 USER app
 
-CMD ["unstatus-worker"]
+CMD ["produktive-worker"]

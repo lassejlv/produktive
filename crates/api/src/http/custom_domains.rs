@@ -316,13 +316,13 @@ fn map_unique_err(e: sea_orm::DbErr) -> ApiError {
 }
 
 fn verification_name(hostname: &str) -> String {
-    format!("_unstatus.{hostname}")
+    format!("_produktive.{hostname}")
 }
 
 fn verification_value() -> String {
     let mut buf = [0_u8; 16];
     rand::thread_rng().fill_bytes(&mut buf);
-    format!("unstatus-verification={}", hex::encode(buf))
+    format!("produktive-verification={}", hex::encode(buf))
 }
 
 #[derive(Deserialize)]
@@ -425,24 +425,24 @@ mod tests {
     fn builds_dns_verification_records() {
         assert_eq!(
             verification_name("status.example.com"),
-            "_unstatus.status.example.com"
+            "_produktive.status.example.com"
         );
-        assert!(verification_value().starts_with("unstatus-verification="));
+        assert!(verification_value().starts_with("produktive-verification="));
     }
 
     #[test]
     fn matches_quoted_txt_records() {
         assert!(txt_matches(
-            "\"unstatus-verification=abc123\"",
-            "unstatus-verification=abc123"
+            "\"produktive-verification=abc123\"",
+            "produktive-verification=abc123"
         ));
         assert!(txt_matches(
-            "\"unstatus-\" \"verification=abc123\"",
-            "unstatus-verification=abc123"
+            "\"produktive-\" \"verification=abc123\"",
+            "produktive-verification=abc123"
         ));
         assert!(!txt_matches(
-            "\"unstatus-verification=other\"",
-            "unstatus-verification=abc123"
+            "\"produktive-verification=other\"",
+            "produktive-verification=abc123"
         ));
     }
 }

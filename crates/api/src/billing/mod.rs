@@ -107,7 +107,7 @@ mod tests {
 
     /// Live integration check of the startup catalog load against the real Polar
     /// org. Ignored by default; run with:
-    ///   POLAR_SECRET_KEY=$POLAR_UNSTATUS_KEY cargo test -p unstatus-api -- --ignored live_catalog
+    ///   POLAR_SECRET_KEY=$POLAR_PRODUKTIVE_KEY cargo test -p produktive-api -- --ignored live_catalog
     #[tokio::test]
     #[ignore]
     async fn live_catalog_loads_expected_tiers() {

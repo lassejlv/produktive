@@ -427,7 +427,7 @@ pub async fn test_channel(
             [
                 notification_id.into(),
                 m.workspace.id.into(),
-                "Test notification from unstatus".into(),
+                "Test notification from produktive".into(),
                 "If you received this, your notification channel is configured correctly.".into(),
                 now.into(),
             ],

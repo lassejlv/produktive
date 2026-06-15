@@ -1,16 +1,16 @@
 [package]
-name = "unstatus-worker"
+name = "produktive-worker"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "unstatus-worker"
+name = "produktive-worker"
 path = "src/main.rs"
 
 [dependencies]
-unstatus-probe = { path = "../probe" }
+produktive-probe = { path = "../probe" }
 
 anyhow.workspace = true
 dotenvy.workspace = true

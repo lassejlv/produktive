@@ -31,7 +31,7 @@ pub struct AppState {
 impl AppState {
     pub async fn new(db: DatabaseConnection, config: Config) -> anyhow::Result<Self> {
         let http = Client::builder()
-            .user_agent("unstatus/0.1")
+            .user_agent("produktive/0.1")
             .timeout(Duration::from_secs(30))
             .redirect(reqwest::redirect::Policy::none())
             .build()

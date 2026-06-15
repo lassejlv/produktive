@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     environment:
       ACME_EMAIL: ${ACME_EMAIL}
-      UNSTATUS_ORIGIN: ${UNSTATUS_ORIGIN}
+      PRODUKTIVE_ORIGIN: ${PRODUKTIVE_ORIGIN}
     ports:
       - "80:80"
       - "443:443"

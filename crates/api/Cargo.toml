@@ -1,17 +1,17 @@
 [package]
-name = "unstatus-api"
+name = "produktive-api"
 version.workspace = true
 edition.workspace = true
 
 [[bin]]
-name = "unstatus-api"
+name = "produktive-api"
 path = "src/main.rs"
 
 [dependencies]
-unstatus-entity = { path = "../entity" }
-unstatus-migration = { path = "../migration" }
-unstatus-dsl = { path = "../dsl" }
-unstatus-probe = { path = "../probe" }
+produktive-entity = { path = "../entity" }
+migration = { package = "unstatus-migration", path = "../migration" }
+produktive-dsl = { path = "../dsl" }
+produktive-probe = { path = "../probe" }
 polar = { path = "../polar" }
 email = { path = "../email" }
 

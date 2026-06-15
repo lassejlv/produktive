@@ -31,7 +31,7 @@ pub async fn run(
         }
     };
     let http = match Client::builder()
-        .user_agent("unstatus/0.1")
+        .user_agent("produktive/0.1")
         .redirect(reqwest::redirect::Policy::none())
         .resolve_to_addrs(&target.host, &target.addrs)
         .build()

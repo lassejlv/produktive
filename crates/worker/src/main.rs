@@ -1,11 +1,11 @@
 use std::{sync::Arc, time::Duration};
 
 use anyhow::{Context, Result};
+use produktive_probe::ProbeSpec;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
-use unstatus_probe::ProbeSpec;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
 
     let config = Arc::new(Config::from_env()?);
     let client = Client::builder()
-        .user_agent(format!("unstatus-worker/{}", env!("CARGO_PKG_VERSION")))
+        .user_agent(format!("produktive-worker/{}", env!("CARGO_PKG_VERSION")))
         .timeout(Duration::from_secs(30))
         .redirect(reqwest::redirect::Policy::none())
         .build()?;
@@ -191,7 +191,7 @@ async fn claim_jobs(client: &Client, config: &Config, max_jobs: u64) -> Result<V
 }
 
 async fn run_job(client: &Client, config: &Config, job: WorkerJob) -> Result<()> {
-    let outcome = unstatus_probe::run(client, &job.monitor, job.max_body_bytes)
+    let outcome = produktive_probe::run(client, &job.monitor, job.max_body_bytes)
         .await
         .compact();
     let body = SubmitResultBody {
@@ -231,7 +231,7 @@ fn init_tracing() {
     tracing_subscriber::registry()
         .with(
             EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("unstatus_worker=info,unstatus_probe=info")),
+                .unwrap_or_else(|_| EnvFilter::new("produktive_worker=info,produktive_probe=info")),
         )
         .with(tracing_subscriber::fmt::layer().compact())
         .init();

@@ -3,8 +3,8 @@ pub mod record;
 use std::time::Duration;
 
 use entity::monitor::MonitorKind;
+use produktive_probe::{ProbeOutcome, ProbeSpec};
 use sea_orm::{DatabaseBackend, FromQueryResult, Statement};
-use unstatus_probe::{ProbeOutcome, ProbeSpec};
 use uuid::Uuid;
 
 use crate::state::AppState;
@@ -90,7 +90,7 @@ async fn run_once(state: &AppState) -> anyhow::Result<()> {
         tokio::spawn(async move {
             let monitor_id = job.spec.id;
             let outcome =
-                unstatus_probe::run(&st.http, &job.spec, st.config.http_check_max_body_bytes)
+                produktive_probe::run(&st.http, &job.spec, st.config.http_check_max_body_bytes)
                     .await
                     .compact();
             if let Err(e) =

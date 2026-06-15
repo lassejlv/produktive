@@ -1,5 +1,5 @@
 [package]
-name = "unstatus-entity"
+name = "produktive-entity"
 version.workspace = true
 edition.workspace = true
 

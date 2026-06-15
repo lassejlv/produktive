@@ -65,7 +65,7 @@ pub async fn check_auth(
     if let Some(limit) = kind.global_limit(state) {
         check_limit(
             &mut redis,
-            format!("unstatus:rate_limit:auth:{}:global", kind.prefix()),
+            format!("produktive:rate_limit:auth:{}:global", kind.prefix()),
             limit,
             kind.window_seconds(),
         )
@@ -73,7 +73,7 @@ pub async fn check_auth(
     }
 
     let identity = sha256_hex(email);
-    let key = format!("unstatus:rate_limit:auth:{}:{identity}", kind.prefix());
+    let key = format!("produktive:rate_limit:auth:{}:{identity}", kind.prefix());
     check_limit(&mut redis, key, kind.limit(state), kind.window_seconds()).await
 }
 

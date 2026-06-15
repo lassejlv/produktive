@@ -19,9 +19,9 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates ./crates
 
-RUN cargo build --release -p unstatus-api -p unstatus-worker && \
-    cp /app/target/release/unstatus-api /tmp/unstatus-api && \
-    cp /app/target/release/unstatus-worker /tmp/unstatus-worker
+RUN cargo build --release -p produktive-api -p produktive-worker && \
+    cp /app/target/release/produktive-api /tmp/produktive-api && \
+    cp /app/target/release/produktive-worker /tmp/produktive-worker
 
 # --- Regional worker runtime ---
 FROM debian:bookworm-slim AS worker-runtime
@@ -32,11 +32,11 @@ RUN apt-get update && \
 
 RUN useradd --create-home --shell /usr/sbin/nologin app
 
-COPY --from=builder /tmp/unstatus-worker /usr/local/bin/unstatus-worker
+COPY --from=builder /tmp/produktive-worker /usr/local/bin/produktive-worker
 
 USER app
 
-CMD ["unstatus-worker"]
+CMD ["produktive-worker"]
 
 # --- API Runtime ---
 FROM debian:bookworm-slim AS runtime
@@ -47,7 +47,7 @@ RUN apt-get update && \
 
 RUN useradd --create-home --shell /usr/sbin/nologin app
 
-COPY --from=builder /tmp/unstatus-api /usr/local/bin/unstatus-api
+COPY --from=builder /tmp/produktive-api /usr/local/bin/produktive-api
 COPY --from=web-builder /web/dist /app/web/dist
 
 ENV WEB_DIST_DIR=/app/web/dist
@@ -56,4 +56,4 @@ USER app
 
 EXPOSE 3000
 
-CMD ["unstatus-api"]
+CMD ["produktive-api"]

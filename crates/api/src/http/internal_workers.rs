@@ -4,9 +4,9 @@ use axum::{
     routing::post,
     Json, Router,
 };
+use produktive_probe::ProbeSpec;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde::{Deserialize, Serialize};
-use unstatus_probe::ProbeSpec;
 use uuid::Uuid;
 
 use crate::{

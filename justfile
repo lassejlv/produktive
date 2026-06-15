@@ -6,10 +6,10 @@ default:
 # --- backend ---
 
 api:
-    cargo run -p unstatus-api
+    cargo run -p produktive-api
 
 migrate *args="up":
-    cargo run -p unstatus-migration -- {{args}}
+    cargo run --manifest-path crates/migration/Cargo.toml -- {{args}}
 
 check:
     cargo check --workspace
@@ -21,13 +21,13 @@ clippy:
     cargo clippy --workspace --all-targets -- -D warnings
 
 icmp-caps:
-    sudo setcap cap_net_raw+ep target/debug/unstatus-api
+    sudo setcap cap_net_raw+ep target/debug/produktive-api
 
 worker:
-    cargo run -p unstatus-worker
+    cargo run -p produktive-worker
 
 worker-build:
-    cargo build --release -p unstatus-worker
+    cargo build --release -p produktive-worker
 
 # --- frontend ---
 
@@ -58,6 +58,6 @@ dev:
     #!/usr/bin/env bash
     set -euo pipefail
     trap 'kill 0' EXIT INT TERM
-    cargo run -p unstatus-api &
+    cargo run -p produktive-api &
     (cd web && bun run dev) &
     wait

@@ -116,7 +116,7 @@ async fn main() -> Result<()> {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    tracing::info!(%addr, "unstatus listening");
+    tracing::info!(%addr, "produktive listening");
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
@@ -155,7 +155,7 @@ fn init_tracing() {
     tracing_subscriber::registry()
         .with(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                EnvFilter::new("unstatus_api=info,tower_http=info,sea_orm=warn")
+                EnvFilter::new("produktive_api=info,tower_http=info,sea_orm=warn")
             }),
         )
         .with(tracing_subscriber::fmt::layer().compact())

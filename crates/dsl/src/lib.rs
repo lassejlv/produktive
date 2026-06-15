@@ -1,4 +1,4 @@
-//! unstatus DSL — monitor-as-code.
+//! produktive DSL — monitor-as-code.
 //!
 //! Document shape:
 //! ```text
