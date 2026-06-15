@@ -5,6 +5,7 @@ members = [
     "crates/dsl",
     "crates/email",
     "crates/logging",
+    "crates/logs",
     "crates/polar",
     "crates/entity",
     "crates/migration",
