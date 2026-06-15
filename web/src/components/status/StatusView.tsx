@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { Check, Minus, X } from "lucide-react";
-import { ResponseTimeChart, type ResponseTimePoint } from "../ResponseTimeChart";
+import {
+  ResponseTimeChart,
+  type ResponseTimePoint,
+} from "../ResponseTimeChart";
 import { STATUS_COLOR } from "../../lib/status";
 import type {
   DayBucket,
@@ -88,7 +91,11 @@ function fmtPct(v: number | null): string {
 
 function fmtDay(date: string): string {
   const d = new Date(`${date}T12:00:00`);
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 export function StatusView({
@@ -103,7 +110,9 @@ export function StatusView({
   preview,
 }: Props) {
   const monitors = groups.flatMap((g) => g.monitors);
-  const affected = monitors.filter((m) => m.status === "down" || m.status === "degraded");
+  const affected = monitors.filter(
+    (m) => m.status === "down" || m.status === "degraded",
+  );
   const openIncidents = incidents.filter((i) => i.status === "open");
   const pastIncidents = incidents.filter((i) => i.status !== "open");
 
@@ -117,9 +126,11 @@ export function StatusView({
     >
       {/* title */}
       <div className="pb-6 pt-8">
-        <h1 className="text-[20px] font-medium leading-tight tracking-tight">{title}</h1>
+        <h1 className="text-[20px] font-medium leading-tight tracking-tight">
+          {title}
+        </h1>
         {description && (
-          <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-fg-muted)]">
+          <p className="mt-1.5 text-[13px] leading-relaxed text-(--color-fg-muted)">
             {description}
           </p>
         )}
@@ -138,7 +149,9 @@ export function StatusView({
             </h2>
           </div>
           {affected.length > 0 && (
-            <p className="text-[12px] text-[var(--color-fg-muted)]">{affectedSummary(affected)}</p>
+            <p className="text-[12px] text-[var(--color-fg-muted)]">
+              {affectedSummary(affected)}
+            </p>
           )}
         </div>
 
@@ -171,7 +184,11 @@ export function StatusView({
       )}
 
       {/* resolved incident history (active ones are pinned above) */}
-      <MiniIncidentHistory incidents={pastIncidents} href={incidentsHref} className="mt-10" />
+      <MiniIncidentHistory
+        incidents={pastIncidents}
+        href={incidentsHref}
+        className="mt-10"
+      />
     </StatusShell>
   );
 }
@@ -267,7 +284,8 @@ function MonitorRow({ m }: { m: PublicMonitor }) {
         <span
           className="tabular shrink-0 text-[12px] font-medium tracking-tight"
           style={{
-            color: uptime === null ? "var(--color-fg-dim)" : STATUS_COLOR[m.status],
+            color:
+              uptime === null ? "var(--color-fg-dim)" : STATUS_COLOR[m.status],
           }}
         >
           {uptime === null ? "No data" : `${fmtPct(uptime)} uptime`}
@@ -277,7 +295,9 @@ function MonitorRow({ m }: { m: PublicMonitor }) {
       <UptimeBar history={m.history} />
 
       <div className="mt-1.5 flex items-center justify-between text-[10.5px] text-[var(--color-fg-dim)]">
-        <span>{m.history.length > 0 ? `${m.history.length} days ago` : "—"}</span>
+        <span>
+          {m.history.length > 0 ? `${m.history.length} days ago` : "—"}
+        </span>
         <span>Today</span>
       </div>
 
