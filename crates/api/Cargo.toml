@@ -35,6 +35,7 @@ uuid.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+json5.workspace = true
 standardwebhooks.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true

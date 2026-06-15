@@ -209,7 +209,7 @@ impl Config {
             return Err(anyhow!("WORKER_LEASE_SECONDS must be at least 1"));
         }
         let log_storage_uri = std::env::var("LOG_STORAGE_URI")
-            .unwrap_or_else(|_| "./var/logs".into())
+            .unwrap_or_else(|_| default_log_storage_uri())
             .trim()
             .trim_end_matches('/')
             .to_owned();
@@ -314,6 +314,13 @@ impl Config {
                     .flatten()
             })
     }
+}
+
+fn default_log_storage_uri() -> String {
+    std::env::temp_dir()
+        .join("produktive-logs")
+        .display()
+        .to_string()
 }
 
 fn parse_worker_tokens(raw: Option<&str>) -> Result<BTreeMap<String, String>> {

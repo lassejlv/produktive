@@ -1,4 +1,5 @@
 target
+var
 .git
 .env
 .DS_Store

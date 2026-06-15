@@ -3,6 +3,8 @@ use std::{path::Path, sync::Arc};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Datelike, FixedOffset, TimeZone, Timelike, Utc};
 use duckdb::{params, Connection};
+use futures_util::{StreamExt, TryStreamExt};
+use object_store::{aws::AmazonS3Builder, path::Path as ObjectPath, ObjectStore};
 use serde::Serialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -89,10 +91,6 @@ impl LogStore {
         if storage_uri.is_empty() {
             anyhow::bail!("log storage URI must not be empty");
         }
-        if !is_s3_uri(&storage_uri) {
-            std::fs::create_dir_all(&storage_uri)
-                .with_context(|| format!("create log storage directory {storage_uri}"))?;
-        }
         Ok(Self {
             inner: Arc::new(prepare_options(LogStoreOptions {
                 storage_uri,
@@ -145,6 +143,16 @@ impl LogStore {
             .context("join log search worker")?
     }
 
+    pub async fn delete_project_data_with(
+        &self,
+        options: Option<LogStoreOptions>,
+        workspace_id: Uuid,
+        project_id: Uuid,
+    ) -> Result<usize> {
+        let config = self.options_or_default(options)?;
+        delete_project_data(&config, workspace_id, project_id).await
+    }
+
     fn options_or_default(&self, options: Option<LogStoreOptions>) -> Result<LogStoreOptions> {
         match options {
             Some(options) => prepare_options(options),
@@ -158,17 +166,115 @@ fn prepare_options(options: LogStoreOptions) -> Result<LogStoreOptions> {
     if storage_uri.is_empty() {
         anyhow::bail!("log storage URI must not be empty");
     }
-    if !is_s3_uri(&storage_uri) {
-        std::fs::create_dir_all(&storage_uri)
-            .with_context(|| format!("create log storage directory {storage_uri}"))?;
-    }
     Ok(LogStoreOptions {
         storage_uri,
         ..options
     })
 }
 
+async fn delete_project_data(
+    config: &LogStoreOptions,
+    workspace_id: Uuid,
+    project_id: Uuid,
+) -> Result<usize> {
+    let prefix = project_data_prefix(&config.storage_uri, workspace_id, project_id)?;
+    if is_s3_uri(&config.storage_uri) {
+        let store = s3_object_store(config)?;
+        delete_object_prefix(store.as_ref(), prefix).await
+    } else {
+        let path = Path::new(&config.storage_uri)
+            .join(format!("workspace_id={workspace_id}"))
+            .join(format!("project_id={project_id}"));
+        match tokio::fs::remove_dir_all(&path).await {
+            Ok(()) => Ok(1),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(0),
+            Err(error) => Err(error).with_context(|| format!("delete log project data {path:?}")),
+        }
+    }
+}
+
+async fn delete_object_prefix(store: &dyn ObjectStore, prefix: ObjectPath) -> Result<usize> {
+    let objects = store.list(Some(&prefix));
+    let paths = objects
+        .map_ok(|meta| meta.location)
+        .try_collect::<Vec<_>>()
+        .await?;
+    let count = paths.len();
+    if count == 0 {
+        return Ok(0);
+    }
+    let deletes = futures_util::stream::iter(paths.into_iter().map(Ok)).boxed();
+    store.delete_stream(deletes).try_collect::<Vec<_>>().await?;
+    Ok(count)
+}
+
+fn project_data_prefix(
+    storage_uri: &str,
+    workspace_id: Uuid,
+    project_id: Uuid,
+) -> Result<ObjectPath> {
+    let base_path = if let Some(rest) = storage_uri.strip_prefix("s3://") {
+        rest.split_once('/')
+            .map(|(_, path)| path.trim_matches('/'))
+            .filter(|path| !path.is_empty())
+            .unwrap_or("")
+            .to_string()
+    } else {
+        String::new()
+    };
+    let project_path = format!("workspace_id={workspace_id}/project_id={project_id}");
+    let path = if base_path.is_empty() {
+        project_path
+    } else {
+        format!("{base_path}/{project_path}")
+    };
+    Ok(ObjectPath::from(path))
+}
+
+fn s3_object_store(config: &LogStoreOptions) -> Result<Arc<dyn ObjectStore>> {
+    let (bucket, _) = parse_s3_storage_uri(&config.storage_uri)?;
+    let mut builder = AmazonS3Builder::new()
+        .with_bucket_name(bucket)
+        .with_virtual_hosted_style_request(true);
+    if let Some(region) = config.s3_region.as_deref().filter(|v| !v.trim().is_empty()) {
+        builder = builder.with_region(region.trim());
+    }
+    if let Some(endpoint) = config
+        .s3_endpoint
+        .as_deref()
+        .filter(|v| !v.trim().is_empty())
+    {
+        let endpoint = normalize_s3_endpoint(endpoint);
+        let scheme = if endpoint.use_ssl { "https" } else { "http" };
+        builder = builder.with_endpoint(format!("{scheme}://{}", endpoint.host));
+        if !endpoint.use_ssl {
+            builder = builder.with_allow_http(true);
+        }
+    }
+    if let (Some(access_key), Some(secret_key)) = (
+        config.s3_access_key_id.as_deref(),
+        config.s3_secret_access_key.as_deref(),
+    ) {
+        builder = builder
+            .with_access_key_id(access_key)
+            .with_secret_access_key(secret_key);
+    }
+    Ok(Arc::new(builder.build()?))
+}
+
+fn parse_s3_storage_uri(storage_uri: &str) -> Result<(&str, &str)> {
+    let rest = storage_uri
+        .strip_prefix("s3://")
+        .context("S3 log storage URI must start with s3://")?;
+    let (bucket, path) = rest.split_once('/').unwrap_or((rest, ""));
+    if bucket.trim().is_empty() {
+        anyhow::bail!("S3 log storage URI bucket is required");
+    }
+    Ok((bucket, path))
+}
+
 fn append_blocking(config: &LogStoreOptions, batch: AppendBatch) -> Result<()> {
+    ensure_local_storage_dir(config)?;
     let conn = open_connection(config)?;
     configure_connection(&conn, config)?;
     conn.execute_batch(
@@ -243,6 +349,14 @@ fn append_blocking(config: &LogStoreOptions, batch: AppendBatch) -> Result<()> {
         "#
     ))?;
     Ok(())
+}
+
+fn ensure_local_storage_dir(config: &LogStoreOptions) -> Result<()> {
+    if is_s3_uri(&config.storage_uri) {
+        return Ok(());
+    }
+    std::fs::create_dir_all(&config.storage_uri)
+        .with_context(|| format!("create log storage directory {}", config.storage_uri))
 }
 
 fn search_blocking(config: &LogStoreOptions, request: SearchRequest) -> Result<Vec<SearchEvent>> {
@@ -460,4 +574,30 @@ fn sql_like_contains(value: &str) -> String {
 fn looks_like_no_parquet_files(error: &duckdb::Error) -> bool {
     let message = error.to_string().to_ascii_lowercase();
     message.contains("no files found") || message.contains("cannot open file")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LogStore, LogStoreOptions};
+    use uuid::Uuid;
+
+    #[test]
+    fn log_store_new_does_not_create_local_storage_directory() {
+        let path = std::env::temp_dir().join(format!("produktive-log-store-{}", Uuid::now_v7()));
+        let _ = std::fs::remove_dir_all(&path);
+
+        let store = LogStore::new(LogStoreOptions {
+            storage_uri: path.display().to_string(),
+            duckdb_path: None,
+            s3_region: None,
+            s3_endpoint: None,
+            s3_access_key_id: None,
+            s3_secret_access_key: None,
+        })
+        .expect("log store construction should not touch local storage");
+
+        assert!(!path.exists());
+        drop(store);
+        let _ = std::fs::remove_dir_all(path);
+    }
 }

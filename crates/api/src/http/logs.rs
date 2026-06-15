@@ -288,6 +288,15 @@ pub async fn delete_project(
 ) -> ApiResult<Json<OkResponse>> {
     m.require_owner()?;
     let project = resolve_project(&state, m.workspace.id, &project).await?;
+    let storage_options = project_storage_options(&state, project.id).await?;
+    state
+        .logs
+        .delete_project_data_with(storage_options, m.workspace.id, project.id)
+        .await
+        .map_err(|error| {
+            tracing::error!(project_id = %project.id, error = ?error, "log project storage delete failed");
+            ApiError::service_unavailable("log project storage delete failed")
+        })?;
     state
         .db
         .execute(Statement::from_sql_and_values(
@@ -574,8 +583,7 @@ pub async fn ingest(
     let token = ingest_token_from_headers(&headers).ok_or(ApiError::Unauthorized)?;
     let token_hash = sha256_hex(&token);
     let target = find_token_project(&state, &token_hash).await?;
-    let payload: serde_json::Value =
-        serde_json::from_slice(&body).map_err(|_| ApiError::bad_request("invalid JSON body"))?;
+    let payload = parse_ingest_payload(&body)?;
     let events = normalize_payload(&payload, state.config.log_ingest_max_batch_events)
         .map_err(|error| ApiError::bad_request(error.to_string()))?;
     let accepted = events.len();
@@ -604,6 +612,42 @@ pub async fn ingest(
         accepted,
         project_id: target.project_id,
     }))
+}
+
+fn parse_ingest_payload(body: &[u8]) -> ApiResult<serde_json::Value> {
+    match serde_json::from_slice(body) {
+        Ok(payload) => Ok(payload),
+        Err(json_error) => {
+            let body = std::str::from_utf8(body)
+                .map_err(|_| ApiError::bad_request(format!("invalid JSON body: {json_error}")))?;
+            json5::from_str(body).map_err(|json5_error| {
+                ApiError::bad_request(format!(
+                    "invalid JSON body: {json_error}; JSON5 fallback failed: {json5_error}"
+                ))
+            })
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_ingest_payload;
+
+    #[test]
+    fn parse_ingest_payload_accepts_json5_trailing_commas() {
+        let payload = parse_ingest_payload(
+            br#"{
+                "level": "info",
+                "message": "information",
+                "service": "api",
+            }"#,
+        )
+        .expect("payload should parse with json5 fallback");
+
+        assert_eq!(payload["level"], "info");
+        assert_eq!(payload["message"], "information");
+        assert_eq!(payload["service"], "api");
+    }
 }
 
 async fn load_projects(state: &AppState, workspace_id: Uuid) -> ApiResult<Vec<LogProjectView>> {
