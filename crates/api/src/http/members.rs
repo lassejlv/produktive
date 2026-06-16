@@ -50,6 +50,7 @@ pub struct OkResponse {
 #[utoipa::path(
     get,
     path = "/api/workspaces/{wid}/members",
+    operation_id = "members_list",
     params(("wid" = Uuid, Path, description = "workspace id")),
     responses((status = 200, body = [MemberView])),
     security(("bearerAuth" = [])),
@@ -135,6 +136,7 @@ pub async fn update_role(
 #[utoipa::path(
     delete,
     path = "/api/workspaces/{wid}/members/{uid}",
+    operation_id = "members_remove",
     params(
         ("wid" = Uuid, Path, description = "workspace id"),
         ("uid" = Uuid, Path, description = "user id to remove (self-leave allowed)"),

@@ -16,6 +16,7 @@ return current
 pub enum AuthLimitKind {
     Login,
     Register,
+    PasswordReset,
 }
 
 impl AuthLimitKind {
@@ -23,6 +24,7 @@ impl AuthLimitKind {
         match self {
             Self::Login => "login",
             Self::Register => "register",
+            Self::PasswordReset => "password_reset",
         }
     }
 
@@ -30,6 +32,7 @@ impl AuthLimitKind {
         match self {
             Self::Login => state.config.auth_rate_limit_login_per_minute,
             Self::Register => state.config.auth_rate_limit_register_per_hour,
+            Self::PasswordReset => state.config.auth_rate_limit_password_reset_per_hour,
         }
     }
 
@@ -37,6 +40,7 @@ impl AuthLimitKind {
         match self {
             Self::Login => 60,
             Self::Register => 60 * 60,
+            Self::PasswordReset => 60 * 60,
         }
     }
 
@@ -44,6 +48,9 @@ impl AuthLimitKind {
         match self {
             Self::Login => None,
             Self::Register => Some(state.config.auth_rate_limit_register_global_per_hour),
+            Self::PasswordReset => {
+                Some(state.config.auth_rate_limit_password_reset_global_per_hour)
+            }
         }
     }
 }

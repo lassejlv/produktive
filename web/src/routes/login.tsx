@@ -113,6 +113,12 @@ function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
           />
 
+          <div className="-mt-2 text-right text-[13px] text-[var(--color-fg-muted)]">
+            <Link to="/forgot-password" className="link">
+              Forgot password?
+            </Link>
+          </div>
+
           {login.error && (
             <div className="text-[var(--color-err)] text-[12px] -mt-1">
               {(login.error as Error).message}

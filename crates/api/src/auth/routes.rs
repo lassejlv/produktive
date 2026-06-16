@@ -6,10 +6,12 @@ use axum::{
     Json, Router,
 };
 use chrono::{Duration, Utc};
+use email::OutboundEmail;
 use entity::{
-    session, user, workspace,
+    password_reset_token, session, user, workspace,
     workspace_member::{self, WorkspaceRole},
 };
+use rand::RngCore;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, TransactionTrait,
 };
@@ -18,7 +20,7 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
-    auth::{jwt, password, AuthUser},
+    auth::{jwt, password, password::sha256_hex, AuthUser},
     error::{ApiError, ApiResult},
     http::workspaces::personal_workspace_id,
     rate_limit::{self, AuthLimitKind},
@@ -30,6 +32,8 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/register", post(register))
         .route("/login", post(login))
+        .route("/forgot-password", post(forgot_password))
+        .route("/reset-password", post(reset_password))
         .route("/config", get(auth_config))
         .route("/github/start", get(github_start))
         .route("/github/callback", get(github_callback))
@@ -105,6 +109,17 @@ pub struct AuthResponse {
 #[derive(Serialize, ToSchema)]
 pub struct OkResponse {
     pub ok: bool,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ForgotPasswordPayload {
+    pub email: String,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ResetPasswordPayload {
+    pub token: String,
+    pub password: String,
 }
 
 #[derive(Deserialize, IntoParams, ToSchema)]
@@ -377,6 +392,196 @@ async fn create_session_token(
     session_row.insert(&state.db).await?;
 
     Ok(token)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/auth/forgot-password",
+    request_body = ForgotPasswordPayload,
+    responses(
+        (status = 200, body = OkResponse, description = "Always ok; reveals nothing about whether the email exists"),
+        (status = 429, description = "Rate limit exceeded"),
+    ),
+    tag = "auth"
+)]
+pub async fn forgot_password(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<ForgotPasswordPayload>,
+) -> ApiResult<Json<OkResponse>> {
+    let email = body.email.trim().to_lowercase();
+    rate_limit::check_auth(&state, &headers, &email, AuthLimitKind::PasswordReset).await?;
+
+    // Only act if the user exists; otherwise we still return ok to avoid
+    // user enumeration. Never error on an unknown email.
+    if let Some(user_model) = user::Entity::find()
+        .filter(user::Column::Email.eq(&email))
+        .one(&state.db)
+        .await?
+    {
+        // Invalidate any prior unused reset tokens so only the latest link works.
+        password_reset_token::Entity::delete_many()
+            .filter(password_reset_token::Column::UserId.eq(user_model.id))
+            .filter(password_reset_token::Column::UsedAt.is_null())
+            .exec(&state.db)
+            .await?;
+
+        let mut buf = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut buf);
+        let token = hex::encode(buf);
+        let token_hash = sha256_hex(&token);
+
+        let now = Utc::now();
+        let expires_at =
+            (now + Duration::minutes(state.config.password_reset_ttl_minutes)).fixed_offset();
+
+        password_reset_token::ActiveModel {
+            id: Set(Uuid::now_v7()),
+            user_id: Set(user_model.id),
+            token_hash: Set(token_hash),
+            expires_at: Set(expires_at),
+            used_at: Set(None),
+            created_at: Set(now.fixed_offset()),
+        }
+        .insert(&state.db)
+        .await?;
+
+        // Send on a detached task so the SMTP round-trip is off the response
+        // path: it must not become a timing oracle that distinguishes whether
+        // the email is registered (the whole point of always returning ok).
+        let ttl_minutes = state.config.password_reset_ttl_minutes;
+        match password_reset_url(state.config.app_url.as_deref(), &token) {
+            Some(reset_url) => {
+                let state = state.clone();
+                let to = user_model.email.clone();
+                tokio::spawn(async move {
+                    send_password_reset_email(&state, &to, &reset_url, ttl_minutes).await;
+                });
+            }
+            None => {
+                tracing::warn!(
+                    email = %user_model.email,
+                    "APP_URL not set; password reset email not sent (link would be unusable)"
+                );
+            }
+        }
+    }
+
+    Ok(Json(OkResponse { ok: true }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/auth/reset-password",
+    request_body = ResetPasswordPayload,
+    responses(
+        (status = 200, body = AuthResponse, description = "Password updated; auto-logged-in"),
+        (status = 400, description = "Invalid/expired/used token or password too short"),
+    ),
+    tag = "auth"
+)]
+pub async fn reset_password(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<ResetPasswordPayload>,
+) -> ApiResult<Json<AuthResponse>> {
+    if body.password.len() < 8 {
+        return Err(ApiError::bad_request("password must be at least 8 chars"));
+    }
+
+    // A single generic message for not-found, expired, and used tokens avoids
+    // leaking which failure occurred (token-probing oracle).
+    let invalid = || ApiError::bad_request("invalid or expired reset token");
+
+    let token_hash = sha256_hex(&body.token);
+    let row = password_reset_token::Entity::find()
+        .filter(password_reset_token::Column::TokenHash.eq(token_hash))
+        .one(&state.db)
+        .await?
+        .ok_or_else(invalid)?;
+
+    if row.used_at.is_some() {
+        return Err(invalid());
+    }
+    if row.expires_at < Utc::now().fixed_offset() {
+        return Err(invalid());
+    }
+
+    let user_model = user::Entity::find_by_id(row.user_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(invalid)?;
+
+    let now = Utc::now();
+    let txn = state.db.begin().await?;
+
+    let mut user_active: user::ActiveModel = user_model.clone().into();
+    user_active.password_hash = Set(password::hash(&body.password)?);
+    user_active.updated_at = Set(now.fixed_offset());
+    user_active.update(&txn).await?;
+
+    let mut token_active: password_reset_token::ActiveModel = row.into();
+    token_active.used_at = Set(Some(now.fixed_offset()));
+    token_active.update(&txn).await?;
+
+    // Kill every existing session for this user so any compromised session is
+    // invalidated before we issue the fresh one.
+    session::Entity::delete_many()
+        .filter(session::Column::UserId.eq(user_model.id))
+        .exec(&txn)
+        .await?;
+
+    txn.commit().await?;
+
+    let token = create_session_token(&state, &headers, user_model.id).await?;
+
+    Ok(Json(AuthResponse {
+        token,
+        user: user_model.into(),
+    }))
+}
+
+/// Build the absolute reset link. Returns `None` when no `APP_URL` is
+/// configured, since a relative link in an email is unusable.
+fn password_reset_url(app_url: Option<&str>, token: &str) -> Option<String> {
+    let base = app_url?.trim_end_matches('/');
+    Some(format!("{base}/reset-password?token={token}"))
+}
+
+async fn send_password_reset_email(state: &AppState, to: &str, reset_url: &str, ttl_minutes: i64) {
+    let subject = "Reset your produktive password".to_owned();
+    let text_body = format!(
+        "We received a request to reset your produktive password.\n\nReset your password:\n{reset_url}\n\nThis link expires in {ttl_minutes} minutes. If you did not request a password reset, you can safely ignore this email."
+    );
+    let reset_url_html = escape_html(reset_url);
+    let html_body = format!(
+        r#"<p>We received a request to reset your produktive password.</p>
+<p><a href="{reset_url}">Reset your password</a></p>
+<p>This link expires in {ttl_minutes} minutes. If you did not request a password reset, you can safely ignore this email.</p>"#,
+        reset_url = reset_url_html,
+    );
+
+    if let Err(err) = state
+        .email
+        .send(OutboundEmail {
+            to: to.to_owned(),
+            subject,
+            text_body,
+            html_body: Some(html_body),
+        })
+        .await
+    {
+        tracing::warn!(%err, email = %to, "failed to send password reset email");
+    }
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 fn github_redirect_url(state: &AppState) -> ApiResult<String> {

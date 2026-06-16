@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use chrono::Utc;
-use entity::session;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+use entity::{password_reset_token, session};
+use sea_orm::{ColumnTrait, Condition, EntityTrait, QueryFilter};
 
 use crate::state::AppState;
 
@@ -31,6 +31,24 @@ async fn run_once(state: &AppState) -> anyhow::Result<()> {
         tracing::info!(
             deleted = result.rows_affected,
             "expired sessions cleaned up"
+        );
+    }
+
+    // Prune password reset tokens that are spent (used) or past their TTL so the
+    // table self-prunes rather than growing unbounded.
+    let reset_result = password_reset_token::Entity::delete_many()
+        .filter(
+            Condition::any()
+                .add(password_reset_token::Column::ExpiresAt.lt(Utc::now().fixed_offset()))
+                .add(password_reset_token::Column::UsedAt.is_not_null()),
+        )
+        .exec(&state.db)
+        .await?;
+
+    if reset_result.rows_affected > 0 {
+        tracing::info!(
+            deleted = reset_result.rows_affected,
+            "expired/used password reset tokens cleaned up"
         );
     }
 

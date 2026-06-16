@@ -256,6 +256,7 @@ async fn monitor_views(state: &AppState, rows: Vec<monitor::Model>) -> ApiResult
 #[utoipa::path(
     get,
     path = "/api/workspaces/{wid}/monitors",
+    operation_id = "monitors_list",
     params(("wid" = Uuid, Path, description = "workspace id")),
     responses((status = 200, body = [MonitorView])),
     security(("bearerAuth" = [])),
@@ -275,6 +276,7 @@ pub async fn list(
 #[utoipa::path(
     post,
     path = "/api/workspaces/{wid}/monitors",
+    operation_id = "monitors_create",
     params(("wid" = Uuid, Path, description = "workspace id")),
     request_body = CreateMonitor,
     responses(
@@ -402,6 +404,7 @@ pub async fn create(
 #[utoipa::path(
     get,
     path = "/api/workspaces/{wid}/monitors/{id}",
+    operation_id = "monitors_get",
     params(
         ("wid" = Uuid, Path, description = "workspace id"),
         ("id" = Uuid, Path, description = "monitor id"),
@@ -425,6 +428,7 @@ pub async fn get_one(
 #[utoipa::path(
     patch,
     path = "/api/workspaces/{wid}/monitors/{id}",
+    operation_id = "monitors_update",
     params(
         ("wid" = Uuid, Path, description = "workspace id"),
         ("id" = Uuid, Path, description = "monitor id"),
@@ -570,6 +574,7 @@ fn region_selection_requires_owner(slugs: &[String]) -> bool {
 #[utoipa::path(
     delete,
     path = "/api/workspaces/{wid}/monitors/{id}",
+    operation_id = "monitors_delete",
     params(
         ("wid" = Uuid, Path, description = "workspace id"),
         ("id" = Uuid, Path, description = "monitor id"),

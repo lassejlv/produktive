@@ -12,6 +12,7 @@ pub mod log_usage_rollup;
 pub mod monitor;
 pub mod monitor_region;
 pub mod monitor_region_state;
+pub mod password_reset_token;
 pub mod polar_webhook_event;
 pub mod region;
 pub mod session;

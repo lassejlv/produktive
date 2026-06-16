@@ -103,6 +103,7 @@ struct ExistsRow {
 #[utoipa::path(
     get,
     path = "/api/workspaces/{wid}/incidents",
+    operation_id = "incidents_list",
     params(
         ("wid" = String, Path, description = "workspace id or slug"),
         IncidentQuery,
@@ -130,6 +131,7 @@ pub async fn list(
 #[utoipa::path(
     post,
     path = "/api/workspaces/{wid}/incidents",
+    operation_id = "incidents_create",
     params(("wid" = String, Path, description = "workspace id or slug")),
     request_body = CreateIncidentBody,
     responses((status = 200, body = IncidentView)),

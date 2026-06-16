@@ -909,3 +909,22 @@ export function useRegister() {
       ),
   });
 }
+
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: (body: { email: string }) =>
+      api.post<{ ok: boolean }>("/auth/forgot-password", body),
+  });
+}
+
+export function useResetPassword() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { token: string; password: string }) =>
+      api.post<AuthResponse>("/auth/reset-password", body),
+    onSuccess: (r) => {
+      auth.set(r.token);
+      qc.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}

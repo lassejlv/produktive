@@ -111,6 +111,7 @@ pub struct OkResponse {
 #[utoipa::path(
     get,
     path = "/api/workspaces",
+    operation_id = "workspaces_list",
     responses((status = 200, body = [WorkspaceView])),
     security(("bearerAuth" = [])),
     tag = "workspaces"
@@ -138,6 +139,7 @@ pub async fn list(
 #[utoipa::path(
     post,
     path = "/api/workspaces",
+    operation_id = "workspaces_create",
     request_body = CreateWorkspaceBody,
     responses(
         (status = 200, body = WorkspaceView),
@@ -272,6 +274,7 @@ async fn create_workspace_checkout(
 #[utoipa::path(
     get,
     path = "/api/workspaces/{wid}",
+    operation_id = "workspaces_get",
     params(("wid" = Uuid, Path, description = "workspace id")),
     responses(
         (status = 200, body = WorkspaceView),
@@ -287,6 +290,7 @@ pub async fn get_one(Extension(m): Extension<Membership>) -> ApiResult<Json<Work
 #[utoipa::path(
     patch,
     path = "/api/workspaces/{wid}",
+    operation_id = "workspaces_update",
     params(("wid" = Uuid, Path, description = "workspace id")),
     request_body = UpdateWorkspaceBody,
     responses(
@@ -404,6 +408,7 @@ fn validate_public_url(raw: &str, field: &str) -> ApiResult<String> {
 #[utoipa::path(
     delete,
     path = "/api/workspaces/{wid}",
+    operation_id = "workspaces_delete",
     params(("wid" = Uuid, Path, description = "workspace id")),
     responses(
         (status = 200, body = OkResponse),

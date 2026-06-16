@@ -14,5 +14,7 @@ export function parseLoginRedirect(raw: unknown): string {
   const path = raw.split("?")[0]?.split("#")[0] ?? raw;
   if (path === "/login" || path.startsWith("/login/")) return "/";
   if (path === "/signup" || path.startsWith("/signup/")) return "/";
+  if (path === "/forgot-password" || path.startsWith("/forgot-password/")) return "/";
+  if (path === "/reset-password" || path.startsWith("/reset-password/")) return "/";
   return raw;
 }

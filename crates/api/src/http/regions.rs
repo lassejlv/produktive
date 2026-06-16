@@ -14,6 +14,7 @@ pub fn routes() -> Router<AppState> {
 #[utoipa::path(
     get,
     path = "/api/workspaces/{wid}/regions",
+    operation_id = "regions_list",
     params(("wid" = String, Path, description = "workspace id or slug")),
     responses((status = 200, body = [RegionView])),
     security(("bearerAuth" = [])),

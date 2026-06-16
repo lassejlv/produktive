@@ -85,6 +85,7 @@ struct AuthorizeRow {
 #[utoipa::path(
     get,
     path = "/api/workspaces/{wid}/custom-domains",
+    operation_id = "custom_domains_list",
     params(("wid" = Uuid, Path, description = "workspace id")),
     responses((status = 200, body = [CustomDomainView])),
     security(("bearerAuth" = [])),
@@ -108,6 +109,7 @@ pub async fn list(
 #[utoipa::path(
     post,
     path = "/api/workspaces/{wid}/custom-domains",
+    operation_id = "custom_domains_create",
     params(("wid" = Uuid, Path, description = "workspace id")),
     request_body = CreateCustomDomainBody,
     responses(
@@ -207,6 +209,7 @@ pub async fn verify(
 #[utoipa::path(
     delete,
     path = "/api/workspaces/{wid}/custom-domains/{id}",
+    operation_id = "custom_domains_remove",
     params(
         ("wid" = Uuid, Path, description = "workspace id"),
         ("id" = Uuid, Path, description = "custom domain id"),

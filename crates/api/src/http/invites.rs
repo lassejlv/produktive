@@ -102,6 +102,7 @@ pub struct OkResponse {
 #[utoipa::path(
     post,
     path = "/api/workspaces/{wid}/invites",
+    operation_id = "invites_create",
     params(("wid" = Uuid, Path, description = "workspace id")),
     request_body = CreateInviteBody,
     responses(
@@ -200,6 +201,7 @@ pub async fn create(
 #[utoipa::path(
     get,
     path = "/api/workspaces/{wid}/invites",
+    operation_id = "invites_list",
     params(("wid" = Uuid, Path, description = "workspace id")),
     responses(
         (status = 200, body = [InviteRow]),
