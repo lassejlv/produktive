@@ -35,6 +35,11 @@ pub fn routes() -> Router<AppState> {
             "/log-buckets/{bucket_id}",
             patch(update_log_bucket).delete(delete_log_bucket),
         )
+        .route("/log-access-requests", get(list_log_access_requests))
+        .route(
+            "/log-access-requests/{request_id}",
+            patch(decide_log_access_request),
+        )
 }
 
 #[derive(Clone, Debug, Serialize, ToSchema)]
@@ -313,6 +318,112 @@ async fn delete_log_bucket(
         ))
         .await?;
     Ok(Json(crate::http::workspaces::OkResponse { ok: true }))
+}
+
+#[derive(Debug, Serialize, FromQueryResult, ToSchema)]
+pub struct AdminLogAccessRequestView {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub workspace_name: String,
+    pub workspace_slug: String,
+    /// One of `pending`, `approved`, `denied`.
+    pub status: String,
+    pub requested_by_email: Option<String>,
+    pub requested_at: DateTime<FixedOffset>,
+    pub decided_by_email: Option<String>,
+    pub decided_at: Option<DateTime<FixedOffset>>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DecideLogAccessBody {
+    /// `approved` or `denied`.
+    pub status: String,
+}
+
+const LOG_ACCESS_REQUEST_SELECT: &str = r#"
+    SELECT r.id,
+           r.workspace_id,
+           w.name AS workspace_name,
+           w.slug AS workspace_slug,
+           CASE r.status
+               WHEN 0 THEN 'pending'
+               WHEN 1 THEN 'approved'
+               WHEN 2 THEN 'denied'
+               ELSE 'unknown'
+           END AS status,
+           ru.email AS requested_by_email,
+           r.requested_at,
+           du.email AS decided_by_email,
+           r.decided_at
+    FROM log_access_requests r
+    JOIN workspaces w ON w.id = r.workspace_id
+    LEFT JOIN users ru ON ru.id = r.requested_by
+    LEFT JOIN users du ON du.id = r.decided_by
+"#;
+
+async fn list_log_access_requests(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> ApiResult<Json<Vec<AdminLogAccessRequestView>>> {
+    require_admin(&auth)?;
+    let rows = AdminLogAccessRequestView::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        format!(
+            "{LOG_ACCESS_REQUEST_SELECT} ORDER BY (r.status = 0) DESC, r.requested_at DESC"
+        ),
+        Vec::<Value>::new(),
+    ))
+    .all(&state.db)
+    .await?;
+    Ok(Json(rows))
+}
+
+async fn decide_log_access_request(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(request_id): Path<Uuid>,
+    Json(body): Json<DecideLogAccessBody>,
+) -> ApiResult<Json<AdminLogAccessRequestView>> {
+    require_admin(&auth)?;
+    let status: i16 = match body.status.as_str() {
+        "approved" => 1,
+        "denied" => 2,
+        _ => {
+            return Err(ApiError::bad_request(
+                "status must be 'approved' or 'denied'",
+            ))
+        }
+    };
+    let updated = state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE log_access_requests
+            SET status = $2, decided_by = $3, decided_at = now(), updated_at = now()
+            WHERE id = $1
+            "#,
+            vec![request_id.into(), status.into(), auth.user.id.into()],
+        ))
+        .await?;
+    if updated.rows_affected() == 0 {
+        return Err(ApiError::not_found("log access request"));
+    }
+    load_log_access_request(&state, request_id).await.map(Json)
+}
+
+async fn load_log_access_request(
+    state: &AppState,
+    request_id: Uuid,
+) -> ApiResult<AdminLogAccessRequestView> {
+    AdminLogAccessRequestView::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        format!("{LOG_ACCESS_REQUEST_SELECT} WHERE r.id = $1"),
+        vec![request_id.into()],
+    ))
+    .one(&state.db)
+    .await?
+    .ok_or_else(|| ApiError::not_found("log access request"))
 }
 
 fn require_admin(auth: &AuthUser) -> ApiResult<()> {

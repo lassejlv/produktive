@@ -261,6 +261,26 @@ export interface OkResponse {
   ok: boolean;
 }
 
+export type LogAccessStatus = "none" | "pending" | "approved" | "denied";
+
+export interface LogAccess {
+  status: LogAccessStatus;
+  requested_at: Iso | null;
+  decided_at: Iso | null;
+}
+
+export interface AdminLogAccessRequest {
+  id: Uuid;
+  workspace_id: Uuid;
+  workspace_name: string;
+  workspace_slug: string;
+  status: "pending" | "approved" | "denied" | "unknown";
+  requested_by_email: string | null;
+  requested_at: Iso;
+  decided_by_email: string | null;
+  decided_at: Iso | null;
+}
+
 export interface Check {
   time: Iso;
   region_id: Uuid | null;

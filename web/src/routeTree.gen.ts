@@ -33,6 +33,7 @@ import { Route as AuthedWidSettingsWorkersRouteImport } from './routes/_authed.$
 import { Route as AuthedWidSettingsNotificationsRouteImport } from './routes/_authed.$wid.settings.notifications'
 import { Route as AuthedWidSettingsMembersRouteImport } from './routes/_authed.$wid.settings.members'
 import { Route as AuthedWidSettingsLogStorageRouteImport } from './routes/_authed.$wid.settings.log-storage'
+import { Route as AuthedWidSettingsLogAccessRouteImport } from './routes/_authed.$wid.settings.log-access'
 import { Route as AuthedWidSettingsBillingRouteImport } from './routes/_authed.$wid.settings.billing'
 import { Route as AuthedWidMonitorsNewRouteImport } from './routes/_authed.$wid.monitors.new'
 import { Route as AuthedWidMonitorsMidRouteImport } from './routes/_authed.$wid.monitors.$mid'
@@ -163,6 +164,12 @@ const AuthedWidSettingsLogStorageRoute =
     path: '/log-storage',
     getParentRoute: () => AuthedWidSettingsRoute,
   } as any)
+const AuthedWidSettingsLogAccessRoute =
+  AuthedWidSettingsLogAccessRouteImport.update({
+    id: '/log-access',
+    path: '/log-access',
+    getParentRoute: () => AuthedWidSettingsRoute,
+  } as any)
 const AuthedWidSettingsBillingRoute =
   AuthedWidSettingsBillingRouteImport.update({
     id: '/billing',
@@ -219,6 +226,7 @@ export interface FileRoutesByFullPath {
   '/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
   '/$wid/monitors/new': typeof AuthedWidMonitorsNewRoute
   '/$wid/settings/billing': typeof AuthedWidSettingsBillingRoute
+  '/$wid/settings/log-access': typeof AuthedWidSettingsLogAccessRoute
   '/$wid/settings/log-storage': typeof AuthedWidSettingsLogStorageRoute
   '/$wid/settings/members': typeof AuthedWidSettingsMembersRoute
   '/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
@@ -247,6 +255,7 @@ export interface FileRoutesByTo {
   '/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
   '/$wid/monitors/new': typeof AuthedWidMonitorsNewRoute
   '/$wid/settings/billing': typeof AuthedWidSettingsBillingRoute
+  '/$wid/settings/log-access': typeof AuthedWidSettingsLogAccessRoute
   '/$wid/settings/log-storage': typeof AuthedWidSettingsLogStorageRoute
   '/$wid/settings/members': typeof AuthedWidSettingsMembersRoute
   '/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
@@ -280,6 +289,7 @@ export interface FileRoutesById {
   '/_authed/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
   '/_authed/$wid/monitors/new': typeof AuthedWidMonitorsNewRoute
   '/_authed/$wid/settings/billing': typeof AuthedWidSettingsBillingRoute
+  '/_authed/$wid/settings/log-access': typeof AuthedWidSettingsLogAccessRoute
   '/_authed/$wid/settings/log-storage': typeof AuthedWidSettingsLogStorageRoute
   '/_authed/$wid/settings/members': typeof AuthedWidSettingsMembersRoute
   '/_authed/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
@@ -313,6 +323,7 @@ export interface FileRouteTypes {
     | '/$wid/monitors/$mid'
     | '/$wid/monitors/new'
     | '/$wid/settings/billing'
+    | '/$wid/settings/log-access'
     | '/$wid/settings/log-storage'
     | '/$wid/settings/members'
     | '/$wid/settings/notifications'
@@ -341,6 +352,7 @@ export interface FileRouteTypes {
     | '/$wid/monitors/$mid'
     | '/$wid/monitors/new'
     | '/$wid/settings/billing'
+    | '/$wid/settings/log-access'
     | '/$wid/settings/log-storage'
     | '/$wid/settings/members'
     | '/$wid/settings/notifications'
@@ -373,6 +385,7 @@ export interface FileRouteTypes {
     | '/_authed/$wid/monitors/$mid'
     | '/_authed/$wid/monitors/new'
     | '/_authed/$wid/settings/billing'
+    | '/_authed/$wid/settings/log-access'
     | '/_authed/$wid/settings/log-storage'
     | '/_authed/$wid/settings/members'
     | '/_authed/$wid/settings/notifications'
@@ -564,6 +577,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedWidSettingsLogStorageRouteImport
       parentRoute: typeof AuthedWidSettingsRoute
     }
+    '/_authed/$wid/settings/log-access': {
+      id: '/_authed/$wid/settings/log-access'
+      path: '/log-access'
+      fullPath: '/$wid/settings/log-access'
+      preLoaderRoute: typeof AuthedWidSettingsLogAccessRouteImport
+      parentRoute: typeof AuthedWidSettingsRoute
+    }
     '/_authed/$wid/settings/billing': {
       id: '/_authed/$wid/settings/billing'
       path: '/billing'
@@ -611,6 +631,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthedWidSettingsRouteChildren {
   AuthedWidSettingsBillingRoute: typeof AuthedWidSettingsBillingRoute
+  AuthedWidSettingsLogAccessRoute: typeof AuthedWidSettingsLogAccessRoute
   AuthedWidSettingsLogStorageRoute: typeof AuthedWidSettingsLogStorageRoute
   AuthedWidSettingsMembersRoute: typeof AuthedWidSettingsMembersRoute
   AuthedWidSettingsNotificationsRoute: typeof AuthedWidSettingsNotificationsRoute
@@ -620,6 +641,7 @@ interface AuthedWidSettingsRouteChildren {
 
 const AuthedWidSettingsRouteChildren: AuthedWidSettingsRouteChildren = {
   AuthedWidSettingsBillingRoute: AuthedWidSettingsBillingRoute,
+  AuthedWidSettingsLogAccessRoute: AuthedWidSettingsLogAccessRoute,
   AuthedWidSettingsLogStorageRoute: AuthedWidSettingsLogStorageRoute,
   AuthedWidSettingsMembersRoute: AuthedWidSettingsMembersRoute,
   AuthedWidSettingsNotificationsRoute: AuthedWidSettingsNotificationsRoute,

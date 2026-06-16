@@ -1,7 +1,8 @@
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Database, Plus } from "lucide-react";
+import { Database, Lock, Plus } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { toast } from "#/lib/toast";
+import { cn } from "#/lib/cn";
 import { Button } from "#/components/ui/button";
 import { Dialog, DialogClose, DialogContent } from "../components/Dialog";
 import { EmptyState } from "../components/EmptyState";
@@ -10,13 +11,15 @@ import { PageActions } from "../components/PageLayout";
 import { Spinner } from "#/components/ui/spinner";
 import { Skeleton } from "#/components/ui/skeleton";
 import {
-  logProjectsQuery,
+  logAccessQuery,
   meQuery,
   useCreateLogProject,
+  useLogAccess,
   useLogProjects,
   useMe,
+  useRequestLogAccess,
 } from "../lib/queries";
-import type { LogProject } from "../lib/types";
+import type { LogAccessStatus, LogProject } from "../lib/types";
 import { lastSeen } from "../lib/status";
 
 export const Route = createFileRoute("/_authed/$wid/logs/")({
@@ -25,8 +28,10 @@ export const Route = createFileRoute("/_authed/$wid/logs/")({
     description: "Log projects with dedicated search, ingest, and alerting workspaces.",
   },
   loader: async ({ context, params }) => {
+    // Don't load projects here — the endpoint 403s without access. The page
+    // resolves access first and only then fetches the project list.
     await Promise.all([
-      context.queryClient.ensureQueryData(logProjectsQuery(params.wid)),
+      context.queryClient.ensureQueryData(logAccessQuery(params.wid)),
       context.queryClient.ensureQueryData(meQuery),
     ]);
   },
@@ -37,7 +42,9 @@ function LogsPage() {
   const { wid } = Route.useParams();
   const navigate = useNavigate();
   const me = useMe();
-  const projects = useLogProjects(wid);
+  const access = useLogAccess(wid);
+  const approved = access.data?.status === "approved";
+  const projects = useLogProjects(wid, approved);
   const createProject = useCreateLogProject(wid);
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -50,7 +57,7 @@ function LogsPage() {
     <>
       <PageActions>
         <div className="flex flex-wrap items-center gap-2">
-          {me.data?.is_admin && (
+          {approved && me.data?.is_admin && (
             <Button
               render={<Link to="/$wid/settings/log-storage" params={{ wid }} />}
               type="button"
@@ -60,32 +67,55 @@ function LogsPage() {
               <Database size={14} /> Log storage
             </Button>
           )}
-          <Button type="button" variant="default" size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus size={14} /> New project
-          </Button>
-        </div>
-      </PageActions>
-
-      {projects.isLoading ? (
-        <ProjectGridSkeleton />
-      ) : sorted.length === 0 ? (
-        <EmptyState
-          icon={Database}
-          title="No log projects"
-          description="Create a project to receive log events through the ingest API."
-          action={
+          {approved && (
             <Button type="button" variant="default" size="sm" onClick={() => setCreateOpen(true)}>
               <Plus size={14} /> New project
             </Button>
-          }
-        />
-      ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {sorted.map((project) => (
-            <ProjectCard key={project.id} wid={wid} project={project} />
-          ))}
+          )}
         </div>
-      )}
+      </PageActions>
+
+      <div className="relative">
+        <div
+          className={cn(
+            "transition-opacity",
+            !approved && "pointer-events-none select-none opacity-35 blur-[2px]",
+          )}
+          aria-hidden={!approved}
+        >
+          {!approved ? (
+            <ProjectGridSkeleton />
+          ) : projects.isLoading ? (
+            <ProjectGridSkeleton />
+          ) : sorted.length === 0 ? (
+            <EmptyState
+              icon={Database}
+              title="No log projects"
+              description="Create a project to receive log events through the ingest API."
+              action={
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={() => setCreateOpen(true)}
+                >
+                  <Plus size={14} /> New project
+                </Button>
+              }
+            />
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {sorted.map((project) => (
+                <ProjectCard key={project.id} wid={wid} project={project} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {access.isSuccess && !approved && (
+          <RequestAccessOverlay wid={wid} status={access.data.status} />
+        )}
+      </div>
 
       <CreateProjectDialog
         open={createOpen}
@@ -106,6 +136,55 @@ function LogsPage() {
         }
       />
     </>
+  );
+}
+
+function RequestAccessOverlay({ wid, status }: { wid: string; status: LogAccessStatus }) {
+  const request = useRequestLogAccess(wid);
+  const pending = status === "pending";
+  const denied = status === "denied";
+
+  const description = pending
+    ? "Your request is in review. We'll unlock Logs for this workspace once it's approved."
+    : denied
+      ? "Your previous request was declined. You can submit a new request for review."
+      : "Logs is in early access. Request access to start shipping, searching, and alerting on your logs.";
+
+  return (
+    <div className="absolute inset-0 z-10 flex items-start justify-center px-4 pt-10 sm:pt-16">
+      <div className="w-full max-w-md rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-6 text-center shadow-[var(--shadow-pop)]">
+        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg-row)] text-[var(--color-fg-muted)]">
+          <Lock size={18} />
+        </div>
+        <h2 className="mt-4 text-[16px] font-medium text-[var(--color-fg)]">
+          {pending ? "Access requested" : "Logs is in early access"}
+        </h2>
+        <p className="mt-2 text-[13px] leading-5 text-[var(--color-fg-muted)]">{description}</p>
+        <div className="mt-5">
+          {pending ? (
+            <Button type="button" variant="secondary" size="sm" disabled>
+              Request pending
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              disabled={request.isPending}
+              onClick={() =>
+                request.mutate(undefined, {
+                  onSuccess: () => toast.success("Access requested"),
+                  onError: (err) => toast.error((err as Error).message),
+                })
+              }
+            >
+              {request.isPending && <Spinner className="size-3" />}
+              Request Access
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

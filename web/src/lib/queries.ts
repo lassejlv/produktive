@@ -8,10 +8,12 @@ import type {
   BillingSummary,
 } from "./billing";
 import type {
+  AdminLogAccessRequest,
   AdminLogBucket,
   AdminRegion,
   AuthResponse,
   Check,
+  LogAccess,
   IncidentUpdateStatus,
   CustomDomain,
   Incident,
@@ -190,6 +192,25 @@ export function useDeleteLogBucket() {
   return useMutation({
     mutationFn: (id: string) => api.del<OkResponse>(`/admin/log-buckets/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "log-buckets"] }),
+  });
+}
+
+export const adminLogAccessRequestsQuery = {
+  queryKey: ["admin", "log-access-requests"] as const,
+  queryFn: () => api.get<AdminLogAccessRequest[]>("/admin/log-access-requests"),
+  refetchInterval: 15_000,
+};
+
+export function useAdminLogAccessRequests(enabled = true) {
+  return useQuery({ ...adminLogAccessRequestsQuery, enabled });
+}
+
+export function useDecideLogAccessRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: "approved" | "denied" }) =>
+      api.patch<AdminLogAccessRequest>(`/admin/log-access-requests/${id}`, { status }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "log-access-requests"] }),
   });
 }
 
@@ -373,13 +394,30 @@ export function useNotificationDeliveries(wid: string, channelId: string | null)
   });
 }
 
+export const logAccessQuery = (wid: string) => ({
+  queryKey: ["logs", wid, "access"] as const,
+  queryFn: () => api.get<LogAccess>(`/workspaces/${wid}/logs/access`),
+});
+
+export function useLogAccess(wid: string) {
+  return useQuery(logAccessQuery(wid));
+}
+
+export function useRequestLogAccess(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<LogAccess>(`/workspaces/${wid}/logs/access/request`),
+    onSuccess: (data) => qc.setQueryData(["logs", wid, "access"], data),
+  });
+}
+
 export const logProjectsQuery = (wid: string) => ({
   queryKey: ["logs", wid, "projects"] as const,
   queryFn: () => api.get<LogProject[]>(`/workspaces/${wid}/logs/projects`),
 });
 
-export function useLogProjects(wid: string) {
-  return useQuery(logProjectsQuery(wid));
+export function useLogProjects(wid: string, enabled = true) {
+  return useQuery({ ...logProjectsQuery(wid), enabled });
 }
 
 export function useCreateLogProject(wid: string) {

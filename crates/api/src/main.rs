@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
         .nest("/incidents", http::incidents::routes())
         .nest("/monitors", http::monitors::routes())
         .nest("/notifications", http::notifications::routes())
-        .nest("/logs", http::logs::workspace_routes())
+        .nest("/logs", http::logs::workspace_routes(state.clone()))
         .nest("/custom-domains", http::custom_domains::routes())
         .nest("/billing", http::billing::routes())
         .nest("/regions", http::regions::routes())

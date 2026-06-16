@@ -2,6 +2,7 @@ pub mod check;
 pub mod custom_domain;
 pub mod incident;
 pub mod incident_update;
+pub mod log_access_request;
 pub mod log_alert_firing;
 pub mod log_alert_rule;
 pub mod log_ingest_token;

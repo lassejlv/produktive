@@ -22,6 +22,7 @@ mod m20260614_000019_create_polar_billing_state;
 mod m20260614_000020_manual_incidents;
 mod m20260615_000021_add_github_login;
 mod m20260615_000022_create_log_projects;
+mod m20260616_000023_create_log_access_requests;
 
 pub struct Migrator;
 
@@ -51,6 +52,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260614_000020_manual_incidents::Migration),
             Box::new(m20260615_000021_add_github_login::Migration),
             Box::new(m20260615_000022_create_log_projects::Migration),
+            Box::new(m20260616_000023_create_log_access_requests::Migration),
         ]
     }
 }

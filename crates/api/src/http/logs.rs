@@ -1,31 +1,40 @@
 use axum::{
     body::Bytes,
-    extract::{Path, Query, State},
+    extract::{Path, Query, Request, State},
     http::HeaderMap,
+    middleware::{self, Next},
+    response::Response,
     routing::{delete, get, patch, post},
     Extension, Json, Router,
 };
 use chrono::{DateTime, Duration, FixedOffset, Utc};
+use entity::log_access_request::{self, AccessStatus};
 use produktive_logging::{
     clean_level, normalize_payload, AppendBatch, LogStorageInfo, LogStoreOptions, SearchEvent,
     SearchRequest,
 };
 use rand::RngCore;
-use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement, Value};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait,
+    FromQueryResult, QueryFilter, Statement, Value,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
-    auth::password::sha256_hex,
+    auth::{password::sha256_hex, AuthUser},
     error::{ApiError, ApiResult},
     middleware::Membership,
     slug,
     state::AppState,
 };
 
-pub fn workspace_routes() -> Router<AppState> {
-    Router::new()
+pub fn workspace_routes(state: AppState) -> Router<AppState> {
+    // Feature-gated routes: a workspace must have an approved log-access grant
+    // to reach any of these. The gate runs after `workspace_guard` (so the
+    // `Membership` extension is present) and returns 403 otherwise.
+    let gated = Router::new()
         .route("/projects", get(list_projects).post(create_project))
         .route(
             "/projects/{project}",
@@ -48,6 +57,124 @@ pub fn workspace_routes() -> Router<AppState> {
             "/projects/{project}/alerts/{rule_id}",
             patch(update_alert_rule).delete(delete_alert_rule),
         )
+        .route_layer(middleware::from_fn_with_state(state, log_access_guard));
+
+    // Always reachable by any workspace member, regardless of access state, so
+    // the dashboard can show status and submit a request.
+    let open = Router::new()
+        .route("/access", get(get_access))
+        .route("/access/request", post(request_access));
+
+    gated.merge(open)
+}
+
+/// Returns the workspace's current log-access status row, if any.
+async fn load_access(
+    state: &AppState,
+    workspace_id: Uuid,
+) -> ApiResult<Option<log_access_request::Model>> {
+    Ok(log_access_request::Entity::find()
+        .filter(log_access_request::Column::WorkspaceId.eq(workspace_id))
+        .one(&state.db)
+        .await?)
+}
+
+fn access_status_str(status: AccessStatus) -> &'static str {
+    match status {
+        AccessStatus::Pending => "pending",
+        AccessStatus::Approved => "approved",
+        AccessStatus::Denied => "denied",
+    }
+}
+
+/// Middleware: 403 unless the workspace has an approved log-access grant.
+async fn log_access_guard(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    req: Request,
+    next: Next,
+) -> Result<Response, ApiError> {
+    let approved = matches!(
+        load_access(&state, m.workspace.id).await?.map(|r| r.status),
+        Some(AccessStatus::Approved)
+    );
+    if !approved {
+        return Err(ApiError::Forbidden);
+    }
+    Ok(next.run(req).await)
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct LogAccessView {
+    /// One of `none`, `pending`, `approved`, `denied`.
+    pub status: String,
+    pub requested_at: Option<DateTime<FixedOffset>>,
+    pub decided_at: Option<DateTime<FixedOffset>>,
+}
+
+impl LogAccessView {
+    fn from_row(row: Option<log_access_request::Model>) -> Self {
+        match row {
+            None => LogAccessView {
+                status: "none".to_string(),
+                requested_at: None,
+                decided_at: None,
+            },
+            Some(row) => LogAccessView {
+                status: access_status_str(row.status).to_string(),
+                requested_at: Some(row.requested_at),
+                decided_at: row.decided_at,
+            },
+        }
+    }
+}
+
+async fn get_access(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+) -> ApiResult<Json<LogAccessView>> {
+    Ok(Json(LogAccessView::from_row(
+        load_access(&state, m.workspace.id).await?,
+    )))
+}
+
+async fn request_access(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    auth: AuthUser,
+) -> ApiResult<Json<LogAccessView>> {
+    let now = Utc::now().fixed_offset();
+    let row = match load_access(&state, m.workspace.id).await? {
+        // Already granted or awaiting review — idempotent no-op.
+        Some(row) if matches!(row.status, AccessStatus::Approved | AccessStatus::Pending) => row,
+        // A previously denied request can be re-opened.
+        Some(row) => {
+            let mut model: log_access_request::ActiveModel = row.into();
+            model.status = Set(AccessStatus::Pending);
+            model.requested_by = Set(Some(auth.user.id));
+            model.requested_at = Set(now);
+            model.decided_by = Set(None);
+            model.decided_at = Set(None);
+            model.updated_at = Set(now);
+            model.update(&state.db).await?
+        }
+        None => {
+            log_access_request::ActiveModel {
+                id: Set(Uuid::now_v7()),
+                workspace_id: Set(m.workspace.id),
+                status: Set(AccessStatus::Pending),
+                requested_by: Set(Some(auth.user.id)),
+                requested_at: Set(now),
+                decided_by: Set(None),
+                decided_at: Set(None),
+                created_at: Set(now),
+                updated_at: Set(now),
+            }
+            .insert(&state.db)
+            .await?
+        }
+    };
+    Ok(Json(LogAccessView::from_row(Some(row))))
 }
 
 pub fn ingest_routes() -> Router<AppState> {

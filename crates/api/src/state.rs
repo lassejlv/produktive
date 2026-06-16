@@ -1,5 +1,6 @@
-use std::{sync::Arc, time::Duration};
+use std::{future::Future, sync::Arc, time::Duration};
 
+use anyhow::{anyhow, Context};
 use redis::aio::ConnectionManager;
 use reqwest::Client;
 use sea_orm::DatabaseConnection;
@@ -14,6 +15,8 @@ use crate::{
     config::Config,
     log_hot_cache::{LogHotCache, LogHotCacheOptions},
 };
+
+const REDIS_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Clone)]
 pub enum RedisState {
@@ -45,7 +48,7 @@ impl AppState {
             .map_err(anyhow::Error::from)?;
         let redis = if let Some(url) = &config.redis_url {
             let client = redis::Client::open(url.as_str())?;
-            match client.get_connection_manager().await {
+            match redis_connect_with_timeout(client.get_connection_manager()).await {
                 Ok(manager) => RedisState::Ready(manager),
                 Err(e) => {
                     tracing::error!(error = ?e, "REDIS_URL configured but Redis is unavailable");
@@ -83,6 +86,21 @@ impl AppState {
             log_hot_cache,
         })
     }
+}
+
+async fn redis_connect_with_timeout<F>(future: F) -> anyhow::Result<ConnectionManager>
+where
+    F: Future<Output = redis::RedisResult<ConnectionManager>>,
+{
+    tokio::time::timeout(REDIS_CONNECT_TIMEOUT, future)
+        .await
+        .map_err(|_| {
+            anyhow!(
+                "redis connection timed out after {:?}",
+                REDIS_CONNECT_TIMEOUT
+            )
+        })?
+        .context("connect redis")
 }
 
 fn build_email() -> anyhow::Result<EmailClient> {

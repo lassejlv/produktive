@@ -1,10 +1,14 @@
-use anyhow::{Context, Result};
+use std::time::Duration;
+
+use anyhow::{anyhow, Context, Result};
 use chrono::{FixedOffset, TimeZone, Utc};
 use produktive_logging::{LogEvent, SearchEvent, SearchRequest};
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
+
+const REDIS_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[derive(Clone)]
 pub struct LogHotCache {
@@ -41,9 +45,14 @@ struct CachedLogEvent {
 impl LogHotCache {
     pub async fn connect(options: LogHotCacheOptions) -> Result<Self> {
         let client = redis::Client::open(options.url.as_str()).context("open LOG_REDIS_URL")?;
-        let redis = client
-            .get_connection_manager()
+        let redis = tokio::time::timeout(REDIS_CONNECT_TIMEOUT, client.get_connection_manager())
             .await
+            .map_err(|_| {
+                anyhow!(
+                    "LOG_REDIS_URL connection timed out after {:?}",
+                    REDIS_CONNECT_TIMEOUT
+                )
+            })?
             .context("connect LOG_REDIS_URL")?;
         Ok(Self {
             redis,

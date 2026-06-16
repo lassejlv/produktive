@@ -1,4 +1,4 @@
-import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Link, createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
@@ -40,6 +40,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Input } from "../components/Input";
 import { Spinner } from "#/components/ui/spinner";
 import {
+  logAccessQuery,
   logProjectsQuery,
   useCreateLogAlert,
   useCreateLogToken,
@@ -108,8 +109,13 @@ export const Route = createFileRoute("/_authed/$wid/logs/$project")({
     layout: "bleed",
     parent: { label: "Logs", to: "/$wid/logs" },
   },
-  loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(logProjectsQuery(params.wid)),
+  loader: async ({ context, params }) => {
+    const access = await context.queryClient.ensureQueryData(logAccessQuery(params.wid));
+    if (access.status !== "approved") {
+      throw redirect({ to: "/$wid/logs", params: { wid: params.wid } });
+    }
+    return context.queryClient.ensureQueryData(logProjectsQuery(params.wid));
+  },
   component: LogExplorerRoute,
 });
 
