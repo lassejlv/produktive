@@ -450,21 +450,12 @@ pub async fn forgot_password(
         // path: it must not become a timing oracle that distinguishes whether
         // the email is registered (the whole point of always returning ok).
         let ttl_minutes = state.config.password_reset_ttl_minutes;
-        match password_reset_url(state.config.app_url.as_deref(), &token) {
-            Some(reset_url) => {
-                let state = state.clone();
-                let to = user_model.email.clone();
-                tokio::spawn(async move {
-                    send_password_reset_email(&state, &to, &reset_url, ttl_minutes).await;
-                });
-            }
-            None => {
-                tracing::warn!(
-                    email = %user_model.email,
-                    "APP_URL not set; password reset email not sent (link would be unusable)"
-                );
-            }
-        }
+        let reset_url = password_reset_url(state.config.app_url.as_deref(), &token);
+        let state = state.clone();
+        let to = user_model.email.clone();
+        tokio::spawn(async move {
+            send_password_reset_email(&state, &to, &reset_url, ttl_minutes).await;
+        });
     }
 
     Ok(Json(OkResponse { ok: true }))
@@ -541,11 +532,15 @@ pub async fn reset_password(
     }))
 }
 
-/// Build the absolute reset link. Returns `None` when no `APP_URL` is
-/// configured, since a relative link in an email is unusable.
-fn password_reset_url(app_url: Option<&str>, token: &str) -> Option<String> {
-    let base = app_url?.trim_end_matches('/');
-    Some(format!("{base}/reset-password?token={token}"))
+/// Build the reset link. Uses `APP_URL` when set (so the link is absolute and
+/// clickable in an email); falls back to a relative path otherwise — mirroring
+/// `invite_accept_url`, so a missing `APP_URL` never silently drops the email.
+fn password_reset_url(app_url: Option<&str>, token: &str) -> String {
+    let path = format!("/reset-password?token={token}");
+    match app_url {
+        Some(base) => format!("{}{}", base.trim_end_matches('/'), path),
+        None => path,
+    }
 }
 
 async fn send_password_reset_email(state: &AppState, to: &str, reset_url: &str, ttl_minutes: i64) {
@@ -561,7 +556,7 @@ async fn send_password_reset_email(state: &AppState, to: &str, reset_url: &str, 
         reset_url = reset_url_html,
     );
 
-    if let Err(err) = state
+    match state
         .email
         .send(OutboundEmail {
             to: to.to_owned(),
@@ -571,7 +566,14 @@ async fn send_password_reset_email(state: &AppState, to: &str, reset_url: &str, 
         })
         .await
     {
-        tracing::warn!(%err, email = %to, "failed to send password reset email");
+        Ok(true) => tracing::info!(email = %to, "password reset email sent"),
+        // `send` returns Ok(false) when the email client is disabled (SMTP not
+        // configured) — surface it so a silent no-op is diagnosable.
+        Ok(false) => tracing::warn!(
+            email = %to,
+            "password reset email NOT sent: email client disabled (SMTP not configured)"
+        ),
+        Err(err) => tracing::error!(%err, email = %to, "failed to send password reset email"),
     }
 }
 
@@ -845,10 +847,33 @@ fn registration_admin_flag(_email: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::registration_admin_flag;
+    use super::{password_reset_url, registration_admin_flag};
 
     #[test]
     fn self_service_registration_never_grants_admin_from_email() {
         assert!(!registration_admin_flag("admin@example.com"));
+    }
+
+    #[test]
+    fn password_reset_url_uses_app_url_when_set() {
+        assert_eq!(
+            password_reset_url(Some("https://app.example.com"), "abc123"),
+            "https://app.example.com/reset-password?token=abc123"
+        );
+        // trailing slash on the base is trimmed (no double slash)
+        assert_eq!(
+            password_reset_url(Some("https://app.example.com/"), "abc123"),
+            "https://app.example.com/reset-password?token=abc123"
+        );
+    }
+
+    #[test]
+    fn password_reset_url_falls_back_to_relative_when_app_url_unset() {
+        // Must never return empty / skip — a missing APP_URL still yields a
+        // sendable link (matches invite_accept_url), so the email is not dropped.
+        assert_eq!(
+            password_reset_url(None, "abc123"),
+            "/reset-password?token=abc123"
+        );
     }
 }
