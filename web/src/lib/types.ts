@@ -269,6 +269,33 @@ export interface LogAccess {
   decided_at: Iso | null;
 }
 
+export interface AdminWorkspaceUsage {
+  workspace_id: Uuid;
+  workspace_name: string;
+  workspace_slug: string;
+  billing_workspace_id: Uuid;
+  is_billing_customer: boolean;
+  billing_enabled: boolean;
+  plan: string;
+  events_used: number;
+  events_included: number | null;
+  events_overage_allowed: boolean;
+  monitors_used: number;
+  monitors_included: number | null;
+  members_used: number;
+  members_included: number | null;
+  current_period_end: Iso | null;
+  usage_reset_at: Iso | null;
+}
+
+export interface AdminUsageResetResult {
+  workspace_id: Uuid;
+  billing_workspace_id: Uuid;
+  events_consumed_before: number;
+  events_consumed_after: number;
+  polar_event_ingested: boolean;
+}
+
 export interface AdminLogAccessRequest {
   id: Uuid;
   workspace_id: Uuid;

@@ -19,6 +19,9 @@ pub struct Model {
     pub customer_state: Json,
     pub last_event_id: Option<String>,
     pub last_synced_at: chrono::DateTime<chrono::FixedOffset>,
+    pub usage_reset_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    pub events_consumed_baseline: f64,
+    pub events_baseline_period_end: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
     pub updated_at: chrono::DateTime<chrono::FixedOffset>,
 }

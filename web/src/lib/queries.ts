@@ -11,6 +11,8 @@ import type {
   AdminLogAccessRequest,
   AdminLogBucket,
   AdminRegion,
+  AdminUsageResetResult,
+  AdminWorkspaceUsage,
   AuthResponse,
   Check,
   LogAccess,
@@ -211,6 +213,28 @@ export function useDecideLogAccessRequest() {
     mutationFn: ({ id, status }: { id: string; status: "approved" | "denied" }) =>
       api.patch<AdminLogAccessRequest>(`/admin/log-access-requests/${id}`, { status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "log-access-requests"] }),
+  });
+}
+
+export const adminWorkspaceUsageQuery = (ident: string) => ({
+  queryKey: ["admin", "workspace-usage", ident] as const,
+  queryFn: () =>
+    api.get<AdminWorkspaceUsage>(`/admin/workspaces/${encodeURIComponent(ident)}/usage`),
+});
+
+export function useAdminWorkspaceUsage(ident: string | null) {
+  return useQuery({ ...adminWorkspaceUsageQuery(ident ?? ""), enabled: !!ident });
+}
+
+export function useResetWorkspaceUsage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ident: string) =>
+      api.post<AdminUsageResetResult>(
+        `/admin/workspaces/${encodeURIComponent(ident)}/usage/reset`,
+      ),
+    onSuccess: (_result, ident) =>
+      qc.invalidateQueries({ queryKey: ["admin", "workspace-usage", ident] }),
   });
 }
 

@@ -247,6 +247,66 @@ pub async fn update_stored_meter_usage(
     Ok(())
 }
 
+/// Admin usage-reset bookkeeping for a billing customer, read from its
+/// `workspace_billing_states` row (all `Utc`-normalised).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UsageReset {
+    pub usage_reset_at: Option<DateTime<Utc>>,
+    pub events_consumed_baseline: f64,
+    pub events_baseline_period_end: Option<DateTime<Utc>>,
+}
+
+/// Load the usage-reset state for the billing customer behind `workspace_id`.
+pub async fn load_usage_reset(state: &AppState, workspace_id: Uuid) -> ApiResult<UsageReset> {
+    let billing_workspace_id = billing_customer_workspace_id(state, workspace_id).await?;
+    let Some(row) = workspace_billing_state::Entity::find_by_id(billing_workspace_id)
+        .one(&state.db)
+        .await?
+    else {
+        return Ok(UsageReset::default());
+    };
+    Ok(UsageReset {
+        usage_reset_at: row.usage_reset_at.map(|d| d.with_timezone(&Utc)),
+        events_consumed_baseline: row.events_consumed_baseline,
+        events_baseline_period_end: row.events_baseline_period_end.map(|d| d.with_timezone(&Utc)),
+    })
+}
+
+/// Persist a usage reset onto the billing customer's row. `billing_workspace_id`
+/// must already be the resolved billing-customer workspace.
+pub async fn persist_usage_reset(
+    state: &AppState,
+    billing_workspace_id: Uuid,
+    reset_at: DateTime<Utc>,
+    events_consumed_baseline: f64,
+    events_baseline_period_end: Option<DateTime<Utc>>,
+) -> ApiResult<()> {
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE workspace_billing_states
+            SET usage_reset_at = $2,
+                events_consumed_baseline = $3,
+                events_baseline_period_end = $4,
+                updated_at = now()
+            WHERE workspace_id = $1
+            "#,
+            vec![
+                billing_workspace_id.into(),
+                reset_at.fixed_offset().into(),
+                events_consumed_baseline.into(),
+                events_baseline_period_end.map(|d| d.fixed_offset()).into(),
+            ],
+        ))
+        .await?;
+    if let Some(billing) = state.billing.as_ref() {
+        billing.invalidate(billing_workspace_id);
+    }
+    Ok(())
+}
+
 pub async fn find_workspace_for_customer(
     state: &AppState,
     customer_id: Option<&str>,

@@ -23,6 +23,7 @@ mod m20260614_000020_manual_incidents;
 mod m20260615_000021_add_github_login;
 mod m20260615_000022_create_log_projects;
 mod m20260616_000023_create_log_access_requests;
+mod m20260616_000024_add_usage_reset;
 
 pub struct Migrator;
 
@@ -53,6 +54,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260615_000021_add_github_login::Migration),
             Box::new(m20260615_000022_create_log_projects::Migration),
             Box::new(m20260616_000023_create_log_access_requests::Migration),
+            Box::new(m20260616_000024_add_usage_reset::Migration),
         ]
     }
 }

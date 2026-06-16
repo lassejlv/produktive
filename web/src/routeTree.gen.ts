@@ -30,6 +30,7 @@ import { Route as AuthedWidSettingsIndexRouteImport } from './routes/_authed.$wi
 import { Route as AuthedWidMonitorsIndexRouteImport } from './routes/_authed.$wid.monitors.index'
 import { Route as AuthedWidLogsIndexRouteImport } from './routes/_authed.$wid.logs.index'
 import { Route as AuthedWidSettingsWorkersRouteImport } from './routes/_authed.$wid.settings.workers'
+import { Route as AuthedWidSettingsUsageRouteImport } from './routes/_authed.$wid.settings.usage'
 import { Route as AuthedWidSettingsNotificationsRouteImport } from './routes/_authed.$wid.settings.notifications'
 import { Route as AuthedWidSettingsMembersRouteImport } from './routes/_authed.$wid.settings.members'
 import { Route as AuthedWidSettingsLogStorageRouteImport } from './routes/_authed.$wid.settings.log-storage'
@@ -146,6 +147,11 @@ const AuthedWidSettingsWorkersRoute =
     path: '/workers',
     getParentRoute: () => AuthedWidSettingsRoute,
   } as any)
+const AuthedWidSettingsUsageRoute = AuthedWidSettingsUsageRouteImport.update({
+  id: '/usage',
+  path: '/usage',
+  getParentRoute: () => AuthedWidSettingsRoute,
+} as any)
 const AuthedWidSettingsNotificationsRoute =
   AuthedWidSettingsNotificationsRouteImport.update({
     id: '/notifications',
@@ -230,6 +236,7 @@ export interface FileRoutesByFullPath {
   '/$wid/settings/log-storage': typeof AuthedWidSettingsLogStorageRoute
   '/$wid/settings/members': typeof AuthedWidSettingsMembersRoute
   '/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
+  '/$wid/settings/usage': typeof AuthedWidSettingsUsageRoute
   '/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
   '/$wid/logs/': typeof AuthedWidLogsIndexRoute
   '/$wid/monitors/': typeof AuthedWidMonitorsIndexRoute
@@ -259,6 +266,7 @@ export interface FileRoutesByTo {
   '/$wid/settings/log-storage': typeof AuthedWidSettingsLogStorageRoute
   '/$wid/settings/members': typeof AuthedWidSettingsMembersRoute
   '/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
+  '/$wid/settings/usage': typeof AuthedWidSettingsUsageRoute
   '/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
   '/$wid/logs': typeof AuthedWidLogsIndexRoute
   '/$wid/monitors': typeof AuthedWidMonitorsIndexRoute
@@ -293,6 +301,7 @@ export interface FileRoutesById {
   '/_authed/$wid/settings/log-storage': typeof AuthedWidSettingsLogStorageRoute
   '/_authed/$wid/settings/members': typeof AuthedWidSettingsMembersRoute
   '/_authed/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
+  '/_authed/$wid/settings/usage': typeof AuthedWidSettingsUsageRoute
   '/_authed/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
   '/_authed/$wid/logs/': typeof AuthedWidLogsIndexRoute
   '/_authed/$wid/monitors/': typeof AuthedWidMonitorsIndexRoute
@@ -327,6 +336,7 @@ export interface FileRouteTypes {
     | '/$wid/settings/log-storage'
     | '/$wid/settings/members'
     | '/$wid/settings/notifications'
+    | '/$wid/settings/usage'
     | '/$wid/settings/workers'
     | '/$wid/logs/'
     | '/$wid/monitors/'
@@ -356,6 +366,7 @@ export interface FileRouteTypes {
     | '/$wid/settings/log-storage'
     | '/$wid/settings/members'
     | '/$wid/settings/notifications'
+    | '/$wid/settings/usage'
     | '/$wid/settings/workers'
     | '/$wid/logs'
     | '/$wid/monitors'
@@ -389,6 +400,7 @@ export interface FileRouteTypes {
     | '/_authed/$wid/settings/log-storage'
     | '/_authed/$wid/settings/members'
     | '/_authed/$wid/settings/notifications'
+    | '/_authed/$wid/settings/usage'
     | '/_authed/$wid/settings/workers'
     | '/_authed/$wid/logs/'
     | '/_authed/$wid/monitors/'
@@ -556,6 +568,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedWidSettingsWorkersRouteImport
       parentRoute: typeof AuthedWidSettingsRoute
     }
+    '/_authed/$wid/settings/usage': {
+      id: '/_authed/$wid/settings/usage'
+      path: '/usage'
+      fullPath: '/$wid/settings/usage'
+      preLoaderRoute: typeof AuthedWidSettingsUsageRouteImport
+      parentRoute: typeof AuthedWidSettingsRoute
+    }
     '/_authed/$wid/settings/notifications': {
       id: '/_authed/$wid/settings/notifications'
       path: '/notifications'
@@ -635,6 +654,7 @@ interface AuthedWidSettingsRouteChildren {
   AuthedWidSettingsLogStorageRoute: typeof AuthedWidSettingsLogStorageRoute
   AuthedWidSettingsMembersRoute: typeof AuthedWidSettingsMembersRoute
   AuthedWidSettingsNotificationsRoute: typeof AuthedWidSettingsNotificationsRoute
+  AuthedWidSettingsUsageRoute: typeof AuthedWidSettingsUsageRoute
   AuthedWidSettingsWorkersRoute: typeof AuthedWidSettingsWorkersRoute
   AuthedWidSettingsIndexRoute: typeof AuthedWidSettingsIndexRoute
 }
@@ -645,6 +665,7 @@ const AuthedWidSettingsRouteChildren: AuthedWidSettingsRouteChildren = {
   AuthedWidSettingsLogStorageRoute: AuthedWidSettingsLogStorageRoute,
   AuthedWidSettingsMembersRoute: AuthedWidSettingsMembersRoute,
   AuthedWidSettingsNotificationsRoute: AuthedWidSettingsNotificationsRoute,
+  AuthedWidSettingsUsageRoute: AuthedWidSettingsUsageRoute,
   AuthedWidSettingsWorkersRoute: AuthedWidSettingsWorkersRoute,
   AuthedWidSettingsIndexRoute: AuthedWidSettingsIndexRoute,
 }

@@ -9,9 +9,9 @@ use uuid::Uuid;
 
 use crate::{
     billing::{
-        billing_customer_workspace_id, customer_state_for_billing,
-        refresh_and_store_customer_state, update_stored_meter_usage, MeterUsageUpdate,
-        PolarCatalog,
+        billing_customer_workspace_id, customer_state_for_billing, load_usage_reset,
+        persist_usage_reset, refresh_and_store_customer_state, update_stored_meter_usage,
+        MeterUsageUpdate, PolarCatalog, UsageReset,
     },
     error::{ApiError, ApiResult},
     state::AppState,
@@ -290,12 +290,20 @@ pub async fn reconcile_usage(state: &AppState, workspace_id: Uuid) -> ApiResult<
             parse_timestamp(sub.current_period_start.as_deref()),
             parse_timestamp(sub.current_period_end.as_deref()),
         ) {
-            let checks = count_checks_in_window(state, workspace_id, start, end).await?;
+            // Honour any admin usage reset so the sweep doesn't re-ingest the
+            // checks we just discounted.
+            let reset = load_usage_reset(state, workspace_id).await?;
+            let effective_start = effective_window_start(start, end, &reset);
+            let checks = count_checks_in_window(state, workspace_id, effective_start, end).await?;
             let db_units = checks * EVENT_UNITS_PER_CHECK;
-            let consumed = cstate
-                .meter(meter_id)
-                .map(|m| m.consumed_units)
-                .unwrap_or(0.0);
+            let consumed = apply_events_baseline(
+                cstate
+                    .meter(meter_id)
+                    .map(|m| m.consumed_units)
+                    .unwrap_or(0.0),
+                Some(end),
+                &reset,
+            );
             let delta = db_units - consumed;
             if delta > f64::EPSILON {
                 // Deterministic key: a racing reconcile applies the same
@@ -321,6 +329,103 @@ pub async fn reconcile_usage(state: &AppState, workspace_id: Uuid) -> ApiResult<
         billing.invalidate(billing_workspace_id);
     }
     Ok(())
+}
+
+/// Outcome of an admin usage reset.
+#[derive(Clone, Copy, Debug)]
+pub struct UsageResetSummary {
+    pub billing_workspace_id: Uuid,
+    pub events_consumed_before: f64,
+    pub events_consumed_after: f64,
+    /// Whether the compensating event was accepted by Polar.
+    pub polar_event_ingested: bool,
+}
+
+/// Reset a workspace's billing-events usage for the current period, in Polar and
+/// locally. Mirrors the normal reporting path: a compensating negative `event`
+/// corrects Polar's meter, while a stored baseline + reset marker make the local
+/// enforcement/display read zero regardless of how Polar treats negative events.
+///
+/// Note: billing is aggregated on the owner's personal workspace, so this resets
+/// usage for the whole billing customer (every workspace that owner has).
+pub async fn reset_workspace_usage(
+    state: &AppState,
+    workspace_id: Uuid,
+) -> ApiResult<UsageResetSummary> {
+    let billing = state
+        .billing
+        .as_ref()
+        .ok_or_else(|| ApiError::service_unavailable("billing is not configured"))?;
+    let Some(meter_id) = billing.catalog.meter_id("events").map(str::to_owned) else {
+        return Err(ApiError::service_unavailable(
+            "events meter is not configured",
+        ));
+    };
+    let billing_workspace_id = billing_customer_workspace_id(state, workspace_id).await?;
+    let ext = customer_id(billing_workspace_id);
+
+    // Snapshot current consumption straight from Polar.
+    let cstate = refresh_and_store_customer_state(state, billing_workspace_id).await?;
+    let period_end = cstate
+        .active_subscription()
+        .and_then(|sub| parse_timestamp(sub.current_period_end.as_deref()));
+    let consumed_before = cstate
+        .meter(&meter_id)
+        .map(|m| m.consumed_units)
+        .unwrap_or(0.0);
+
+    // Best-effort: correct Polar's billed meter with a compensating event. A
+    // deterministic per-period key means a repeated reset in the same period
+    // won't stack multiple credits.
+    let mut polar_event_ingested = false;
+    if consumed_before.abs() > f64::EPSILON {
+        let key = match period_end {
+            Some(end) => format!("usage-reset-{billing_workspace_id}-{}", end.timestamp()),
+            None => format!("usage-reset-{billing_workspace_id}-noperiod"),
+        };
+        let event = EventCreate::new("event", ext)
+            .metadata("units", -consumed_before)
+            .external_id(key);
+        match billing.client.events().ingest(vec![event]).await {
+            Ok(_) => {
+                polar_event_ingested = true;
+                billing.invalidate(billing_workspace_id);
+            }
+            Err(e) => {
+                tracing::warn!(workspace_id = %workspace_id, error = %e, "usage reset: compensating event ingest failed");
+            }
+        }
+    }
+
+    // Re-read so the baseline reflects whatever Polar actually did with the
+    // negative event. Subtracting this observed value zeroes effective usage in
+    // both the honored and ignored cases.
+    let consumed_after = match refresh_and_store_customer_state(state, billing_workspace_id).await {
+        Ok(state) => state
+            .meter(&meter_id)
+            .map(|m| m.consumed_units)
+            .unwrap_or(0.0),
+        Err(e) => {
+            tracing::warn!(workspace_id = %workspace_id, error = ?e, "usage reset: post-correction refresh failed");
+            consumed_before
+        }
+    };
+
+    persist_usage_reset(
+        state,
+        billing_workspace_id,
+        Utc::now(),
+        consumed_after,
+        period_end,
+    )
+    .await?;
+
+    Ok(UsageResetSummary {
+        billing_workspace_id,
+        events_consumed_before: consumed_before,
+        events_consumed_after: consumed_after,
+        polar_event_ingested,
+    })
 }
 
 pub async fn load_owner_email(state: &AppState, owner_id: Uuid) -> ApiResult<String> {
@@ -423,28 +528,75 @@ async fn count_checks_in_window(
     Ok(row.map(|row| row.count).unwrap_or_default() as f64)
 }
 
+/// The events meter consumed this period, after applying any admin usage reset.
+/// This is `max(reset-adjusted Polar consumption, reset-windowed DB check count)`
+/// — the same value used for both enforcement and display.
+pub async fn effective_events_consumed(
+    state: &AppState,
+    workspace_id: Uuid,
+    cstate: &CustomerState,
+    meter_id: &str,
+) -> ApiResult<f64> {
+    let reset = load_usage_reset(state, workspace_id).await?;
+    let consumed = cstate
+        .meter(meter_id)
+        .map(|m| m.consumed_units)
+        .unwrap_or(0.0);
+    let Some(sub) = cstate.active_subscription() else {
+        return Ok(apply_events_baseline(consumed, None, &reset));
+    };
+    let (Some(start), Some(end)) = (
+        parse_timestamp(sub.current_period_start.as_deref()),
+        parse_timestamp(sub.current_period_end.as_deref()),
+    ) else {
+        return Ok(apply_events_baseline(consumed, None, &reset));
+    };
+    let effective_consumed = apply_events_baseline(consumed, Some(end), &reset);
+    let effective_start = effective_window_start(start, end, &reset);
+    let db_usage = count_checks_in_window(state, workspace_id, effective_start, end).await?
+        * EVENT_UNITS_PER_CHECK;
+    Ok(effective_consumed.max(db_usage))
+}
+
 async fn event_usage(
     state: &AppState,
     workspace_id: Uuid,
     cstate: &CustomerState,
     meter_id: &str,
 ) -> ApiResult<f64> {
-    let meter_usage = cstate
-        .meter(meter_id)
-        .map(|m| m.consumed_units)
-        .unwrap_or(0.0);
-    let Some(sub) = cstate.active_subscription() else {
-        return Ok(meter_usage);
-    };
-    let (Some(start), Some(end)) = (
-        parse_timestamp(sub.current_period_start.as_deref()),
-        parse_timestamp(sub.current_period_end.as_deref()),
-    ) else {
-        return Ok(meter_usage);
-    };
-    let db_usage =
-        count_checks_in_window(state, workspace_id, start, end).await? * EVENT_UNITS_PER_CHECK;
-    Ok(meter_usage.max(db_usage))
+    effective_events_consumed(state, workspace_id, cstate, meter_id).await
+}
+
+/// True when two period boundaries refer to the same billing period (allowing a
+/// 1s slop for serialization rounding).
+fn same_period(a: Option<DateTime<Utc>>, b: Option<DateTime<Utc>>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => (a - b).num_seconds().abs() <= 1,
+        _ => false,
+    }
+}
+
+/// Subtract a usage-reset baseline from raw Polar consumption, but only while the
+/// reset still applies to the current period (the meter resets next period).
+fn apply_events_baseline(consumed: f64, period_end: Option<DateTime<Utc>>, reset: &UsageReset) -> f64 {
+    if same_period(reset.events_baseline_period_end, period_end) {
+        (consumed - reset.events_consumed_baseline).max(0.0)
+    } else {
+        consumed
+    }
+}
+
+/// The window start for counting checks: the reset instant if a reset happened
+/// inside the current period, otherwise the period start.
+fn effective_window_start(
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+    reset: &UsageReset,
+) -> DateTime<Utc> {
+    match reset.usage_reset_at {
+        Some(reset_at) if reset_at > start && reset_at < end => reset_at,
+        _ => start,
+    }
 }
 
 fn parse_timestamp(raw: Option<&str>) -> Option<DateTime<Utc>> {
@@ -505,5 +657,53 @@ mod tests {
     #[test]
     fn check_events_are_weighted_for_billing() {
         assert_eq!(3.0 * EVENT_UNITS_PER_CHECK, 6.0);
+    }
+
+    fn period_end(secs: i64) -> DateTime<Utc> {
+        Utc.timestamp_opt(secs, 0).unwrap()
+    }
+
+    #[test]
+    fn baseline_subtracted_only_within_its_period() {
+        let end = period_end(1_000_000);
+        let reset = UsageReset {
+            usage_reset_at: Some(period_end(999_000)),
+            events_consumed_baseline: 80.0,
+            events_baseline_period_end: Some(end),
+        };
+        // Same period: subtract the baseline (and clamp at zero).
+        assert_eq!(apply_events_baseline(100.0, Some(end), &reset), 20.0);
+        assert_eq!(apply_events_baseline(50.0, Some(end), &reset), 0.0);
+        // Next period (meter already reset upstream): baseline no longer applies.
+        assert_eq!(
+            apply_events_baseline(100.0, Some(period_end(2_000_000)), &reset),
+            100.0
+        );
+        // No baseline recorded: pass through unchanged.
+        assert_eq!(
+            apply_events_baseline(100.0, Some(end), &UsageReset::default()),
+            100.0
+        );
+    }
+
+    #[test]
+    fn window_start_moves_to_reset_within_period() {
+        let start = period_end(1000);
+        let end = period_end(9000);
+        let inside = UsageReset {
+            usage_reset_at: Some(period_end(5000)),
+            ..UsageReset::default()
+        };
+        assert_eq!(effective_window_start(start, end, &inside), period_end(5000));
+        // A reset from a previous period (before this window) is ignored.
+        let stale = UsageReset {
+            usage_reset_at: Some(period_end(500)),
+            ..UsageReset::default()
+        };
+        assert_eq!(effective_window_start(start, end, &stale), start);
+        assert_eq!(
+            effective_window_start(start, end, &UsageReset::default()),
+            start
+        );
     }
 }

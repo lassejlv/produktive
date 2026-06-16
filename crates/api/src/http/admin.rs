@@ -1,13 +1,13 @@
 use axum::{
     extract::{Path, State},
-    routing::{get, patch},
+    routing::{get, patch, post},
     Json, Router,
 };
 use chrono::{DateTime, FixedOffset};
-use entity::region;
+use entity::{region, workspace};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ConnectionTrait, DatabaseBackend, EntityTrait,
-    FromQueryResult, QueryOrder, Statement, Value,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait,
+    FromQueryResult, QueryFilter, QueryOrder, Statement, Value,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::AuthUser,
+    billing,
     error::{ApiError, ApiResult},
     regions,
     state::AppState,
@@ -39,6 +40,11 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/log-access-requests/{request_id}",
             patch(decide_log_access_request),
+        )
+        .route("/workspaces/{workspace}/usage", get(get_workspace_usage))
+        .route(
+            "/workspaces/{workspace}/usage/reset",
+            post(reset_workspace_usage),
         )
 }
 
@@ -424,6 +430,139 @@ async fn load_log_access_request(
     .one(&state.db)
     .await?
     .ok_or_else(|| ApiError::not_found("log access request"))
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminWorkspaceUsageView {
+    pub workspace_id: Uuid,
+    pub workspace_name: String,
+    pub workspace_slug: String,
+    /// The owner's personal workspace — the actual Polar billing customer.
+    pub billing_workspace_id: Uuid,
+    pub is_billing_customer: bool,
+    pub billing_enabled: bool,
+    pub plan: String,
+    pub events_used: f64,
+    pub events_included: Option<f64>,
+    pub events_overage_allowed: bool,
+    pub monitors_used: f64,
+    pub monitors_included: Option<f64>,
+    pub members_used: f64,
+    pub members_included: Option<f64>,
+    pub current_period_end: Option<DateTime<FixedOffset>>,
+    pub usage_reset_at: Option<DateTime<FixedOffset>>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AdminUsageResetResult {
+    pub workspace_id: Uuid,
+    pub billing_workspace_id: Uuid,
+    pub events_consumed_before: f64,
+    pub events_consumed_after: f64,
+    pub polar_event_ingested: bool,
+}
+
+async fn resolve_workspace(state: &AppState, ident: &str) -> ApiResult<workspace::Model> {
+    if let Ok(id) = Uuid::parse_str(ident) {
+        if let Some(ws) = workspace::Entity::find_by_id(id).one(&state.db).await? {
+            return Ok(ws);
+        }
+    }
+    let slug = ident.trim().to_lowercase();
+    workspace::Entity::find()
+        .filter(workspace::Column::Slug.eq(slug))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("workspace"))
+}
+
+async fn get_workspace_usage(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(ident): Path<String>,
+) -> ApiResult<Json<AdminWorkspaceUsageView>> {
+    require_admin(&auth)?;
+    let ws = resolve_workspace(&state, &ident).await?;
+
+    let Some(b) = state.billing.as_ref() else {
+        return Ok(Json(AdminWorkspaceUsageView {
+            workspace_id: ws.id,
+            workspace_name: ws.name.clone(),
+            workspace_slug: ws.slug.clone(),
+            billing_workspace_id: ws.id,
+            is_billing_customer: true,
+            billing_enabled: false,
+            plan: "free".to_owned(),
+            events_used: 0.0,
+            events_included: None,
+            events_overage_allowed: false,
+            monitors_used: billing::billing_monitor_count(&state, ws.id).await?,
+            monitors_included: None,
+            members_used: billing::billing_member_count(&state, ws.id).await?,
+            members_included: None,
+            current_period_end: None,
+            usage_reset_at: None,
+        }));
+    };
+
+    let billing_workspace_id = billing::billing_customer_workspace_id(&state, ws.id).await?;
+    let cstate = billing::customer_state_for_billing(&state, ws.id).await?;
+    let plan = cstate
+        .active_subscription()
+        .and_then(|sub| b.catalog.tier_for_product(&sub.product_id))
+        .unwrap_or("free")
+        .to_owned();
+
+    let events_used = match b.catalog.meter_id("events") {
+        Some(mid) => billing::effective_events_consumed(&state, ws.id, cstate.as_ref(), mid).await?,
+        None => 0.0,
+    };
+    let events_ent = b.catalog.entitlement(&plan, "events");
+    let monitors_ent = b.catalog.entitlement(&plan, "monitors");
+    let members_ent = b.catalog.entitlement(&plan, "members");
+
+    let current_period_end = cstate
+        .active_subscription()
+        .and_then(|sub| sub.current_period_end.as_deref())
+        .and_then(|s| DateTime::parse_from_rfc3339(s).ok());
+
+    let reset = billing::load_usage_reset(&state, ws.id).await?;
+
+    Ok(Json(AdminWorkspaceUsageView {
+        workspace_id: ws.id,
+        workspace_name: ws.name.clone(),
+        workspace_slug: ws.slug.clone(),
+        billing_workspace_id,
+        is_billing_customer: billing_workspace_id == ws.id,
+        billing_enabled: true,
+        plan,
+        events_used,
+        events_included: events_ent.as_ref().map(|e| e.included),
+        events_overage_allowed: events_ent.as_ref().map(|e| e.overage_allowed).unwrap_or(false),
+        monitors_used: billing::billing_monitor_count(&state, ws.id).await?,
+        monitors_included: monitors_ent.as_ref().map(|e| e.included),
+        members_used: billing::billing_member_count(&state, ws.id).await?,
+        members_included: members_ent.as_ref().map(|e| e.included),
+        current_period_end,
+        usage_reset_at: reset.usage_reset_at.map(|d| d.fixed_offset()),
+    }))
+}
+
+async fn reset_workspace_usage(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(ident): Path<String>,
+) -> ApiResult<Json<AdminUsageResetResult>> {
+    require_admin(&auth)?;
+    let ws = resolve_workspace(&state, &ident).await?;
+    let summary = billing::reset_workspace_usage(&state, ws.id).await?;
+    Ok(Json(AdminUsageResetResult {
+        workspace_id: ws.id,
+        billing_workspace_id: summary.billing_workspace_id,
+        events_consumed_before: summary.events_consumed_before,
+        events_consumed_after: summary.events_consumed_after,
+        polar_event_ingested: summary.polar_event_ingested,
+    }))
 }
 
 fn require_admin(auth: &AuthUser) -> ApiResult<()> {
