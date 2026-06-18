@@ -96,6 +96,7 @@ export function redirectCheckout(res: BillingCheckoutResponse) {
   if (target) window.location.assign(target);
 }
 
+/** @deprecated Prefer `usePolarCheckout().openFromResponse` for embedded checkout. */
 export function redirectBillingUrl(res: { payment_url?: string; url?: string }) {
   const target = res.payment_url ?? res.url;
   if (target) window.location.assign(target);

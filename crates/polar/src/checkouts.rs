@@ -29,6 +29,9 @@ pub struct CheckoutCreate {
     /// A free subscription to upgrade in place (Polar requires it be on free pricing).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subscription_id: Option<String>,
+    /// Origin of the page embedding checkout (scheme + host [+ port]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embed_origin: Option<String>,
 }
 
 impl CheckoutCreate {
@@ -38,6 +41,7 @@ impl CheckoutCreate {
             external_customer_id: Some(external_customer_id.into()),
             success_url: None,
             subscription_id: None,
+            embed_origin: None,
         }
     }
 
@@ -48,6 +52,11 @@ impl CheckoutCreate {
 
     pub fn subscription_id(mut self, subscription_id: Option<String>) -> Self {
         self.subscription_id = subscription_id;
+        self
+    }
+
+    pub fn embed_origin(mut self, embed_origin: Option<String>) -> Self {
+        self.embed_origin = embed_origin;
         self
     }
 }

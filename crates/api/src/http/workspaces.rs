@@ -20,6 +20,7 @@ use crate::{
         billing_customer_workspace_id, customer_id, customer_state_for_billing, ensure_customer,
     },
     error::{ApiError, ApiResult},
+    http::billing::embed_origin_from_app_url,
     middleware::Membership,
     slug,
     state::AppState,
@@ -260,13 +261,19 @@ async fn create_workspace_checkout(
         )
     });
     let ext = customer_id(billing_customer_workspace_id(state, ws.id).await?);
+    let embed_origin = state
+        .config
+        .app_url
+        .as_deref()
+        .and_then(embed_origin_from_app_url);
     let checkout = CheckoutCreate::new(&tier.product_id, ext)
         .success_url(success_url)
         .subscription_id(
             cstate
                 .as_ref()
                 .and_then(|state| state.active_subscription().map(|sub| sub.id.clone())),
-        );
+        )
+        .embed_origin(embed_origin);
     let checkout = billing.client.checkouts().create(checkout).await?;
     Ok(Some(checkout.url))
 }

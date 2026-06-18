@@ -473,7 +473,8 @@ pub async fn attach(
     let success_url = billing_return_url(&state, body.success_url, &m.workspace.slug)?;
     let checkout = CheckoutCreate::new(&target.product_id, &ext)
         .success_url(success_url)
-        .subscription_id(sub.map(|s| s.id.clone()));
+        .subscription_id(sub.map(|s| s.id.clone()))
+        .embed_origin(billing_embed_origin(&state));
     let checkout = billing.client.checkouts().create(checkout).await?;
     Ok(Json(json!({ "url": checkout.url })))
 }
@@ -653,7 +654,8 @@ pub async fn setup_payment(
             cstate
                 .as_ref()
                 .and_then(|state| state.active_subscription().map(|s| s.id.clone())),
-        );
+        )
+        .embed_origin(billing_embed_origin(&state));
     let checkout = billing.client.checkouts().create(checkout).await?;
     Ok(Json(json!({ "url": checkout.url })))
 }
@@ -820,6 +822,26 @@ fn default_billing_url(state: &AppState, slug: &str) -> Option<String> {
         .map(|base| format!("{base}/{slug}/settings/billing?checkout=success"))
 }
 
+/// Polar requires `embed_origin` when checkout is opened via the embedded SDK.
+pub fn embed_origin_from_app_url(app_url: &str) -> Option<String> {
+    let parsed = Url::parse(app_url).ok()?;
+    let host = parsed.host_str()?;
+    let mut origin = format!("{}://{}", parsed.scheme(), host);
+    if let Some(port) = parsed.port() {
+        origin.push(':');
+        origin.push_str(&port.to_string());
+    }
+    Some(origin)
+}
+
+fn billing_embed_origin(state: &AppState) -> Option<String> {
+    state
+        .config
+        .app_url
+        .as_deref()
+        .and_then(embed_origin_from_app_url)
+}
+
 fn validate_billing_return_url(state: &AppState, requested: &str) -> ApiResult<String> {
     let app_url = state.config.app_url.as_ref().ok_or_else(|| {
         ApiError::service_unavailable("APP_URL must be configured for billing redirects")
@@ -839,4 +861,29 @@ fn validate_billing_return_url(state: &AppState, requested: &str) -> ApiResult<S
     }
 
     Ok(requested.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::embed_origin_from_app_url;
+
+    #[test]
+    fn embed_origin_strips_path() {
+        assert_eq!(
+            embed_origin_from_app_url("http://localhost:5173"),
+            Some("http://localhost:5173".to_owned())
+        );
+        assert_eq!(
+            embed_origin_from_app_url("https://produktive.app/app/billing"),
+            Some("https://produktive.app".to_owned())
+        );
+    }
+
+    #[test]
+    fn embed_origin_keeps_non_default_port() {
+        assert_eq!(
+            embed_origin_from_app_url("http://localhost:3000/foo"),
+            Some("http://localhost:3000".to_owned())
+        );
+    }
 }

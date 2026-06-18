@@ -14,12 +14,11 @@ import {
   hasActivePaidSubscription,
   nextResetText,
   planChangeKind,
-  redirectBillingUrl,
-  redirectCheckout,
   usageNumbers,
   type BillingAction,
   type BillingPlanSummary,
 } from "../lib/billing";
+import { usePolarCheckout } from "../hooks/use-polar-checkout";
 import {
   useBillingAttach,
   useBillingCancel,
@@ -59,11 +58,15 @@ function BillingPage() {
   const cancelDowngrade = useBillingCancelDowngrade(wid);
   const portal = useBillingPortal(wid);
   const setupPayment = useBillingSetupPayment(wid);
+  const polarCheckout = usePolarCheckout();
+
+  const checkoutComplete = () => {
+    toast.success("Checkout completed — your plan may take a moment to update.");
+    void summary.refetch();
+  };
 
   useEffect(() => {
-    if (checkout === "success") {
-      toast.success("Checkout completed — your plan may take a moment to update.");
-    }
+    if (checkout === "success") checkoutComplete();
   }, [checkout]);
 
   if (summary.isLoading) {
@@ -143,7 +146,10 @@ function BillingPage() {
 
   function openSetupPayment() {
     setupPayment.mutate(undefined, {
-      onSuccess: (res) => redirectBillingUrl(res),
+      onSuccess: async (res) => {
+        const opened = await polarCheckout.openFromResponse(res, { onSuccess: checkoutComplete });
+        if (!opened) toast.error("No checkout URL returned");
+      },
       onError: (err) => toast.error((err as Error).message),
     });
   }
@@ -231,10 +237,16 @@ function BillingPage() {
         onConfirm={() => {
           if (!selectedPlan) return;
           attach.mutate(selectedPlan.id, {
-            onSuccess: (res) => {
+            onSuccess: async (res) => {
               setSelectedPlan(null);
-              if (res.payment_url || res.url) redirectCheckout(res);
-              else toast.success("Plan updated");
+              if (res.payment_url || res.url) {
+                const opened = await polarCheckout.openFromResponse(res, {
+                  onSuccess: checkoutComplete,
+                });
+                if (!opened) toast.error("No checkout URL returned");
+              } else {
+                toast.success("Plan updated");
+              }
             },
             onError: (err) => toast.error((err as Error).message),
           });
