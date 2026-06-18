@@ -23,7 +23,7 @@ export const Route = createFileRoute("/")({
       return;
     }
     if (target) {
-      throw redirect({ to: "/$wid/monitors", params: { wid: target.slug } });
+      throw redirect({ to: "/$wid", params: { wid: target.slug } });
     }
   },
   component: HomePage,

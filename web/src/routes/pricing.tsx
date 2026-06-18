@@ -225,7 +225,7 @@ function usePlanCta(
   },
 ): {
   label: string;
-  to: "/signup" | "/$wid/monitors" | "/$wid/settings/billing";
+  to: "/signup" | "/$wid" | "/$wid/settings/billing";
   params?: { wid: string };
   disabled?: boolean;
   variant?: "default" | "ghost" | "secondary";
@@ -254,7 +254,7 @@ function usePlanCta(
   if (free) {
     return {
       label: "Open dashboard",
-      to: "/$wid/monitors",
+      to: "/$wid",
       params: { wid: workspaceSlug },
       variant: "ghost",
     };

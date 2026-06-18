@@ -86,7 +86,7 @@ export function MarketingShell({
               <Button
                 variant="default"
                 size="sm"
-                onClick={() => nav({ to: "/$wid/monitors", params: { wid: workspace.slug } })}
+                onClick={() => nav({ to: "/$wid", params: { wid: workspace.slug } })}
               >
                 Dashboard
               </Button>

@@ -1,8 +1,19 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Activity, ArrowRight, ChevronRight, Clock, Plus } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  Check as CheckIcon,
+  ChevronRight,
+  Clock,
+  Copy,
+  ExternalLink,
+  Plus,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "#/lib/cn";
+import { usageNumbers } from "#/lib/billing";
 import { AnimatedIcon } from "../components/AnimatedIcon";
 import { Button } from "#/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
@@ -11,9 +22,11 @@ import { PROBE_ICON } from "../components/ProbeIcons";
 import {
   incidentsQuery,
   monitorsQuery,
+  useBillingSummary,
   useChecks,
   useIncidents,
   useMonitors,
+  useWorkspaces,
 } from "../lib/queries";
 import { STATUS_COLOR, STATUS_LABEL, lastSeen } from "../lib/status";
 import {
@@ -48,6 +61,9 @@ function OverviewPage() {
   const { wid } = Route.useParams();
   const { data: monitors = [] } = useMonitors(wid);
   const { data: openIncidents = [] } = useIncidents(wid, "open");
+  const { data: workspaces = [] } = useWorkspaces();
+  const billing = useBillingSummary(wid);
+  const workspace = workspaces.find((w) => w.id === wid || w.slug === wid);
   const [filter, setFilter] = useState<Filter>("all");
 
   const byStatus = useMemo(
@@ -75,6 +91,15 @@ function OverviewPage() {
   const shown = useMemo(
     () => (filter === "all" ? ranked : ranked.filter((m) => monitorStatus(m) === filter)),
     [ranked, filter],
+  );
+
+  const affected = useMemo(
+    () =>
+      ranked.filter((m) => {
+        const s = monitorStatus(m);
+        return s === "down" || s === "degraded";
+      }),
+    [ranked],
   );
 
   if (monitors.length === 0) {
@@ -113,6 +138,20 @@ function OverviewPage() {
   );
 
   const allGood = byStatus.down === 0 && byStatus.degraded === 0;
+  const needsAttention = !allGood || openIncidents.length > 0;
+  const pausedCount = monitors.filter((m) => m.billing_paused_at).length;
+  const monitorsUsage = usageNumbers(billing.data?.balances.monitors);
+  const usageWarning = Boolean(
+    billing.data?.billing_enabled &&
+      monitorsUsage.percent != null &&
+      monitorsUsage.percent >= 85,
+  );
+
+  const publicUrl = workspace?.status_slug
+    ? `${window.location.origin}/s/${workspace.status_slug}`
+    : null;
+  const statusPageLive = Boolean(workspace?.status_slug && workspace.status_page_enabled);
+
   const heroColor = allGood
     ? "var(--color-ok)"
     : byStatus.down
@@ -133,9 +172,18 @@ function OverviewPage() {
 
   return (
     <div className="flex flex-col gap-7">
+      {(pausedCount > 0 || usageWarning) && (
+        <BillingAlert
+          wid={wid}
+          pausedCount={pausedCount}
+          usageWarning={usageWarning}
+          monitorsUsage={monitorsUsage}
+        />
+      )}
+
       {/* system status hero — one calm line */}
       <div
-        className="flex items-center gap-4 rounded-[var(--radius-lg)] border bg-[var(--color-bg-elev)] p-5 shadow-[var(--shadow-xs)]"
+        className="flex flex-col gap-4 rounded-[var(--radius-lg)] border bg-[var(--color-bg-elev)] p-5 shadow-[var(--shadow-xs)] sm:flex-row sm:items-center"
         style={{
           borderColor: allGood
             ? "var(--color-border)"
@@ -161,9 +209,70 @@ function OverviewPage() {
           <div className="mt-0.5 text-[13px] text-[var(--color-fg-muted)]">
             {openIncidents.length} open incident{openIncidents.length === 1 ? "" : "s"}
             {lastChecked && ` · last check ${lastSeen(lastChecked)}`}
+            {" · "}refreshes every 15s
           </div>
         </div>
+        {statusPageLive && publicUrl && (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <a
+              href={publicUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-8 items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-[12px] font-medium text-[var(--color-fg)] no-underline transition-colors hover:bg-[var(--color-bg-row)]"
+            >
+              <ExternalLink size={13} />
+              Status page
+            </a>
+            <CopyLinkButton url={publicUrl} />
+          </div>
+        )}
       </div>
+
+      {needsAttention && (
+        <section className="flex flex-col gap-5">
+          {openIncidents.length > 0 && (
+            <div>
+              <div className="mb-3 flex items-center justify-between">
+                <SectionHead className="mb-0">Needs attention</SectionHead>
+                <Link
+                  to="/$wid/incidents"
+                  params={{ wid }}
+                  className="inline-flex items-center gap-1 text-[12px] text-[var(--color-link)] no-underline hover:underline"
+                >
+                  All incidents <ArrowRight size={12} />
+                </Link>
+              </div>
+              <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)]">
+                {openIncidents.slice(0, 4).map((incident) => (
+                  <IncidentLine key={incident.id} wid={wid} incident={incident} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {affected.length > 0 && (
+            <div>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <SectionHead className="mb-0">{`Affected monitors (${affected.length})`}</SectionHead>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-[12px] text-[var(--color-link)]"
+                  onClick={() => setFilter(byStatus.down > 0 ? "down" : "degraded")}
+                >
+                  Jump to list <ArrowRight size={12} />
+                </Button>
+              </div>
+              <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)]">
+                {affected.slice(0, 6).map((m) => (
+                  <MonitorRow key={m.id} wid={wid} monitor={m} trends={showTrends} compact />
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* additive KPI row — performance & scale, not a restatement of the hero */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -184,7 +293,16 @@ function OverviewPage() {
       {/* every monitor, worst-first, filterable */}
       <section>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <SectionHead className="mb-0">Monitors</SectionHead>
+          <div className="flex items-center gap-3">
+            <SectionHead className="mb-0">All monitors</SectionHead>
+            <Link
+              to="/$wid/monitors"
+              params={{ wid }}
+              className="inline-flex items-center gap-1 text-[12px] text-[var(--color-link)] no-underline hover:underline"
+            >
+              Canvas view <ArrowRight size={12} />
+            </Link>
+          </div>
           <StatusFilterBar
             counts={byStatus}
             total={monitors.length}
@@ -205,29 +323,23 @@ function OverviewPage() {
         )}
       </section>
 
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <SectionHead className="mb-0">Open incidents</SectionHead>
-          <Link
-            to="/$wid/incidents"
-            params={{ wid }}
-            className="inline-flex items-center gap-1 text-[12px] text-[var(--color-link)] no-underline hover:underline"
-          >
-            View all <ArrowRight size={12} />
-          </Link>
-        </div>
-        {openIncidents.length === 0 ? (
+      {!needsAttention && (
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <SectionHead className="mb-0">Open incidents</SectionHead>
+            <Link
+              to="/$wid/incidents"
+              params={{ wid }}
+              className="inline-flex items-center gap-1 text-[12px] text-[var(--color-link)] no-underline hover:underline"
+            >
+              View all <ArrowRight size={12} />
+            </Link>
+          </div>
           <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-5 text-[13px] text-[var(--color-fg-muted)] shadow-[var(--shadow-xs)]">
             No open incidents.
           </div>
-        ) : (
-          <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)]">
-            {openIncidents.slice(0, 6).map((incident) => (
-              <IncidentLine key={incident.id} wid={wid} incident={incident} />
-            ))}
-          </div>
-        )}
-      </section>
+        </section>
+      )}
     </div>
   );
 }
@@ -239,6 +351,71 @@ function withUnit(ms: number | null) {
       {ms}
       <span className="ml-0.5 text-[12px] font-normal text-[var(--color-fg-dim)]">ms</span>
     </>
+  );
+}
+
+function BillingAlert({
+  wid,
+  pausedCount,
+  usageWarning,
+  monitorsUsage,
+}: {
+  wid: string;
+  pausedCount: number;
+  usageWarning: boolean;
+  monitorsUsage: ReturnType<typeof usageNumbers>;
+}) {
+  const title =
+    pausedCount > 0 ? "Checks paused" : "Approaching plan limit";
+  const message =
+    pausedCount > 0 && usageWarning
+      ? `${pausedCount} monitor${pausedCount === 1 ? "" : "s"} paused by billing · monitor usage at ${Math.round(monitorsUsage.percent ?? 0)}%`
+      : pausedCount > 0
+        ? `${pausedCount} monitor${pausedCount === 1 ? " is" : "s are"} paused — upgrade or remove monitors to resume checks`
+        : `Monitor usage is at ${Math.round(monitorsUsage.percent ?? 0)}% of your plan limit`;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-warn)_8%,var(--color-bg-elev))] p-4 shadow-[var(--shadow-xs)] sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-3">
+        <AlertTriangle size={16} className="mt-0.5 shrink-0 text-[var(--color-warn)]" />
+        <div>
+          <p className="text-[13px] font-medium text-[var(--color-fg)]">{title}</p>
+          <p className="mt-0.5 text-[12px] text-[var(--color-fg-muted)]">{message}</p>
+        </div>
+      </div>
+      <Link
+        to="/$wid/settings/billing"
+        params={{ wid }}
+        search={{ checkout: undefined }}
+        className="inline-flex h-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-[12px] font-medium text-[var(--color-fg)] no-underline transition-colors hover:bg-[var(--color-bg-row)]"
+      >
+        View billing
+      </Link>
+    </div>
+  );
+}
+
+function CopyLinkButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = () => {
+    void navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    });
+  };
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={copy}
+      className="h-8 gap-1.5 border border-[var(--color-border)] bg-[var(--color-bg)] px-3 text-[12px] font-medium text-[var(--color-fg)] hover:bg-[var(--color-bg-row)]"
+    >
+      {copied ? <CheckIcon size={13} /> : <Copy size={13} />}
+      {copied ? "Copied" : "Copy link"}
+    </Button>
   );
 }
 
@@ -295,7 +472,17 @@ function StatusFilterBar({
 }
 
 /** One monitor as a dense, scannable row with a live latency sparkline. */
-function MonitorRow({ wid, monitor, trends }: { wid: string; monitor: Monitor; trends: boolean }) {
+function MonitorRow({
+  wid,
+  monitor,
+  trends,
+  compact = false,
+}: {
+  wid: string;
+  monitor: Monitor;
+  trends: boolean;
+  compact?: boolean;
+}) {
   const status = monitorStatus(monitor);
   const color = STATUS_COLOR[status];
   const KindIcon = PROBE_ICON[monitor.kind];
@@ -366,7 +553,7 @@ function MonitorRow({ wid, monitor, trends }: { wid: string; monitor: Monitor; t
           </div>
         )}
 
-        {trends && (
+        {!compact && trends && (
           <div className="hidden shrink-0 md:block">
             <Sparkline checks={checks} status={status} />
           </div>
@@ -388,7 +575,10 @@ function MonitorRow({ wid, monitor, trends }: { wid: string; monitor: Monitor; t
         </span>
 
         <span
-          className="hidden w-[84px] shrink-0 text-right text-[10.5px] font-semibold uppercase tracking-[0.08em] sm:block"
+          className={cn(
+            "shrink-0 text-right text-[10.5px] font-semibold uppercase tracking-[0.08em]",
+            compact ? "w-[72px]" : "hidden w-[84px] sm:block",
+          )}
           style={{ color }}
         >
           {STATUS_LABEL[status]}
