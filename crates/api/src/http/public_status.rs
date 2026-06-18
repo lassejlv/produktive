@@ -1,5 +1,7 @@
 use axum::{
     extract::{Path, State},
+    http::{header, HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::get,
     Json, Router,
 };
@@ -15,14 +17,29 @@ use uuid::Uuid;
 use crate::{
     error::{ApiError, ApiResult},
     state::AppState,
+    status_summary_cache::SUMMARY_CACHE_CONTROL,
 };
 
-use super::custom_domains::normalize_domain;
+use super::custom_domains::{host_from_headers, normalize_domain};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/status/{slug}", get(get_status))
+        .route("/status/{slug}/summary", get(get_summary))
         .route("/status/by-domain/{domain}", get(get_status_by_domain))
+        .route(
+            "/status/by-domain/{domain}/summary",
+            get(get_summary_by_domain),
+        )
+}
+
+/// Page-relative summary routes (custom domain + slug-hosted status pages).
+pub fn page_routes() -> Router<AppState> {
+    Router::new()
+        .route("/api/v2/summary.json", get(summary_by_host))
+        .route("/summary", get(summary_by_host))
+        .route("/s/{slug}/api/v2/summary.json", get(summary_by_slug_page))
+        .route("/s/{slug}/summary", get(summary_by_slug_page))
 }
 
 /// Days of daily check history rendered as the uptime bar on the public page.
@@ -106,6 +123,91 @@ pub struct PublicStatus {
     pub incidents: Vec<PublicIncident>,
     pub style: StatusStyle,
     pub generated_at: DateTime<FixedOffset>,
+}
+
+/// Atlassian Statuspage-compatible summary payload (`/api/v2/summary.json`).
+#[derive(Serialize, ToSchema)]
+pub struct StatuspageSummary {
+    pub page: StatuspagePage,
+    pub status: StatuspageStatus,
+    pub components: Vec<StatuspageComponent>,
+    pub incidents: Vec<StatuspageIncident>,
+    pub scheduled_maintenances: Vec<StatuspageScheduledMaintenance>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct StatuspagePage {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub time_zone: String,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct StatuspageStatus {
+    pub indicator: String,
+    pub description: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct StatuspageComponent {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    pub position: i32,
+    pub page_id: String,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+    pub description: Option<String>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct StatuspageIncident {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    pub impact: String,
+    pub page_id: String,
+    pub shortlink: String,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+    pub monitoring_at: Option<DateTime<FixedOffset>>,
+    pub resolved_at: Option<DateTime<FixedOffset>>,
+    pub incident_updates: Vec<StatuspageIncidentUpdate>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct StatuspageScheduledMaintenance {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    pub impact: String,
+    pub page_id: String,
+    pub shortlink: String,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+    pub monitoring_at: Option<DateTime<FixedOffset>>,
+    pub resolved_at: Option<DateTime<FixedOffset>>,
+    pub scheduled_for: DateTime<FixedOffset>,
+    pub scheduled_until: DateTime<FixedOffset>,
+    pub incident_updates: Vec<StatuspageIncidentUpdate>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct StatuspageIncidentUpdate {
+    pub id: String,
+    pub incident_id: String,
+    pub status: String,
+    pub body: String,
+    pub created_at: DateTime<FixedOffset>,
+    pub display_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+struct LoadedPublicStatus {
+    status: PublicStatus,
+    monitor_created_at: HashMap<Uuid, DateTime<FixedOffset>>,
 }
 
 /// Shape of the JSONB `status_page_config` column.
@@ -237,15 +339,9 @@ pub async fn get_status(
     State(state): State<AppState>,
     Path(slug): Path<String>,
 ) -> ApiResult<Json<PublicStatus>> {
-    let slug = slug.trim().to_lowercase();
-    let ws = workspace::Entity::find()
-        .filter(workspace::Column::StatusSlug.eq(&slug))
-        .filter(workspace::Column::StatusPageEnabled.eq(true))
-        .one(&state.db)
-        .await?
-        .ok_or_else(|| ApiError::not_found("status page not found"))?;
-
-    status_for_workspace(&state, ws).await
+    let ws = workspace_by_slug(&state, &slug).await?;
+    let loaded = load_public_status(&state, ws).await?;
+    Ok(Json(loaded.status))
 }
 
 #[utoipa::path(
@@ -262,7 +358,83 @@ pub async fn get_status_by_domain(
     State(state): State<AppState>,
     Path(domain): Path<String>,
 ) -> ApiResult<Json<PublicStatus>> {
+    let ws = workspace_by_domain(&state, &domain).await?;
+    let loaded = load_public_status(&state, ws).await?;
+    Ok(Json(loaded.status))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/public/status/{slug}/summary",
+    params(("slug" = String, Path, description = "status page slug")),
+    responses(
+        (status = 200, body = StatuspageSummary),
+        (status = 404, description = "Status page not found"),
+    ),
+    tag = "public"
+)]
+pub async fn get_summary(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> ApiResult<Response> {
+    let ws = workspace_by_slug(&state, &slug).await?;
+    let page_url = page_url_for_slug(&state, ws.status_slug.as_deref().unwrap_or(&slug));
+    summary_for_workspace(&state, ws, page_url).await
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/public/status/by-domain/{domain}/summary",
+    params(("domain" = String, Path, description = "custom status page domain")),
+    responses(
+        (status = 200, body = StatuspageSummary),
+        (status = 404, description = "Status page not found"),
+    ),
+    tag = "public"
+)]
+pub async fn get_summary_by_domain(
+    State(state): State<AppState>,
+    Path(domain): Path<String>,
+) -> ApiResult<Response> {
     let domain = normalize_domain(&domain)
+        .ok_or_else(|| ApiError::bad_request("domain is not a valid hostname"))?;
+    let ws = workspace_by_domain(&state, &domain).await?;
+    let page_url = page_url_for_host(&format!("https://{domain}"));
+    summary_for_workspace(&state, ws, page_url).await
+}
+
+pub async fn summary_by_slug_page(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> ApiResult<Response> {
+    let ws = workspace_by_slug(&state, &slug).await?;
+    let page_url = page_url_for_slug(&state, ws.status_slug.as_deref().unwrap_or(&slug));
+    summary_for_workspace(&state, ws, page_url).await
+}
+
+pub async fn summary_by_host(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<Response> {
+    let domain = host_from_headers(&headers)
+        .ok_or_else(|| ApiError::not_found("status page not found"))?;
+    let ws = workspace_by_domain(&state, &domain).await?;
+    let page_url = page_url_from_headers(&headers, &domain);
+    summary_for_workspace(&state, ws, page_url).await
+}
+
+async fn workspace_by_slug(state: &AppState, slug: &str) -> ApiResult<workspace::Model> {
+    let slug = slug.trim().to_lowercase();
+    workspace::Entity::find()
+        .filter(workspace::Column::StatusSlug.eq(&slug))
+        .filter(workspace::Column::StatusPageEnabled.eq(true))
+        .one(&state.db)
+        .await?
+        .ok_or_else(|| ApiError::not_found("status page not found"))
+}
+
+async fn workspace_by_domain(state: &AppState, domain: &str) -> ApiResult<workspace::Model> {
+    let domain = normalize_domain(domain)
         .ok_or_else(|| ApiError::bad_request("domain is not a valid hostname"))?;
     let custom = custom_domain::Entity::find()
         .filter(custom_domain::Column::Hostname.eq(domain))
@@ -270,19 +442,65 @@ pub async fn get_status_by_domain(
         .one(&state.db)
         .await?
         .ok_or_else(|| ApiError::not_found("status page not found"))?;
-    let ws = workspace::Entity::find_by_id(custom.workspace_id)
+    workspace::Entity::find_by_id(custom.workspace_id)
         .filter(workspace::Column::StatusPageEnabled.eq(true))
         .one(&state.db)
         .await?
-        .ok_or_else(|| ApiError::not_found("status page not found"))?;
-
-    status_for_workspace(&state, ws).await
+        .ok_or_else(|| ApiError::not_found("status page not found"))
 }
 
-async fn status_for_workspace(
+async fn summary_for_workspace(
     state: &AppState,
     ws: workspace::Model,
-) -> ApiResult<Json<PublicStatus>> {
+    page_url: String,
+) -> ApiResult<Response> {
+    if let Some(body) = state.status_summary_cache.get(ws.id) {
+        return Ok(summary_response(body));
+    }
+
+    let loaded = load_public_status(state, ws.clone()).await?;
+    let summary = build_statuspage_summary(&ws, &loaded, &page_url);
+    let body = serde_json::to_vec(&summary).map_err(|e| ApiError::Internal(e.into()))?;
+    state.status_summary_cache.put(ws.id, body.clone());
+    Ok(summary_response(body))
+}
+
+fn summary_response(body: Vec<u8>) -> Response {
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::CACHE_CONTROL, SUMMARY_CACHE_CONTROL),
+        ],
+        body,
+    )
+        .into_response()
+}
+
+fn page_url_for_slug(state: &AppState, slug: &str) -> String {
+    let slug = slug.trim().trim_matches('/');
+    match state.config.app_url.as_deref() {
+        Some(base) => format!("{}/s/{}", base.trim_end_matches('/'), slug),
+        None => format!("/s/{slug}"),
+    }
+}
+
+fn page_url_for_host(host_with_scheme: &str) -> String {
+    host_with_scheme.trim_end_matches('/').to_string()
+}
+
+fn page_url_from_headers(headers: &HeaderMap, domain: &str) -> String {
+    let scheme = headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("https");
+    format!("{scheme}://{domain}")
+}
+
+async fn load_public_status(
+    state: &AppState,
+    ws: workspace::Model,
+) -> ApiResult<LoadedPublicStatus> {
     let config: StoredConfig = ws
         .status_page_config
         .as_ref()
@@ -350,9 +568,11 @@ async fn status_for_workspace(
         .map(|i| today - Duration::days(i))
         .collect();
 
+    let mut monitor_created_at = HashMap::new();
     let public_monitors: Vec<PublicMonitor> = monitors
         .into_iter()
         .map(|m| {
+            monitor_created_at.insert(m.id, m.created_at);
             let history: Vec<DayBucket> = days
                 .iter()
                 .map(|d| {
@@ -456,17 +676,220 @@ async fn status_for_workspace(
         });
     }
 
-    Ok(Json(PublicStatus {
-        workspace_name: ws.name,
-        title: ws.status_page_title,
-        description: ws.status_page_description,
-        overall: overall.to_string(),
-        monitors: public_monitors,
-        groups,
+    Ok(LoadedPublicStatus {
+        status: PublicStatus {
+            workspace_name: ws.name,
+            title: ws.status_page_title,
+            description: ws.status_page_description,
+            overall: overall.to_string(),
+            monitors: public_monitors,
+            groups,
+            incidents,
+            style,
+            generated_at: Utc::now().fixed_offset(),
+        },
+        monitor_created_at,
+    })
+}
+
+fn build_statuspage_summary(
+    ws: &workspace::Model,
+    loaded: &LoadedPublicStatus,
+    page_url: &str,
+) -> StatuspageSummary {
+    let status = &loaded.status;
+    let page_id = ws.id.to_string();
+    let page_name = status
+        .title
+        .as_deref()
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or(&status.workspace_name)
+        .to_string();
+    let (indicator, description) = statuspage_indicator(&status.overall);
+    let shortlink_base = format!("{}/incidents", page_url.trim_end_matches('/'));
+
+    let mut components = Vec::new();
+    let mut position = 1i32;
+    let mut placed = std::collections::HashSet::new();
+
+    for group in &status.groups {
+        for monitor in &group.monitors {
+            if !placed.insert(monitor.id) {
+                continue;
+            }
+            components.push(statuspage_component(
+                monitor,
+                &page_id,
+                position,
+                loaded.monitor_created_at.get(&monitor.id).copied(),
+                status.generated_at,
+            ));
+            position += 1;
+        }
+    }
+
+    let mut incidents = Vec::new();
+    let mut scheduled_maintenances = Vec::new();
+
+    for incident in &status.incidents {
+        if incident.status != "open" {
+            continue;
+        }
+        if incident.severity == "maintenance" {
+            scheduled_maintenances.push(statuspage_scheduled_maintenance(
+                incident,
+                &page_id,
+                &shortlink_base,
+            ));
+        } else {
+            incidents.push(statuspage_incident(incident, &page_id, &shortlink_base));
+        }
+    }
+
+    StatuspageSummary {
+        page: StatuspagePage {
+            id: page_id.clone(),
+            name: page_name,
+            url: page_url.to_string(),
+            time_zone: "Etc/UTC".to_string(),
+            updated_at: status.generated_at,
+        },
+        status: StatuspageStatus {
+            indicator: indicator.to_string(),
+            description: description.to_string(),
+        },
+        components,
         incidents,
-        style,
-        generated_at: Utc::now().fixed_offset(),
-    }))
+        scheduled_maintenances,
+    }
+}
+
+fn statuspage_component(
+    monitor: &PublicMonitor,
+    page_id: &str,
+    position: i32,
+    created_at: Option<DateTime<FixedOffset>>,
+    generated_at: DateTime<FixedOffset>,
+) -> StatuspageComponent {
+    let created_at = created_at.unwrap_or(generated_at);
+    let updated_at = monitor.last_checked_at.unwrap_or(generated_at);
+    StatuspageComponent {
+        id: monitor.id.to_string(),
+        name: monitor.name.clone(),
+        status: statuspage_component_status(&monitor.status).to_string(),
+        position,
+        page_id: page_id.to_string(),
+        created_at,
+        updated_at,
+        description: None,
+    }
+}
+
+fn statuspage_incident(
+    incident: &PublicIncident,
+    page_id: &str,
+    shortlink_base: &str,
+) -> StatuspageIncident {
+    let latest_status = incident
+        .updates
+        .last()
+        .map(|u| u.status.as_str())
+        .unwrap_or("investigating");
+    StatuspageIncident {
+        id: incident.id.to_string(),
+        name: incident.title.clone(),
+        status: latest_status.to_string(),
+        impact: statuspage_impact(&incident.severity).to_string(),
+        page_id: page_id.to_string(),
+        shortlink: shortlink_base.to_string(),
+        created_at: incident.started_at,
+        updated_at: incident.last_seen_at,
+        monitoring_at: None,
+        resolved_at: incident.resolved_at,
+        incident_updates: incident
+            .updates
+            .iter()
+            .map(|update| statuspage_incident_update(update))
+            .collect(),
+    }
+}
+
+fn statuspage_scheduled_maintenance(
+    incident: &PublicIncident,
+    page_id: &str,
+    shortlink_base: &str,
+) -> StatuspageScheduledMaintenance {
+    let latest_status = incident
+        .updates
+        .last()
+        .map(|u| u.status.as_str())
+        .unwrap_or("scheduled");
+    let maintenance_status = match latest_status {
+        "in_progress" | "monitoring" | "identified" | "investigating" => "in_progress",
+        _ => "scheduled",
+    };
+    let scheduled_until = incident
+        .resolved_at
+        .unwrap_or(incident.last_seen_at);
+    StatuspageScheduledMaintenance {
+        id: incident.id.to_string(),
+        name: incident.title.clone(),
+        status: maintenance_status.to_string(),
+        impact: statuspage_impact(&incident.severity).to_string(),
+        page_id: page_id.to_string(),
+        shortlink: shortlink_base.to_string(),
+        created_at: incident.started_at,
+        updated_at: incident.last_seen_at,
+        monitoring_at: None,
+        resolved_at: incident.resolved_at,
+        scheduled_for: incident.started_at,
+        scheduled_until,
+        incident_updates: incident
+            .updates
+            .iter()
+            .map(|update| statuspage_incident_update(update))
+            .collect(),
+    }
+}
+
+fn statuspage_incident_update(update: &PublicIncidentUpdate) -> StatuspageIncidentUpdate {
+    StatuspageIncidentUpdate {
+        id: update.id.to_string(),
+        incident_id: update.incident_id.to_string(),
+        status: update.status.clone(),
+        body: update.message.clone(),
+        created_at: update.created_at,
+        display_at: update.created_at,
+        updated_at: update.created_at,
+    }
+}
+
+fn statuspage_indicator(overall: &str) -> (&'static str, &'static str) {
+    match overall {
+        "up" => ("none", "All Systems Operational"),
+        "down" => ("critical", "Major Service Outage"),
+        "degraded" => ("minor", "Partial System Outage"),
+        _ => ("minor", "Partial System Outage"),
+    }
+}
+
+fn statuspage_component_status(status: &str) -> &'static str {
+    match status {
+        "up" => "operational",
+        "degraded" => "degraded_performance",
+        "down" => "major_outage",
+        _ => "operational",
+    }
+}
+
+fn statuspage_impact(severity: &str) -> &'static str {
+    match severity {
+        "critical" | "down" => "critical",
+        "degraded" | "minor" => "minor",
+        "informational" => "none",
+        "maintenance" => "none",
+        _ => "minor",
+    }
 }
 
 async fn public_incidents(state: &AppState, workspace_id: Uuid) -> ApiResult<Vec<PublicIncident>> {
@@ -583,7 +1006,10 @@ async fn public_incidents(state: &AppState, workspace_id: Uuid) -> ApiResult<Vec
 
 #[cfg(test)]
 mod tests {
-    use super::{overall_status, safe_public_url};
+    use super::{
+        overall_status, safe_public_url, statuspage_component_status, statuspage_impact,
+        statuspage_indicator,
+    };
 
     #[test]
     fn filters_unsafe_public_style_urls() {
@@ -608,5 +1034,46 @@ mod tests {
         );
         assert_eq!(overall_status(["unknown", "up"].into_iter()), "up");
         assert_eq!(overall_status(["unknown"].into_iter()), "unknown");
+    }
+
+    #[test]
+    fn statuspage_indicator_mapping() {
+        assert_eq!(
+            statuspage_indicator("up"),
+            ("none", "All Systems Operational")
+        );
+        assert_eq!(
+            statuspage_indicator("down"),
+            ("critical", "Major Service Outage")
+        );
+        assert_eq!(
+            statuspage_indicator("degraded"),
+            ("minor", "Partial System Outage")
+        );
+        assert_eq!(
+            statuspage_indicator("unknown"),
+            ("minor", "Partial System Outage")
+        );
+    }
+
+    #[test]
+    fn statuspage_component_status_mapping() {
+        assert_eq!(statuspage_component_status("up"), "operational");
+        assert_eq!(
+            statuspage_component_status("degraded"),
+            "degraded_performance"
+        );
+        assert_eq!(statuspage_component_status("down"), "major_outage");
+        assert_eq!(statuspage_component_status("unknown"), "operational");
+    }
+
+    #[test]
+    fn statuspage_impact_mapping() {
+        assert_eq!(statuspage_impact("critical"), "critical");
+        assert_eq!(statuspage_impact("down"), "critical");
+        assert_eq!(statuspage_impact("degraded"), "minor");
+        assert_eq!(statuspage_impact("minor"), "minor");
+        assert_eq!(statuspage_impact("informational"), "none");
+        assert_eq!(statuspage_impact("maintenance"), "none");
     }
 }

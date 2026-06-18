@@ -11,6 +11,7 @@ mod regions;
 mod scheduler;
 mod slug;
 mod state;
+mod status_summary_cache;
 mod target;
 
 use anyhow::Result;
@@ -94,6 +95,7 @@ async fn main() -> Result<()> {
     let spa_state = state.clone();
     let mut app = Router::new()
         .nest("/api", api)
+        .merge(http::public_status::page_routes())
         .layer(TraceLayer::new_for_http())
         .layer(CatchPanicLayer::new())
         .layer(cors_layer(&config)?)

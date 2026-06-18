@@ -9,7 +9,7 @@ use tokio::sync::Semaphore;
 use email::EmailClient;
 use polar::Polar;
 
-use crate::{billing::Billing, config::Config};
+use crate::{billing::Billing, config::Config, status_summary_cache::StatusSummaryCache};
 
 const REDIS_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -29,6 +29,7 @@ pub struct AppState {
     pub email: EmailClient,
     pub check_semaphore: Arc<Semaphore>,
     pub billing: Option<Billing>,
+    pub status_summary_cache: StatusSummaryCache,
 }
 
 impl AppState {
@@ -63,6 +64,7 @@ impl AppState {
             email,
             check_semaphore,
             billing,
+            status_summary_cache: StatusSummaryCache::default(),
         })
     }
 }

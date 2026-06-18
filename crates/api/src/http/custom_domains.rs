@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{header, HeaderMap, StatusCode},
     routing::{delete, get, post},
     Extension, Json, Router,
 };
@@ -279,6 +279,12 @@ fn require_owner(role: WorkspaceRole) -> ApiResult<()> {
         WorkspaceRole::Owner => Ok(()),
         WorkspaceRole::Member => Err(ApiError::Forbidden),
     }
+}
+
+pub fn host_from_headers(headers: &HeaderMap) -> Option<String> {
+    let host = headers.get(header::HOST)?.to_str().ok()?;
+    let host = host.rsplit_once(':').map_or(host, |(h, _)| h);
+    normalize_domain(host)
 }
 
 pub(super) fn normalize_domain(input: &str) -> Option<String> {
