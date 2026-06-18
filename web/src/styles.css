@@ -96,15 +96,15 @@
   --color-err: var(--destructive);
   --color-unknown: var(--muted-foreground);
 
-  /* React Flow canvas — always a dark neutral viewport (distinct from the light shell) */
-  --color-canvas-bg: var(--color-neutral-950);
-  --color-canvas-surface: color-mix(in srgb, var(--color-neutral-900) 75%, var(--color-neutral-950));
-  --color-canvas-border: --alpha(var(--color-white) / 8%);
-  --color-canvas-border-hi: --alpha(var(--color-white) / 14%);
-  --color-canvas-fg: var(--color-neutral-100);
-  --color-canvas-muted: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-white));
-  --color-canvas-dim: color-mix(in srgb, var(--color-neutral-500) 50%, var(--color-neutral-950));
-  --color-canvas-dot: --alpha(var(--color-white) / 6%);
+  /* React Flow canvas — light sunken viewport */
+  --color-canvas-bg: color-mix(in srgb, var(--color-neutral-100) 70%, var(--background));
+  --color-canvas-surface: var(--color-bg-elev);
+  --color-canvas-border: var(--color-border);
+  --color-canvas-border-hi: var(--color-border-hi);
+  --color-canvas-fg: var(--color-fg);
+  --color-canvas-muted: var(--color-fg-muted);
+  --color-canvas-dim: var(--color-fg-dim);
+  --color-canvas-dot: color-mix(in srgb, var(--color-fg) 10%, transparent);
 }
 
 [data-theme="dark"] {
