@@ -3,9 +3,6 @@ mod billing;
 mod config;
 mod error;
 mod http;
-mod log_alerts;
-mod log_hot_cache;
-mod logship;
 mod middleware;
 mod notification_webhook;
 mod openapi;
@@ -28,16 +25,14 @@ use tower_http::{
     services::{ServeDir, ServeFile},
     trace::TraceLayer,
 };
-use tracing_subscriber::{
-    filter::LevelFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer,
-};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
 use crate::{config::Config, state::AppState};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let _ = dotenvy::dotenv();
-    let log_ship = init_tracing();
+    init_tracing();
 
     let config = Config::from_env()?;
 
@@ -58,7 +53,6 @@ async fn main() -> Result<()> {
     let state = AppState::new(db, config.clone()).await?;
 
     scheduler::spawn(state.clone());
-    log_alerts::spawn(state.clone());
     auth::session_cleanup::spawn(state.clone());
     billing::sweep::spawn(state.clone());
 
@@ -131,11 +125,6 @@ async fn main() -> Result<()> {
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 
-    // Flush any buffered log events (e.g. a final error) before exit.
-    if let Some(guard) = log_ship {
-        guard.shutdown().await;
-    }
-
     Ok(())
 }
 
@@ -166,29 +155,13 @@ fn cors_layer(config: &Config) -> Result<CorsLayer> {
         ]))
 }
 
-fn init_tracing() -> Option<logship::LogShipGuard> {
+fn init_tracing() {
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("produktive_api=info,tower_http=info,sea_orm=warn"));
 
-    // Optional: ship WARN/ERROR events to a Produktive log project. The EnvFilter
-    // scopes only stdout verbosity; the shipping layer gets its own WARN+ filter
-    // so it captures errors from *every* target, not just those the console
-    // filter allows. `None` (no PRODUKTIVE_LOG_TOKEN) is a no-op layer.
-    let (ship_layer, guard) = match logship::ProduktiveLayer::from_env() {
-        Some((layer, guard)) => (Some(layer.with_filter(LevelFilter::WARN)), Some(guard)),
-        None => (None, None),
-    };
-
     tracing_subscriber::registry()
         .with(fmt::layer().compact().with_filter(env_filter))
-        .with(ship_layer)
         .init();
-
-    // Route panics (handlers and background tasks alike) through tracing — and
-    // thus the shipping layer — before the default hook prints them.
-    logship::install_panic_hook();
-
-    guard
 }
 
 async fn shutdown_signal() {

@@ -2740,8 +2740,6 @@ dependencies = [
  "polar",
  "produktive-dsl",
  "produktive-entity",
- "produktive-logging",
- "produktive-logs",
  "produktive-probe",
  "rand 0.8.6",
  "redis",

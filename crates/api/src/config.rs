@@ -46,22 +46,6 @@ pub struct Config {
     pub worker_token: Option<String>,
     pub worker_tokens: BTreeMap<String, String>,
     pub worker_lease_seconds: u64,
-    /// Local directory or S3-compatible URI that holds Parquet log datasets.
-    pub log_storage_uri: String,
-    /// Optional DuckDB database path used as a scratch/control connection.
-    pub log_duckdb_path: Option<PathBuf>,
-    pub log_ingest_max_batch_events: usize,
-    pub log_ingest_max_body_bytes: usize,
-    pub log_alert_tick_seconds: u64,
-    /// Dedicated Redis/Upstash URL for log hot-cache data. Never falls back to REDIS_URL.
-    pub log_redis_url: Option<String>,
-    pub log_redis_ttl_seconds: usize,
-    pub log_search_cache_ttl_seconds: usize,
-    pub log_redis_search_scan_limit: usize,
-    pub log_s3_region: Option<String>,
-    pub log_s3_endpoint: Option<String>,
-    pub log_s3_access_key_id: Option<String>,
-    pub log_s3_secret_access_key: Option<String>,
 }
 
 impl Config {
@@ -234,78 +218,6 @@ impl Config {
         if worker_lease_seconds == 0 {
             return Err(anyhow!("WORKER_LEASE_SECONDS must be at least 1"));
         }
-        let log_storage_uri = std::env::var("LOG_STORAGE_URI")
-            .unwrap_or_else(|_| default_log_storage_uri())
-            .trim()
-            .trim_end_matches('/')
-            .to_owned();
-        if log_storage_uri.is_empty() {
-            return Err(anyhow!("LOG_STORAGE_URI must not be empty"));
-        }
-        let log_duckdb_path = std::env::var("LOG_DUCKDB_PATH")
-            .ok()
-            .map(|v| v.trim().to_owned())
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from);
-        let log_ingest_max_batch_events = std::env::var("LOG_INGEST_MAX_BATCH_EVENTS")
-            .unwrap_or_else(|_| "1000".into())
-            .parse()
-            .context("LOG_INGEST_MAX_BATCH_EVENTS must be usize")?;
-        if log_ingest_max_batch_events == 0 {
-            return Err(anyhow!("LOG_INGEST_MAX_BATCH_EVENTS must be at least 1"));
-        }
-        let log_ingest_max_body_bytes = std::env::var("LOG_INGEST_MAX_BODY_BYTES")
-            .unwrap_or_else(|_| "1048576".into())
-            .parse()
-            .context("LOG_INGEST_MAX_BODY_BYTES must be usize")?;
-        if log_ingest_max_body_bytes == 0 {
-            return Err(anyhow!("LOG_INGEST_MAX_BODY_BYTES must be at least 1"));
-        }
-        let log_alert_tick_seconds = std::env::var("LOG_ALERT_TICK_SECONDS")
-            .unwrap_or_else(|_| "60".into())
-            .parse()
-            .context("LOG_ALERT_TICK_SECONDS must be u64")?;
-        if log_alert_tick_seconds == 0 {
-            return Err(anyhow!("LOG_ALERT_TICK_SECONDS must be at least 1"));
-        }
-        let log_redis_url = std::env::var("LOG_REDIS_URL")
-            .ok()
-            .map(|v| v.trim().to_owned())
-            .filter(|v| !v.is_empty());
-        let log_redis_ttl_seconds = std::env::var("LOG_REDIS_TTL_SECONDS")
-            .unwrap_or_else(|_| "1800".into())
-            .parse()
-            .context("LOG_REDIS_TTL_SECONDS must be usize")?;
-        if log_redis_ttl_seconds == 0 {
-            return Err(anyhow!("LOG_REDIS_TTL_SECONDS must be at least 1"));
-        }
-        let log_search_cache_ttl_seconds = std::env::var("LOG_SEARCH_CACHE_TTL_SECONDS")
-            .unwrap_or_else(|_| "15".into())
-            .parse()
-            .context("LOG_SEARCH_CACHE_TTL_SECONDS must be usize")?;
-        let log_redis_search_scan_limit = std::env::var("LOG_REDIS_SEARCH_SCAN_LIMIT")
-            .unwrap_or_else(|_| "5000".into())
-            .parse()
-            .context("LOG_REDIS_SEARCH_SCAN_LIMIT must be usize")?;
-        if log_redis_search_scan_limit == 0 {
-            return Err(anyhow!("LOG_REDIS_SEARCH_SCAN_LIMIT must be at least 1"));
-        }
-        let log_s3_region = std::env::var("LOG_S3_REGION")
-            .ok()
-            .map(|v| v.trim().to_owned())
-            .filter(|v| !v.is_empty());
-        let log_s3_endpoint = std::env::var("LOG_S3_ENDPOINT")
-            .ok()
-            .map(|v| v.trim().trim_end_matches('/').to_owned())
-            .filter(|v| !v.is_empty());
-        let log_s3_access_key_id = std::env::var("LOG_S3_ACCESS_KEY_ID")
-            .ok()
-            .map(|v| v.trim().to_owned())
-            .filter(|v| !v.is_empty());
-        let log_s3_secret_access_key = std::env::var("LOG_S3_SECRET_ACCESS_KEY")
-            .ok()
-            .map(|v| v.trim().to_owned())
-            .filter(|v| !v.is_empty());
 
         Ok(Self {
             database_url,
@@ -343,19 +255,6 @@ impl Config {
             worker_token,
             worker_tokens,
             worker_lease_seconds,
-            log_storage_uri,
-            log_duckdb_path,
-            log_ingest_max_batch_events,
-            log_ingest_max_body_bytes,
-            log_alert_tick_seconds,
-            log_redis_url,
-            log_redis_ttl_seconds,
-            log_search_cache_ttl_seconds,
-            log_redis_search_scan_limit,
-            log_s3_region,
-            log_s3_endpoint,
-            log_s3_access_key_id,
-            log_s3_secret_access_key,
         })
     }
 
@@ -369,13 +268,6 @@ impl Config {
                     .flatten()
             })
     }
-}
-
-fn default_log_storage_uri() -> String {
-    std::env::temp_dir()
-        .join("produktive-logs")
-        .display()
-        .to_string()
 }
 
 fn parse_worker_tokens(raw: Option<&str>) -> Result<BTreeMap<String, String>> {

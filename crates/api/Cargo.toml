@@ -14,8 +14,6 @@ produktive-dsl = { path = "../dsl" }
 produktive-probe = { path = "../probe" }
 polar = { path = "../polar" }
 email = { path = "../email" }
-produktive-logging = { path = "../logging" }
-produktive-logs = { path = "../logs" }
 
 axum.workspace = true
 tokio.workspace = true

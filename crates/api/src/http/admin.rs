@@ -85,6 +85,7 @@ pub struct AdminLogBucketView {
     pub updated_at: DateTime<FixedOffset>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateLogBucketBody {
     pub name: String,
@@ -97,6 +98,7 @@ pub struct CreateLogBucketBody {
     pub max_projects: Option<i32>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateLogBucketBody {
     pub name: Option<String>,
@@ -180,150 +182,34 @@ async fn delete_region(
     Ok(Json(crate::http::workspaces::OkResponse { ok: true }))
 }
 
-async fn list_log_buckets(
-    State(state): State<AppState>,
-    auth: AuthUser,
-) -> ApiResult<Json<Vec<AdminLogBucketView>>> {
+async fn list_log_buckets(auth: AuthUser) -> ApiResult<Json<Vec<AdminLogBucketView>>> {
     require_admin(&auth)?;
-    Ok(Json(load_log_buckets(&state).await?))
+    Ok(Json(Vec::new()))
 }
 
 async fn create_log_bucket(
-    State(state): State<AppState>,
     auth: AuthUser,
-    Json(body): Json<CreateLogBucketBody>,
+    Json(_body): Json<CreateLogBucketBody>,
 ) -> ApiResult<Json<AdminLogBucketView>> {
     require_admin(&auth)?;
-    let name = clean_required(&body.name, "bucket name")?;
-    let storage_uri = clean_storage_uri(&body.storage_uri)?;
-    let max_projects = body.max_projects.unwrap_or(100).clamp(1, 10_000);
-    let now = chrono::Utc::now().fixed_offset();
-    let id = Uuid::now_v7();
-    state
-        .db
-        .execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
-            INSERT INTO log_storage_buckets (
-                id, name, storage_uri, region, endpoint, access_key_id, secret_access_key,
-                enabled, max_projects, created_at, updated_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
-            "#,
-            vec![
-                id.into(),
-                name.into(),
-                storage_uri.into(),
-                clean_optional(body.region).into(),
-                clean_optional(body.endpoint).into(),
-                clean_optional(body.access_key_id).into(),
-                clean_optional(body.secret_access_key).into(),
-                body.enabled.unwrap_or(true).into(),
-                max_projects.into(),
-                now.into(),
-            ],
-        ))
-        .await?;
-    load_log_bucket(&state, id).await.map(Json)
+    Err(logs_disabled())
 }
 
 async fn update_log_bucket(
-    State(state): State<AppState>,
     auth: AuthUser,
-    Path(bucket_id): Path<Uuid>,
-    Json(body): Json<UpdateLogBucketBody>,
+    Path(_bucket_id): Path<Uuid>,
+    Json(_body): Json<UpdateLogBucketBody>,
 ) -> ApiResult<Json<AdminLogBucketView>> {
     require_admin(&auth)?;
-    let mut assignments = Vec::new();
-    let mut values: Vec<Value> = vec![bucket_id.into()];
-    let mut next = 2;
-    if let Some(name) = body.name {
-        assignments.push(format!("name = ${next}"));
-        values.push(clean_required(&name, "bucket name")?.into());
-        next += 1;
-    }
-    if let Some(storage_uri) = body.storage_uri {
-        assignments.push(format!("storage_uri = ${next}"));
-        values.push(clean_storage_uri(&storage_uri)?.into());
-        next += 1;
-    }
-    if let Some(region) = body.region {
-        assignments.push(format!("region = ${next}"));
-        values.push(clean_optional(region).into());
-        next += 1;
-    }
-    if let Some(endpoint) = body.endpoint {
-        assignments.push(format!("endpoint = ${next}"));
-        values.push(clean_optional(endpoint).into());
-        next += 1;
-    }
-    if let Some(access_key_id) = body.access_key_id {
-        assignments.push(format!("access_key_id = ${next}"));
-        values.push(clean_optional(access_key_id).into());
-        next += 1;
-    }
-    if let Some(secret_access_key) = body.secret_access_key {
-        assignments.push(format!("secret_access_key = ${next}"));
-        values.push(clean_optional(secret_access_key).into());
-        next += 1;
-    }
-    if let Some(enabled) = body.enabled {
-        assignments.push(format!("enabled = ${next}"));
-        values.push(enabled.into());
-        next += 1;
-    }
-    if let Some(max_projects) = body.max_projects {
-        assignments.push(format!("max_projects = ${next}"));
-        values.push(max_projects.clamp(1, 10_000).into());
-    }
-    if assignments.is_empty() {
-        return load_log_bucket(&state, bucket_id).await.map(Json);
-    }
-    assignments.push("updated_at = now()".to_string());
-    state
-        .db
-        .execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            format!(
-                "UPDATE log_storage_buckets SET {} WHERE id = $1",
-                assignments.join(", ")
-            ),
-            values,
-        ))
-        .await?;
-    load_log_bucket(&state, bucket_id).await.map(Json)
+    Err(logs_disabled())
 }
 
 async fn delete_log_bucket(
-    State(state): State<AppState>,
     auth: AuthUser,
-    Path(bucket_id): Path<Uuid>,
+    Path(_bucket_id): Path<Uuid>,
 ) -> ApiResult<Json<crate::http::workspaces::OkResponse>> {
     require_admin(&auth)?;
-    let project_count = state
-        .db
-        .query_one(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT COUNT(*)::bigint AS count FROM log_projects WHERE bucket_id = $1",
-            vec![bucket_id.into()],
-        ))
-        .await?
-        .and_then(|row| row.try_get::<i64>("", "count").ok())
-        .unwrap_or(0);
-    if project_count > 0 {
-        return Err(ApiError::bad_request(
-            "bucket has assigned log projects and cannot be deleted",
-        ));
-    }
-    state
-        .db
-        .execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "DELETE FROM log_storage_buckets WHERE id = $1",
-            vec![bucket_id.into()],
-        ))
-        .await?;
-    Ok(Json(crate::http::workspaces::OkResponse { ok: true }))
+    Err(logs_disabled())
 }
 
 #[derive(Debug, Serialize, FromQueryResult, ToSchema)]
@@ -374,9 +260,7 @@ async fn list_log_access_requests(
     require_admin(&auth)?;
     let rows = AdminLogAccessRequestView::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
-        format!(
-            "{LOG_ACCESS_REQUEST_SELECT} ORDER BY (r.status = 0) DESC, r.requested_at DESC"
-        ),
+        format!("{LOG_ACCESS_REQUEST_SELECT} ORDER BY (r.status = 0) DESC, r.requested_at DESC"),
         Vec::<Value>::new(),
     ))
     .all(&state.db)
@@ -514,7 +398,9 @@ async fn get_workspace_usage(
         .to_owned();
 
     let events_used = match b.catalog.meter_id("events") {
-        Some(mid) => billing::effective_events_consumed(&state, ws.id, cstate.as_ref(), mid).await?,
+        Some(mid) => {
+            billing::effective_events_consumed(&state, ws.id, cstate.as_ref(), mid).await?
+        }
         None => 0.0,
     };
     let events_ent = b.catalog.entitlement(&plan, "events");
@@ -538,7 +424,10 @@ async fn get_workspace_usage(
         plan,
         events_used,
         events_included: events_ent.as_ref().map(|e| e.included),
-        events_overage_allowed: events_ent.as_ref().map(|e| e.overage_allowed).unwrap_or(false),
+        events_overage_allowed: events_ent
+            .as_ref()
+            .map(|e| e.overage_allowed)
+            .unwrap_or(false),
         monitors_used: billing::billing_monitor_count(&state, ws.id).await?,
         monitors_included: monitors_ent.as_ref().map(|e| e.included),
         members_used: billing::billing_member_count(&state, ws.id).await?,
@@ -572,87 +461,8 @@ fn require_admin(auth: &AuthUser) -> ApiResult<()> {
     Err(ApiError::Forbidden)
 }
 
-async fn load_log_buckets(state: &AppState) -> ApiResult<Vec<AdminLogBucketView>> {
-    Ok(
-        AdminLogBucketView::find_by_statement(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
-            SELECT b.id,
-                   b.name,
-                   b.storage_uri,
-                   b.region,
-                   b.endpoint,
-                   b.access_key_id,
-                   (b.secret_access_key IS NOT NULL AND b.secret_access_key <> '') AS secret_configured,
-                   b.enabled,
-                   b.max_projects,
-                   COUNT(p.id)::bigint AS project_count,
-                   b.created_at,
-                   b.updated_at
-            FROM log_storage_buckets b
-            LEFT JOIN log_projects p ON p.bucket_id = b.id
-            GROUP BY b.id
-            ORDER BY b.enabled DESC, project_count ASC, b.created_at ASC
-            "#,
-            Vec::<Value>::new(),
-        ))
-        .all(&state.db)
-        .await?,
-    )
-}
-
-async fn load_log_bucket(state: &AppState, bucket_id: Uuid) -> ApiResult<AdminLogBucketView> {
-    AdminLogBucketView::find_by_statement(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"
-        SELECT b.id,
-               b.name,
-               b.storage_uri,
-               b.region,
-               b.endpoint,
-               b.access_key_id,
-               (b.secret_access_key IS NOT NULL AND b.secret_access_key <> '') AS secret_configured,
-               b.enabled,
-               b.max_projects,
-               COUNT(p.id)::bigint AS project_count,
-               b.created_at,
-               b.updated_at
-        FROM log_storage_buckets b
-        LEFT JOIN log_projects p ON p.bucket_id = b.id
-        WHERE b.id = $1
-        GROUP BY b.id
-        "#,
-        vec![bucket_id.into()],
-    ))
-    .one(&state.db)
-    .await?
-    .ok_or_else(|| ApiError::not_found("log storage bucket"))
-}
-
-fn clean_required(value: &str, label: &str) -> ApiResult<String> {
-    let value = value.trim();
-    if value.is_empty() {
-        return Err(ApiError::bad_request(format!("{label} required")));
-    }
-    Ok(value.to_owned())
-}
-
-fn clean_storage_uri(value: &str) -> ApiResult<String> {
-    let value = clean_required(value, "storage uri")?
-        .trim_end_matches('/')
-        .to_owned();
-    if value.starts_with("s3://") || value.starts_with("./") || value.starts_with('/') {
-        return Ok(value);
-    }
-    Err(ApiError::bad_request(
-        "storage uri must be s3://..., ./..., or an absolute path",
-    ))
-}
-
-fn clean_optional(value: Option<String>) -> Option<String> {
-    value
-        .map(|v| v.trim().trim_end_matches('/').to_owned())
-        .filter(|v| !v.is_empty())
+fn logs_disabled() -> ApiError {
+    ApiError::service_unavailable("logs are disabled")
 }
 
 fn admin_region_view(region: region::Model) -> AdminRegionView {

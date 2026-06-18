@@ -91,26 +91,9 @@ where
     .await
 }
 
-pub async fn unique_log_project_slug<C>(
-    db: &C,
-    workspace_id: uuid::Uuid,
-    name: &str,
-) -> Result<String, sea_orm::DbErr>
-where
-    C: ConnectionTrait,
-{
-    unique_slug(
-        db,
-        slugify(name, "logs"),
-        WorkspaceSlugScope::LogProject(workspace_id),
-    )
-    .await
-}
-
 enum WorkspaceSlugScope {
     Global,
     Workspace(uuid::Uuid),
-    LogProject(uuid::Uuid),
 }
 
 async fn unique_slug<C>(
@@ -147,11 +130,6 @@ where
         WorkspaceSlugScope::Workspace(workspace_id) => Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT EXISTS(SELECT 1 FROM monitors WHERE workspace_id = $1 AND slug = $2)",
-            [(*workspace_id).into(), slug.into()],
-        ),
-        WorkspaceSlugScope::LogProject(workspace_id) => Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT EXISTS(SELECT 1 FROM log_projects WHERE workspace_id = $1 AND slug = $2)",
             [(*workspace_id).into(), slug.into()],
         ),
     };
