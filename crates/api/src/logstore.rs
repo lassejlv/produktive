@@ -120,11 +120,10 @@ impl NarrowLogs {
             .as_ref()
             .map(|s| s.trim().to_lowercase())
             .filter(|s| !s.is_empty());
-        let fetch_limit = if q.is_some() {
-            (limit * 4).min(2000)
-        } else {
-            limit
-        };
+        // NarrowDB has no ORDER BY, so a bare LIMIT returns an arbitrary subset.
+        // Over-fetch within the time window, then sort newest-first and truncate
+        // in Rust below. (Also covers the in-Rust `q` filter.)
+        let fetch_limit = (limit * 4).clamp(limit, 2000);
 
         let mut where_parts = vec![format!("project_id = {}", sql_literal(project_id))];
         if let Some(level) = params
@@ -156,7 +155,7 @@ impl NarrowLogs {
         let sql = format!(
             "SELECT ts, project_id, event_id, received_at, level, service, environment, \
              operation, request_id, trace_id, source, value, message, fields \
-             FROM {TABLE} WHERE {} ORDER BY ts DESC LIMIT {fetch_limit}",
+             FROM {TABLE} WHERE {} LIMIT {fetch_limit}",
             where_parts.join(" AND "),
         );
 
@@ -173,6 +172,8 @@ impl NarrowLogs {
         if let Some(q) = q {
             events.retain(|e| e.message.to_lowercase().contains(&q));
         }
+        // Newest first — NarrowDB cannot ORDER BY, so we sort the page here.
+        events.sort_by_key(|e| std::cmp::Reverse(e.timestamp));
         events.truncate(limit as usize);
         Ok(events)
     }
@@ -293,14 +294,14 @@ fn parse_row(line: &str) -> Option<LogSearchEvent> {
 fn cell(value: Option<&&str>) -> Option<String> {
     value
         .map(|v| v.trim())
-        .filter(|v| !v.is_empty() && *v != "NULL")
+        .filter(|v| !v.is_empty() && !v.eq_ignore_ascii_case("null"))
         .map(ToOwned::to_owned)
 }
 
 /// Parse a `fields` cell (JSON text) into a JSON value, defaulting to `{}`.
 fn parse_json_cell(raw: &str) -> Value {
     let trimmed = raw.trim();
-    if trimmed.is_empty() || trimmed == "NULL" {
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("null") {
         return Value::Object(Default::default());
     }
     serde_json::from_str(trimmed).unwrap_or_else(|_| Value::Object(Default::default()))
@@ -346,5 +347,21 @@ mod tests {
     fn parses_scalar_count() {
         assert_eq!(parse_scalar_i64("count\n42\n"), Some(42));
         assert_eq!(parse_scalar_i64("-- x\ncount\n7"), Some(7));
+    }
+
+    #[test]
+    fn treats_lowercase_null_as_absent() {
+        // NarrowDB renders SQL NULL as lowercase `null`; absent optional columns
+        // must become None / {}, not the literal string "null".
+        let text = "ts\tproject_id\tevent_id\treceived_at\tlevel\tservice\tenvironment\toperation\trequest_id\ttrace_id\tsource\tvalue\tmessage\tfields\n\
+            1710000000000\tproj\tevt1\t1710000000000\tinfo\tnull\tnull\tnull\tnull\tnull\tnull\tnull\thi\tnull";
+        let rows = parse_rows(text);
+        assert_eq!(rows.len(), 1);
+        let r = &rows[0];
+        assert_eq!(r.service, None);
+        assert_eq!(r.environment, None);
+        assert_eq!(r.operation, None);
+        assert_eq!(r.message, "hi");
+        assert!(r.fields.is_object());
     }
 }

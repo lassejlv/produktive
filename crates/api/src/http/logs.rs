@@ -894,14 +894,17 @@ fn parse_ingest_body(body: &Bytes) -> ApiResult<Value> {
 // ingest payload into `NormalizedEvent`s for NarrowDB.
 
 fn normalize_payload(payload: &Value, max_events: usize) -> ApiResult<Vec<NormalizedEvent>> {
-    let raw_events: Vec<&Value> =
-        if let Some(events) = payload.get("events").and_then(|v| v.as_array()) {
-            events.iter().collect()
-        } else if let Some(batch) = payload.get("batch").and_then(|v| v.as_array()) {
-            batch.iter().collect()
-        } else {
-            vec![payload]
-        };
+    let raw_events: Vec<&Value> = if let Some(arr) = payload.as_array() {
+        // A top-level JSON array of event objects (what the SDK / a plain
+        // `[{...}]` POST sends).
+        arr.iter().collect()
+    } else if let Some(events) = payload.get("events").and_then(|v| v.as_array()) {
+        events.iter().collect()
+    } else if let Some(batch) = payload.get("batch").and_then(|v| v.as_array()) {
+        batch.iter().collect()
+    } else {
+        vec![payload]
+    };
     if raw_events.len() > max_events {
         return Err(ApiError::bad_request(format!(
             "too many log events; max batch is {max_events}"
@@ -1028,4 +1031,46 @@ fn truncate(mut value: String, max: usize) -> String {
 
 fn disabled() -> ApiError {
     ApiError::service_unavailable(LOGS_DISABLED)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn normalizes_top_level_array() {
+        // A plain `[{...}]` POST (the produktive-logs SDK shape) must map each
+        // object's keys onto columns — not collapse the whole array into one
+        // event with a default message.
+        let payload = json!([{
+            "ts": 1_710_000_000_000_i64,
+            "level": "warn",
+            "service": "api",
+            "environment": "prod",
+            "operation": "GET /x",
+            "message": "hi"
+        }]);
+        let events = normalize_payload(&payload, 100).unwrap();
+        assert_eq!(events.len(), 1);
+        let e = &events[0];
+        assert_eq!(e.message, "hi");
+        assert_eq!(e.level, "warn");
+        assert_eq!(e.service.as_deref(), Some("api"));
+        assert_eq!(e.environment.as_deref(), Some("prod"));
+        assert_eq!(e.operation.as_deref(), Some("GET /x"));
+        assert_eq!(e.ts_ms, 1_710_000_000_000);
+    }
+
+    #[test]
+    fn normalizes_events_envelope_and_single_object() {
+        let batched = json!({ "events": [{ "message": "a" }, { "message": "b" }] });
+        assert_eq!(normalize_payload(&batched, 100).unwrap().len(), 2);
+
+        let single = json!({ "message": "solo", "level": "error" });
+        let events = normalize_payload(&single, 100).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].message, "solo");
+        assert_eq!(events[0].level, "error");
+    }
 }
