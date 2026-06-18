@@ -484,7 +484,6 @@ function LivePreview({
         groups={data.groups}
         incidents={data.incidents ?? []}
         style={style}
-        generatedAt={data.generated_at}
       />
     </div>
   );

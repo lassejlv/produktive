@@ -45,7 +45,6 @@ export function PublicStatusByDomain({
         incidents={data.incidents ?? []}
         statusHref="/"
         style={data.style ?? DEFAULT_STATUS_STYLE}
-        generatedAt={data.generated_at}
       />
     );
   }
@@ -59,7 +58,6 @@ export function PublicStatusByDomain({
       incidents={data.incidents ?? []}
       incidentsHref="/incidents"
       style={data.style ?? DEFAULT_STATUS_STYLE}
-      generatedAt={data.generated_at}
     />
   );
 }

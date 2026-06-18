@@ -1,7 +1,5 @@
-import { AlertTriangle, ArrowRight } from "lucide-react";
-import { cn } from "#/lib/cn";
+import { ArrowRight } from "lucide-react";
 import type { PublicIncident } from "../../lib/types";
-import { timeAgo } from "./StatusShell";
 
 /** When a mini history fell off the bottom of the status page, how many to keep. */
 const MINI_LIMIT = 5;
@@ -44,6 +42,14 @@ function formatDuration(ms: number): string {
   return `${Math.round(h / 24)}d`;
 }
 
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export function IncidentRow({ incident }: { incident: PublicIncident }) {
   const open = incident.status === "open";
   const color = severityColor(incident);
@@ -54,50 +60,21 @@ export function IncidentRow({ incident }: { incident: PublicIncident }) {
         ? `${incident.monitor_name ?? incident.title} is ${severityLabel(incident.severity)}`
         : `${incident.monitor_name ?? incident.title} recovered`;
   const resolvedAt = incident.resolved_at ?? incident.last_seen_at;
-  const lasted = formatDuration(
-    new Date(resolvedAt).getTime() - new Date(incident.started_at).getTime(),
-  );
   const when = open
-    ? `Started ${timeAgo(incident.started_at)}`
-    : `Resolved ${timeAgo(resolvedAt)} · lasted ${lasted}`;
-
-  const latest = incident.updates.at(-1);
+    ? fmtDate(incident.started_at)
+    : `${fmtDate(resolvedAt)} · ${formatDuration(
+        new Date(resolvedAt).getTime() - new Date(incident.started_at).getTime(),
+      )}`;
 
   return (
-    <div className="px-4 py-3.5">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span
-              className="inline-block h-2 w-2 shrink-0 rounded-full"
-              style={{ background: open ? color : "var(--color-ok)" }}
-            />
-            <span className="truncate text-[13.5px] font-medium text-[var(--color-fg)]">
-              {title}
-            </span>
-          </div>
-          <div className="mt-1 text-[12px] text-[var(--color-fg-muted)]">{when}</div>
-          {latest && (
-            <div className="mt-2 text-[12px] leading-relaxed text-[var(--color-fg-muted)]">
-              <span className="font-medium capitalize text-[var(--color-fg)]">
-                {latest.status.replace("_", " ")}
-              </span>
-              <span className="text-[var(--color-fg-dim)]"> · </span>
-              {latest.message}
-            </div>
-          )}
-        </div>
-        <span
-          className={cn(
-            "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em]",
-            open
-              ? "bg-[color-mix(in_srgb,var(--color-err)_10%,transparent)]"
-              : "bg-[color-mix(in_srgb,var(--color-ok)_10%,transparent)]",
-          )}
-          style={{ color: open ? color : "var(--color-ok)" }}
-        >
-          {open ? "active" : "resolved"}
-        </span>
+    <div className="flex items-center gap-2.5 px-4 py-2.5">
+      <span
+        className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+        style={{ background: open ? color : "var(--color-ok)" }}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] text-[var(--color-fg)]">{title}</div>
+        <div className="text-[11px] text-[var(--color-fg-dim)]">{when}</div>
       </div>
     </div>
   );
@@ -138,11 +115,9 @@ export function ActiveIncidents({
   const sorted = sortIncidents(incidents);
   return (
     <section className={className}>
-      <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)]">
+      <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
         {sorted.map((incident) => (
-          <div key={incident.id} style={{ boxShadow: `inset 2px 0 0 ${severityColor(incident)}` }}>
-            <IncidentRow incident={incident} />
-          </div>
+          <IncidentRow key={incident.id} incident={incident} />
         ))}
       </div>
     </section>
@@ -170,11 +145,10 @@ export function IncidentList({ incidents }: { incidents: PublicIncident[] }) {
     <div className="flex flex-col gap-8">
       {open.length > 0 && (
         <section>
-          <h2 className="mb-3 flex items-center gap-2 px-0.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[var(--color-err)]">
-            <AlertTriangle size={13} />
+          <h2 className="mb-3 px-0.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[var(--color-fg-dim)]">
             Active incidents
           </h2>
-          <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)]">
+          <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
             {open.map((incident) => (
               <IncidentRow key={incident.id} incident={incident} />
             ))}
@@ -186,7 +160,7 @@ export function IncidentList({ incidents }: { incidents: PublicIncident[] }) {
           <h2 className="mb-3 px-0.5 text-[11px] font-medium uppercase tracking-[0.1em] text-[var(--color-fg-dim)]">
             Past incidents
           </h2>
-          <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)]">
+          <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
             {resolved.map((incident) => (
               <IncidentRow key={incident.id} incident={incident} />
             ))}
@@ -217,14 +191,14 @@ export function MiniIncidentHistory({
 
   return (
     <section className={className}>
-      <div className="mb-3 flex items-center justify-between px-0.5">
-        <h2 className="text-[11px] font-medium uppercase tracking-[0.1em] text-[var(--color-fg-dim)]">
-          Incident history
+      <div className="mb-2 flex items-center justify-between px-0.5">
+        <h2 className="text-[13px] font-medium text-[var(--color-fg-muted)]">
+          Incidents
         </h2>
         {href && (
           <a
             href={href}
-            className="flex items-center gap-1 text-[11px] font-medium text-[var(--color-link)] hover:underline"
+            className="flex items-center gap-1 text-[12px] text-[var(--color-link)] hover:underline"
           >
             {hasMore ? "View all" : "View history"}
             <ArrowRight size={12} />
@@ -232,11 +206,11 @@ export function MiniIncidentHistory({
         )}
       </div>
       {recent.length === 0 ? (
-        <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-6 text-center text-[12.5px] text-[var(--color-fg-muted)] shadow-[var(--shadow-xs)]">
+        <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-5 text-center text-[12px] text-[var(--color-fg-muted)]">
           No incidents reported.
         </div>
       ) : (
-        <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)]">
+        <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
           {recent.map((incident) => (
             <IncidentRow key={incident.id} incident={incident} />
           ))}

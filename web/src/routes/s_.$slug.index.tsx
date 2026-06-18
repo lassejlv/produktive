@@ -34,7 +34,6 @@ function PublicStatusPage() {
       incidents={data.incidents ?? []}
       incidentsHref={`/s/${slug}/incidents`}
       style={data.style ?? DEFAULT_STATUS_STYLE}
-      generatedAt={data.generated_at}
     />
   );
 }

@@ -5,7 +5,6 @@ import type { StatusStyle } from "../../lib/types";
 interface Props {
   title: string;
   style: StatusStyle;
-  generatedAt?: string;
   /** Browser tab title, e.g. "Acme — All systems operational". */
   documentTitle?: string;
   /** Rendered inside the editor (no fixed min-height). */
@@ -20,7 +19,6 @@ interface Props {
 export function StatusShell({
   title,
   style,
-  generatedAt,
   documentTitle,
   preview,
   children,
@@ -51,7 +49,7 @@ export function StatusShell({
     >
       <div className="mx-auto max-w-[680px] px-6">
         {/* header */}
-        <header className="flex h-14 items-center justify-between">
+        <header className="flex h-14 items-center">
           {style.header_link ? (
             <a
               href={style.header_link}
@@ -83,24 +81,18 @@ export function StatusShell({
               Produktive
             </span>
           )}
-          {generatedAt && (
-            <span className="tabular text-[11px] text-[var(--color-fg-dim)]">
-              Updated {timeAgo(generatedAt)}
-            </span>
-          )}
         </header>
 
         {children}
 
         {/* footer */}
-        <footer className="mt-4 py-12 text-center">
+        <footer className="py-10 text-center">
           <a
             href="https://unstatus.app"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-3 py-1.5 text-[11px] tracking-tight text-[var(--color-fg-dim)] no-underline shadow-[var(--shadow-xs)] transition-colors hover:text-[var(--color-fg-muted)]"
+            className="text-[11px] text-[var(--color-fg-dim)] no-underline hover:text-[var(--color-fg-muted)]"
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
             Powered by Produktive
           </a>
         </footer>

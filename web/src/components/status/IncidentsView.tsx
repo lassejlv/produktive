@@ -9,16 +9,14 @@ interface Props {
   /** Link back to the status page. */
   statusHref: string;
   style: StatusStyle;
-  generatedAt?: string;
 }
 
 /** Dedicated `<status>/incidents` page: the full incident history. */
-export function IncidentsView({ title, incidents, statusHref, style, generatedAt }: Props) {
+export function IncidentsView({ title, incidents, statusHref, style }: Props) {
   return (
     <StatusShell
       title={title}
       style={style}
-      generatedAt={generatedAt}
       documentTitle={`${title} — Incident history`}
     >
       <div className="pb-8 pt-10">
