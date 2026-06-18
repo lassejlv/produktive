@@ -28,6 +28,8 @@ interface Props {
   style: StatusStyle;
   /** Rendered inside the editor (no fixed min-height, no live links). */
   preview?: boolean;
+  /** When false, hide the "Powered by …" footer. Defaults to true in preview. */
+  showBranding?: boolean;
 }
 
 const OVERALL_TEXT: Record<PublicOverall, string> = {
@@ -102,6 +104,7 @@ export function StatusView({
   incidentsHref,
   style,
   preview,
+  showBranding,
 }: Props) {
   const monitors = groups.flatMap((g) => g.monitors);
   const affected = monitors.filter(
@@ -116,6 +119,7 @@ export function StatusView({
       style={style}
       documentTitle={`${title} — ${OVERALL_TEXT[overall]}`}
       preview={preview}
+      showBranding={preview ? true : showBranding}
     >
       <div className={description ? "pb-6 pt-6" : "pt-6"}>
         {description && (

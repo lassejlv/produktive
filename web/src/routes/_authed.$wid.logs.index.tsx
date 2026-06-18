@@ -19,6 +19,7 @@ import {
   useMe,
   useRequestLogAccess,
 } from "../lib/queries";
+import { LOGS_ENABLED } from "#/lib/features";
 import type { LogAccessStatus, LogProject } from "../lib/types";
 import { lastSeen } from "../lib/status";
 
@@ -40,6 +41,15 @@ export const Route = createFileRoute("/_authed/$wid/logs/")({
 
 function LogsPage() {
   const { wid } = Route.useParams();
+
+  if (!LOGS_ENABLED) {
+    return <LogsUnavailable />;
+  }
+
+  return <LogsPageContent wid={wid} />;
+}
+
+function LogsPageContent({ wid }: { wid: string }) {
   const navigate = useNavigate();
   const me = useMe();
   const access = useLogAccess(wid);
@@ -136,6 +146,16 @@ function LogsPage() {
         }
       />
     </>
+  );
+}
+
+function LogsUnavailable() {
+  return (
+    <EmptyState
+      icon={Lock}
+      title="Logs not available"
+      description="Log ingest and search are not enabled on this deployment."
+    />
   );
 }
 

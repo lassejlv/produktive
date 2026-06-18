@@ -242,6 +242,7 @@ export interface PublicStatus {
   incidents: PublicIncident[];
   style: StatusStyle;
   generated_at: Iso;
+  show_branding: boolean;
 }
 
 export interface User {

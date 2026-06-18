@@ -1,5 +1,6 @@
 import { createFileRoute, Link, Outlet, useLocation, useParams } from "@tanstack/react-router";
 import { cn } from "#/lib/cn";
+import { LOGS_ENABLED } from "#/lib/features";
 import { useMe } from "../lib/queries";
 
 export const Route = createFileRoute("/_authed/$wid/settings")({
@@ -29,7 +30,10 @@ function SettingsLayout() {
   const { wid } = useParams({ from: "/_authed/$wid" });
   const loc = useLocation();
   const me = useMe();
-  const tabs = TABS.filter((t) => !t.adminOnly || me.data?.is_admin);
+  const tabs = TABS.filter((t) => {
+    if (!LOGS_ENABLED && t.to.endsWith("/log-storage")) return false;
+    return !t.adminOnly || me.data?.is_admin;
+  });
 
   return (
     <div className="flex flex-col gap-6">

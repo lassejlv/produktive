@@ -15,6 +15,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
+    billing::{customer_state_for_billing, tier_of},
     error::{ApiError, ApiResult},
     state::AppState,
     status_summary_cache::SUMMARY_CACHE_CONTROL,
@@ -122,6 +123,8 @@ pub struct PublicStatus {
     pub groups: Vec<PublicGroup>,
     pub incidents: Vec<PublicIncident>,
     pub style: StatusStyle,
+    /// Whether to show the "Powered by …" footer on the public page.
+    pub show_branding: bool,
     pub generated_at: DateTime<FixedOffset>,
 }
 
@@ -676,6 +679,8 @@ async fn load_public_status(
         });
     }
 
+    let show_branding = resolve_show_branding(state, ws.id).await;
+
     Ok(LoadedPublicStatus {
         status: PublicStatus {
             workspace_name: ws.name,
@@ -686,10 +691,31 @@ async fn load_public_status(
             groups,
             incidents,
             style,
+            show_branding,
             generated_at: Utc::now().fixed_offset(),
         },
         monitor_created_at,
     })
+}
+
+async fn resolve_show_branding(state: &AppState, workspace_id: Uuid) -> bool {
+    let Some(billing) = state.billing.as_ref() else {
+        return true;
+    };
+    match customer_state_for_billing(state, workspace_id).await {
+        Ok(cstate) => {
+            let tier = tier_of(&billing.catalog, &cstate);
+            !billing.catalog.tier_has_perk(tier, "remove_branding")
+        }
+        Err(error) => {
+            tracing::warn!(
+                %workspace_id,
+                error = ?error,
+                "branding check skipped; showing footer"
+            );
+            true
+        }
+    }
 }
 
 fn build_statuspage_summary(

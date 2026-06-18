@@ -1339,6 +1339,7 @@ export interface components {
             incidents: components["schemas"]["PublicIncident"][];
             monitors: components["schemas"]["PublicMonitor"][];
             overall: string;
+            show_branding: boolean;
             style: components["schemas"]["StatusStyle"];
             title?: string | null;
             workspace_name: string;

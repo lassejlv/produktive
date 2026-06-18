@@ -31,6 +31,7 @@ import {
 } from "./ui/sidebar";
 import { cn } from "#/lib/cn";
 import { BRAND_NAME } from "#/lib/brand";
+import { LOGS_ENABLED } from "#/lib/features";
 import { auth } from "../lib/api";
 import { useMe, useWorkspaces } from "../lib/queries";
 
@@ -186,22 +187,24 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
 
-          <SidebarGroup>
-            <SidebarGroupLabel>Logging</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {LOGGING.map((it) => (
-                  <NavMenuButton
-                    key={it.to}
-                    item={it}
-                    wid={widParam}
-                    active={isActive(loc.pathname, it, wid, widParam)}
-                    onNavigate={closeOnNavigate}
-                  />
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          {LOGS_ENABLED && (
+            <SidebarGroup>
+              <SidebarGroupLabel>Logging</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {LOGGING.map((it) => (
+                    <NavMenuButton
+                      key={it.to}
+                      item={it}
+                      wid={widParam}
+                      active={isActive(loc.pathname, it, wid, widParam)}
+                      onNavigate={closeOnNavigate}
+                    />
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
         </SidebarContent>
 
         <SidebarFooter>

@@ -436,7 +436,7 @@ pub async fn load_owner_email(state: &AppState, owner_id: Uuid) -> ApiResult<Str
         .ok_or_else(|| ApiError::not_found("workspace owner"))
 }
 
-fn tier_of<'a>(catalog: &'a PolarCatalog, state: &CustomerState) -> &'a str {
+pub fn tier_of<'a>(catalog: &'a PolarCatalog, state: &CustomerState) -> &'a str {
     state
         .active_subscription()
         .and_then(|sub| catalog.tier_for_product(&sub.product_id))

@@ -31,6 +31,7 @@ function PublicIncidentsPage() {
       incidents={data.incidents ?? []}
       statusHref={`/s/${slug}`}
       style={data.style ?? DEFAULT_STATUS_STYLE}
+      showBranding={data.show_branding}
     />
   );
 }

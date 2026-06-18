@@ -17,6 +17,7 @@ import {
   useUpdateLogBucket,
 } from "../lib/queries";
 import type { AdminLogBucket } from "../lib/types";
+import { LOGS_ENABLED } from "#/lib/features";
 import { lastSeen } from "../lib/status";
 
 export const Route = createFileRoute("/_authed/$wid/settings/log-storage")({
@@ -25,6 +26,9 @@ export const Route = createFileRoute("/_authed/$wid/settings/log-storage")({
     description: "S3-compatible log storage buckets and project assignment capacity.",
   },
   beforeLoad: async ({ context, params }) => {
+    if (!LOGS_ENABLED) {
+      throw redirect({ to: "/$wid/settings", params: { wid: params.wid } });
+    }
     const me = await context.queryClient.ensureQueryData(meQuery);
     if (!me.is_admin) {
       throw redirect({ to: "/$wid", params: { wid: params.wid } });

@@ -9,15 +9,17 @@ interface Props {
   /** Link back to the status page. */
   statusHref: string;
   style: StatusStyle;
+  showBranding?: boolean;
 }
 
 /** Dedicated `<status>/incidents` page: the full incident history. */
-export function IncidentsView({ title, incidents, statusHref, style }: Props) {
+export function IncidentsView({ title, incidents, statusHref, style, showBranding = true }: Props) {
   return (
     <StatusShell
       title={title}
       style={style}
       documentTitle={`${title} — Incident history`}
+      showBranding={showBranding}
     >
       <div className="pb-8 pt-10">
         <a

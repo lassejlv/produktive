@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Check, Copy } from "lucide-react";
 import { cn } from "#/lib/cn";
 import type { StatusStyle } from "../../lib/types";
 
@@ -9,6 +10,8 @@ interface Props {
   documentTitle?: string;
   /** Rendered inside the editor (no fixed min-height). */
   preview?: boolean;
+  /** When false, hide the "Powered by …" footer. Defaults to true. */
+  showBranding?: boolean;
   children: React.ReactNode;
 }
 
@@ -21,9 +24,11 @@ export function StatusShell({
   style,
   documentTitle,
   preview,
+  showBranding = true,
   children,
 }: Props) {
   const effTheme = useEffectiveTheme(style.theme);
+  const [copied, setCopied] = useState(false);
 
   // The SPA ships one global <title>; public pages override it so tabs and
   // history entries read as the customer's page, not as Produktive.
@@ -31,6 +36,14 @@ export function StatusShell({
     if (preview || !documentTitle) return;
     document.title = documentTitle;
   }, [documentTitle, preview]);
+
+  const copyPageUrl = () => {
+    if (preview) return;
+    void navigator.clipboard.writeText(window.location.href).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    });
+  };
 
   // Brand accent recolors links/accents only — never status semantics. A rose
   // accent must not turn "Operational" indicators red.
@@ -49,53 +62,66 @@ export function StatusShell({
     >
       <div className="mx-auto max-w-[680px] px-6">
         {/* header */}
-        <header className="flex h-14 items-center">
-          {style.header_link ? (
-            <a
-              href={style.header_link}
-              className="flex min-w-0 items-center no-underline"
-              rel="noopener noreferrer"
+        <header className="flex h-14 items-center justify-between gap-3">
+          <div className="min-w-0">
+            {style.header_link ? (
+              <a
+                href={style.header_link}
+                className="flex min-w-0 items-center no-underline"
+                rel="noopener noreferrer"
+              >
+                {style.logo_url ? (
+                  <img
+                    src={style.logo_url}
+                    alt={title}
+                    className="max-h-7 max-w-[160px] object-contain"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <span className="text-[13px] font-semibold tracking-tight text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]">
+                    {title}
+                  </span>
+                )}
+              </a>
+            ) : style.logo_url ? (
+              <img
+                src={style.logo_url}
+                alt={title}
+                className="max-h-7 max-w-[160px] object-contain"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <span className="text-[13px] font-semibold tracking-tight text-[var(--color-fg-muted)]">
+                {title}
+              </span>
+            )}
+          </div>
+          {!preview && (
+            <button
+              type="button"
+              onClick={copyPageUrl}
+              aria-label="Copy page link"
+              className="shrink-0 rounded-[var(--radius-sm)] p-1.5 text-[var(--color-fg-dim)] transition-colors hover:bg-[var(--color-bg-row)] hover:text-[var(--color-fg)]"
             >
-              {style.logo_url ? (
-                <img
-                  src={style.logo_url}
-                  alt={title}
-                  className="max-h-7 max-w-[160px] object-contain"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <span className="text-[13px] font-semibold tracking-tight text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]">
-                  {title}
-                </span>
-              )}
-            </a>
-          ) : style.logo_url ? (
-            <img
-              src={style.logo_url}
-              alt={title}
-              className="max-h-7 max-w-[160px] object-contain"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <span className="text-[13px] font-semibold tracking-tight text-[var(--color-fg-muted)]">
-              Produktive
-            </span>
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+            </button>
           )}
         </header>
 
         {children}
 
-        {/* footer */}
-        <footer className="py-10 text-center">
-          <a
-            href="https://unstatus.app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] text-[var(--color-fg-dim)] no-underline hover:text-[var(--color-fg-muted)]"
-          >
-            Powered by Produktive
-          </a>
-        </footer>
+        {showBranding && (
+          <footer className="py-10 text-center">
+            <a
+              href="https://unstatus.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] text-[var(--color-fg-dim)] no-underline hover:text-[var(--color-fg-muted)]"
+            >
+              Powered by Produktive
+            </a>
+          </footer>
+        )}
       </div>
     </div>
   );

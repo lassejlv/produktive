@@ -45,6 +45,7 @@ export function PublicStatusByDomain({
         incidents={data.incidents ?? []}
         statusHref="/"
         style={data.style ?? DEFAULT_STATUS_STYLE}
+        showBranding={data.show_branding}
       />
     );
   }
@@ -58,6 +59,7 @@ export function PublicStatusByDomain({
       incidents={data.incidents ?? []}
       incidentsHref="/incidents"
       style={data.style ?? DEFAULT_STATUS_STYLE}
+      showBranding={data.show_branding}
     />
   );
 }

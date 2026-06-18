@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { toast } from "#/lib/toast";
+import { LOGS_ENABLED } from "#/lib/features";
 import { Button } from "#/components/ui/button";
 import {
   InputGroup,
@@ -110,6 +111,9 @@ export const Route = createFileRoute("/_authed/$wid/logs/$project")({
     parent: { label: "Logs", to: "/$wid/logs" },
   },
   loader: async ({ context, params }) => {
+    if (!LOGS_ENABLED) {
+      throw redirect({ to: "/$wid/logs", params: { wid: params.wid } });
+    }
     const access = await context.queryClient.ensureQueryData(logAccessQuery(params.wid));
     if (access.status !== "approved") {
       throw redirect({ to: "/$wid/logs", params: { wid: params.wid } });

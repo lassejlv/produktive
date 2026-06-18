@@ -29,7 +29,7 @@ export const Route = createFileRoute("/")({
   component: HomePage,
 });
 
-const PLATFORM = ["Uptime", "Logging", "Status pages"];
+const PLATFORM = ["Uptime", "Monitors", "Status pages"];
 
 function HomePage() {
   const customDomain = customStatusDomain();
@@ -59,8 +59,8 @@ function Landing() {
         </h1>
 
         <p className="mt-5 max-w-[440px] text-[15px] leading-[1.65] text-[var(--color-fg-muted)]">
-          Monitor endpoints from distributed regions, ingest and search application logs, and publish
-          status pages your users can trust.
+          Monitor endpoints from distributed regions, define checks as code, and publish status
+          pages your users can trust.
         </p>
 
         <div className="mt-9 flex flex-wrap items-center gap-3">
