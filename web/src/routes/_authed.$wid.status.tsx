@@ -258,6 +258,13 @@ function StatusPageSettings() {
                     placeholder="Real-time uptime and incident history."
                   />
                 </label>
+
+                {isLive && current.status_slug && (
+                  <StatusSummaryIntegrations
+                    slug={current.status_slug}
+                    customDomains={(customDomains.data ?? []).filter((d) => d.verified_at)}
+                  />
+                )}
               </div>
             </TabsPanel>
 
@@ -494,6 +501,89 @@ function EmptyHint({ children }: { children: ReactNode }) {
     <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border)] px-4 py-5 text-center text-[13px] text-[var(--color-fg-muted)]">
       {children}
     </div>
+  );
+}
+
+function StatusSummaryIntegrations({
+  slug,
+  customDomains,
+}: {
+  slug: string;
+  customDomains: CustomDomain[];
+}) {
+  const origin = window.location.origin;
+  const entries = statusSummaryUrls(origin, slug, customDomains);
+
+  return (
+    <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] p-4">
+      <p className="text-[13px] font-medium text-[var(--color-fg)]">Status summary API</p>
+      <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-fg-muted)]">
+        Atlassian Statuspage-compatible JSON for Grafana and other monitoring tools.
+      </p>
+      <ul className="mt-3 space-y-2">
+        {entries.map((entry) => (
+          <CopyableUrlRow key={entry.url} label={entry.label} url={entry.url} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function statusSummaryUrls(
+  origin: string,
+  slug: string,
+  customDomains: CustomDomain[],
+): Array<{ label: string; url: string }> {
+  const entries: Array<{ label: string; url: string }> = [
+    {
+      label: "App domain",
+      url: `${origin}/s/${slug}/api/v2/summary.json`,
+    },
+    {
+      label: "App domain (alias)",
+      url: `${origin}/s/${slug}/summary`,
+    },
+  ];
+
+  for (const domain of customDomains) {
+    entries.push({
+      label: domain.hostname,
+      url: `https://${domain.hostname}/api/v2/summary.json`,
+    });
+    entries.push({
+      label: `${domain.hostname} (alias)`,
+      url: `https://${domain.hostname}/summary`,
+    });
+  }
+
+  return entries;
+}
+
+function CopyableUrlRow({ label, url }: { label: string; url: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = () => {
+    void navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    });
+  };
+
+  return (
+    <li className="flex items-start gap-2">
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] text-[var(--color-fg-dim)]">{label}</p>
+        <p className="mono mt-0.5 truncate text-[12px] text-[var(--color-fg-muted)]">{url}</p>
+      </div>
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={`Copy ${label}`}
+        className="shrink-0 rounded-[var(--radius-sm)] p-1 text-[var(--color-fg-dim)] transition-colors hover:bg-[var(--color-bg-elev)] hover:text-[var(--color-fg)]"
+      >
+        {copied ? <Check size={13} /> : <Copy size={13} />}
+      </button>
+    </li>
   );
 }
 
