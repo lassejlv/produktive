@@ -9,7 +9,10 @@ use tokio::sync::Semaphore;
 use email::EmailClient;
 use polar::Polar;
 
-use crate::{billing::Billing, config::Config, status_summary_cache::StatusSummaryCache};
+use crate::{
+    billing::Billing, config::Config, logstore::NarrowLogs,
+    status_summary_cache::StatusSummaryCache,
+};
 
 const REDIS_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -30,6 +33,9 @@ pub struct AppState {
     pub check_semaphore: Arc<Semaphore>,
     pub billing: Option<Billing>,
     pub status_summary_cache: StatusSummaryCache,
+    /// NarrowDB-backed log storage. `None` disables every log-storage handler
+    /// (they return a 503), keeping the no-logs deployment path working.
+    pub narrow: Option<Arc<NarrowLogs>>,
 }
 
 impl AppState {
@@ -56,6 +62,7 @@ impl AppState {
         let email = build_email()?;
         let check_semaphore = Arc::new(Semaphore::new(config.scheduler_max_concurrent_checks));
         let billing = build_billing(&config).await;
+        let narrow = build_narrow(&config);
         Ok(Self {
             db,
             config,
@@ -65,7 +72,31 @@ impl AppState {
             check_semaphore,
             billing,
             status_summary_cache: StatusSummaryCache::default(),
+            narrow,
         })
+    }
+}
+
+/// Build the NarrowDB log store. Log storage is optional: it is only enabled
+/// when both `NARROWDB_URL` and `NARROWDB_TOKEN` are present. A failure to
+/// construct the client disables logs rather than failing startup.
+fn build_narrow(config: &Config) -> Option<Arc<NarrowLogs>> {
+    let (url, token) = match (config.narrowdb_url.as_ref(), config.narrowdb_token.as_ref()) {
+        (Some(url), Some(token)) => (url, token),
+        _ => {
+            tracing::warn!("NARROWDB_URL/NARROWDB_TOKEN not set; log storage is disabled");
+            return None;
+        }
+    };
+    match NarrowLogs::new(url, token) {
+        Ok(narrow) => {
+            tracing::info!("NarrowDB log storage initialized");
+            Some(Arc::new(narrow))
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "failed to initialize NarrowDB client; log storage disabled");
+            None
+        }
     }
 }
 

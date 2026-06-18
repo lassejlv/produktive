@@ -64,6 +64,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy = "0.15"
 async-trait = "0.1"
 utoipa = { version = "5", features = ["axum_extras", "uuid", "chrono"] }
+narrowdb-sdk = { git = "https://github.com/lassejlv/narrowdb" }
 
 [profile.release]
 lto = "thin"

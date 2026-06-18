@@ -3,6 +3,7 @@ mod billing;
 mod config;
 mod error;
 mod http;
+mod logstore;
 mod middleware;
 mod notification_webhook;
 mod openapi;
