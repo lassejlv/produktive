@@ -4,8 +4,6 @@ members = [
     "crates/api",
     "crates/dsl",
     "crates/email",
-    "crates/logging",
-    "crates/logs",
     "crates/polar",
     "crates/entity",
     "crates/migration",
@@ -66,7 +64,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy = "0.15"
 async-trait = "0.1"
 utoipa = { version = "5", features = ["axum_extras", "uuid", "chrono"] }
-duckdb = { version = "1.10503.1", features = ["bundled", "parquet", "chrono", "serde_json"] }
 
 [profile.release]
 lto = "thin"
