@@ -100,6 +100,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/accept-legal-terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["accept_legal_terms"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/me": {
         parameters: {
             query?: never;
@@ -926,6 +942,11 @@ export interface components {
             email: string;
             password: string;
         };
+        RegisterPayload: {
+            accepted_legal_terms: boolean;
+            email: string;
+            password: string;
+        };
         CustomDomainView: {
             cname_target: string;
             /** Format: date-time */
@@ -1113,6 +1134,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             is_admin: boolean;
+            /** Format: date-time */
+            legal_terms_accepted_at?: string | null;
             /** Format: uuid */
             personal_workspace_id?: string | null;
         };
@@ -1446,6 +1469,8 @@ export interface components {
             /** Format: uuid */
             id: string;
             is_admin: boolean;
+            /** Format: date-time */
+            legal_terms_accepted_at?: string | null;
         };
         Value: unknown;
         /** @enum {string} */
@@ -1649,6 +1674,32 @@ export interface operations {
             };
         };
     };
+    accept_legal_terms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            /** @description Missing or invalid token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     me: {
         parameters: {
             query?: never;
@@ -1684,7 +1735,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CredsPayload"];
+                "application/json": components["schemas"]["RegisterPayload"];
             };
         };
         responses: {

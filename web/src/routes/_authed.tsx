@@ -1,4 +1,5 @@
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
+import { LegalTermsGate } from "#/components/LegalTermsGate";
 import { auth } from "../lib/api";
 import { authRedirectTarget } from "../lib/redirect";
 import { meQuery } from "../lib/queries";
@@ -21,5 +22,14 @@ export const Route = createFileRoute("/_authed")({
       });
     }
   },
-  component: () => <Outlet />,
+  component: AuthedLayout,
 });
+
+function AuthedLayout() {
+  return (
+    <>
+      <Outlet />
+      <LegalTermsGate />
+    </>
+  );
+}

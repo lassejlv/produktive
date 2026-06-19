@@ -249,13 +249,20 @@ export interface User {
   id: Uuid;
   email: string;
   is_admin: boolean;
+  legal_terms_accepted_at: Iso | null;
   created_at: Iso;
   personal_workspace_id: Uuid | null;
 }
 
 export interface AuthResponse {
   token: string;
-  user: { id: Uuid; email: string; is_admin: boolean; created_at: Iso };
+  user: {
+    id: Uuid;
+    email: string;
+    is_admin: boolean;
+    legal_terms_accepted_at: Iso | null;
+    created_at: Iso;
+  };
 }
 
 export interface OkResponse {

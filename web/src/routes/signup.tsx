@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-r
 import { useState } from "react";
 import { toast } from "#/lib/toast";
 import { Button } from "#/components/ui/button";
+import { Checkbox } from "#/components/ui/checkbox";
 import { Input } from "../components/Input";
 import { BRAND_NAME, BRAND_TAGLINE } from "../lib/brand";
 import { parseLoginRedirect } from "../lib/redirect";
@@ -22,6 +23,7 @@ function SignupPage() {
   const login = useLogin();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [acceptedLegalTerms, setAcceptedLegalTerms] = useState(false);
 
   const submitting = register.isPending || login.isPending;
 
@@ -49,9 +51,17 @@ function SignupPage() {
           className="flex flex-col gap-4"
           onSubmit={async (e) => {
             e.preventDefault();
+            if (!acceptedLegalTerms) {
+              toast.error("Accept the Terms of Service and Privacy Policy to continue");
+              return;
+            }
             let registered = false;
             try {
-              await register.mutateAsync({ email, password });
+              await register.mutateAsync({
+                email,
+                password,
+                accepted_legal_terms: acceptedLegalTerms,
+              });
               registered = true;
               await login.mutateAsync({ email, password });
               toast.success("Account created");
@@ -88,6 +98,26 @@ function SignupPage() {
             onChange={(e) => setPassword(e.target.value)}
           />
 
+          <label className="flex items-start gap-2 text-[13px] leading-5 text-[var(--color-fg-muted)]">
+            <Checkbox
+              aria-label="Accept Terms of Service and Privacy Policy"
+              checked={acceptedLegalTerms}
+              className="mt-0.5"
+              onCheckedChange={(checked) => setAcceptedLegalTerms(checked === true)}
+            />
+            <span>
+              I agree to the{" "}
+              <a className="link" href="/TERMS.md" rel="noreferrer" target="_blank">
+                Terms of Service
+              </a>{" "}
+              and{" "}
+              <a className="link" href="/PRIVACY.md" rel="noreferrer" target="_blank">
+                Privacy Policy
+              </a>
+              .
+            </span>
+          </label>
+
           {(register.error || login.error) && (
             <div className="-mt-1 text-[12px] text-[var(--color-err)]">
               {((register.error || login.error) as Error).message}
@@ -99,6 +129,7 @@ function SignupPage() {
             size="lg"
             type="submit"
             loading={submitting}
+            disabled={!acceptedLegalTerms || submitting}
             className="mt-3 w-full"
           >
             {submitting ? "Creating account…" : "Create account"}

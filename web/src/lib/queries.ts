@@ -62,6 +62,17 @@ export function useMe() {
   return useQuery(meQuery);
 }
 
+export function useAcceptLegalTerms() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<User>("/auth/accept-legal-terms", {}),
+    onSuccess: (user) => {
+      qc.setQueryData(meQuery.queryKey, user);
+      qc.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
 export interface AuthConfig {
   github_enabled: boolean;
 }
@@ -902,11 +913,8 @@ export function useLogin() {
 
 export function useRegister() {
   return useMutation({
-    mutationFn: (body: { email: string; password: string }) =>
-      api.post<{ user: { id: string; email: string }; personal_workspace_id: string }>(
-        "/auth/register",
-        body,
-      ),
+    mutationFn: (body: { email: string; password: string; accepted_legal_terms: boolean }) =>
+      api.post<{ user: User; personal_workspace_id: string }>("/auth/register", body),
   });
 }
 

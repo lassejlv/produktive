@@ -38,6 +38,7 @@ pub fn routes() -> Router<AppState> {
         .route("/github/start", get(github_start))
         .route("/github/callback", get(github_callback))
         .route("/logout", post(logout))
+        .route("/accept-legal-terms", post(accept_legal_terms))
         .route("/me", get(me))
 }
 
@@ -45,6 +46,13 @@ pub fn routes() -> Router<AppState> {
 pub struct CredsPayload {
     pub email: String,
     pub password: String,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct RegisterPayload {
+    pub email: String,
+    pub password: String,
+    pub accepted_legal_terms: bool,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -71,6 +79,7 @@ pub struct UserView {
     pub id: Uuid,
     pub email: String,
     pub is_admin: bool,
+    pub legal_terms_accepted_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
 }
 
@@ -80,6 +89,7 @@ impl From<user::Model> for UserView {
             id: u.id,
             email: u.email,
             is_admin: u.is_admin,
+            legal_terms_accepted_at: u.legal_terms_accepted_at,
             created_at: u.created_at,
         }
     }
@@ -96,6 +106,7 @@ pub struct MeResponse {
     pub id: Uuid,
     pub email: String,
     pub is_admin: bool,
+    pub legal_terms_accepted_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
     pub personal_workspace_id: Option<Uuid>,
 }
@@ -162,7 +173,7 @@ struct GithubEmailResponse {
 #[utoipa::path(
     post,
     path = "/api/auth/register",
-    request_body = CredsPayload,
+    request_body = RegisterPayload,
     responses(
         (status = 200, body = RegisterResponse, description = "User created and personal workspace assigned"),
         (status = 400, description = "Invalid email or password"),
@@ -173,7 +184,7 @@ struct GithubEmailResponse {
 pub async fn register(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(body): Json<CredsPayload>,
+    Json(body): Json<RegisterPayload>,
 ) -> ApiResult<Json<RegisterResponse>> {
     let email = body.email.trim().to_lowercase();
     if !email.contains('@') {
@@ -181,6 +192,11 @@ pub async fn register(
     }
     if body.password.len() < 8 {
         return Err(ApiError::bad_request("password must be at least 8 chars"));
+    }
+    if !body.accepted_legal_terms {
+        return Err(ApiError::bad_request(
+            "terms of service and privacy policy must be accepted",
+        ));
     }
     rate_limit::check_auth(&state, &headers, &email, AuthLimitKind::Register).await?;
 
@@ -201,6 +217,7 @@ pub async fn register(
         github_id: Set(None),
         password_hash: Set(password::hash(&body.password)?),
         is_admin: Set(registration_admin_flag(&email)),
+        legal_terms_accepted_at: Set(Some(now)),
         created_at: Set(now),
         updated_at: Set(now),
     }
@@ -732,6 +749,7 @@ async fn find_or_create_github_user(
         github_id: Set(Some(github_id.to_owned())),
         password_hash: Set(password::hash(&Uuid::now_v7().to_string())?),
         is_admin: Set(registration_admin_flag(email)),
+        legal_terms_accepted_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     }
@@ -821,6 +839,37 @@ pub async fn logout(State(state): State<AppState>, auth: AuthUser) -> ApiResult<
 }
 
 #[utoipa::path(
+    post,
+    path = "/api/auth/accept-legal-terms",
+    responses(
+        (status = 200, body = MeResponse),
+        (status = 401, description = "Missing or invalid token"),
+    ),
+    security(("bearerAuth" = [])),
+    tag = "auth"
+)]
+pub async fn accept_legal_terms(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> ApiResult<Json<MeResponse>> {
+    let now = Utc::now().fixed_offset();
+    let mut active: user::ActiveModel = auth.user.into();
+    active.legal_terms_accepted_at = Set(Some(now));
+    active.updated_at = Set(now);
+    let user_model = active.update(&state.db).await?;
+    let pid = personal_workspace_id(&state.db, user_model.id).await?;
+
+    Ok(Json(MeResponse {
+        id: user_model.id,
+        email: user_model.email,
+        is_admin: user_model.is_admin,
+        legal_terms_accepted_at: user_model.legal_terms_accepted_at,
+        created_at: user_model.created_at,
+        personal_workspace_id: pid,
+    }))
+}
+
+#[utoipa::path(
     get,
     path = "/api/auth/me",
     responses(
@@ -836,6 +885,7 @@ pub async fn me(State(state): State<AppState>, auth: AuthUser) -> ApiResult<Json
         id: auth.user.id,
         email: auth.user.email,
         is_admin: auth.user.is_admin,
+        legal_terms_accepted_at: auth.user.legal_terms_accepted_at,
         created_at: auth.user.created_at,
         personal_workspace_id: pid,
     }))

@@ -14,6 +14,7 @@ pub struct Model {
     #[serde(skip_serializing)]
     pub password_hash: String,
     pub is_admin: bool,
+    pub legal_terms_accepted_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
     pub updated_at: chrono::DateTime<chrono::FixedOffset>,
 }

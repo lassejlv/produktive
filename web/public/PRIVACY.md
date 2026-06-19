@@ -8,12 +8,8 @@ produktive is operated from Denmark and is intended to comply with the EU Genera
 
 produktive is operated as a **sole proprietorship (enkeltmandsvirksomhed) established in Denmark**.
 
-> TODO(confirm): Owner/proprietor name, company registration number (CVR), and registered postal address of the controller.
-
-**Data controller:** produktive — a sole proprietorship in Denmark (TODO(confirm): owner name, CVR, address).
+**Data controller:** produktive — a sole proprietorship in Denmark.
 **Privacy contact:** support@produktive.app
-
-> This document is a practical draft prepared from the product's actual behaviour. It is not legal advice; please have it reviewed by qualified counsel before publishing.
 
 ---
 
@@ -57,7 +53,7 @@ We collect only what the Service needs to function. The categories below reflect
 - **We do not store full payment‑card numbers.** Card data is handled by Polar and its payment processors.
 
 ### 2.6 Log data you ingest (optional feature)
-- If you use the logs feature, you (or your systems) send **arbitrary structured log events** to the Service using an ingest token. These events are stored in object storage with a per‑project retention period you set (**1–90 days; default 14 days**) (`log_projects`, `crates/api/src/http/logs.rs`).
+- If you use the logs feature, you (or your systems) send **arbitrary structured log events** to the Service using an ingest token. These events are stored in object storage with a per‑project retention period you set (**default 30 days**, subject to any plan or product limits) (`log_projects`, `crates/api/src/http/logs.rs`).
 - We do not impose a schema on, or filter, the contents of your log events. **Do not send personal or sensitive data in log events unless you have a lawful basis to do so and have configured an appropriate retention period.**
 
 ### 2.7 Data stored in your browser
@@ -82,7 +78,7 @@ We collect only what the Service needs to function. The categories below reflect
 | Send service/transactional emails (e.g. invitations) | Email address | Performance of a contract / legitimate interests (Art. 6(1)(b),(f)) |
 | Comply with legal obligations and enforce our Terms | As needed | Legal obligation / legitimate interests (Art. 6(1)(c),(f)) |
 
-We do not currently send marketing email. TODO(confirm): if marketing is added, it will rely on consent (Art. 6(1)(a)) with an opt‑out.
+We do not currently send marketing email. If we add marketing email, we will use consent or another lawful basis where permitted by law and provide an opt‑out.
 
 ---
 
@@ -99,9 +95,9 @@ When a workspace enables a public status page, the information on that page is *
 | Account data (email, password hash) | For the life of your account; deleted on account deletion (see [Section 7](#7-your-rights)). |
 | Sessions | Until expiry (token lifetime, default 30 days) or sign‑out; expired sessions are purged by a scheduled cleanup job. |
 | Workspace invitations | Until accepted or expiry (7 days). |
-| Check results | Retained as time‑series data; status pages display a rolling history window (90 days by default). TODO(confirm): any longer back‑end retention or compression policy on the `checks` hypertable. |
+| Check results | Retained as time‑series data while the relevant workspace and monitors remain active, unless deleted earlier or reduced by product retention settings. Status pages may display a rolling history window rather than all stored results. |
 | Incidents / notifications | For the life of the workspace unless deleted. |
-| Ingested log events | Per‑project retention you configure (1–90 days; default 14). Deleted when the log project is deleted. |
+| Ingested log events | Per‑project retention you configure; default 30 days. Deleted when the log project is deleted. |
 | Billing records | Retained for **5 years** in accordance with Danish bookkeeping law (bogføringsloven), as required for tax/accounting purposes. |
 
 When you delete a workspace, associated monitors, members, invites, incidents, and related records are removed by cascading deletion.
@@ -110,16 +106,16 @@ When you delete a workspace, associated monitors, members, invites, incidents, a
 
 ## 6. Where your data is stored and processed
 
-The Service is hosted in the **European Union**. Primary infrastructure:
+The Service is designed to run primarily on infrastructure in the **European Union**. Primary infrastructure includes:
 
-- **Application/API hosting** — AWS, EU (eu‑central) region. TODO(confirm): exact hosting platform (referenced as Unkey/unkey.app) and region.
-- **Primary database** (PostgreSQL/TimescaleDB) — **Neon**, running on AWS in the EU. TODO(confirm): exact region.
+- **Application/API hosting** — production application hosting for the API and web app.
+- **Primary database** (PostgreSQL/TimescaleDB) — **Neon**, running on cloud infrastructure in the EU where configured.
 - **Cache / rate limiting** — **Upstash** Redis on AWS, eu‑central.
 - **Log object storage** — **Hetzner** Object Storage, Falkenstein, Germany (EU).
 - **Custom‑domain reverse proxy** — **Hetzner**, Falkenstein, Germany.
-- **Transactional email** — **Cloudflare**.
+- **Transactional email** — the configured SMTP/email provider.
 
-Most processing occurs within the EU/EEA. Where a subprocessor processes data outside the EEA, we rely on an appropriate transfer mechanism (such as the EU Standard Contractual Clauses). See each provider's terms in [Section 8](#8-third-parties-and-subprocessors). TODO(confirm): document the transfer mechanism for any non‑EEA processing (e.g. Polar billing).
+Most processing occurs within the EU/EEA. Where a subprocessor processes data outside the EEA, we rely on an appropriate transfer mechanism such as an adequacy decision, the EU Standard Contractual Clauses, or another lawful transfer mechanism. See each provider's terms in [Section 8](#8-third-parties-and-subprocessors).
 
 ---
 
@@ -139,12 +135,12 @@ We share personal data with the following processors only as needed to run the S
 
 | Subprocessor | Purpose | Data shared | Location |
 |---|---|---|---|
-| **Neon** | Primary application database (Postgres/TimescaleDB) | All stored account and service data | AWS, EU (TODO(confirm): region) |
+| **Neon** | Primary application database (Postgres/TimescaleDB) | All stored account and service data | Cloud infrastructure, EU where configured |
 | **Upstash** | Redis cache / rate limiting | Transient rate‑limit counters keyed by email/IP | AWS, eu‑central |
 | **Hetzner** | Object storage for ingested logs; reverse proxy for custom status‑page domains | Log event contents; inbound requests to custom domains, TLS termination | Falkenstein, Germany |
-| Application hosting (AWS / Unkey — TODO(confirm)) | Runs the API and web app | All processed data in transit/compute | EU (eu‑central) |
-| **Polar** (polar.sh) | Subscriptions, checkout, payments, metered billing | Workspace identifier, account email, plan/usage data; billing details handled by Polar | TODO(confirm): location & transfer mechanism |
-| **Cloudflare** | Sending transactional email (e.g. invitations) | Recipient email, inviter email, workspace name | Cloudflare global network |
+| Application hosting provider | Runs the API and web app | All processed data in transit/compute | EU where configured |
+| **Polar** (polar.sh) | Subscriptions, checkout, payments, metered billing | Workspace identifier, account email, plan/usage data; billing details handled by Polar | Polar infrastructure and payment providers |
+| SMTP/email provider | Sending transactional email (e.g. invitations and password resets) | Recipient email, inviter email where applicable, workspace name where applicable | Provider infrastructure |
 | **GitHub** (optional, if you use GitHub sign‑in) | OAuth authentication | OAuth identifiers, your verified email | Provided by GitHub/Microsoft |
 
 We will keep this list current.
@@ -167,7 +163,7 @@ For **content you put into the Service about third parties** — in particular *
 - Access to workspace data is gated by membership and role checks; some actions are restricted to workspace owners.
 - Data is hosted with reputable EU infrastructure providers (see [Section 6](#6-where-your-data-is-stored-and-processed)).
 
-No method of transmission or storage is completely secure, and we cannot guarantee absolute security. TODO(confirm): encryption‑at‑rest and TLS specifics you wish to state, and any breach‑notification commitments beyond the GDPR statutory requirements.
+No method of transmission or storage is completely secure, and we cannot guarantee absolute security. If we become aware of a personal‑data breach requiring notification, we will notify affected users and regulators where required by applicable law.
 
 ---
 
@@ -187,7 +183,7 @@ produktive does **not** use advertising or analytics cookies. To run the app we 
 - `unstatus.token` — your authentication token, so you stay signed in.
 - `unstatus.theme` — your light/dark theme preference.
 
-These are strictly necessary for the app to function and remain on your device. Because we do not use non‑essential tracking technologies, no cookie‑consent banner is required for the application itself. TODO(confirm): whether any custom‑domain or third‑party embed introduces additional cookies.
+These are strictly necessary for the app to function and remain on your device. Because we do not use non‑essential tracking technologies, no cookie‑consent banner is required for the application itself. Third‑party services you choose to connect, such as notification destinations or external embeds, may apply their own cookies or tracking technologies outside produktive's control.
 
 ---
 

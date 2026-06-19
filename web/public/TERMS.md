@@ -2,13 +2,9 @@
 
 **Effective date:** 2026-06-15
 
-These Terms of Service ("Terms") govern your access to and use of the **produktive** uptime‑monitoring and status‑page service at **https://produktive.app** and related subdomains (the "Service"), operated by produktive ("produktive", "we", "us", or "our"), a **sole proprietorship (enkeltmandsvirksomhed) established in Denmark**.
-
-> TODO(confirm): Owner/proprietor name, company registration number (CVR), and registered address.
+These Terms of Service ("Terms") govern your access to and use of the **produktive** uptime‑monitoring and status‑page service at **https://produktive.app** and related subdomains (the "Service"), operated by produktive ("produktive", "we", "us", or "our"), a **sole proprietorship (enkeltmandsvirksomhed) established in Denmark**. You can contact us at support@produktive.app.
 
 By creating an account or using the Service, you agree to these Terms. If you are using the Service on behalf of an organisation, you represent that you have authority to bind that organisation.
-
-> This document is a practical draft prepared from the product's actual behaviour. It is not legal advice; please have it reviewed by qualified counsel before publishing.
 
 ---
 
@@ -68,9 +64,9 @@ We may suspend or terminate access, remove content, or disable monitors that we 
 
 - The Service may be offered on a free tier and on paid subscription plans. Plan limits apply to items such as the number of monitors, members, included check volume, minimum check interval, multi‑region checks, and custom domains.
 - Payments and subscriptions are handled by our payment processor **Polar** (polar.sh). By subscribing, you also agree to Polar's applicable terms. We do not store full payment‑card details.
-- **Pricing model:** paid plans consist of a **monthly base price that includes an allowance of usage** (such as check volume), plus **usage‑based overage charges** for consumption above the included allowance. Charges may also reflect the monthly peak number of monitors and members in your workspace. TODO(confirm): the exact published prices, included allowances, overage rates, currency, and tax handling.
+- **Pricing model:** paid plans consist of a **monthly base price that includes an allowance of usage** (such as check volume), plus **usage‑based overage charges** for consumption above the included allowance. Charges may also reflect the monthly peak number of monitors and members in your workspace. Current prices, included allowances, overage rates, currency, and taxes are shown in the Service, at checkout, or by Polar before you subscribe.
 - **Renewal and cancellation:** subscriptions renew automatically each billing period unless cancelled. You may cancel at any time; cancellation takes effect at the end of the current billing period, and you retain paid features until then.
-- **Refunds:** if you cancel a paid subscription, we will **refund the unused, pro‑rated portion of the current billing period**. EU consumers retain any mandatory statutory withdrawal rights. TODO(confirm): confirm the pro‑rata refund mechanics with your payment processor (Polar).
+- **Refunds:** except where required by applicable law or expressly stated at checkout, fees already paid are non‑refundable and cancellation does not automatically create a pro‑rated refund. EU consumers retain any mandatory statutory withdrawal rights.
 - **Plan limit enforcement:** if you exceed plan limits, we may prevent the creation of additional resources or pause monitors. If our billing provider is temporarily unreachable, the Service may continue to operate ("fail open") and reconcile usage later.
 - If billing is not enabled for your deployment, plan limits do not apply.
 
@@ -98,7 +94,7 @@ If you connect a custom domain to a status page, you must control that domain an
 
 ## 10. Intellectual property
 
-The Service, including its software, design, and trademarks, is owned by produktive and its licensors and is protected by intellectual‑property laws. These Terms grant you a limited, non‑exclusive, non‑transferable right to use the Service; no other rights are granted. TODO(confirm): open‑source licensing of any components, if applicable.
+The Service, including its software, design, and trademarks, is owned by produktive and its licensors and is protected by intellectual‑property laws. These Terms grant you a limited, non‑exclusive, non‑transferable right to use the Service; no other rights are granted. Open‑source components included in or made available with the Service remain subject to their applicable open‑source licences.
 
 ---
 
@@ -128,7 +124,7 @@ This limitation does not apply to liability for gross negligence or wilful misco
 
 ## 14. Indemnification
 
-To the extent permitted by law, you agree to indemnify and hold produktive harmless from claims, damages, and reasonable expenses arising from your content, your use of the Service, your monitoring of targets you were not authorised to monitor, or your breach of these Terms. TODO(confirm): whether indemnification applies to consumers in your jurisdiction.
+To the extent permitted by law, you agree to indemnify and hold produktive harmless from claims, damages, and reasonable expenses arising from your content, your use of the Service, your monitoring of targets you were not authorised to monitor, or your breach of these Terms. If you are a consumer, this section applies only to the extent permitted by mandatory consumer‑protection law.
 
 ---
 
@@ -140,7 +136,7 @@ We may modify the Service and these Terms from time to time. For material change
 
 ## 16. Governing law and disputes
 
-These Terms are governed by the laws of **Denmark**, without regard to conflict‑of‑laws rules, and disputes are subject to the jurisdiction of the competent courts of Denmark. If you are a consumer in the EU, you retain the protection of mandatory provisions of the law of your country of residence, and you may have access to your local courts. TODO(confirm): specific venue/city and any arbitration or EU Online Dispute Resolution references.
+These Terms are governed by the laws of **Denmark**, without regard to conflict‑of‑laws rules, and disputes are subject to the jurisdiction of the competent courts of Denmark. If you are a consumer in the EU, you retain the protection of mandatory provisions of the law of your country of residence, and you may have access to your local courts.
 
 ---
 
@@ -156,4 +152,4 @@ These Terms are governed by the laws of **Denmark**, without regard to conflict�
 ## 18. Contact
 
 **Email:** support@produktive.app
-**Provider:** produktive — a sole proprietorship in Denmark (TODO(confirm): owner name, CVR, address)
+**Provider:** produktive — a sole proprietorship in Denmark
