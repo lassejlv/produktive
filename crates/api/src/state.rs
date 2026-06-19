@@ -10,8 +10,7 @@ use email::EmailClient;
 use polar::Polar;
 
 use crate::{
-    billing::Billing, config::Config, logstore::NarrowLogs,
-    status_summary_cache::StatusSummaryCache,
+    billing::Billing, config::Config, logstore::LokiLogs, status_summary_cache::StatusSummaryCache,
 };
 
 const REDIS_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
@@ -33,9 +32,9 @@ pub struct AppState {
     pub check_semaphore: Arc<Semaphore>,
     pub billing: Option<Billing>,
     pub status_summary_cache: StatusSummaryCache,
-    /// NarrowDB-backed log storage. `None` disables every log-storage handler
+    /// Loki-backed log storage. `None` disables every log-storage handler
     /// (they return a 503), keeping the no-logs deployment path working.
-    pub narrow: Option<Arc<NarrowLogs>>,
+    pub loki: Option<Arc<LokiLogs>>,
 }
 
 impl AppState {
@@ -62,7 +61,7 @@ impl AppState {
         let email = build_email()?;
         let check_semaphore = Arc::new(Semaphore::new(config.scheduler_max_concurrent_checks));
         let billing = build_billing(&config).await;
-        let narrow = build_narrow(&config);
+        let loki = build_loki(&config, http.clone());
         Ok(Self {
             db,
             config,
@@ -72,29 +71,27 @@ impl AppState {
             check_semaphore,
             billing,
             status_summary_cache: StatusSummaryCache::default(),
-            narrow,
+            loki,
         })
     }
 }
 
-/// Build the NarrowDB log store. Log storage is optional: it is only enabled
-/// when both `NARROWDB_URL` and `NARROWDB_TOKEN` are present. A failure to
-/// construct the client disables logs rather than failing startup.
-fn build_narrow(config: &Config) -> Option<Arc<NarrowLogs>> {
-    let (url, token) = match (config.narrowdb_url.as_ref(), config.narrowdb_token.as_ref()) {
-        (Some(url), Some(token)) => (url, token),
-        _ => {
-            tracing::warn!("NARROWDB_URL/NARROWDB_TOKEN not set; log storage is disabled");
-            return None;
-        }
+/// Build the Loki log store, reusing the shared async HTTP client. Log storage
+/// is optional: it is only enabled when `LOKI_URL` is set (`LOKI_TENANT` is
+/// optional). A failure to construct the client disables logs rather than
+/// failing startup.
+fn build_loki(config: &Config, http: Client) -> Option<Arc<LokiLogs>> {
+    let Some(url) = config.loki_url.as_ref() else {
+        tracing::warn!("LOKI_URL not set; log storage is disabled");
+        return None;
     };
-    match NarrowLogs::new(url, token) {
-        Ok(narrow) => {
-            tracing::info!("NarrowDB log storage initialized");
-            Some(Arc::new(narrow))
+    match LokiLogs::new(url, config.loki_tenant.clone(), http) {
+        Ok(loki) => {
+            tracing::info!("Loki log storage initialized");
+            Some(Arc::new(loki))
         }
         Err(e) => {
-            tracing::error!(error = %e, "failed to initialize NarrowDB client; log storage disabled");
+            tracing::error!(error = %e, "failed to initialize Loki client; log storage disabled");
             None
         }
     }

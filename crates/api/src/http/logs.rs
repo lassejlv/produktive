@@ -430,15 +430,14 @@ async fn load_bucket(
     }
 }
 
-/// Count events for a project over the last 24h via NarrowDB. Returns 0 on any
+/// Count events for a project over the last 24h via Loki. Returns 0 on any
 /// failure so a transient storage hiccup never blocks the project listing.
 async fn event_count_24h(state: &AppState, project_id: Uuid) -> i64 {
-    let Some(narrow) = state.narrow.as_ref() else {
+    let Some(loki) = state.loki.as_ref() else {
         return 0;
     };
     let since_ms = (Utc::now() - Duration::hours(24)).timestamp_millis();
-    narrow
-        .count_recent(&project_id.to_string(), since_ms)
+    loki.count_recent(&project_id.to_string(), since_ms)
         .await
         .unwrap_or(0)
 }
@@ -449,7 +448,7 @@ pub async fn list_projects(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
 ) -> ApiResult<Json<Vec<LogProjectView>>> {
-    if state.narrow.is_none() {
+    if state.loki.is_none() {
         return Err(disabled());
     }
     let projects = log_project::Entity::find()
@@ -472,7 +471,7 @@ pub async fn create_project(
     Extension(m): Extension<Membership>,
     Json(body): Json<CreateLogProjectBody>,
 ) -> ApiResult<Json<LogProjectView>> {
-    if state.narrow.is_none() {
+    if state.loki.is_none() {
         return Err(disabled());
     }
     let name = body.name.trim().to_owned();
@@ -522,7 +521,7 @@ pub async fn get_project(
     Extension(m): Extension<Membership>,
     Path((_wid, project)): Path<(String, String)>,
 ) -> ApiResult<Json<LogProjectView>> {
-    if state.narrow.is_none() {
+    if state.loki.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -536,7 +535,7 @@ pub async fn delete_project(
     Extension(m): Extension<Membership>,
     Path((_wid, project)): Path<(String, String)>,
 ) -> ApiResult<Json<OkResponse>> {
-    if state.narrow.is_none() {
+    if state.loki.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -554,7 +553,7 @@ pub async fn list_tokens(
     Extension(m): Extension<Membership>,
     Path((_wid, project)): Path<(String, String)>,
 ) -> ApiResult<Json<Vec<LogIngestTokenView>>> {
-    if state.narrow.is_none() {
+    if state.loki.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -572,7 +571,7 @@ pub async fn create_token(
     Path((_wid, project)): Path<(String, String)>,
     Json(body): Json<CreateLogTokenBody>,
 ) -> ApiResult<Json<CreatedLogIngestToken>> {
-    if state.narrow.is_none() {
+    if state.loki.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -617,7 +616,7 @@ pub async fn revoke_token(
     Extension(m): Extension<Membership>,
     Path((_wid, project, token_id)): Path<(String, String, Uuid)>,
 ) -> ApiResult<Json<OkResponse>> {
-    if state.narrow.is_none() {
+    if state.loki.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -643,16 +642,17 @@ pub async fn search_events(
     Path((_wid, project)): Path<(String, String)>,
     Query(query): Query<LogSearchQuery>,
 ) -> ApiResult<Json<LogSearchResponse>> {
-    let Some(narrow) = state.narrow.clone() else {
+    let Some(loki) = state.loki.clone() else {
         return Err(disabled());
     };
     let project = resolve_project(&state, m.workspace.id, &project).await?;
-    let events = narrow.search(&project.id.to_string(), &query).await?;
+    let events = loki.search(&project.id.to_string(), &query).await?;
     Ok(Json(LogSearchResponse {
         events,
+        // Synthetic, opaque identifier — never expose the internal Loki URL.
         storage: LogStorageInfo {
-            storage_uri: format!("narrowdb://{}", project.id),
-            backend: "narrowdb".to_owned(),
+            storage_uri: format!("loki://{}", project.id),
+            backend: "loki".to_owned(),
         },
     }))
 }
@@ -664,7 +664,7 @@ pub async fn list_alert_rules(
     Extension(m): Extension<Membership>,
     Path((_wid, project)): Path<(String, String)>,
 ) -> ApiResult<Json<Vec<LogAlertRuleView>>> {
-    if state.narrow.is_none() {
+    if state.loki.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -682,7 +682,7 @@ pub async fn create_alert_rule(
     Path((_wid, project)): Path<(String, String)>,
     Json(body): Json<CreateLogAlertRuleBody>,
 ) -> ApiResult<Json<LogAlertRuleView>> {
-    if state.narrow.is_none() {
+    if state.loki.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -713,10 +713,10 @@ pub async fn create_alert_rule(
     .insert(&state.db)
     .await?;
 
-    // TODO(alerts): background alert EVALUATION (periodic query of NarrowDB and
+    // TODO(alerts): background alert EVALUATION (periodic query of Loki and
     // notification firing) is out of scope. Rules are persisted but never
     // evaluated yet; wire a sweep that reads each rule's window/threshold,
-    // queries app_logs, and emits notifications / log_alert_firing rows.
+    // queries Loki, and emits notifications / log_alert_firing rows.
 
     Ok(Json(row.into()))
 }
@@ -727,7 +727,7 @@ pub async fn update_alert_rule(
     Path((_wid, project, rule_id)): Path<(String, String, Uuid)>,
     Json(body): Json<UpdateLogAlertRuleBody>,
 ) -> ApiResult<Json<LogAlertRuleView>> {
-    if state.narrow.is_none() {
+    if state.loki.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -771,7 +771,7 @@ pub async fn delete_alert_rule(
     Extension(m): Extension<Membership>,
     Path((_wid, project, rule_id)): Path<(String, String, Uuid)>,
 ) -> ApiResult<Json<OkResponse>> {
-    if state.narrow.is_none() {
+    if state.loki.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -793,7 +793,7 @@ async fn ingest(
     headers: HeaderMap,
     body: Bytes,
 ) -> ApiResult<Json<IngestResponse>> {
-    let Some(narrow) = state.narrow.clone() else {
+    let Some(loki) = state.loki.clone() else {
         return Err(disabled());
     };
 
@@ -821,9 +821,7 @@ async fn ingest(
     let accepted = if events.is_empty() {
         0
     } else {
-        narrow
-            .ingest_events(&project_id.to_string(), &events)
-            .await?
+        loki.ingest_events(&project_id.to_string(), &events).await?
     };
 
     // Best-effort last_used_at touch; ignore failures.
@@ -891,7 +889,7 @@ fn parse_ingest_body(body: &Bytes) -> ApiResult<Value> {
 //
 // Minimal copy of the normalization logic from the orphaned `crates/logging`
 // crate (which pulls in a duckdb dependency we do not want). Turns a raw
-// ingest payload into `NormalizedEvent`s for NarrowDB.
+// ingest payload into `NormalizedEvent`s for Loki.
 
 fn normalize_payload(payload: &Value, max_events: usize) -> ApiResult<Vec<NormalizedEvent>> {
     let raw_events: Vec<&Value> = if let Some(arr) = payload.as_array() {

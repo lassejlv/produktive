@@ -46,12 +46,13 @@ pub struct Config {
     pub worker_token: Option<String>,
     pub worker_tokens: BTreeMap<String, String>,
     pub worker_lease_seconds: u64,
-    /// Base URL of the NarrowDB router/gateway for log storage (e.g.
-    /// `http://narrowdb-gateway.railway.internal:4747`). When unset, log
-    /// storage is disabled.
-    pub narrowdb_url: Option<String>,
-    /// Bearer token for NarrowDB. Required alongside `narrowdb_url`.
-    pub narrowdb_token: Option<String>,
+    /// Base URL of the Grafana Loki HTTP endpoint for log storage (e.g.
+    /// `http://loki-railway.railway.internal:3100`). When unset, log storage is
+    /// disabled.
+    pub loki_url: Option<String>,
+    /// Optional Loki tenant; sent as the `X-Scope-OrgID` header on every
+    /// request. Unset when Loki has `auth_enabled = false` (the common case).
+    pub loki_tenant: Option<String>,
 }
 
 impl Config {
@@ -224,11 +225,11 @@ impl Config {
         if worker_lease_seconds == 0 {
             return Err(anyhow!("WORKER_LEASE_SECONDS must be at least 1"));
         }
-        let narrowdb_url = std::env::var("NARROWDB_URL")
+        let loki_url = std::env::var("LOKI_URL")
             .ok()
             .map(|v| v.trim().trim_end_matches('/').to_owned())
             .filter(|v| !v.is_empty());
-        let narrowdb_token = std::env::var("NARROWDB_TOKEN")
+        let loki_tenant = std::env::var("LOKI_TENANT")
             .ok()
             .map(|v| v.trim().to_owned())
             .filter(|v| !v.is_empty());
@@ -269,8 +270,8 @@ impl Config {
             worker_token,
             worker_tokens,
             worker_lease_seconds,
-            narrowdb_url,
-            narrowdb_token,
+            loki_url,
+            loki_tenant,
         })
     }
 

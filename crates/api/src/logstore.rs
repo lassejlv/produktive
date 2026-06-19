@@ -1,48 +1,50 @@
-//! NarrowDB-backed log storage.
+//! Grafana Loki-backed log storage.
 //!
-//! Wraps the blocking [`narrowdb_sdk::Client`] in async methods that run every
-//! call inside [`tokio::task::spawn_blocking`] (the SDK uses `ureq`, not tokio).
-//! The client is held behind an [`Arc`] so it is `Send + Sync + 'static`.
+//! Loki is plain async HTTP/JSON, so this module talks to it directly via the
+//! shared [`reqwest::Client`] — no blocking, no `spawn_blocking`, no SDK.
 //!
-//! All writes go through the SDK's JSON ingest path (`ingest_rows`), which is
-//! injection-safe. Reads go through `/sql` with RAW SQL text, so every
-//! interpolated string literal MUST be escaped via [`sql_literal`]. The free-text
-//! `q` filter is applied in Rust after fetching (NarrowDB SQL has no `LIKE`).
+//! - Writes go through Loki's push API (`/loki/api/v1/push`) as JSON streams.
+//! - Reads use `query_range` with a LogQL selector; the free-text `q` filter is
+//!   a LogQL line filter.
+//! - The 24h count uses the instant `query` endpoint with `count_over_time`.
+//!
+//! LogQL label values and line-filter strings are interpolated into the query
+//! string, so every interpolated value MUST be escaped via [`logql_str`] (LogQL
+//! quoted-string escaping) and, for the regex line filter, [`regex_escape`].
+//! reqwest's query builder handles the surrounding URL percent-encoding.
 
 use std::sync::Arc;
 
 use chrono::{DateTime, FixedOffset, TimeZone, Utc};
-use narrowdb_sdk::Client;
-use serde_json::Value;
+use reqwest::{Client, StatusCode};
+use serde_json::{json, Value};
 
 use crate::error::{ApiError, ApiResult};
 use crate::http::logs::{LogSearchEvent, LogSearchQuery};
 
-/// NarrowDB table that holds every workspace's logs (multi-tenant, partitioned
-/// by `project_id`).
-const TABLE: &str = "app_logs";
+/// Constant stream label identifying produktive log streams in Loki.
+const APP_LABEL: &str = "produktive-logs";
 
-/// Column order as registered in the cluster's `app_logs` table. Ingest rows
-/// MUST match this order exactly.
-const COLUMNS: [&str; 14] = [
-    "ts",
-    "project_id",
-    "event_id",
-    "received_at",
-    "level",
-    "service",
-    "environment",
-    "operation",
-    "request_id",
-    "trace_id",
-    "source",
-    "message",
-    "value",
-    "fields",
-];
+/// Loki-backed log store. Cheap to clone (everything is behind an [`Arc`] or is
+/// a shared `reqwest::Client`).
+#[derive(Clone)]
+pub struct LokiLogs {
+    inner: Arc<Inner>,
+}
 
-/// A normalized log event ready to be written to NarrowDB. Produced by the
-/// ingest handler from the raw JSON/NDJSON payload.
+struct Inner {
+    /// Base URL without a trailing slash, e.g.
+    /// `http://loki-railway.railway.internal:3100`.
+    base_url: String,
+    /// Optional tenant; sent as `X-Scope-OrgID` when present (harmless when
+    /// Loki has `auth_enabled = false`).
+    tenant: Option<String>,
+    http: Client,
+}
+
+/// A normalized log event ready to be written to Loki. Produced by the ingest
+/// handler from the raw JSON/NDJSON payload. (Field set is unchanged from the
+/// prior backend; the ingest normalization code in `logs.rs` builds it.)
 #[derive(Debug, Clone)]
 pub struct NormalizedEvent {
     pub event_id: String,
@@ -56,30 +58,39 @@ pub struct NormalizedEvent {
     pub request_id: Option<String>,
     pub trace_id: Option<String>,
     pub source: String,
-    /// JSON-encoded structured fields (the `fields` column holds JSON text).
+    /// JSON-encoded structured fields.
     pub fields_json: String,
 }
 
-#[derive(Clone)]
-pub struct NarrowLogs {
-    client: Arc<Client>,
-}
-
-impl NarrowLogs {
-    /// Build a NarrowDB-backed log store. Returns `None` when either the URL or
-    /// the token is missing, so the caller can fall back to the disabled path.
-    pub fn new(url: &str, token: &str) -> anyhow::Result<Self> {
-        let client = Client::builder(url)
-            .bearer_token(token.to_owned())
-            .build()
-            .map_err(|e| anyhow::anyhow!("failed to build NarrowDB client: {e}"))?;
+impl LokiLogs {
+    /// Build a Loki-backed log store over the shared async HTTP client.
+    /// `base_url` is the Loki HTTP endpoint; `tenant` (optional) is sent as
+    /// `X-Scope-OrgID` on every request.
+    pub fn new(base_url: &str, tenant: Option<String>, http: Client) -> anyhow::Result<Self> {
+        let base_url = base_url.trim().trim_end_matches('/').to_owned();
+        if base_url.is_empty() {
+            return Err(anyhow::anyhow!("Loki base URL must not be empty"));
+        }
         Ok(Self {
-            client: Arc::new(client),
+            inner: Arc::new(Inner {
+                base_url,
+                tenant: tenant.filter(|t| !t.trim().is_empty()),
+                http,
+            }),
         })
     }
 
+    /// Attach the optional tenant header to a request builder.
+    fn with_tenant(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        match &self.inner.tenant {
+            Some(t) => req.header("X-Scope-OrgID", t),
+            None => req,
+        }
+    }
+
     /// Write a batch of normalized events for a single project. `project_id` is
-    /// the Postgres `log_projects.id` (UUID string) — the tenant partition key.
+    /// the Postgres `log_projects.id` (UUID string) — the tenant/scope label.
+    /// Returns the number of accepted events.
     pub async fn ingest_events(
         &self,
         project_id: &str,
@@ -88,145 +99,387 @@ impl NarrowLogs {
         if events.is_empty() {
             return Ok(0);
         }
-        let client = self.client.clone();
-        let project_id = project_id.to_owned();
-        let rows: Vec<Vec<Value>> = events.iter().map(|e| ingest_row(&project_id, e)).collect();
+        let body = build_push_body(project_id, events);
+        let url = format!("{}/loki/api/v1/push", self.inner.base_url);
+        let req = self
+            .with_tenant(self.inner.http.post(&url))
+            .json(&body)
+            .send();
 
-        let summary = tokio::task::spawn_blocking(move || client.ingest_rows(TABLE, COLUMNS, rows))
-            .await
-            .map_err(|e| ApiError::Internal(anyhow::anyhow!("ingest task panicked: {e}")))?
-            .map_err(|e| {
-                tracing::error!(error = %e, "NarrowDB ingest failed");
-                ApiError::service_unavailable("log storage is unavailable")
-            })?;
+        let resp = req.await.map_err(|e| {
+            tracing::error!(error = %e, "Loki push request failed");
+            ApiError::service_unavailable("log storage is unavailable")
+        })?;
 
-        // The summary reports the accepted row count; fall back to the input
-        // length when the gateway does not echo `rows=`.
-        Ok(summary.rows.unwrap_or(events.len()))
+        let status = resp.status();
+        if status == StatusCode::NO_CONTENT || status.is_success() {
+            return Ok(events.len());
+        }
+        let body = resp.text().await.unwrap_or_default();
+        tracing::error!(status = %status, body = %body, "Loki push returned an error");
+        Err(ApiError::service_unavailable("log storage is unavailable"))
     }
 
-    /// Search a single project's events. Equality/range filters are pushed into
-    /// SQL; the free-text `q` is applied in Rust (no `LIKE` in NarrowDB SQL).
+    /// Search a single project's events via `query_range`. Equality filters
+    /// become LogQL label selectors; the free-text `q` becomes a
+    /// case-insensitive line filter.
     pub async fn search(
         &self,
         project_id: &str,
         params: &LogSearchQuery,
     ) -> ApiResult<Vec<LogSearchEvent>> {
         let limit = params.limit.unwrap_or(250).clamp(1, 1000);
-        // Over-fetch when a free-text filter is present, since it is applied
-        // after the SQL fetch and would otherwise shrink the page.
-        let q = params
-            .q
-            .as_ref()
-            .map(|s| s.trim().to_lowercase())
-            .filter(|s| !s.is_empty());
-        // NarrowDB has no ORDER BY, so a bare LIMIT returns an arbitrary subset.
-        // Over-fetch within the time window, then sort newest-first and truncate
-        // in Rust below. (Also covers the in-Rust `q` filter.)
-        let fetch_limit = (limit * 4).clamp(limit, 2000);
+        let logql = build_logql(project_id, params);
 
-        let mut where_parts = vec![format!("project_id = {}", sql_literal(project_id))];
-        if let Some(level) = params
-            .level
-            .as_ref()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-        {
-            where_parts.push(format!("level = {}", sql_literal(level)));
-        }
-        if let Some(service) = params
-            .service
-            .as_ref()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-        {
-            where_parts.push(format!("service = {}", sql_literal(service)));
-        }
-        if let Some(from) = params.from {
-            where_parts.push(format!("ts >= {}", from.timestamp_millis()));
-        }
-        if let Some(to) = params.to {
-            where_parts.push(format!("ts < {}", to.timestamp_millis()));
+        // Default window: last 24h. start/end are UNIX nanoseconds.
+        let now = Utc::now();
+        let start_ns = params
+            .from
+            .map(|d| d.timestamp_nanos_opt().unwrap_or(0))
+            .unwrap_or_else(|| {
+                (now - chrono::Duration::hours(24))
+                    .timestamp_nanos_opt()
+                    .unwrap_or(0)
+            });
+        let end_ns = params
+            .to
+            .map(|d| d.timestamp_nanos_opt().unwrap_or(0))
+            .unwrap_or_else(|| now.timestamp_nanos_opt().unwrap_or(0));
+
+        let url = format!("{}/loki/api/v1/query_range", self.inner.base_url);
+        let req = self.with_tenant(self.inner.http.get(&url)).query(&[
+            ("query", logql.as_str()),
+            ("start", start_ns.to_string().as_str()),
+            ("end", end_ns.to_string().as_str()),
+            ("limit", limit.to_string().as_str()),
+            ("direction", "backward"),
+        ]);
+
+        let resp = req.send().await.map_err(|e| {
+            tracing::error!(error = %e, "Loki query_range request failed");
+            ApiError::service_unavailable("log storage is unavailable")
+        })?;
+
+        let status = resp.status();
+        let text = resp.text().await.map_err(|e| {
+            tracing::error!(error = %e, "failed to read Loki query_range body");
+            ApiError::service_unavailable("log storage is unavailable")
+        })?;
+        if !status.is_success() {
+            tracing::error!(status = %status, body = %text, "Loki query_range returned an error");
+            return Err(ApiError::service_unavailable("log storage is unavailable"));
         }
 
-        // Select free-text columns (message, fields) LAST so that, even if a
-        // value contains an embedded tab/newline that corrupts naive tab
-        // parsing, only the trailing columns are affected.
-        let sql = format!(
-            "SELECT ts, project_id, event_id, received_at, level, service, environment, \
-             operation, request_id, trace_id, source, value, message, fields \
-             FROM {TABLE} WHERE {} LIMIT {fetch_limit}",
-            where_parts.join(" AND "),
-        );
+        let json: Value = serde_json::from_str(&text).map_err(|e| {
+            tracing::error!(error = %e, "failed to parse Loki query_range JSON");
+            ApiError::service_unavailable("log storage is unavailable")
+        })?;
 
-        let client = self.client.clone();
-        let response = tokio::task::spawn_blocking(move || client.sql(sql))
-            .await
-            .map_err(|e| ApiError::Internal(anyhow::anyhow!("search task panicked: {e}")))?
-            .map_err(|e| {
-                tracing::error!(error = %e, "NarrowDB search failed");
-                ApiError::service_unavailable("log storage is unavailable")
-            })?;
-
-        let mut events = parse_rows(response.as_str());
-        if let Some(q) = q {
-            events.retain(|e| e.message.to_lowercase().contains(&q));
-        }
-        // Newest first — NarrowDB cannot ORDER BY, so we sort the page here.
+        let mut events = parse_query_range(&json);
+        // Loki returns newest-first per stream, but we merge across streams.
         events.sort_by_key(|e| std::cmp::Reverse(e.timestamp));
         events.truncate(limit as usize);
         Ok(events)
     }
 
     /// Count events for a project since `since_ms` (used for `event_count_24h`).
-    pub async fn count_recent(&self, project_id: &str, since_ms: i64) -> ApiResult<i64> {
-        let sql = format!(
-            "SELECT count(*) FROM {TABLE} WHERE project_id = {} AND ts >= {since_ms}",
-            sql_literal(project_id),
+    /// Fails open (returns 0) on any error so a transient hiccup never blocks
+    /// the project listing.
+    pub async fn count_recent(&self, project_id: &str, _since_ms: i64) -> ApiResult<i64> {
+        let query = format!(
+            "sum(count_over_time({{{}}}[24h]))",
+            base_selector(project_id)
         );
-        let client = self.client.clone();
-        let response = tokio::task::spawn_blocking(move || client.sql(sql))
-            .await
-            .map_err(|e| ApiError::Internal(anyhow::anyhow!("count task panicked: {e}")))?
-            .map_err(|e| {
-                tracing::warn!(error = %e, "NarrowDB count failed");
-                ApiError::service_unavailable("log storage is unavailable")
-            })?;
-        Ok(parse_scalar_i64(response.as_str()).unwrap_or(0))
+        let url = format!("{}/loki/api/v1/query", self.inner.base_url);
+        let req = self
+            .with_tenant(self.inner.http.get(&url))
+            .query(&[("query", query.as_str())]);
+
+        let resp = match req.send().await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(error = %e, "Loki count query failed");
+                return Ok(0);
+            }
+        };
+        if !resp.status().is_success() {
+            return Ok(0);
+        }
+        let json: Value = match resp.json().await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to parse Loki count JSON");
+                return Ok(0);
+            }
+        };
+        Ok(parse_count_vector(&json))
     }
 }
 
-/// Build one ingest row in `COLUMNS` order. Optional fields become JSON null.
-fn ingest_row(project_id: &str, e: &NormalizedEvent) -> Vec<Value> {
-    vec![
-        Value::from(e.ts_ms),
-        Value::from(project_id),
-        Value::from(e.event_id.as_str()),
-        Value::from(e.received_at_ms),
-        Value::from(e.level.as_str()),
-        opt_str(&e.service),
-        opt_str(&e.environment),
-        opt_str(&e.operation),
-        opt_str(&e.request_id),
-        opt_str(&e.trace_id),
-        Value::from(e.source.as_str()),
-        Value::from(e.message.as_str()),
-        Value::Null, // value (f64) — unused for plain log events
-        Value::from(e.fields_json.as_str()),
-    ]
+// --- Query construction -------------------------------------------------
+
+/// The base LogQL label selector inner-body (no surrounding braces):
+/// `app="produktive-logs", project_id="<esc>"`.
+fn base_selector(project_id: &str) -> String {
+    format!(
+        "app={}, project_id={}",
+        logql_str(APP_LABEL),
+        logql_str(project_id),
+    )
 }
 
-fn opt_str(v: &Option<String>) -> Value {
-    match v {
-        Some(s) => Value::from(s.as_str()),
-        None => Value::Null,
+/// Build the full LogQL query for a search: base selector + optional
+/// level/service/environment label equality + optional `q` line filter.
+fn build_logql(project_id: &str, params: &LogSearchQuery) -> String {
+    let mut selector = base_selector(project_id);
+    if let Some(level) = non_empty(params.level.as_deref()) {
+        selector.push_str(&format!(", level={}", logql_str(level)));
     }
+    if let Some(service) = non_empty(params.service.as_deref()) {
+        selector.push_str(&format!(", service={}", logql_str(service)));
+    }
+    // `environment` is also a stream label and would be added here if the search
+    // API gained an `environment` filter param.
+    let mut query = format!("{{{selector}}}");
+    if let Some(q) = params.q.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        // Loki has no case-insensitive `|=`, so use a regex line filter with the
+        // inline `(?i)` flag over the regex-escaped substring.
+        let pattern = format!("(?i){}", regex_escape(q));
+        query.push_str(&format!(" |~ {}", logql_str(&pattern)));
+    }
+    query
 }
 
-/// Escape a string into a fully-quoted SQL literal by doubling single quotes.
-/// Returns e.g. `'it''s'`. Use for EVERY interpolated string in raw SQL.
-fn sql_literal(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "''"))
+/// Build the Loki push request body from a batch of events for one project.
+/// Events are grouped into streams keyed by their label set
+/// `(project_id, level, service?, environment?)`; within each stream the values
+/// are sorted ascending by timestamp.
+fn build_push_body(project_id: &str, events: &[NormalizedEvent]) -> Value {
+    use std::collections::BTreeMap;
+
+    // Key streams by an ordered, fully-rendered label map so equal label sets
+    // collapse into one stream.
+    type StreamKey = Vec<(String, String)>;
+    let mut streams: BTreeMap<StreamKey, Vec<(i64, String)>> = BTreeMap::new();
+
+    for e in events {
+        let mut labels: Vec<(String, String)> = vec![
+            ("app".to_owned(), APP_LABEL.to_owned()),
+            ("project_id".to_owned(), project_id.to_owned()),
+            ("level".to_owned(), e.level.clone()),
+        ];
+        if let Some(s) = e.service.as_deref().filter(|s| !s.is_empty()) {
+            labels.push(("service".to_owned(), s.to_owned()));
+        }
+        if let Some(env) = e.environment.as_deref().filter(|s| !s.is_empty()) {
+            labels.push(("environment".to_owned(), env.to_owned()));
+        }
+
+        let line = build_log_line(e);
+        streams.entry(labels).or_default().push((e.ts_ms, line));
+    }
+
+    let streams_json: Vec<Value> = streams
+        .into_iter()
+        .map(|(labels, mut values)| {
+            // Sort ascending by timestamp within the stream.
+            values.sort_by_key(|(ts, _)| *ts);
+            let label_obj: serde_json::Map<String, Value> = labels
+                .into_iter()
+                .map(|(k, v)| (k, Value::String(v)))
+                .collect();
+            let value_arr: Vec<Value> = values
+                .into_iter()
+                .map(|(ts_ms, line)| json!([ms_to_ns_string_i64(ts_ms), line]))
+                .collect();
+            json!({ "stream": Value::Object(label_obj), "values": value_arr })
+        })
+        .collect();
+
+    json!({ "streams": streams_json })
+}
+
+/// Build the JSON log line carrying everything that is not a stream label, so a
+/// search can fully reconstruct a `LogSearchEvent`.
+fn build_log_line(e: &NormalizedEvent) -> String {
+    let fields: Value = serde_json::from_str(&e.fields_json).unwrap_or(Value::Null);
+    let line = json!({
+        "event_id": e.event_id,
+        "message": e.message,
+        "received_at": e.received_at_ms,
+        "operation": e.operation,
+        "request_id": e.request_id,
+        "trace_id": e.trace_id,
+        "source": e.source,
+        "fields": fields,
+        "value": Value::Null,
+    });
+    serde_json::to_string(&line).unwrap_or_else(|_| "{}".to_owned())
+}
+
+// --- Response parsing ---------------------------------------------------
+
+/// Parse a Loki `query_range` streams response into search events.
+fn parse_query_range(json: &Value) -> Vec<LogSearchEvent> {
+    let Some(result) = json
+        .get("data")
+        .and_then(|d| d.get("result"))
+        .and_then(|r| r.as_array())
+    else {
+        return Vec::new();
+    };
+
+    let mut events = Vec::new();
+    for stream in result {
+        let labels = stream.get("stream");
+        let level_lbl = label(labels, "level");
+        let service_lbl = label(labels, "service");
+        let environment_lbl = label(labels, "environment");
+
+        let Some(values) = stream.get("values").and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for entry in values {
+            let Some(arr) = entry.as_array() else {
+                continue;
+            };
+            let Some(ts_ns) = arr.first().and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let line = arr.get(1).and_then(|v| v.as_str()).unwrap_or("");
+            if let Some(ev) = build_event(
+                ts_ns,
+                line,
+                level_lbl.clone(),
+                service_lbl.clone(),
+                environment_lbl.clone(),
+            ) {
+                events.push(ev);
+            }
+        }
+    }
+    events
+}
+
+/// Reconstruct a `LogSearchEvent` from a Loki entry: timestamp (ns string), the
+/// JSON log line, and the labels we set (level/service/environment).
+fn build_event(
+    ts_ns: &str,
+    line: &str,
+    level_lbl: Option<String>,
+    service_lbl: Option<String>,
+    environment_lbl: Option<String>,
+) -> Option<LogSearchEvent> {
+    let ts_ns: i64 = ts_ns.trim().parse().ok()?;
+    let timestamp = ns_to_dt(ts_ns);
+
+    let body: Value = serde_json::from_str(line).unwrap_or(Value::Null);
+
+    let received_ms = body
+        .get("received_at")
+        .and_then(Value::as_i64)
+        .unwrap_or(ts_ns / 1_000_000);
+
+    let fields = body
+        .get("fields")
+        .cloned()
+        .filter(|v| !v.is_null())
+        .unwrap_or_else(|| Value::Object(Default::default()));
+
+    Some(LogSearchEvent {
+        event_id: line_str(&body, "event_id").unwrap_or_default(),
+        timestamp,
+        received_at: ms_to_dt(received_ms),
+        level: level_lbl
+            .or_else(|| line_str(&body, "level"))
+            .unwrap_or_else(|| "info".to_owned()),
+        message: line_str(&body, "message").unwrap_or_default(),
+        service: service_lbl.or_else(|| line_str(&body, "service")),
+        environment: environment_lbl.or_else(|| line_str(&body, "environment")),
+        operation: line_str(&body, "operation"),
+        request_id: line_str(&body, "request_id"),
+        trace_id: line_str(&body, "trace_id"),
+        source: line_str(&body, "source").unwrap_or_else(|| "evlog".to_owned()),
+        event: fields.clone(),
+        fields,
+    })
+}
+
+/// Pull a stream label value by key.
+fn label(labels: Option<&Value>, key: &str) -> Option<String> {
+    labels
+        .and_then(|l| l.get(key))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+/// Pull a non-empty string field out of a parsed log line.
+fn line_str(body: &Value, key: &str) -> Option<String> {
+    body.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+/// Parse the instant `query` vector response into a count, defaulting to 0.
+fn parse_count_vector(json: &Value) -> i64 {
+    json.get("data")
+        .and_then(|d| d.get("result"))
+        .and_then(|r| r.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|m| m.get("value"))
+        .and_then(|v| v.as_array())
+        .and_then(|v| v.get(1))
+        .and_then(Value::as_str)
+        .and_then(|s| s.trim().parse::<f64>().ok())
+        .map(|f| f as i64)
+        .unwrap_or(0)
+}
+
+// --- Escaping & conversions ---------------------------------------------
+
+/// Escape a string into a double-quoted LogQL string literal. Backslashes and
+/// double-quotes are backslash-escaped. e.g. `a"b` => `"a\"b"`.
+fn logql_str(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// Escape regex metacharacters so a free-text `q` is matched literally inside a
+/// LogQL `|~` line filter.
+fn regex_escape(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if matches!(
+            ch,
+            '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '\\'
+        ) {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
+fn non_empty(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|s| !s.is_empty())
+}
+
+/// Format epoch-ms as a UNIX-nanoseconds decimal string (Loki entry timestamp).
+fn ms_to_ns_string_i64(ms: i64) -> String {
+    (ms * 1_000_000).to_string()
 }
 
 /// Convert epoch-ms to a fixed-offset (UTC) datetime.
@@ -237,131 +490,194 @@ fn ms_to_dt(ms: i64) -> DateTime<FixedOffset> {
         .fixed_offset()
 }
 
-/// Parse the tab-separated `/sql` response into search events.
-///
-/// Format: lines starting with `--` are comments; the first non-comment line is
-/// the tab-separated header; following lines are tab-separated values. Columns
-/// are selected in a fixed order (message, fields LAST) so a stray tab/newline
-/// in those free-text columns can only corrupt trailing fields.
-fn parse_rows(text: &str) -> Vec<LogSearchEvent> {
-    let mut lines = text
-        .lines()
-        .filter(|l| !l.trim_start().starts_with("--"))
-        .filter(|l| !l.trim().is_empty());
-
-    // Skip the header row.
-    if lines.next().is_none() {
-        return Vec::new();
-    }
-
-    lines.filter_map(parse_row).collect()
-}
-
-/// Column indexes match the SELECT in `search`:
-/// 0 ts, 1 project_id, 2 event_id, 3 received_at, 4 level, 5 service,
-/// 6 environment, 7 operation, 8 request_id, 9 trace_id, 10 source, 11 value,
-/// 12 message, 13 fields.
-fn parse_row(line: &str) -> Option<LogSearchEvent> {
-    let cols: Vec<&str> = line.split('\t').collect();
-    if cols.len() < 13 {
-        return None;
-    }
-    let ts_ms = cols[0].trim().parse::<i64>().ok()?;
-    let received_ms = cols
-        .get(3)
-        .and_then(|v| v.trim().parse::<i64>().ok())
-        .unwrap_or(ts_ms);
-    let fields_raw = cols.get(13).copied().unwrap_or("");
-
-    Some(LogSearchEvent {
-        event_id: cell(cols.get(2)).unwrap_or_default(),
-        timestamp: ms_to_dt(ts_ms),
-        received_at: ms_to_dt(received_ms),
-        level: cell(cols.get(4)).unwrap_or_else(|| "info".to_owned()),
-        message: cols.get(12).map(|v| (*v).to_owned()).unwrap_or_default(),
-        service: cell(cols.get(5)),
-        environment: cell(cols.get(6)),
-        operation: cell(cols.get(7)),
-        request_id: cell(cols.get(8)),
-        trace_id: cell(cols.get(9)),
-        source: cell(cols.get(10)).unwrap_or_else(|| "evlog".to_owned()),
-        event: parse_json_cell(fields_raw),
-        fields: parse_json_cell(fields_raw),
-    })
-}
-
-/// A non-empty, non-NULL trimmed cell value.
-fn cell(value: Option<&&str>) -> Option<String> {
-    value
-        .map(|v| v.trim())
-        .filter(|v| !v.is_empty() && !v.eq_ignore_ascii_case("null"))
-        .map(ToOwned::to_owned)
-}
-
-/// Parse a `fields` cell (JSON text) into a JSON value, defaulting to `{}`.
-fn parse_json_cell(raw: &str) -> Value {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("null") {
-        return Value::Object(Default::default());
-    }
-    serde_json::from_str(trimmed).unwrap_or_else(|_| Value::Object(Default::default()))
-}
-
-/// Parse a single-column, single-row scalar response (e.g. `count(*)`).
-fn parse_scalar_i64(text: &str) -> Option<i64> {
-    let mut lines = text
-        .lines()
-        .filter(|l| !l.trim_start().starts_with("--"))
-        .filter(|l| !l.trim().is_empty());
-    let _header = lines.next()?;
-    let value = lines.next()?;
-    value.split('\t').next()?.trim().parse::<i64>().ok()
+/// Convert epoch-ns to a fixed-offset (UTC) datetime.
+fn ns_to_dt(ns: i64) -> DateTime<FixedOffset> {
+    Utc.timestamp_nanos(ns).fixed_offset()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
-    fn escapes_single_quotes() {
-        assert_eq!(sql_literal("it's"), "'it''s'");
-        assert_eq!(sql_literal("plain"), "'plain'");
+    fn logql_str_escapes_quotes_and_backslashes() {
+        assert_eq!(logql_str("plain"), "\"plain\"");
+        // A value with both a double-quote and a backslash.
+        assert_eq!(logql_str("a\"b"), "\"a\\\"b\"");
+        assert_eq!(logql_str("c\\d"), "\"c\\\\d\"");
+        assert_eq!(logql_str("x\\\"y"), "\"x\\\\\\\"y\"");
     }
 
     #[test]
-    fn parses_tab_separated_rows() {
-        let text = "-- comment\n\
-            ts\tproject_id\tevent_id\treceived_at\tlevel\tservice\tenvironment\toperation\trequest_id\ttrace_id\tsource\tvalue\tmessage\tfields\n\
-            1710000000000\tproj\tevt1\t1710000000500\terror\tapi\tprod\tGET /\treq1\ttrace1\tevlog\tNULL\tboom\t{\"a\":1}";
-        let rows = parse_rows(text);
-        assert_eq!(rows.len(), 1);
-        let r = &rows[0];
-        assert_eq!(r.event_id, "evt1");
-        assert_eq!(r.level, "error");
-        assert_eq!(r.message, "boom");
-        assert_eq!(r.service.as_deref(), Some("api"));
-        assert_eq!(r.timestamp.timestamp_millis(), 1710000000000);
+    fn regex_escape_escapes_metachars() {
+        assert_eq!(regex_escape("a.b*c"), "a\\.b\\*c");
+        assert_eq!(regex_escape("(x)[y]"), "\\(x\\)\\[y\\]");
+        assert_eq!(regex_escape("plain"), "plain");
     }
 
     #[test]
-    fn parses_scalar_count() {
-        assert_eq!(parse_scalar_i64("count\n42\n"), Some(42));
-        assert_eq!(parse_scalar_i64("-- x\ncount\n7"), Some(7));
+    fn build_logql_includes_filters_and_line_filter() {
+        let params = LogSearchQuery {
+            from: None,
+            to: None,
+            q: Some("oo.ps".to_owned()),
+            level: Some("error".to_owned()),
+            service: Some("api".to_owned()),
+            limit: None,
+        };
+        let q = build_logql("proj-1", &params);
+        assert!(q.contains("app=\"produktive-logs\""));
+        assert!(q.contains("project_id=\"proj-1\""));
+        assert!(q.contains("level=\"error\""));
+        assert!(q.contains("service=\"api\""));
+        // Case-insensitive regex line filter: `q` regex-escapes the `.` to
+        // `\.`, then logql_str escapes that backslash again, so the rendered
+        // LogQL string is `"(?i)oo\\.ps"`.
+        assert!(q.contains("|~ \"(?i)oo\\\\.ps\""), "actual: {q}");
     }
 
     #[test]
-    fn treats_lowercase_null_as_absent() {
-        // NarrowDB renders SQL NULL as lowercase `null`; absent optional columns
-        // must become None / {}, not the literal string "null".
-        let text = "ts\tproject_id\tevent_id\treceived_at\tlevel\tservice\tenvironment\toperation\trequest_id\ttrace_id\tsource\tvalue\tmessage\tfields\n\
-            1710000000000\tproj\tevt1\t1710000000000\tinfo\tnull\tnull\tnull\tnull\tnull\tnull\tnull\thi\tnull";
-        let rows = parse_rows(text);
-        assert_eq!(rows.len(), 1);
-        let r = &rows[0];
-        assert_eq!(r.service, None);
-        assert_eq!(r.environment, None);
-        assert_eq!(r.operation, None);
-        assert_eq!(r.message, "hi");
-        assert!(r.fields.is_object());
+    fn build_logql_omits_empty_filters() {
+        let params = LogSearchQuery {
+            from: None,
+            to: None,
+            q: None,
+            level: Some("  ".to_owned()),
+            service: None,
+            limit: None,
+        };
+        let q = build_logql("proj-1", &params);
+        assert!(!q.contains("level="));
+        assert!(!q.contains("|~"));
+    }
+
+    #[test]
+    fn build_push_body_groups_streams_and_sorts() {
+        let events = vec![
+            NormalizedEvent {
+                event_id: "e2".to_owned(),
+                ts_ms: 2000,
+                received_at_ms: 2001,
+                level: "error".to_owned(),
+                message: "second".to_owned(),
+                service: Some("api".to_owned()),
+                environment: None,
+                operation: None,
+                request_id: None,
+                trace_id: None,
+                source: "evlog".to_owned(),
+                fields_json: "{\"a\":1}".to_owned(),
+            },
+            NormalizedEvent {
+                event_id: "e1".to_owned(),
+                ts_ms: 1000,
+                received_at_ms: 1001,
+                level: "error".to_owned(),
+                message: "first".to_owned(),
+                service: Some("api".to_owned()),
+                environment: None,
+                operation: None,
+                request_id: None,
+                trace_id: None,
+                source: "evlog".to_owned(),
+                fields_json: "{}".to_owned(),
+            },
+        ];
+        let body = build_push_body("proj-1", &events);
+        let streams = body.get("streams").unwrap().as_array().unwrap();
+        // Same label set -> a single stream.
+        assert_eq!(streams.len(), 1);
+        let stream = &streams[0];
+        let labels = stream.get("stream").unwrap();
+        assert_eq!(labels.get("app").unwrap(), "produktive-logs");
+        assert_eq!(labels.get("project_id").unwrap(), "proj-1");
+        assert_eq!(labels.get("level").unwrap(), "error");
+        assert_eq!(labels.get("service").unwrap(), "api");
+        // No environment label (omitted when empty).
+        assert!(labels.get("environment").is_none());
+
+        let values = stream.get("values").unwrap().as_array().unwrap();
+        assert_eq!(values.len(), 2);
+        // Sorted ascending by ts: ts_ms 1000 -> 1_000_000_000 ns first.
+        assert_eq!(values[0][0], "1000000000");
+        assert_eq!(values[1][0], "2000000000");
+    }
+
+    #[test]
+    fn parse_query_range_builds_events_from_labels_and_line() {
+        let line = json!({
+            "event_id": "evt1",
+            "message": "boom",
+            "received_at": 1_710_000_000_500_i64,
+            "operation": "GET /",
+            "request_id": "req1",
+            "trace_id": "trace1",
+            "source": "evlog",
+            "fields": { "a": 1 },
+            "value": Value::Null,
+        })
+        .to_string();
+        let resp = json!({
+            "status": "success",
+            "data": {
+                "resultType": "streams",
+                "result": [{
+                    "stream": {
+                        "app": "produktive-logs",
+                        "project_id": "proj-1",
+                        "level": "error",
+                        "service": "api",
+                        "environment": "prod",
+                        // Loki auto-added labels we ignore:
+                        "detected_level": "error",
+                        "service_name": "api",
+                    },
+                    "values": [[ "1710000000000000000", line ]],
+                }]
+            }
+        });
+        let events = parse_query_range(&resp);
+        assert_eq!(events.len(), 1);
+        let e = &events[0];
+        assert_eq!(e.event_id, "evt1");
+        assert_eq!(e.message, "boom");
+        // level/service/environment come from labels.
+        assert_eq!(e.level, "error");
+        assert_eq!(e.service.as_deref(), Some("api"));
+        assert_eq!(e.environment.as_deref(), Some("prod"));
+        assert_eq!(e.operation.as_deref(), Some("GET /"));
+        assert_eq!(e.request_id.as_deref(), Some("req1"));
+        assert_eq!(e.trace_id.as_deref(), Some("trace1"));
+        assert_eq!(e.source, "evlog");
+        // ns -> ms.
+        assert_eq!(e.timestamp.timestamp_millis(), 1_710_000_000_000);
+        assert_eq!(e.received_at.timestamp_millis(), 1_710_000_000_500);
+        assert!(e.fields.is_object());
+    }
+
+    #[test]
+    fn parse_query_range_empty_result_is_empty() {
+        let resp =
+            json!({ "status": "success", "data": { "resultType": "streams", "result": [] } });
+        assert!(parse_query_range(&resp).is_empty());
+    }
+
+    #[test]
+    fn parse_count_vector_reads_value() {
+        let resp = json!({
+            "status": "success",
+            "data": {
+                "resultType": "vector",
+                "result": [{ "metric": {}, "value": [1710000000.0, "42"] }]
+            }
+        });
+        assert_eq!(parse_count_vector(&resp), 42);
+    }
+
+    #[test]
+    fn parse_count_vector_empty_is_zero() {
+        let resp = json!({ "data": { "resultType": "vector", "result": [] } });
+        assert_eq!(parse_count_vector(&resp), 0);
     }
 }
