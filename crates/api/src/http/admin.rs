@@ -496,6 +496,7 @@ mod tests {
                 github_id: None,
                 password_hash: "hash".to_owned(),
                 is_admin,
+                legal_terms_accepted_at: Some(now),
                 created_at: now,
                 updated_at: now,
             },
