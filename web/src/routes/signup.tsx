@@ -107,13 +107,13 @@ function SignupPage() {
             />
             <span>
               I agree to the{" "}
-              <a className="link" href="/TERMS.md" rel="noreferrer" target="_blank">
+              <Link className="link" params={{ doc: "terms" }} target="_blank" to="/legal/$doc">
                 Terms of Service
-              </a>{" "}
+              </Link>{" "}
               and{" "}
-              <a className="link" href="/PRIVACY.md" rel="noreferrer" target="_blank">
+              <Link className="link" params={{ doc: "privacy" }} target="_blank" to="/legal/$doc">
                 Privacy Policy
-              </a>
+              </Link>
               .
             </span>
           </label>

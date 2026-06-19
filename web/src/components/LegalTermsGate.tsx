@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import {
   AlertDialog,
   AlertDialogDescription,
@@ -29,13 +30,13 @@ export function LegalTermsGate() {
 
         <div className="px-6 pb-5 text-sm text-[var(--color-fg-muted)]">
           Review the{" "}
-          <a className="link" href="/TERMS.md" rel="noreferrer" target="_blank">
+          <Link className="link" params={{ doc: "terms" }} target="_blank" to="/legal/$doc">
             Terms of Service
-          </a>{" "}
+          </Link>{" "}
           and{" "}
-          <a className="link" href="/PRIVACY.md" rel="noreferrer" target="_blank">
+          <Link className="link" params={{ doc: "privacy" }} target="_blank" to="/legal/$doc">
             Privacy Policy
-          </a>
+          </Link>
           . By continuing, you agree to both documents.
         </div>
 
