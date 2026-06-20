@@ -10,6 +10,7 @@ import {
   LogOut,
   ScrollText,
   Settings,
+  Shield,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { AnimatedIcon, type IconGesture } from "./AnimatedIcon";
@@ -71,6 +72,13 @@ const SETTINGS: NavItem = {
   to: "/$wid/settings",
   label: "Settings",
   icon: Settings,
+  anim: "spin",
+};
+
+const ADMIN: NavItem = {
+  to: "/$wid/admin",
+  label: "Admin",
+  icon: Shield,
   anim: "spin",
 };
 
@@ -209,6 +217,14 @@ export function AppSidebar() {
 
         <SidebarFooter>
           <SidebarMenu>
+            {me.data?.is_admin && (
+              <NavMenuButton
+                item={ADMIN}
+                wid={widParam}
+                active={isActive(loc.pathname, ADMIN, wid, widParam)}
+                onNavigate={closeOnNavigate}
+              />
+            )}
             <NavMenuButton
               item={SETTINGS}
               wid={widParam}

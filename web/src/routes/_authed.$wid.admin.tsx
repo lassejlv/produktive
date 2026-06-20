@@ -1,32 +1,44 @@
-import { createFileRoute, Link, Outlet, useLocation, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, redirect, useLocation, useParams } from "@tanstack/react-router";
 import { cn } from "#/lib/cn";
+import { LOGS_ENABLED } from "#/lib/features";
+import { meQuery } from "../lib/queries";
 
-export const Route = createFileRoute("/_authed/$wid/settings")({
-  component: SettingsLayout,
+export const Route = createFileRoute("/_authed/$wid/admin")({
+  beforeLoad: async ({ context, params }) => {
+    const me = await context.queryClient.ensureQueryData(meQuery);
+    if (!me.is_admin) {
+      throw redirect({ to: "/$wid", params: { wid: params.wid } });
+    }
+  },
+  component: AdminLayout,
 });
 
-interface SettingsTab {
+interface AdminTab {
   to: string;
   label: string;
-  /** Match only the exact path (the General index), not descendants. */
+  /** Match only the exact path (an index), not descendants. */
   exact?: boolean;
 }
 
-const TABS: SettingsTab[] = [
-  { to: "/$wid/settings", label: "General", exact: true },
-  { to: "/$wid/settings/members", label: "Members" },
-  { to: "/$wid/settings/notifications", label: "Notifications" },
-  { to: "/$wid/settings/billing", label: "Billing" },
+const TABS: AdminTab[] = [
+  { to: "/$wid/admin/workers", label: "Workers" },
+  { to: "/$wid/admin/log-storage", label: "Log storage" },
+  { to: "/$wid/admin/log-access", label: "Log access" },
+  { to: "/$wid/admin/usage", label: "Usage" },
 ];
 
-function SettingsLayout() {
+function AdminLayout() {
   const { wid } = useParams({ from: "/_authed/$wid" });
   const loc = useLocation();
+  const tabs = TABS.filter((t) => {
+    if (!LOGS_ENABLED && t.to.endsWith("/log-storage")) return false;
+    return true;
+  });
 
   return (
     <div className="flex flex-col gap-6">
       <div className="-mb-1 flex items-center gap-1 border-b border-[var(--color-border)]">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const resolved = tab.to.replace("$wid", wid);
           const active = tab.exact
             ? loc.pathname === resolved || loc.pathname === resolved + "/"

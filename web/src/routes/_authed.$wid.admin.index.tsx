@@ -1,7 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-/** Workers administration moved to the Admin panel — keep the old URL working. */
-export const Route = createFileRoute("/_authed/$wid/settings/workers")({
+export const Route = createFileRoute("/_authed/$wid/admin/")({
   beforeLoad: ({ params }) => {
     throw redirect({ to: "/$wid/admin/workers", params: { wid: params.wid } });
   },

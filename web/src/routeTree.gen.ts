@@ -29,9 +29,11 @@ import { Route as AuthedWidStatusRouteImport } from './routes/_authed.$wid.statu
 import { Route as AuthedWidSettingsRouteImport } from './routes/_authed.$wid.settings'
 import { Route as AuthedWidMembersRouteImport } from './routes/_authed.$wid.members'
 import { Route as AuthedWidIncidentsRouteImport } from './routes/_authed.$wid.incidents'
+import { Route as AuthedWidAdminRouteImport } from './routes/_authed.$wid.admin'
 import { Route as AuthedWidSettingsIndexRouteImport } from './routes/_authed.$wid.settings.index'
 import { Route as AuthedWidMonitorsIndexRouteImport } from './routes/_authed.$wid.monitors.index'
 import { Route as AuthedWidLogsIndexRouteImport } from './routes/_authed.$wid.logs.index'
+import { Route as AuthedWidAdminIndexRouteImport } from './routes/_authed.$wid.admin.index'
 import { Route as AuthedWidSettingsWorkersRouteImport } from './routes/_authed.$wid.settings.workers'
 import { Route as AuthedWidSettingsUsageRouteImport } from './routes/_authed.$wid.settings.usage'
 import { Route as AuthedWidSettingsNotificationsRouteImport } from './routes/_authed.$wid.settings.notifications'
@@ -43,7 +45,10 @@ import { Route as AuthedWidMonitorsNewRouteImport } from './routes/_authed.$wid.
 import { Route as AuthedWidMonitorsMidRouteImport } from './routes/_authed.$wid.monitors.$mid'
 import { Route as AuthedWidLogsProjectRouteImport } from './routes/_authed.$wid.logs.$project'
 import { Route as AuthedWidAdminWorkersRouteImport } from './routes/_authed.$wid.admin.workers'
+import { Route as AuthedWidAdminUsageRouteImport } from './routes/_authed.$wid.admin.usage'
+import { Route as AuthedWidAdminLogStorageRouteImport } from './routes/_authed.$wid.admin.log-storage'
 import { Route as AuthedWidAdminLogBucketsRouteImport } from './routes/_authed.$wid.admin.log-buckets'
+import { Route as AuthedWidAdminLogAccessRouteImport } from './routes/_authed.$wid.admin.log-access'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -144,6 +149,11 @@ const AuthedWidIncidentsRoute = AuthedWidIncidentsRouteImport.update({
   path: '/incidents',
   getParentRoute: () => AuthedWidRoute,
 } as any)
+const AuthedWidAdminRoute = AuthedWidAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthedWidRoute,
+} as any)
 const AuthedWidSettingsIndexRoute = AuthedWidSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -158,6 +168,11 @@ const AuthedWidLogsIndexRoute = AuthedWidLogsIndexRouteImport.update({
   id: '/logs/',
   path: '/logs/',
   getParentRoute: () => AuthedWidRoute,
+} as any)
+const AuthedWidAdminIndexRoute = AuthedWidAdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthedWidAdminRoute,
 } as any)
 const AuthedWidSettingsWorkersRoute =
   AuthedWidSettingsWorkersRouteImport.update({
@@ -216,16 +231,32 @@ const AuthedWidLogsProjectRoute = AuthedWidLogsProjectRouteImport.update({
   getParentRoute: () => AuthedWidRoute,
 } as any)
 const AuthedWidAdminWorkersRoute = AuthedWidAdminWorkersRouteImport.update({
-  id: '/admin/workers',
-  path: '/admin/workers',
-  getParentRoute: () => AuthedWidRoute,
+  id: '/workers',
+  path: '/workers',
+  getParentRoute: () => AuthedWidAdminRoute,
 } as any)
+const AuthedWidAdminUsageRoute = AuthedWidAdminUsageRouteImport.update({
+  id: '/usage',
+  path: '/usage',
+  getParentRoute: () => AuthedWidAdminRoute,
+} as any)
+const AuthedWidAdminLogStorageRoute =
+  AuthedWidAdminLogStorageRouteImport.update({
+    id: '/log-storage',
+    path: '/log-storage',
+    getParentRoute: () => AuthedWidAdminRoute,
+  } as any)
 const AuthedWidAdminLogBucketsRoute =
   AuthedWidAdminLogBucketsRouteImport.update({
-    id: '/admin/log-buckets',
-    path: '/admin/log-buckets',
-    getParentRoute: () => AuthedWidRoute,
+    id: '/log-buckets',
+    path: '/log-buckets',
+    getParentRoute: () => AuthedWidAdminRoute,
   } as any)
+const AuthedWidAdminLogAccessRoute = AuthedWidAdminLogAccessRouteImport.update({
+  id: '/log-access',
+  path: '/log-access',
+  getParentRoute: () => AuthedWidAdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -240,6 +271,7 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$doc': typeof LegalDocRoute
   '/s/$slug': typeof SSlugRouteWithChildren
+  '/$wid/admin': typeof AuthedWidAdminRouteWithChildren
   '/$wid/incidents': typeof AuthedWidIncidentsRoute
   '/$wid/members': typeof AuthedWidMembersRoute
   '/$wid/settings': typeof AuthedWidSettingsRouteWithChildren
@@ -247,7 +279,10 @@ export interface FileRoutesByFullPath {
   '/s/$slug/incidents': typeof SSlugIncidentsRoute
   '/$wid/': typeof AuthedWidIndexRoute
   '/s/$slug/': typeof SSlugIndexRoute
+  '/$wid/admin/log-access': typeof AuthedWidAdminLogAccessRoute
   '/$wid/admin/log-buckets': typeof AuthedWidAdminLogBucketsRoute
+  '/$wid/admin/log-storage': typeof AuthedWidAdminLogStorageRoute
+  '/$wid/admin/usage': typeof AuthedWidAdminUsageRoute
   '/$wid/admin/workers': typeof AuthedWidAdminWorkersRoute
   '/$wid/logs/$project': typeof AuthedWidLogsProjectRoute
   '/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
@@ -259,6 +294,7 @@ export interface FileRoutesByFullPath {
   '/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
   '/$wid/settings/usage': typeof AuthedWidSettingsUsageRoute
   '/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
+  '/$wid/admin/': typeof AuthedWidAdminIndexRoute
   '/$wid/logs/': typeof AuthedWidLogsIndexRoute
   '/$wid/monitors/': typeof AuthedWidMonitorsIndexRoute
   '/$wid/settings/': typeof AuthedWidSettingsIndexRoute
@@ -280,7 +316,10 @@ export interface FileRoutesByTo {
   '/s/$slug/incidents': typeof SSlugIncidentsRoute
   '/$wid': typeof AuthedWidIndexRoute
   '/s/$slug': typeof SSlugIndexRoute
+  '/$wid/admin/log-access': typeof AuthedWidAdminLogAccessRoute
   '/$wid/admin/log-buckets': typeof AuthedWidAdminLogBucketsRoute
+  '/$wid/admin/log-storage': typeof AuthedWidAdminLogStorageRoute
+  '/$wid/admin/usage': typeof AuthedWidAdminUsageRoute
   '/$wid/admin/workers': typeof AuthedWidAdminWorkersRoute
   '/$wid/logs/$project': typeof AuthedWidLogsProjectRoute
   '/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
@@ -292,6 +331,7 @@ export interface FileRoutesByTo {
   '/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
   '/$wid/settings/usage': typeof AuthedWidSettingsUsageRoute
   '/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
+  '/$wid/admin': typeof AuthedWidAdminIndexRoute
   '/$wid/logs': typeof AuthedWidLogsIndexRoute
   '/$wid/monitors': typeof AuthedWidMonitorsIndexRoute
   '/$wid/settings': typeof AuthedWidSettingsIndexRoute
@@ -311,6 +351,7 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$doc': typeof LegalDocRoute
   '/s_/$slug': typeof SSlugRouteWithChildren
+  '/_authed/$wid/admin': typeof AuthedWidAdminRouteWithChildren
   '/_authed/$wid/incidents': typeof AuthedWidIncidentsRoute
   '/_authed/$wid/members': typeof AuthedWidMembersRoute
   '/_authed/$wid/settings': typeof AuthedWidSettingsRouteWithChildren
@@ -318,7 +359,10 @@ export interface FileRoutesById {
   '/s_/$slug/incidents': typeof SSlugIncidentsRoute
   '/_authed/$wid/': typeof AuthedWidIndexRoute
   '/s_/$slug/': typeof SSlugIndexRoute
+  '/_authed/$wid/admin/log-access': typeof AuthedWidAdminLogAccessRoute
   '/_authed/$wid/admin/log-buckets': typeof AuthedWidAdminLogBucketsRoute
+  '/_authed/$wid/admin/log-storage': typeof AuthedWidAdminLogStorageRoute
+  '/_authed/$wid/admin/usage': typeof AuthedWidAdminUsageRoute
   '/_authed/$wid/admin/workers': typeof AuthedWidAdminWorkersRoute
   '/_authed/$wid/logs/$project': typeof AuthedWidLogsProjectRoute
   '/_authed/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
@@ -330,6 +374,7 @@ export interface FileRoutesById {
   '/_authed/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
   '/_authed/$wid/settings/usage': typeof AuthedWidSettingsUsageRoute
   '/_authed/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
+  '/_authed/$wid/admin/': typeof AuthedWidAdminIndexRoute
   '/_authed/$wid/logs/': typeof AuthedWidLogsIndexRoute
   '/_authed/$wid/monitors/': typeof AuthedWidMonitorsIndexRoute
   '/_authed/$wid/settings/': typeof AuthedWidSettingsIndexRoute
@@ -349,6 +394,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/legal/$doc'
     | '/s/$slug'
+    | '/$wid/admin'
     | '/$wid/incidents'
     | '/$wid/members'
     | '/$wid/settings'
@@ -356,7 +402,10 @@ export interface FileRouteTypes {
     | '/s/$slug/incidents'
     | '/$wid/'
     | '/s/$slug/'
+    | '/$wid/admin/log-access'
     | '/$wid/admin/log-buckets'
+    | '/$wid/admin/log-storage'
+    | '/$wid/admin/usage'
     | '/$wid/admin/workers'
     | '/$wid/logs/$project'
     | '/$wid/monitors/$mid'
@@ -368,6 +417,7 @@ export interface FileRouteTypes {
     | '/$wid/settings/notifications'
     | '/$wid/settings/usage'
     | '/$wid/settings/workers'
+    | '/$wid/admin/'
     | '/$wid/logs/'
     | '/$wid/monitors/'
     | '/$wid/settings/'
@@ -389,7 +439,10 @@ export interface FileRouteTypes {
     | '/s/$slug/incidents'
     | '/$wid'
     | '/s/$slug'
+    | '/$wid/admin/log-access'
     | '/$wid/admin/log-buckets'
+    | '/$wid/admin/log-storage'
+    | '/$wid/admin/usage'
     | '/$wid/admin/workers'
     | '/$wid/logs/$project'
     | '/$wid/monitors/$mid'
@@ -401,6 +454,7 @@ export interface FileRouteTypes {
     | '/$wid/settings/notifications'
     | '/$wid/settings/usage'
     | '/$wid/settings/workers'
+    | '/$wid/admin'
     | '/$wid/logs'
     | '/$wid/monitors'
     | '/$wid/settings'
@@ -419,6 +473,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/legal/$doc'
     | '/s_/$slug'
+    | '/_authed/$wid/admin'
     | '/_authed/$wid/incidents'
     | '/_authed/$wid/members'
     | '/_authed/$wid/settings'
@@ -426,7 +481,10 @@ export interface FileRouteTypes {
     | '/s_/$slug/incidents'
     | '/_authed/$wid/'
     | '/s_/$slug/'
+    | '/_authed/$wid/admin/log-access'
     | '/_authed/$wid/admin/log-buckets'
+    | '/_authed/$wid/admin/log-storage'
+    | '/_authed/$wid/admin/usage'
     | '/_authed/$wid/admin/workers'
     | '/_authed/$wid/logs/$project'
     | '/_authed/$wid/monitors/$mid'
@@ -438,6 +496,7 @@ export interface FileRouteTypes {
     | '/_authed/$wid/settings/notifications'
     | '/_authed/$wid/settings/usage'
     | '/_authed/$wid/settings/workers'
+    | '/_authed/$wid/admin/'
     | '/_authed/$wid/logs/'
     | '/_authed/$wid/monitors/'
     | '/_authed/$wid/settings/'
@@ -600,6 +659,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedWidIncidentsRouteImport
       parentRoute: typeof AuthedWidRoute
     }
+    '/_authed/$wid/admin': {
+      id: '/_authed/$wid/admin'
+      path: '/admin'
+      fullPath: '/$wid/admin'
+      preLoaderRoute: typeof AuthedWidAdminRouteImport
+      parentRoute: typeof AuthedWidRoute
+    }
     '/_authed/$wid/settings/': {
       id: '/_authed/$wid/settings/'
       path: '/'
@@ -620,6 +686,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/$wid/logs/'
       preLoaderRoute: typeof AuthedWidLogsIndexRouteImport
       parentRoute: typeof AuthedWidRoute
+    }
+    '/_authed/$wid/admin/': {
+      id: '/_authed/$wid/admin/'
+      path: '/'
+      fullPath: '/$wid/admin/'
+      preLoaderRoute: typeof AuthedWidAdminIndexRouteImport
+      parentRoute: typeof AuthedWidAdminRoute
     }
     '/_authed/$wid/settings/workers': {
       id: '/_authed/$wid/settings/workers'
@@ -693,20 +766,63 @@ declare module '@tanstack/react-router' {
     }
     '/_authed/$wid/admin/workers': {
       id: '/_authed/$wid/admin/workers'
-      path: '/admin/workers'
+      path: '/workers'
       fullPath: '/$wid/admin/workers'
       preLoaderRoute: typeof AuthedWidAdminWorkersRouteImport
-      parentRoute: typeof AuthedWidRoute
+      parentRoute: typeof AuthedWidAdminRoute
+    }
+    '/_authed/$wid/admin/usage': {
+      id: '/_authed/$wid/admin/usage'
+      path: '/usage'
+      fullPath: '/$wid/admin/usage'
+      preLoaderRoute: typeof AuthedWidAdminUsageRouteImport
+      parentRoute: typeof AuthedWidAdminRoute
+    }
+    '/_authed/$wid/admin/log-storage': {
+      id: '/_authed/$wid/admin/log-storage'
+      path: '/log-storage'
+      fullPath: '/$wid/admin/log-storage'
+      preLoaderRoute: typeof AuthedWidAdminLogStorageRouteImport
+      parentRoute: typeof AuthedWidAdminRoute
     }
     '/_authed/$wid/admin/log-buckets': {
       id: '/_authed/$wid/admin/log-buckets'
-      path: '/admin/log-buckets'
+      path: '/log-buckets'
       fullPath: '/$wid/admin/log-buckets'
       preLoaderRoute: typeof AuthedWidAdminLogBucketsRouteImport
-      parentRoute: typeof AuthedWidRoute
+      parentRoute: typeof AuthedWidAdminRoute
+    }
+    '/_authed/$wid/admin/log-access': {
+      id: '/_authed/$wid/admin/log-access'
+      path: '/log-access'
+      fullPath: '/$wid/admin/log-access'
+      preLoaderRoute: typeof AuthedWidAdminLogAccessRouteImport
+      parentRoute: typeof AuthedWidAdminRoute
     }
   }
 }
+
+interface AuthedWidAdminRouteChildren {
+  AuthedWidAdminLogAccessRoute: typeof AuthedWidAdminLogAccessRoute
+  AuthedWidAdminLogBucketsRoute: typeof AuthedWidAdminLogBucketsRoute
+  AuthedWidAdminLogStorageRoute: typeof AuthedWidAdminLogStorageRoute
+  AuthedWidAdminUsageRoute: typeof AuthedWidAdminUsageRoute
+  AuthedWidAdminWorkersRoute: typeof AuthedWidAdminWorkersRoute
+  AuthedWidAdminIndexRoute: typeof AuthedWidAdminIndexRoute
+}
+
+const AuthedWidAdminRouteChildren: AuthedWidAdminRouteChildren = {
+  AuthedWidAdminLogAccessRoute: AuthedWidAdminLogAccessRoute,
+  AuthedWidAdminLogBucketsRoute: AuthedWidAdminLogBucketsRoute,
+  AuthedWidAdminLogStorageRoute: AuthedWidAdminLogStorageRoute,
+  AuthedWidAdminUsageRoute: AuthedWidAdminUsageRoute,
+  AuthedWidAdminWorkersRoute: AuthedWidAdminWorkersRoute,
+  AuthedWidAdminIndexRoute: AuthedWidAdminIndexRoute,
+}
+
+const AuthedWidAdminRouteWithChildren = AuthedWidAdminRoute._addFileChildren(
+  AuthedWidAdminRouteChildren,
+)
 
 interface AuthedWidSettingsRouteChildren {
   AuthedWidSettingsBillingRoute: typeof AuthedWidSettingsBillingRoute
@@ -734,13 +850,12 @@ const AuthedWidSettingsRouteWithChildren =
   AuthedWidSettingsRoute._addFileChildren(AuthedWidSettingsRouteChildren)
 
 interface AuthedWidRouteChildren {
+  AuthedWidAdminRoute: typeof AuthedWidAdminRouteWithChildren
   AuthedWidIncidentsRoute: typeof AuthedWidIncidentsRoute
   AuthedWidMembersRoute: typeof AuthedWidMembersRoute
   AuthedWidSettingsRoute: typeof AuthedWidSettingsRouteWithChildren
   AuthedWidStatusRoute: typeof AuthedWidStatusRoute
   AuthedWidIndexRoute: typeof AuthedWidIndexRoute
-  AuthedWidAdminLogBucketsRoute: typeof AuthedWidAdminLogBucketsRoute
-  AuthedWidAdminWorkersRoute: typeof AuthedWidAdminWorkersRoute
   AuthedWidLogsProjectRoute: typeof AuthedWidLogsProjectRoute
   AuthedWidMonitorsMidRoute: typeof AuthedWidMonitorsMidRoute
   AuthedWidMonitorsNewRoute: typeof AuthedWidMonitorsNewRoute
@@ -749,13 +864,12 @@ interface AuthedWidRouteChildren {
 }
 
 const AuthedWidRouteChildren: AuthedWidRouteChildren = {
+  AuthedWidAdminRoute: AuthedWidAdminRouteWithChildren,
   AuthedWidIncidentsRoute: AuthedWidIncidentsRoute,
   AuthedWidMembersRoute: AuthedWidMembersRoute,
   AuthedWidSettingsRoute: AuthedWidSettingsRouteWithChildren,
   AuthedWidStatusRoute: AuthedWidStatusRoute,
   AuthedWidIndexRoute: AuthedWidIndexRoute,
-  AuthedWidAdminLogBucketsRoute: AuthedWidAdminLogBucketsRoute,
-  AuthedWidAdminWorkersRoute: AuthedWidAdminWorkersRoute,
   AuthedWidLogsProjectRoute: AuthedWidLogsProjectRoute,
   AuthedWidMonitorsMidRoute: AuthedWidMonitorsMidRoute,
   AuthedWidMonitorsNewRoute: AuthedWidMonitorsNewRoute,
