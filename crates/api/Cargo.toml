@@ -12,6 +12,7 @@ produktive-entity = { path = "../entity" }
 migration = { package = "unstatus-migration", path = "../migration" }
 produktive-dsl = { path = "../dsl" }
 produktive-probe = { path = "../probe" }
+produktive-deploy = { path = "../deploy" }
 polar = { path = "../polar" }
 email = { path = "../email" }
 

@@ -1,5 +1,13 @@
 pub mod check;
 pub mod custom_domain;
+pub mod deploy_access_request;
+pub mod deploy_event;
+pub mod deploy_instance;
+pub mod deploy_metric_rollup;
+pub mod deploy_registry_credential;
+pub mod deploy_service;
+pub mod deploy_service_secret;
+pub mod deployment;
 pub mod incident;
 pub mod incident_update;
 pub mod log_access_request;

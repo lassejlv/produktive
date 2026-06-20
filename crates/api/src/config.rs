@@ -53,6 +53,14 @@ pub struct Config {
     /// Optional Loki tenant; sent as the `X-Scope-OrgID` header on every
     /// request. Unset when Loki has `auth_enabled = false` (the common case).
     pub loki_tenant: Option<String>,
+    /// Enables private-preview deployment routes. Access is still workspace
+    /// approved server-side.
+    pub deployments_enabled: bool,
+    /// Hex-encoded 32-byte key used to encrypt deployment registry credentials
+    /// and runtime secrets.
+    pub deploy_secrets_key: Option<String>,
+    pub deploy_max_services_per_workspace: i64,
+    pub deploy_max_active_deployments_per_workspace: i64,
 }
 
 impl Config {
@@ -233,7 +241,33 @@ impl Config {
             .ok()
             .map(|v| v.trim().to_owned())
             .filter(|v| !v.is_empty());
-
+        let deployments_enabled = std::env::var("DEPLOYMENTS_ENABLED")
+            .unwrap_or_else(|_| "false".into())
+            .parse()
+            .context("DEPLOYMENTS_ENABLED must be bool")?;
+        let deploy_secrets_key = std::env::var("DEPLOY_SECRETS_KEY")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let deploy_max_services_per_workspace = std::env::var("DEPLOY_MAX_SERVICES_PER_WORKSPACE")
+            .unwrap_or_else(|_| "3".into())
+            .parse()
+            .context("DEPLOY_MAX_SERVICES_PER_WORKSPACE must be i64")?;
+        if deploy_max_services_per_workspace < 1 {
+            return Err(anyhow!(
+                "DEPLOY_MAX_SERVICES_PER_WORKSPACE must be at least 1"
+            ));
+        }
+        let deploy_max_active_deployments_per_workspace =
+            std::env::var("DEPLOY_MAX_ACTIVE_DEPLOYMENTS_PER_WORKSPACE")
+                .unwrap_or_else(|_| "6".into())
+                .parse()
+                .context("DEPLOY_MAX_ACTIVE_DEPLOYMENTS_PER_WORKSPACE must be i64")?;
+        if deploy_max_active_deployments_per_workspace < 1 {
+            return Err(anyhow!(
+                "DEPLOY_MAX_ACTIVE_DEPLOYMENTS_PER_WORKSPACE must be at least 1"
+            ));
+        }
         Ok(Self {
             database_url,
             database_pooled_url,
@@ -272,6 +306,10 @@ impl Config {
             worker_lease_seconds,
             loki_url,
             loki_tenant,
+            deployments_enabled,
+            deploy_secrets_key,
+            deploy_max_services_per_workspace,
+            deploy_max_active_deployments_per_workspace,
         })
     }
 

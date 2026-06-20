@@ -26,6 +26,7 @@ mod m20260616_000023_create_log_access_requests;
 mod m20260616_000024_add_usage_reset;
 mod m20260616_000025_create_password_reset_tokens;
 mod m20260619_000026_add_legal_terms_acceptance;
+mod m20260621_000027_create_deployments;
 
 pub struct Migrator;
 
@@ -59,6 +60,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260616_000024_add_usage_reset::Migration),
             Box::new(m20260616_000025_create_password_reset_tokens::Migration),
             Box::new(m20260619_000026_add_legal_terms_acceptance::Migration),
+            Box::new(m20260621_000027_create_deployments::Migration),
         ]
     }
 }

@@ -1,6 +1,13 @@
-import { createFileRoute, Link, Outlet, redirect, useLocation, useParams } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  Outlet,
+  redirect,
+  useLocation,
+  useParams,
+} from "@tanstack/react-router";
 import { cn } from "#/lib/cn";
-import { LOGS_ENABLED } from "#/lib/features";
+import { DEPLOYMENTS_ENABLED, LOGS_ENABLED } from "#/lib/features";
 import { meQuery } from "../lib/queries";
 
 export const Route = createFileRoute("/_authed/$wid/admin")({
@@ -24,6 +31,7 @@ const TABS: AdminTab[] = [
   { to: "/$wid/admin/workers", label: "Workers" },
   { to: "/$wid/admin/log-storage", label: "Log storage" },
   { to: "/$wid/admin/log-access", label: "Log access" },
+  { to: "/$wid/admin/deploy-access", label: "Deploy access" },
   { to: "/$wid/admin/usage", label: "Usage" },
 ];
 
@@ -32,6 +40,7 @@ function AdminLayout() {
   const loc = useLocation();
   const tabs = TABS.filter((t) => {
     if (!LOGS_ENABLED && t.to.endsWith("/log-storage")) return false;
+    if (!DEPLOYMENTS_ENABLED && t.to.endsWith("/deploy-access")) return false;
     return true;
   });
 

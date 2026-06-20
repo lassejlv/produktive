@@ -8,899 +8,932 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root'
-import { Route as SignupRouteImport } from './routes/signup'
-import { Route as SRouteImport } from './routes/s'
-import { Route as ResetPasswordRouteImport } from './routes/reset-password'
-import { Route as PricingRouteImport } from './routes/pricing'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as IncidentsRouteImport } from './routes/incidents'
-import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
-import { Route as AuthedRouteImport } from './routes/_authed'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as SSlugRouteImport } from './routes/s_.$slug'
-import { Route as LegalDocRouteImport } from './routes/legal.$doc'
-import { Route as InviteTokenRouteImport } from './routes/invite.$token'
-import { Route as IncidentsIdRouteImport } from './routes/incidents.$id'
-import { Route as AuthedWidRouteImport } from './routes/_authed.$wid'
-import { Route as SSlugIndexRouteImport } from './routes/s_.$slug.index'
-import { Route as AuthedWidIndexRouteImport } from './routes/_authed.$wid.index'
-import { Route as SSlugIncidentsRouteImport } from './routes/s_.$slug.incidents'
-import { Route as AuthedWidStatusRouteImport } from './routes/_authed.$wid.status'
-import { Route as AuthedWidSettingsRouteImport } from './routes/_authed.$wid.settings'
-import { Route as AuthedWidMembersRouteImport } from './routes/_authed.$wid.members'
-import { Route as AuthedWidIncidentsRouteImport } from './routes/_authed.$wid.incidents'
-import { Route as AuthedWidAdminRouteImport } from './routes/_authed.$wid.admin'
-import { Route as AuthedWidSettingsIndexRouteImport } from './routes/_authed.$wid.settings.index'
-import { Route as AuthedWidMonitorsIndexRouteImport } from './routes/_authed.$wid.monitors.index'
-import { Route as AuthedWidLogsIndexRouteImport } from './routes/_authed.$wid.logs.index'
-import { Route as AuthedWidAdminIndexRouteImport } from './routes/_authed.$wid.admin.index'
-import { Route as SSlugIncidentsIdRouteImport } from './routes/s_.$slug.incidents.$id'
-import { Route as AuthedWidSettingsWorkersRouteImport } from './routes/_authed.$wid.settings.workers'
-import { Route as AuthedWidSettingsUsageRouteImport } from './routes/_authed.$wid.settings.usage'
-import { Route as AuthedWidSettingsNotificationsRouteImport } from './routes/_authed.$wid.settings.notifications'
-import { Route as AuthedWidSettingsMembersRouteImport } from './routes/_authed.$wid.settings.members'
-import { Route as AuthedWidSettingsLogStorageRouteImport } from './routes/_authed.$wid.settings.log-storage'
-import { Route as AuthedWidSettingsLogAccessRouteImport } from './routes/_authed.$wid.settings.log-access'
-import { Route as AuthedWidSettingsBillingRouteImport } from './routes/_authed.$wid.settings.billing'
-import { Route as AuthedWidMonitorsNewRouteImport } from './routes/_authed.$wid.monitors.new'
-import { Route as AuthedWidMonitorsMidRouteImport } from './routes/_authed.$wid.monitors.$mid'
-import { Route as AuthedWidLogsProjectRouteImport } from './routes/_authed.$wid.logs.$project'
-import { Route as AuthedWidIncidentsIdRouteImport } from './routes/_authed.$wid.incidents.$id'
-import { Route as AuthedWidAdminWorkersRouteImport } from './routes/_authed.$wid.admin.workers'
-import { Route as AuthedWidAdminUsageRouteImport } from './routes/_authed.$wid.admin.usage'
-import { Route as AuthedWidAdminLogStorageRouteImport } from './routes/_authed.$wid.admin.log-storage'
-import { Route as AuthedWidAdminLogBucketsRouteImport } from './routes/_authed.$wid.admin.log-buckets'
-import { Route as AuthedWidAdminLogAccessRouteImport } from './routes/_authed.$wid.admin.log-access'
+import { Route as rootRouteImport } from "./routes/__root";
+import { Route as SignupRouteImport } from "./routes/signup";
+import { Route as SRouteImport } from "./routes/s";
+import { Route as ResetPasswordRouteImport } from "./routes/reset-password";
+import { Route as PricingRouteImport } from "./routes/pricing";
+import { Route as LoginRouteImport } from "./routes/login";
+import { Route as IncidentsRouteImport } from "./routes/incidents";
+import { Route as ForgotPasswordRouteImport } from "./routes/forgot-password";
+import { Route as AuthedRouteImport } from "./routes/_authed";
+import { Route as IndexRouteImport } from "./routes/index";
+import { Route as SSlugRouteImport } from "./routes/s_.$slug";
+import { Route as LegalDocRouteImport } from "./routes/legal.$doc";
+import { Route as InviteTokenRouteImport } from "./routes/invite.$token";
+import { Route as IncidentsIdRouteImport } from "./routes/incidents.$id";
+import { Route as AuthedWidRouteImport } from "./routes/_authed.$wid";
+import { Route as SSlugIndexRouteImport } from "./routes/s_.$slug.index";
+import { Route as AuthedWidIndexRouteImport } from "./routes/_authed.$wid.index";
+import { Route as SSlugIncidentsRouteImport } from "./routes/s_.$slug.incidents";
+import { Route as AuthedWidStatusRouteImport } from "./routes/_authed.$wid.status";
+import { Route as AuthedWidSettingsRouteImport } from "./routes/_authed.$wid.settings";
+import { Route as AuthedWidMembersRouteImport } from "./routes/_authed.$wid.members";
+import { Route as AuthedWidIncidentsRouteImport } from "./routes/_authed.$wid.incidents";
+import { Route as AuthedWidDeploymentsRouteImport } from "./routes/_authed.$wid.deployments";
+import { Route as AuthedWidAdminRouteImport } from "./routes/_authed.$wid.admin";
+import { Route as AuthedWidSettingsIndexRouteImport } from "./routes/_authed.$wid.settings.index";
+import { Route as AuthedWidMonitorsIndexRouteImport } from "./routes/_authed.$wid.monitors.index";
+import { Route as AuthedWidLogsIndexRouteImport } from "./routes/_authed.$wid.logs.index";
+import { Route as AuthedWidAdminIndexRouteImport } from "./routes/_authed.$wid.admin.index";
+import { Route as SSlugIncidentsIdRouteImport } from "./routes/s_.$slug.incidents.$id";
+import { Route as AuthedWidSettingsWorkersRouteImport } from "./routes/_authed.$wid.settings.workers";
+import { Route as AuthedWidSettingsUsageRouteImport } from "./routes/_authed.$wid.settings.usage";
+import { Route as AuthedWidSettingsNotificationsRouteImport } from "./routes/_authed.$wid.settings.notifications";
+import { Route as AuthedWidSettingsMembersRouteImport } from "./routes/_authed.$wid.settings.members";
+import { Route as AuthedWidSettingsLogStorageRouteImport } from "./routes/_authed.$wid.settings.log-storage";
+import { Route as AuthedWidSettingsLogAccessRouteImport } from "./routes/_authed.$wid.settings.log-access";
+import { Route as AuthedWidSettingsBillingRouteImport } from "./routes/_authed.$wid.settings.billing";
+import { Route as AuthedWidMonitorsNewRouteImport } from "./routes/_authed.$wid.monitors.new";
+import { Route as AuthedWidMonitorsMidRouteImport } from "./routes/_authed.$wid.monitors.$mid";
+import { Route as AuthedWidLogsProjectRouteImport } from "./routes/_authed.$wid.logs.$project";
+import { Route as AuthedWidIncidentsIdRouteImport } from "./routes/_authed.$wid.incidents.$id";
+import { Route as AuthedWidAdminWorkersRouteImport } from "./routes/_authed.$wid.admin.workers";
+import { Route as AuthedWidAdminUsageRouteImport } from "./routes/_authed.$wid.admin.usage";
+import { Route as AuthedWidAdminLogStorageRouteImport } from "./routes/_authed.$wid.admin.log-storage";
+import { Route as AuthedWidAdminLogBucketsRouteImport } from "./routes/_authed.$wid.admin.log-buckets";
+import { Route as AuthedWidAdminLogAccessRouteImport } from "./routes/_authed.$wid.admin.log-access";
+import { Route as AuthedWidAdminDeployAccessRouteImport } from "./routes/_authed.$wid.admin.deploy-access";
 
 const SignupRoute = SignupRouteImport.update({
-  id: '/signup',
-  path: '/signup',
+  id: "/signup",
+  path: "/signup",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const SRoute = SRouteImport.update({
-  id: '/s',
-  path: '/s',
+  id: "/s",
+  path: "/s",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
-  id: '/reset-password',
-  path: '/reset-password',
+  id: "/reset-password",
+  path: "/reset-password",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const PricingRoute = PricingRouteImport.update({
-  id: '/pricing',
-  path: '/pricing',
+  id: "/pricing",
+  path: "/pricing",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+  id: "/login",
+  path: "/login",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const IncidentsRoute = IncidentsRouteImport.update({
-  id: '/incidents',
-  path: '/incidents',
+  id: "/incidents",
+  path: "/incidents",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
-  id: '/forgot-password',
-  path: '/forgot-password',
+  id: "/forgot-password",
+  path: "/forgot-password",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const AuthedRoute = AuthedRouteImport.update({
-  id: '/_authed',
+  id: "/_authed",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const SSlugRoute = SSlugRouteImport.update({
-  id: '/s_/$slug',
-  path: '/s/$slug',
+  id: "/s_/$slug",
+  path: "/s/$slug",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const LegalDocRoute = LegalDocRouteImport.update({
-  id: '/legal/$doc',
-  path: '/legal/$doc',
+  id: "/legal/$doc",
+  path: "/legal/$doc",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const InviteTokenRoute = InviteTokenRouteImport.update({
-  id: '/invite/$token',
-  path: '/invite/$token',
+  id: "/invite/$token",
+  path: "/invite/$token",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const IncidentsIdRoute = IncidentsIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
+  id: "/$id",
+  path: "/$id",
   getParentRoute: () => IncidentsRoute,
-} as any)
+} as any);
 const AuthedWidRoute = AuthedWidRouteImport.update({
-  id: '/$wid',
-  path: '/$wid',
+  id: "/$wid",
+  path: "/$wid",
   getParentRoute: () => AuthedRoute,
-} as any)
+} as any);
 const SSlugIndexRoute = SSlugIndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => SSlugRoute,
-} as any)
+} as any);
 const AuthedWidIndexRoute = AuthedWidIndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => AuthedWidRoute,
-} as any)
+} as any);
 const SSlugIncidentsRoute = SSlugIncidentsRouteImport.update({
-  id: '/incidents',
-  path: '/incidents',
+  id: "/incidents",
+  path: "/incidents",
   getParentRoute: () => SSlugRoute,
-} as any)
+} as any);
 const AuthedWidStatusRoute = AuthedWidStatusRouteImport.update({
-  id: '/status',
-  path: '/status',
+  id: "/status",
+  path: "/status",
   getParentRoute: () => AuthedWidRoute,
-} as any)
+} as any);
 const AuthedWidSettingsRoute = AuthedWidSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
+  id: "/settings",
+  path: "/settings",
   getParentRoute: () => AuthedWidRoute,
-} as any)
+} as any);
 const AuthedWidMembersRoute = AuthedWidMembersRouteImport.update({
-  id: '/members',
-  path: '/members',
+  id: "/members",
+  path: "/members",
   getParentRoute: () => AuthedWidRoute,
-} as any)
+} as any);
 const AuthedWidIncidentsRoute = AuthedWidIncidentsRouteImport.update({
-  id: '/incidents',
-  path: '/incidents',
+  id: "/incidents",
+  path: "/incidents",
   getParentRoute: () => AuthedWidRoute,
-} as any)
+} as any);
+const AuthedWidDeploymentsRoute = AuthedWidDeploymentsRouteImport.update({
+  id: "/deployments",
+  path: "/deployments",
+  getParentRoute: () => AuthedWidRoute,
+} as any);
 const AuthedWidAdminRoute = AuthedWidAdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
+  id: "/admin",
+  path: "/admin",
   getParentRoute: () => AuthedWidRoute,
-} as any)
+} as any);
 const AuthedWidSettingsIndexRoute = AuthedWidSettingsIndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => AuthedWidSettingsRoute,
-} as any)
+} as any);
 const AuthedWidMonitorsIndexRoute = AuthedWidMonitorsIndexRouteImport.update({
-  id: '/monitors/',
-  path: '/monitors/',
+  id: "/monitors/",
+  path: "/monitors/",
   getParentRoute: () => AuthedWidRoute,
-} as any)
+} as any);
 const AuthedWidLogsIndexRoute = AuthedWidLogsIndexRouteImport.update({
-  id: '/logs/',
-  path: '/logs/',
+  id: "/logs/",
+  path: "/logs/",
   getParentRoute: () => AuthedWidRoute,
-} as any)
+} as any);
 const AuthedWidAdminIndexRoute = AuthedWidAdminIndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => AuthedWidAdminRoute,
-} as any)
+} as any);
 const SSlugIncidentsIdRoute = SSlugIncidentsIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
+  id: "/$id",
+  path: "/$id",
   getParentRoute: () => SSlugIncidentsRoute,
-} as any)
-const AuthedWidSettingsWorkersRoute =
-  AuthedWidSettingsWorkersRouteImport.update({
-    id: '/workers',
-    path: '/workers',
-    getParentRoute: () => AuthedWidSettingsRoute,
-  } as any)
-const AuthedWidSettingsUsageRoute = AuthedWidSettingsUsageRouteImport.update({
-  id: '/usage',
-  path: '/usage',
+} as any);
+const AuthedWidSettingsWorkersRoute = AuthedWidSettingsWorkersRouteImport.update({
+  id: "/workers",
+  path: "/workers",
   getParentRoute: () => AuthedWidSettingsRoute,
-} as any)
-const AuthedWidSettingsNotificationsRoute =
-  AuthedWidSettingsNotificationsRouteImport.update({
-    id: '/notifications',
-    path: '/notifications',
-    getParentRoute: () => AuthedWidSettingsRoute,
-  } as any)
-const AuthedWidSettingsMembersRoute =
-  AuthedWidSettingsMembersRouteImport.update({
-    id: '/members',
-    path: '/members',
-    getParentRoute: () => AuthedWidSettingsRoute,
-  } as any)
-const AuthedWidSettingsLogStorageRoute =
-  AuthedWidSettingsLogStorageRouteImport.update({
-    id: '/log-storage',
-    path: '/log-storage',
-    getParentRoute: () => AuthedWidSettingsRoute,
-  } as any)
-const AuthedWidSettingsLogAccessRoute =
-  AuthedWidSettingsLogAccessRouteImport.update({
-    id: '/log-access',
-    path: '/log-access',
-    getParentRoute: () => AuthedWidSettingsRoute,
-  } as any)
-const AuthedWidSettingsBillingRoute =
-  AuthedWidSettingsBillingRouteImport.update({
-    id: '/billing',
-    path: '/billing',
-    getParentRoute: () => AuthedWidSettingsRoute,
-  } as any)
+} as any);
+const AuthedWidSettingsUsageRoute = AuthedWidSettingsUsageRouteImport.update({
+  id: "/usage",
+  path: "/usage",
+  getParentRoute: () => AuthedWidSettingsRoute,
+} as any);
+const AuthedWidSettingsNotificationsRoute = AuthedWidSettingsNotificationsRouteImport.update({
+  id: "/notifications",
+  path: "/notifications",
+  getParentRoute: () => AuthedWidSettingsRoute,
+} as any);
+const AuthedWidSettingsMembersRoute = AuthedWidSettingsMembersRouteImport.update({
+  id: "/members",
+  path: "/members",
+  getParentRoute: () => AuthedWidSettingsRoute,
+} as any);
+const AuthedWidSettingsLogStorageRoute = AuthedWidSettingsLogStorageRouteImport.update({
+  id: "/log-storage",
+  path: "/log-storage",
+  getParentRoute: () => AuthedWidSettingsRoute,
+} as any);
+const AuthedWidSettingsLogAccessRoute = AuthedWidSettingsLogAccessRouteImport.update({
+  id: "/log-access",
+  path: "/log-access",
+  getParentRoute: () => AuthedWidSettingsRoute,
+} as any);
+const AuthedWidSettingsBillingRoute = AuthedWidSettingsBillingRouteImport.update({
+  id: "/billing",
+  path: "/billing",
+  getParentRoute: () => AuthedWidSettingsRoute,
+} as any);
 const AuthedWidMonitorsNewRoute = AuthedWidMonitorsNewRouteImport.update({
-  id: '/monitors/new',
-  path: '/monitors/new',
+  id: "/monitors/new",
+  path: "/monitors/new",
   getParentRoute: () => AuthedWidRoute,
-} as any)
+} as any);
 const AuthedWidMonitorsMidRoute = AuthedWidMonitorsMidRouteImport.update({
-  id: '/monitors/$mid',
-  path: '/monitors/$mid',
+  id: "/monitors/$mid",
+  path: "/monitors/$mid",
   getParentRoute: () => AuthedWidRoute,
-} as any)
+} as any);
 const AuthedWidLogsProjectRoute = AuthedWidLogsProjectRouteImport.update({
-  id: '/logs/$project',
-  path: '/logs/$project',
+  id: "/logs/$project",
+  path: "/logs/$project",
   getParentRoute: () => AuthedWidRoute,
-} as any)
+} as any);
 const AuthedWidIncidentsIdRoute = AuthedWidIncidentsIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
+  id: "/$id",
+  path: "/$id",
   getParentRoute: () => AuthedWidIncidentsRoute,
-} as any)
+} as any);
 const AuthedWidAdminWorkersRoute = AuthedWidAdminWorkersRouteImport.update({
-  id: '/workers',
-  path: '/workers',
+  id: "/workers",
+  path: "/workers",
   getParentRoute: () => AuthedWidAdminRoute,
-} as any)
+} as any);
 const AuthedWidAdminUsageRoute = AuthedWidAdminUsageRouteImport.update({
-  id: '/usage',
-  path: '/usage',
+  id: "/usage",
+  path: "/usage",
   getParentRoute: () => AuthedWidAdminRoute,
-} as any)
-const AuthedWidAdminLogStorageRoute =
-  AuthedWidAdminLogStorageRouteImport.update({
-    id: '/log-storage',
-    path: '/log-storage',
-    getParentRoute: () => AuthedWidAdminRoute,
-  } as any)
-const AuthedWidAdminLogBucketsRoute =
-  AuthedWidAdminLogBucketsRouteImport.update({
-    id: '/log-buckets',
-    path: '/log-buckets',
-    getParentRoute: () => AuthedWidAdminRoute,
-  } as any)
+} as any);
+const AuthedWidAdminLogStorageRoute = AuthedWidAdminLogStorageRouteImport.update({
+  id: "/log-storage",
+  path: "/log-storage",
+  getParentRoute: () => AuthedWidAdminRoute,
+} as any);
+const AuthedWidAdminLogBucketsRoute = AuthedWidAdminLogBucketsRouteImport.update({
+  id: "/log-buckets",
+  path: "/log-buckets",
+  getParentRoute: () => AuthedWidAdminRoute,
+} as any);
 const AuthedWidAdminLogAccessRoute = AuthedWidAdminLogAccessRouteImport.update({
-  id: '/log-access',
-  path: '/log-access',
+  id: "/log-access",
+  path: "/log-access",
   getParentRoute: () => AuthedWidAdminRoute,
-} as any)
+} as any);
+const AuthedWidAdminDeployAccessRoute = AuthedWidAdminDeployAccessRouteImport.update({
+  id: "/deploy-access",
+  path: "/deploy-access",
+  getParentRoute: () => AuthedWidAdminRoute,
+} as any);
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/forgot-password': typeof ForgotPasswordRoute
-  '/incidents': typeof IncidentsRouteWithChildren
-  '/login': typeof LoginRoute
-  '/pricing': typeof PricingRoute
-  '/reset-password': typeof ResetPasswordRoute
-  '/s': typeof SRoute
-  '/signup': typeof SignupRoute
-  '/$wid': typeof AuthedWidRouteWithChildren
-  '/incidents/$id': typeof IncidentsIdRoute
-  '/invite/$token': typeof InviteTokenRoute
-  '/legal/$doc': typeof LegalDocRoute
-  '/s/$slug': typeof SSlugRouteWithChildren
-  '/$wid/admin': typeof AuthedWidAdminRouteWithChildren
-  '/$wid/incidents': typeof AuthedWidIncidentsRouteWithChildren
-  '/$wid/members': typeof AuthedWidMembersRoute
-  '/$wid/settings': typeof AuthedWidSettingsRouteWithChildren
-  '/$wid/status': typeof AuthedWidStatusRoute
-  '/s/$slug/incidents': typeof SSlugIncidentsRouteWithChildren
-  '/$wid/': typeof AuthedWidIndexRoute
-  '/s/$slug/': typeof SSlugIndexRoute
-  '/$wid/admin/log-access': typeof AuthedWidAdminLogAccessRoute
-  '/$wid/admin/log-buckets': typeof AuthedWidAdminLogBucketsRoute
-  '/$wid/admin/log-storage': typeof AuthedWidAdminLogStorageRoute
-  '/$wid/admin/usage': typeof AuthedWidAdminUsageRoute
-  '/$wid/admin/workers': typeof AuthedWidAdminWorkersRoute
-  '/$wid/incidents/$id': typeof AuthedWidIncidentsIdRoute
-  '/$wid/logs/$project': typeof AuthedWidLogsProjectRoute
-  '/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
-  '/$wid/monitors/new': typeof AuthedWidMonitorsNewRoute
-  '/$wid/settings/billing': typeof AuthedWidSettingsBillingRoute
-  '/$wid/settings/log-access': typeof AuthedWidSettingsLogAccessRoute
-  '/$wid/settings/log-storage': typeof AuthedWidSettingsLogStorageRoute
-  '/$wid/settings/members': typeof AuthedWidSettingsMembersRoute
-  '/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
-  '/$wid/settings/usage': typeof AuthedWidSettingsUsageRoute
-  '/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
-  '/s/$slug/incidents/$id': typeof SSlugIncidentsIdRoute
-  '/$wid/admin/': typeof AuthedWidAdminIndexRoute
-  '/$wid/logs/': typeof AuthedWidLogsIndexRoute
-  '/$wid/monitors/': typeof AuthedWidMonitorsIndexRoute
-  '/$wid/settings/': typeof AuthedWidSettingsIndexRoute
+  "/": typeof IndexRoute;
+  "/forgot-password": typeof ForgotPasswordRoute;
+  "/incidents": typeof IncidentsRouteWithChildren;
+  "/login": typeof LoginRoute;
+  "/pricing": typeof PricingRoute;
+  "/reset-password": typeof ResetPasswordRoute;
+  "/s": typeof SRoute;
+  "/signup": typeof SignupRoute;
+  "/$wid": typeof AuthedWidRouteWithChildren;
+  "/incidents/$id": typeof IncidentsIdRoute;
+  "/invite/$token": typeof InviteTokenRoute;
+  "/legal/$doc": typeof LegalDocRoute;
+  "/s/$slug": typeof SSlugRouteWithChildren;
+  "/$wid/admin": typeof AuthedWidAdminRouteWithChildren;
+  "/$wid/deployments": typeof AuthedWidDeploymentsRoute;
+  "/$wid/incidents": typeof AuthedWidIncidentsRouteWithChildren;
+  "/$wid/members": typeof AuthedWidMembersRoute;
+  "/$wid/settings": typeof AuthedWidSettingsRouteWithChildren;
+  "/$wid/status": typeof AuthedWidStatusRoute;
+  "/s/$slug/incidents": typeof SSlugIncidentsRouteWithChildren;
+  "/$wid/": typeof AuthedWidIndexRoute;
+  "/s/$slug/": typeof SSlugIndexRoute;
+  "/$wid/admin/deploy-access": typeof AuthedWidAdminDeployAccessRoute;
+  "/$wid/admin/log-access": typeof AuthedWidAdminLogAccessRoute;
+  "/$wid/admin/log-buckets": typeof AuthedWidAdminLogBucketsRoute;
+  "/$wid/admin/log-storage": typeof AuthedWidAdminLogStorageRoute;
+  "/$wid/admin/usage": typeof AuthedWidAdminUsageRoute;
+  "/$wid/admin/workers": typeof AuthedWidAdminWorkersRoute;
+  "/$wid/incidents/$id": typeof AuthedWidIncidentsIdRoute;
+  "/$wid/logs/$project": typeof AuthedWidLogsProjectRoute;
+  "/$wid/monitors/$mid": typeof AuthedWidMonitorsMidRoute;
+  "/$wid/monitors/new": typeof AuthedWidMonitorsNewRoute;
+  "/$wid/settings/billing": typeof AuthedWidSettingsBillingRoute;
+  "/$wid/settings/log-access": typeof AuthedWidSettingsLogAccessRoute;
+  "/$wid/settings/log-storage": typeof AuthedWidSettingsLogStorageRoute;
+  "/$wid/settings/members": typeof AuthedWidSettingsMembersRoute;
+  "/$wid/settings/notifications": typeof AuthedWidSettingsNotificationsRoute;
+  "/$wid/settings/usage": typeof AuthedWidSettingsUsageRoute;
+  "/$wid/settings/workers": typeof AuthedWidSettingsWorkersRoute;
+  "/s/$slug/incidents/$id": typeof SSlugIncidentsIdRoute;
+  "/$wid/admin/": typeof AuthedWidAdminIndexRoute;
+  "/$wid/logs/": typeof AuthedWidLogsIndexRoute;
+  "/$wid/monitors/": typeof AuthedWidMonitorsIndexRoute;
+  "/$wid/settings/": typeof AuthedWidSettingsIndexRoute;
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/forgot-password': typeof ForgotPasswordRoute
-  '/incidents': typeof IncidentsRouteWithChildren
-  '/login': typeof LoginRoute
-  '/pricing': typeof PricingRoute
-  '/reset-password': typeof ResetPasswordRoute
-  '/s': typeof SRoute
-  '/signup': typeof SignupRoute
-  '/incidents/$id': typeof IncidentsIdRoute
-  '/invite/$token': typeof InviteTokenRoute
-  '/legal/$doc': typeof LegalDocRoute
-  '/$wid/incidents': typeof AuthedWidIncidentsRouteWithChildren
-  '/$wid/members': typeof AuthedWidMembersRoute
-  '/$wid/status': typeof AuthedWidStatusRoute
-  '/s/$slug/incidents': typeof SSlugIncidentsRouteWithChildren
-  '/$wid': typeof AuthedWidIndexRoute
-  '/s/$slug': typeof SSlugIndexRoute
-  '/$wid/admin/log-access': typeof AuthedWidAdminLogAccessRoute
-  '/$wid/admin/log-buckets': typeof AuthedWidAdminLogBucketsRoute
-  '/$wid/admin/log-storage': typeof AuthedWidAdminLogStorageRoute
-  '/$wid/admin/usage': typeof AuthedWidAdminUsageRoute
-  '/$wid/admin/workers': typeof AuthedWidAdminWorkersRoute
-  '/$wid/incidents/$id': typeof AuthedWidIncidentsIdRoute
-  '/$wid/logs/$project': typeof AuthedWidLogsProjectRoute
-  '/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
-  '/$wid/monitors/new': typeof AuthedWidMonitorsNewRoute
-  '/$wid/settings/billing': typeof AuthedWidSettingsBillingRoute
-  '/$wid/settings/log-access': typeof AuthedWidSettingsLogAccessRoute
-  '/$wid/settings/log-storage': typeof AuthedWidSettingsLogStorageRoute
-  '/$wid/settings/members': typeof AuthedWidSettingsMembersRoute
-  '/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
-  '/$wid/settings/usage': typeof AuthedWidSettingsUsageRoute
-  '/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
-  '/s/$slug/incidents/$id': typeof SSlugIncidentsIdRoute
-  '/$wid/admin': typeof AuthedWidAdminIndexRoute
-  '/$wid/logs': typeof AuthedWidLogsIndexRoute
-  '/$wid/monitors': typeof AuthedWidMonitorsIndexRoute
-  '/$wid/settings': typeof AuthedWidSettingsIndexRoute
+  "/": typeof IndexRoute;
+  "/forgot-password": typeof ForgotPasswordRoute;
+  "/incidents": typeof IncidentsRouteWithChildren;
+  "/login": typeof LoginRoute;
+  "/pricing": typeof PricingRoute;
+  "/reset-password": typeof ResetPasswordRoute;
+  "/s": typeof SRoute;
+  "/signup": typeof SignupRoute;
+  "/incidents/$id": typeof IncidentsIdRoute;
+  "/invite/$token": typeof InviteTokenRoute;
+  "/legal/$doc": typeof LegalDocRoute;
+  "/$wid/deployments": typeof AuthedWidDeploymentsRoute;
+  "/$wid/incidents": typeof AuthedWidIncidentsRouteWithChildren;
+  "/$wid/members": typeof AuthedWidMembersRoute;
+  "/$wid/status": typeof AuthedWidStatusRoute;
+  "/s/$slug/incidents": typeof SSlugIncidentsRouteWithChildren;
+  "/$wid": typeof AuthedWidIndexRoute;
+  "/s/$slug": typeof SSlugIndexRoute;
+  "/$wid/admin/deploy-access": typeof AuthedWidAdminDeployAccessRoute;
+  "/$wid/admin/log-access": typeof AuthedWidAdminLogAccessRoute;
+  "/$wid/admin/log-buckets": typeof AuthedWidAdminLogBucketsRoute;
+  "/$wid/admin/log-storage": typeof AuthedWidAdminLogStorageRoute;
+  "/$wid/admin/usage": typeof AuthedWidAdminUsageRoute;
+  "/$wid/admin/workers": typeof AuthedWidAdminWorkersRoute;
+  "/$wid/incidents/$id": typeof AuthedWidIncidentsIdRoute;
+  "/$wid/logs/$project": typeof AuthedWidLogsProjectRoute;
+  "/$wid/monitors/$mid": typeof AuthedWidMonitorsMidRoute;
+  "/$wid/monitors/new": typeof AuthedWidMonitorsNewRoute;
+  "/$wid/settings/billing": typeof AuthedWidSettingsBillingRoute;
+  "/$wid/settings/log-access": typeof AuthedWidSettingsLogAccessRoute;
+  "/$wid/settings/log-storage": typeof AuthedWidSettingsLogStorageRoute;
+  "/$wid/settings/members": typeof AuthedWidSettingsMembersRoute;
+  "/$wid/settings/notifications": typeof AuthedWidSettingsNotificationsRoute;
+  "/$wid/settings/usage": typeof AuthedWidSettingsUsageRoute;
+  "/$wid/settings/workers": typeof AuthedWidSettingsWorkersRoute;
+  "/s/$slug/incidents/$id": typeof SSlugIncidentsIdRoute;
+  "/$wid/admin": typeof AuthedWidAdminIndexRoute;
+  "/$wid/logs": typeof AuthedWidLogsIndexRoute;
+  "/$wid/monitors": typeof AuthedWidMonitorsIndexRoute;
+  "/$wid/settings": typeof AuthedWidSettingsIndexRoute;
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/_authed': typeof AuthedRouteWithChildren
-  '/forgot-password': typeof ForgotPasswordRoute
-  '/incidents': typeof IncidentsRouteWithChildren
-  '/login': typeof LoginRoute
-  '/pricing': typeof PricingRoute
-  '/reset-password': typeof ResetPasswordRoute
-  '/s': typeof SRoute
-  '/signup': typeof SignupRoute
-  '/_authed/$wid': typeof AuthedWidRouteWithChildren
-  '/incidents/$id': typeof IncidentsIdRoute
-  '/invite/$token': typeof InviteTokenRoute
-  '/legal/$doc': typeof LegalDocRoute
-  '/s_/$slug': typeof SSlugRouteWithChildren
-  '/_authed/$wid/admin': typeof AuthedWidAdminRouteWithChildren
-  '/_authed/$wid/incidents': typeof AuthedWidIncidentsRouteWithChildren
-  '/_authed/$wid/members': typeof AuthedWidMembersRoute
-  '/_authed/$wid/settings': typeof AuthedWidSettingsRouteWithChildren
-  '/_authed/$wid/status': typeof AuthedWidStatusRoute
-  '/s_/$slug/incidents': typeof SSlugIncidentsRouteWithChildren
-  '/_authed/$wid/': typeof AuthedWidIndexRoute
-  '/s_/$slug/': typeof SSlugIndexRoute
-  '/_authed/$wid/admin/log-access': typeof AuthedWidAdminLogAccessRoute
-  '/_authed/$wid/admin/log-buckets': typeof AuthedWidAdminLogBucketsRoute
-  '/_authed/$wid/admin/log-storage': typeof AuthedWidAdminLogStorageRoute
-  '/_authed/$wid/admin/usage': typeof AuthedWidAdminUsageRoute
-  '/_authed/$wid/admin/workers': typeof AuthedWidAdminWorkersRoute
-  '/_authed/$wid/incidents/$id': typeof AuthedWidIncidentsIdRoute
-  '/_authed/$wid/logs/$project': typeof AuthedWidLogsProjectRoute
-  '/_authed/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
-  '/_authed/$wid/monitors/new': typeof AuthedWidMonitorsNewRoute
-  '/_authed/$wid/settings/billing': typeof AuthedWidSettingsBillingRoute
-  '/_authed/$wid/settings/log-access': typeof AuthedWidSettingsLogAccessRoute
-  '/_authed/$wid/settings/log-storage': typeof AuthedWidSettingsLogStorageRoute
-  '/_authed/$wid/settings/members': typeof AuthedWidSettingsMembersRoute
-  '/_authed/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
-  '/_authed/$wid/settings/usage': typeof AuthedWidSettingsUsageRoute
-  '/_authed/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
-  '/s_/$slug/incidents/$id': typeof SSlugIncidentsIdRoute
-  '/_authed/$wid/admin/': typeof AuthedWidAdminIndexRoute
-  '/_authed/$wid/logs/': typeof AuthedWidLogsIndexRoute
-  '/_authed/$wid/monitors/': typeof AuthedWidMonitorsIndexRoute
-  '/_authed/$wid/settings/': typeof AuthedWidSettingsIndexRoute
+  __root__: typeof rootRouteImport;
+  "/": typeof IndexRoute;
+  "/_authed": typeof AuthedRouteWithChildren;
+  "/forgot-password": typeof ForgotPasswordRoute;
+  "/incidents": typeof IncidentsRouteWithChildren;
+  "/login": typeof LoginRoute;
+  "/pricing": typeof PricingRoute;
+  "/reset-password": typeof ResetPasswordRoute;
+  "/s": typeof SRoute;
+  "/signup": typeof SignupRoute;
+  "/_authed/$wid": typeof AuthedWidRouteWithChildren;
+  "/incidents/$id": typeof IncidentsIdRoute;
+  "/invite/$token": typeof InviteTokenRoute;
+  "/legal/$doc": typeof LegalDocRoute;
+  "/s_/$slug": typeof SSlugRouteWithChildren;
+  "/_authed/$wid/admin": typeof AuthedWidAdminRouteWithChildren;
+  "/_authed/$wid/deployments": typeof AuthedWidDeploymentsRoute;
+  "/_authed/$wid/incidents": typeof AuthedWidIncidentsRouteWithChildren;
+  "/_authed/$wid/members": typeof AuthedWidMembersRoute;
+  "/_authed/$wid/settings": typeof AuthedWidSettingsRouteWithChildren;
+  "/_authed/$wid/status": typeof AuthedWidStatusRoute;
+  "/s_/$slug/incidents": typeof SSlugIncidentsRouteWithChildren;
+  "/_authed/$wid/": typeof AuthedWidIndexRoute;
+  "/s_/$slug/": typeof SSlugIndexRoute;
+  "/_authed/$wid/admin/deploy-access": typeof AuthedWidAdminDeployAccessRoute;
+  "/_authed/$wid/admin/log-access": typeof AuthedWidAdminLogAccessRoute;
+  "/_authed/$wid/admin/log-buckets": typeof AuthedWidAdminLogBucketsRoute;
+  "/_authed/$wid/admin/log-storage": typeof AuthedWidAdminLogStorageRoute;
+  "/_authed/$wid/admin/usage": typeof AuthedWidAdminUsageRoute;
+  "/_authed/$wid/admin/workers": typeof AuthedWidAdminWorkersRoute;
+  "/_authed/$wid/incidents/$id": typeof AuthedWidIncidentsIdRoute;
+  "/_authed/$wid/logs/$project": typeof AuthedWidLogsProjectRoute;
+  "/_authed/$wid/monitors/$mid": typeof AuthedWidMonitorsMidRoute;
+  "/_authed/$wid/monitors/new": typeof AuthedWidMonitorsNewRoute;
+  "/_authed/$wid/settings/billing": typeof AuthedWidSettingsBillingRoute;
+  "/_authed/$wid/settings/log-access": typeof AuthedWidSettingsLogAccessRoute;
+  "/_authed/$wid/settings/log-storage": typeof AuthedWidSettingsLogStorageRoute;
+  "/_authed/$wid/settings/members": typeof AuthedWidSettingsMembersRoute;
+  "/_authed/$wid/settings/notifications": typeof AuthedWidSettingsNotificationsRoute;
+  "/_authed/$wid/settings/usage": typeof AuthedWidSettingsUsageRoute;
+  "/_authed/$wid/settings/workers": typeof AuthedWidSettingsWorkersRoute;
+  "/s_/$slug/incidents/$id": typeof SSlugIncidentsIdRoute;
+  "/_authed/$wid/admin/": typeof AuthedWidAdminIndexRoute;
+  "/_authed/$wid/logs/": typeof AuthedWidLogsIndexRoute;
+  "/_authed/$wid/monitors/": typeof AuthedWidMonitorsIndexRoute;
+  "/_authed/$wid/settings/": typeof AuthedWidSettingsIndexRoute;
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath
+  fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
-    | '/'
-    | '/forgot-password'
-    | '/incidents'
-    | '/login'
-    | '/pricing'
-    | '/reset-password'
-    | '/s'
-    | '/signup'
-    | '/$wid'
-    | '/incidents/$id'
-    | '/invite/$token'
-    | '/legal/$doc'
-    | '/s/$slug'
-    | '/$wid/admin'
-    | '/$wid/incidents'
-    | '/$wid/members'
-    | '/$wid/settings'
-    | '/$wid/status'
-    | '/s/$slug/incidents'
-    | '/$wid/'
-    | '/s/$slug/'
-    | '/$wid/admin/log-access'
-    | '/$wid/admin/log-buckets'
-    | '/$wid/admin/log-storage'
-    | '/$wid/admin/usage'
-    | '/$wid/admin/workers'
-    | '/$wid/incidents/$id'
-    | '/$wid/logs/$project'
-    | '/$wid/monitors/$mid'
-    | '/$wid/monitors/new'
-    | '/$wid/settings/billing'
-    | '/$wid/settings/log-access'
-    | '/$wid/settings/log-storage'
-    | '/$wid/settings/members'
-    | '/$wid/settings/notifications'
-    | '/$wid/settings/usage'
-    | '/$wid/settings/workers'
-    | '/s/$slug/incidents/$id'
-    | '/$wid/admin/'
-    | '/$wid/logs/'
-    | '/$wid/monitors/'
-    | '/$wid/settings/'
-  fileRoutesByTo: FileRoutesByTo
+    | "/"
+    | "/forgot-password"
+    | "/incidents"
+    | "/login"
+    | "/pricing"
+    | "/reset-password"
+    | "/s"
+    | "/signup"
+    | "/$wid"
+    | "/incidents/$id"
+    | "/invite/$token"
+    | "/legal/$doc"
+    | "/s/$slug"
+    | "/$wid/admin"
+    | "/$wid/deployments"
+    | "/$wid/incidents"
+    | "/$wid/members"
+    | "/$wid/settings"
+    | "/$wid/status"
+    | "/s/$slug/incidents"
+    | "/$wid/"
+    | "/s/$slug/"
+    | "/$wid/admin/deploy-access"
+    | "/$wid/admin/log-access"
+    | "/$wid/admin/log-buckets"
+    | "/$wid/admin/log-storage"
+    | "/$wid/admin/usage"
+    | "/$wid/admin/workers"
+    | "/$wid/incidents/$id"
+    | "/$wid/logs/$project"
+    | "/$wid/monitors/$mid"
+    | "/$wid/monitors/new"
+    | "/$wid/settings/billing"
+    | "/$wid/settings/log-access"
+    | "/$wid/settings/log-storage"
+    | "/$wid/settings/members"
+    | "/$wid/settings/notifications"
+    | "/$wid/settings/usage"
+    | "/$wid/settings/workers"
+    | "/s/$slug/incidents/$id"
+    | "/$wid/admin/"
+    | "/$wid/logs/"
+    | "/$wid/monitors/"
+    | "/$wid/settings/";
+  fileRoutesByTo: FileRoutesByTo;
   to:
-    | '/'
-    | '/forgot-password'
-    | '/incidents'
-    | '/login'
-    | '/pricing'
-    | '/reset-password'
-    | '/s'
-    | '/signup'
-    | '/incidents/$id'
-    | '/invite/$token'
-    | '/legal/$doc'
-    | '/$wid/incidents'
-    | '/$wid/members'
-    | '/$wid/status'
-    | '/s/$slug/incidents'
-    | '/$wid'
-    | '/s/$slug'
-    | '/$wid/admin/log-access'
-    | '/$wid/admin/log-buckets'
-    | '/$wid/admin/log-storage'
-    | '/$wid/admin/usage'
-    | '/$wid/admin/workers'
-    | '/$wid/incidents/$id'
-    | '/$wid/logs/$project'
-    | '/$wid/monitors/$mid'
-    | '/$wid/monitors/new'
-    | '/$wid/settings/billing'
-    | '/$wid/settings/log-access'
-    | '/$wid/settings/log-storage'
-    | '/$wid/settings/members'
-    | '/$wid/settings/notifications'
-    | '/$wid/settings/usage'
-    | '/$wid/settings/workers'
-    | '/s/$slug/incidents/$id'
-    | '/$wid/admin'
-    | '/$wid/logs'
-    | '/$wid/monitors'
-    | '/$wid/settings'
+    | "/"
+    | "/forgot-password"
+    | "/incidents"
+    | "/login"
+    | "/pricing"
+    | "/reset-password"
+    | "/s"
+    | "/signup"
+    | "/incidents/$id"
+    | "/invite/$token"
+    | "/legal/$doc"
+    | "/$wid/deployments"
+    | "/$wid/incidents"
+    | "/$wid/members"
+    | "/$wid/status"
+    | "/s/$slug/incidents"
+    | "/$wid"
+    | "/s/$slug"
+    | "/$wid/admin/deploy-access"
+    | "/$wid/admin/log-access"
+    | "/$wid/admin/log-buckets"
+    | "/$wid/admin/log-storage"
+    | "/$wid/admin/usage"
+    | "/$wid/admin/workers"
+    | "/$wid/incidents/$id"
+    | "/$wid/logs/$project"
+    | "/$wid/monitors/$mid"
+    | "/$wid/monitors/new"
+    | "/$wid/settings/billing"
+    | "/$wid/settings/log-access"
+    | "/$wid/settings/log-storage"
+    | "/$wid/settings/members"
+    | "/$wid/settings/notifications"
+    | "/$wid/settings/usage"
+    | "/$wid/settings/workers"
+    | "/s/$slug/incidents/$id"
+    | "/$wid/admin"
+    | "/$wid/logs"
+    | "/$wid/monitors"
+    | "/$wid/settings";
   id:
-    | '__root__'
-    | '/'
-    | '/_authed'
-    | '/forgot-password'
-    | '/incidents'
-    | '/login'
-    | '/pricing'
-    | '/reset-password'
-    | '/s'
-    | '/signup'
-    | '/_authed/$wid'
-    | '/incidents/$id'
-    | '/invite/$token'
-    | '/legal/$doc'
-    | '/s_/$slug'
-    | '/_authed/$wid/admin'
-    | '/_authed/$wid/incidents'
-    | '/_authed/$wid/members'
-    | '/_authed/$wid/settings'
-    | '/_authed/$wid/status'
-    | '/s_/$slug/incidents'
-    | '/_authed/$wid/'
-    | '/s_/$slug/'
-    | '/_authed/$wid/admin/log-access'
-    | '/_authed/$wid/admin/log-buckets'
-    | '/_authed/$wid/admin/log-storage'
-    | '/_authed/$wid/admin/usage'
-    | '/_authed/$wid/admin/workers'
-    | '/_authed/$wid/incidents/$id'
-    | '/_authed/$wid/logs/$project'
-    | '/_authed/$wid/monitors/$mid'
-    | '/_authed/$wid/monitors/new'
-    | '/_authed/$wid/settings/billing'
-    | '/_authed/$wid/settings/log-access'
-    | '/_authed/$wid/settings/log-storage'
-    | '/_authed/$wid/settings/members'
-    | '/_authed/$wid/settings/notifications'
-    | '/_authed/$wid/settings/usage'
-    | '/_authed/$wid/settings/workers'
-    | '/s_/$slug/incidents/$id'
-    | '/_authed/$wid/admin/'
-    | '/_authed/$wid/logs/'
-    | '/_authed/$wid/monitors/'
-    | '/_authed/$wid/settings/'
-  fileRoutesById: FileRoutesById
+    | "__root__"
+    | "/"
+    | "/_authed"
+    | "/forgot-password"
+    | "/incidents"
+    | "/login"
+    | "/pricing"
+    | "/reset-password"
+    | "/s"
+    | "/signup"
+    | "/_authed/$wid"
+    | "/incidents/$id"
+    | "/invite/$token"
+    | "/legal/$doc"
+    | "/s_/$slug"
+    | "/_authed/$wid/admin"
+    | "/_authed/$wid/deployments"
+    | "/_authed/$wid/incidents"
+    | "/_authed/$wid/members"
+    | "/_authed/$wid/settings"
+    | "/_authed/$wid/status"
+    | "/s_/$slug/incidents"
+    | "/_authed/$wid/"
+    | "/s_/$slug/"
+    | "/_authed/$wid/admin/deploy-access"
+    | "/_authed/$wid/admin/log-access"
+    | "/_authed/$wid/admin/log-buckets"
+    | "/_authed/$wid/admin/log-storage"
+    | "/_authed/$wid/admin/usage"
+    | "/_authed/$wid/admin/workers"
+    | "/_authed/$wid/incidents/$id"
+    | "/_authed/$wid/logs/$project"
+    | "/_authed/$wid/monitors/$mid"
+    | "/_authed/$wid/monitors/new"
+    | "/_authed/$wid/settings/billing"
+    | "/_authed/$wid/settings/log-access"
+    | "/_authed/$wid/settings/log-storage"
+    | "/_authed/$wid/settings/members"
+    | "/_authed/$wid/settings/notifications"
+    | "/_authed/$wid/settings/usage"
+    | "/_authed/$wid/settings/workers"
+    | "/s_/$slug/incidents/$id"
+    | "/_authed/$wid/admin/"
+    | "/_authed/$wid/logs/"
+    | "/_authed/$wid/monitors/"
+    | "/_authed/$wid/settings/";
+  fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AuthedRoute: typeof AuthedRouteWithChildren
-  ForgotPasswordRoute: typeof ForgotPasswordRoute
-  IncidentsRoute: typeof IncidentsRouteWithChildren
-  LoginRoute: typeof LoginRoute
-  PricingRoute: typeof PricingRoute
-  ResetPasswordRoute: typeof ResetPasswordRoute
-  SRoute: typeof SRoute
-  SignupRoute: typeof SignupRoute
-  InviteTokenRoute: typeof InviteTokenRoute
-  LegalDocRoute: typeof LegalDocRoute
-  SSlugRoute: typeof SSlugRouteWithChildren
+  IndexRoute: typeof IndexRoute;
+  AuthedRoute: typeof AuthedRouteWithChildren;
+  ForgotPasswordRoute: typeof ForgotPasswordRoute;
+  IncidentsRoute: typeof IncidentsRouteWithChildren;
+  LoginRoute: typeof LoginRoute;
+  PricingRoute: typeof PricingRoute;
+  ResetPasswordRoute: typeof ResetPasswordRoute;
+  SRoute: typeof SRoute;
+  SignupRoute: typeof SignupRoute;
+  InviteTokenRoute: typeof InviteTokenRoute;
+  LegalDocRoute: typeof LegalDocRoute;
+  SSlugRoute: typeof SSlugRouteWithChildren;
 }
 
-declare module '@tanstack/react-router' {
+declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    '/signup': {
-      id: '/signup'
-      path: '/signup'
-      fullPath: '/signup'
-      preLoaderRoute: typeof SignupRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/s': {
-      id: '/s'
-      path: '/s'
-      fullPath: '/s'
-      preLoaderRoute: typeof SRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/reset-password': {
-      id: '/reset-password'
-      path: '/reset-password'
-      fullPath: '/reset-password'
-      preLoaderRoute: typeof ResetPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pricing': {
-      id: '/pricing'
-      path: '/pricing'
-      fullPath: '/pricing'
-      preLoaderRoute: typeof PricingRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/incidents': {
-      id: '/incidents'
-      path: '/incidents'
-      fullPath: '/incidents'
-      preLoaderRoute: typeof IncidentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/forgot-password': {
-      id: '/forgot-password'
-      path: '/forgot-password'
-      fullPath: '/forgot-password'
-      preLoaderRoute: typeof ForgotPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_authed': {
-      id: '/_authed'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof AuthedRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/s_/$slug': {
-      id: '/s_/$slug'
-      path: '/s/$slug'
-      fullPath: '/s/$slug'
-      preLoaderRoute: typeof SSlugRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/legal/$doc': {
-      id: '/legal/$doc'
-      path: '/legal/$doc'
-      fullPath: '/legal/$doc'
-      preLoaderRoute: typeof LegalDocRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/invite/$token': {
-      id: '/invite/$token'
-      path: '/invite/$token'
-      fullPath: '/invite/$token'
-      preLoaderRoute: typeof InviteTokenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/incidents/$id': {
-      id: '/incidents/$id'
-      path: '/$id'
-      fullPath: '/incidents/$id'
-      preLoaderRoute: typeof IncidentsIdRouteImport
-      parentRoute: typeof IncidentsRoute
-    }
-    '/_authed/$wid': {
-      id: '/_authed/$wid'
-      path: '/$wid'
-      fullPath: '/$wid'
-      preLoaderRoute: typeof AuthedWidRouteImport
-      parentRoute: typeof AuthedRoute
-    }
-    '/s_/$slug/': {
-      id: '/s_/$slug/'
-      path: '/'
-      fullPath: '/s/$slug/'
-      preLoaderRoute: typeof SSlugIndexRouteImport
-      parentRoute: typeof SSlugRoute
-    }
-    '/_authed/$wid/': {
-      id: '/_authed/$wid/'
-      path: '/'
-      fullPath: '/$wid/'
-      preLoaderRoute: typeof AuthedWidIndexRouteImport
-      parentRoute: typeof AuthedWidRoute
-    }
-    '/s_/$slug/incidents': {
-      id: '/s_/$slug/incidents'
-      path: '/incidents'
-      fullPath: '/s/$slug/incidents'
-      preLoaderRoute: typeof SSlugIncidentsRouteImport
-      parentRoute: typeof SSlugRoute
-    }
-    '/_authed/$wid/status': {
-      id: '/_authed/$wid/status'
-      path: '/status'
-      fullPath: '/$wid/status'
-      preLoaderRoute: typeof AuthedWidStatusRouteImport
-      parentRoute: typeof AuthedWidRoute
-    }
-    '/_authed/$wid/settings': {
-      id: '/_authed/$wid/settings'
-      path: '/settings'
-      fullPath: '/$wid/settings'
-      preLoaderRoute: typeof AuthedWidSettingsRouteImport
-      parentRoute: typeof AuthedWidRoute
-    }
-    '/_authed/$wid/members': {
-      id: '/_authed/$wid/members'
-      path: '/members'
-      fullPath: '/$wid/members'
-      preLoaderRoute: typeof AuthedWidMembersRouteImport
-      parentRoute: typeof AuthedWidRoute
-    }
-    '/_authed/$wid/incidents': {
-      id: '/_authed/$wid/incidents'
-      path: '/incidents'
-      fullPath: '/$wid/incidents'
-      preLoaderRoute: typeof AuthedWidIncidentsRouteImport
-      parentRoute: typeof AuthedWidRoute
-    }
-    '/_authed/$wid/admin': {
-      id: '/_authed/$wid/admin'
-      path: '/admin'
-      fullPath: '/$wid/admin'
-      preLoaderRoute: typeof AuthedWidAdminRouteImport
-      parentRoute: typeof AuthedWidRoute
-    }
-    '/_authed/$wid/settings/': {
-      id: '/_authed/$wid/settings/'
-      path: '/'
-      fullPath: '/$wid/settings/'
-      preLoaderRoute: typeof AuthedWidSettingsIndexRouteImport
-      parentRoute: typeof AuthedWidSettingsRoute
-    }
-    '/_authed/$wid/monitors/': {
-      id: '/_authed/$wid/monitors/'
-      path: '/monitors'
-      fullPath: '/$wid/monitors/'
-      preLoaderRoute: typeof AuthedWidMonitorsIndexRouteImport
-      parentRoute: typeof AuthedWidRoute
-    }
-    '/_authed/$wid/logs/': {
-      id: '/_authed/$wid/logs/'
-      path: '/logs'
-      fullPath: '/$wid/logs/'
-      preLoaderRoute: typeof AuthedWidLogsIndexRouteImport
-      parentRoute: typeof AuthedWidRoute
-    }
-    '/_authed/$wid/admin/': {
-      id: '/_authed/$wid/admin/'
-      path: '/'
-      fullPath: '/$wid/admin/'
-      preLoaderRoute: typeof AuthedWidAdminIndexRouteImport
-      parentRoute: typeof AuthedWidAdminRoute
-    }
-    '/s_/$slug/incidents/$id': {
-      id: '/s_/$slug/incidents/$id'
-      path: '/$id'
-      fullPath: '/s/$slug/incidents/$id'
-      preLoaderRoute: typeof SSlugIncidentsIdRouteImport
-      parentRoute: typeof SSlugIncidentsRoute
-    }
-    '/_authed/$wid/settings/workers': {
-      id: '/_authed/$wid/settings/workers'
-      path: '/workers'
-      fullPath: '/$wid/settings/workers'
-      preLoaderRoute: typeof AuthedWidSettingsWorkersRouteImport
-      parentRoute: typeof AuthedWidSettingsRoute
-    }
-    '/_authed/$wid/settings/usage': {
-      id: '/_authed/$wid/settings/usage'
-      path: '/usage'
-      fullPath: '/$wid/settings/usage'
-      preLoaderRoute: typeof AuthedWidSettingsUsageRouteImport
-      parentRoute: typeof AuthedWidSettingsRoute
-    }
-    '/_authed/$wid/settings/notifications': {
-      id: '/_authed/$wid/settings/notifications'
-      path: '/notifications'
-      fullPath: '/$wid/settings/notifications'
-      preLoaderRoute: typeof AuthedWidSettingsNotificationsRouteImport
-      parentRoute: typeof AuthedWidSettingsRoute
-    }
-    '/_authed/$wid/settings/members': {
-      id: '/_authed/$wid/settings/members'
-      path: '/members'
-      fullPath: '/$wid/settings/members'
-      preLoaderRoute: typeof AuthedWidSettingsMembersRouteImport
-      parentRoute: typeof AuthedWidSettingsRoute
-    }
-    '/_authed/$wid/settings/log-storage': {
-      id: '/_authed/$wid/settings/log-storage'
-      path: '/log-storage'
-      fullPath: '/$wid/settings/log-storage'
-      preLoaderRoute: typeof AuthedWidSettingsLogStorageRouteImport
-      parentRoute: typeof AuthedWidSettingsRoute
-    }
-    '/_authed/$wid/settings/log-access': {
-      id: '/_authed/$wid/settings/log-access'
-      path: '/log-access'
-      fullPath: '/$wid/settings/log-access'
-      preLoaderRoute: typeof AuthedWidSettingsLogAccessRouteImport
-      parentRoute: typeof AuthedWidSettingsRoute
-    }
-    '/_authed/$wid/settings/billing': {
-      id: '/_authed/$wid/settings/billing'
-      path: '/billing'
-      fullPath: '/$wid/settings/billing'
-      preLoaderRoute: typeof AuthedWidSettingsBillingRouteImport
-      parentRoute: typeof AuthedWidSettingsRoute
-    }
-    '/_authed/$wid/monitors/new': {
-      id: '/_authed/$wid/monitors/new'
-      path: '/monitors/new'
-      fullPath: '/$wid/monitors/new'
-      preLoaderRoute: typeof AuthedWidMonitorsNewRouteImport
-      parentRoute: typeof AuthedWidRoute
-    }
-    '/_authed/$wid/monitors/$mid': {
-      id: '/_authed/$wid/monitors/$mid'
-      path: '/monitors/$mid'
-      fullPath: '/$wid/monitors/$mid'
-      preLoaderRoute: typeof AuthedWidMonitorsMidRouteImport
-      parentRoute: typeof AuthedWidRoute
-    }
-    '/_authed/$wid/logs/$project': {
-      id: '/_authed/$wid/logs/$project'
-      path: '/logs/$project'
-      fullPath: '/$wid/logs/$project'
-      preLoaderRoute: typeof AuthedWidLogsProjectRouteImport
-      parentRoute: typeof AuthedWidRoute
-    }
-    '/_authed/$wid/incidents/$id': {
-      id: '/_authed/$wid/incidents/$id'
-      path: '/$id'
-      fullPath: '/$wid/incidents/$id'
-      preLoaderRoute: typeof AuthedWidIncidentsIdRouteImport
-      parentRoute: typeof AuthedWidIncidentsRoute
-    }
-    '/_authed/$wid/admin/workers': {
-      id: '/_authed/$wid/admin/workers'
-      path: '/workers'
-      fullPath: '/$wid/admin/workers'
-      preLoaderRoute: typeof AuthedWidAdminWorkersRouteImport
-      parentRoute: typeof AuthedWidAdminRoute
-    }
-    '/_authed/$wid/admin/usage': {
-      id: '/_authed/$wid/admin/usage'
-      path: '/usage'
-      fullPath: '/$wid/admin/usage'
-      preLoaderRoute: typeof AuthedWidAdminUsageRouteImport
-      parentRoute: typeof AuthedWidAdminRoute
-    }
-    '/_authed/$wid/admin/log-storage': {
-      id: '/_authed/$wid/admin/log-storage'
-      path: '/log-storage'
-      fullPath: '/$wid/admin/log-storage'
-      preLoaderRoute: typeof AuthedWidAdminLogStorageRouteImport
-      parentRoute: typeof AuthedWidAdminRoute
-    }
-    '/_authed/$wid/admin/log-buckets': {
-      id: '/_authed/$wid/admin/log-buckets'
-      path: '/log-buckets'
-      fullPath: '/$wid/admin/log-buckets'
-      preLoaderRoute: typeof AuthedWidAdminLogBucketsRouteImport
-      parentRoute: typeof AuthedWidAdminRoute
-    }
-    '/_authed/$wid/admin/log-access': {
-      id: '/_authed/$wid/admin/log-access'
-      path: '/log-access'
-      fullPath: '/$wid/admin/log-access'
-      preLoaderRoute: typeof AuthedWidAdminLogAccessRouteImport
-      parentRoute: typeof AuthedWidAdminRoute
-    }
+    "/signup": {
+      id: "/signup";
+      path: "/signup";
+      fullPath: "/signup";
+      preLoaderRoute: typeof SignupRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/s": {
+      id: "/s";
+      path: "/s";
+      fullPath: "/s";
+      preLoaderRoute: typeof SRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/reset-password": {
+      id: "/reset-password";
+      path: "/reset-password";
+      fullPath: "/reset-password";
+      preLoaderRoute: typeof ResetPasswordRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/pricing": {
+      id: "/pricing";
+      path: "/pricing";
+      fullPath: "/pricing";
+      preLoaderRoute: typeof PricingRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/login": {
+      id: "/login";
+      path: "/login";
+      fullPath: "/login";
+      preLoaderRoute: typeof LoginRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/incidents": {
+      id: "/incidents";
+      path: "/incidents";
+      fullPath: "/incidents";
+      preLoaderRoute: typeof IncidentsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/forgot-password": {
+      id: "/forgot-password";
+      path: "/forgot-password";
+      fullPath: "/forgot-password";
+      preLoaderRoute: typeof ForgotPasswordRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/_authed": {
+      id: "/_authed";
+      path: "";
+      fullPath: "/";
+      preLoaderRoute: typeof AuthedRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/": {
+      id: "/";
+      path: "/";
+      fullPath: "/";
+      preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/s_/$slug": {
+      id: "/s_/$slug";
+      path: "/s/$slug";
+      fullPath: "/s/$slug";
+      preLoaderRoute: typeof SSlugRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/legal/$doc": {
+      id: "/legal/$doc";
+      path: "/legal/$doc";
+      fullPath: "/legal/$doc";
+      preLoaderRoute: typeof LegalDocRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/invite/$token": {
+      id: "/invite/$token";
+      path: "/invite/$token";
+      fullPath: "/invite/$token";
+      preLoaderRoute: typeof InviteTokenRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/incidents/$id": {
+      id: "/incidents/$id";
+      path: "/$id";
+      fullPath: "/incidents/$id";
+      preLoaderRoute: typeof IncidentsIdRouteImport;
+      parentRoute: typeof IncidentsRoute;
+    };
+    "/_authed/$wid": {
+      id: "/_authed/$wid";
+      path: "/$wid";
+      fullPath: "/$wid";
+      preLoaderRoute: typeof AuthedWidRouteImport;
+      parentRoute: typeof AuthedRoute;
+    };
+    "/s_/$slug/": {
+      id: "/s_/$slug/";
+      path: "/";
+      fullPath: "/s/$slug/";
+      preLoaderRoute: typeof SSlugIndexRouteImport;
+      parentRoute: typeof SSlugRoute;
+    };
+    "/_authed/$wid/": {
+      id: "/_authed/$wid/";
+      path: "/";
+      fullPath: "/$wid/";
+      preLoaderRoute: typeof AuthedWidIndexRouteImport;
+      parentRoute: typeof AuthedWidRoute;
+    };
+    "/s_/$slug/incidents": {
+      id: "/s_/$slug/incidents";
+      path: "/incidents";
+      fullPath: "/s/$slug/incidents";
+      preLoaderRoute: typeof SSlugIncidentsRouteImport;
+      parentRoute: typeof SSlugRoute;
+    };
+    "/_authed/$wid/status": {
+      id: "/_authed/$wid/status";
+      path: "/status";
+      fullPath: "/$wid/status";
+      preLoaderRoute: typeof AuthedWidStatusRouteImport;
+      parentRoute: typeof AuthedWidRoute;
+    };
+    "/_authed/$wid/settings": {
+      id: "/_authed/$wid/settings";
+      path: "/settings";
+      fullPath: "/$wid/settings";
+      preLoaderRoute: typeof AuthedWidSettingsRouteImport;
+      parentRoute: typeof AuthedWidRoute;
+    };
+    "/_authed/$wid/members": {
+      id: "/_authed/$wid/members";
+      path: "/members";
+      fullPath: "/$wid/members";
+      preLoaderRoute: typeof AuthedWidMembersRouteImport;
+      parentRoute: typeof AuthedWidRoute;
+    };
+    "/_authed/$wid/incidents": {
+      id: "/_authed/$wid/incidents";
+      path: "/incidents";
+      fullPath: "/$wid/incidents";
+      preLoaderRoute: typeof AuthedWidIncidentsRouteImport;
+      parentRoute: typeof AuthedWidRoute;
+    };
+    "/_authed/$wid/deployments": {
+      id: "/_authed/$wid/deployments";
+      path: "/deployments";
+      fullPath: "/$wid/deployments";
+      preLoaderRoute: typeof AuthedWidDeploymentsRouteImport;
+      parentRoute: typeof AuthedWidRoute;
+    };
+    "/_authed/$wid/admin": {
+      id: "/_authed/$wid/admin";
+      path: "/admin";
+      fullPath: "/$wid/admin";
+      preLoaderRoute: typeof AuthedWidAdminRouteImport;
+      parentRoute: typeof AuthedWidRoute;
+    };
+    "/_authed/$wid/settings/": {
+      id: "/_authed/$wid/settings/";
+      path: "/";
+      fullPath: "/$wid/settings/";
+      preLoaderRoute: typeof AuthedWidSettingsIndexRouteImport;
+      parentRoute: typeof AuthedWidSettingsRoute;
+    };
+    "/_authed/$wid/monitors/": {
+      id: "/_authed/$wid/monitors/";
+      path: "/monitors";
+      fullPath: "/$wid/monitors/";
+      preLoaderRoute: typeof AuthedWidMonitorsIndexRouteImport;
+      parentRoute: typeof AuthedWidRoute;
+    };
+    "/_authed/$wid/logs/": {
+      id: "/_authed/$wid/logs/";
+      path: "/logs";
+      fullPath: "/$wid/logs/";
+      preLoaderRoute: typeof AuthedWidLogsIndexRouteImport;
+      parentRoute: typeof AuthedWidRoute;
+    };
+    "/_authed/$wid/admin/": {
+      id: "/_authed/$wid/admin/";
+      path: "/";
+      fullPath: "/$wid/admin/";
+      preLoaderRoute: typeof AuthedWidAdminIndexRouteImport;
+      parentRoute: typeof AuthedWidAdminRoute;
+    };
+    "/s_/$slug/incidents/$id": {
+      id: "/s_/$slug/incidents/$id";
+      path: "/$id";
+      fullPath: "/s/$slug/incidents/$id";
+      preLoaderRoute: typeof SSlugIncidentsIdRouteImport;
+      parentRoute: typeof SSlugIncidentsRoute;
+    };
+    "/_authed/$wid/settings/workers": {
+      id: "/_authed/$wid/settings/workers";
+      path: "/workers";
+      fullPath: "/$wid/settings/workers";
+      preLoaderRoute: typeof AuthedWidSettingsWorkersRouteImport;
+      parentRoute: typeof AuthedWidSettingsRoute;
+    };
+    "/_authed/$wid/settings/usage": {
+      id: "/_authed/$wid/settings/usage";
+      path: "/usage";
+      fullPath: "/$wid/settings/usage";
+      preLoaderRoute: typeof AuthedWidSettingsUsageRouteImport;
+      parentRoute: typeof AuthedWidSettingsRoute;
+    };
+    "/_authed/$wid/settings/notifications": {
+      id: "/_authed/$wid/settings/notifications";
+      path: "/notifications";
+      fullPath: "/$wid/settings/notifications";
+      preLoaderRoute: typeof AuthedWidSettingsNotificationsRouteImport;
+      parentRoute: typeof AuthedWidSettingsRoute;
+    };
+    "/_authed/$wid/settings/members": {
+      id: "/_authed/$wid/settings/members";
+      path: "/members";
+      fullPath: "/$wid/settings/members";
+      preLoaderRoute: typeof AuthedWidSettingsMembersRouteImport;
+      parentRoute: typeof AuthedWidSettingsRoute;
+    };
+    "/_authed/$wid/settings/log-storage": {
+      id: "/_authed/$wid/settings/log-storage";
+      path: "/log-storage";
+      fullPath: "/$wid/settings/log-storage";
+      preLoaderRoute: typeof AuthedWidSettingsLogStorageRouteImport;
+      parentRoute: typeof AuthedWidSettingsRoute;
+    };
+    "/_authed/$wid/settings/log-access": {
+      id: "/_authed/$wid/settings/log-access";
+      path: "/log-access";
+      fullPath: "/$wid/settings/log-access";
+      preLoaderRoute: typeof AuthedWidSettingsLogAccessRouteImport;
+      parentRoute: typeof AuthedWidSettingsRoute;
+    };
+    "/_authed/$wid/settings/billing": {
+      id: "/_authed/$wid/settings/billing";
+      path: "/billing";
+      fullPath: "/$wid/settings/billing";
+      preLoaderRoute: typeof AuthedWidSettingsBillingRouteImport;
+      parentRoute: typeof AuthedWidSettingsRoute;
+    };
+    "/_authed/$wid/monitors/new": {
+      id: "/_authed/$wid/monitors/new";
+      path: "/monitors/new";
+      fullPath: "/$wid/monitors/new";
+      preLoaderRoute: typeof AuthedWidMonitorsNewRouteImport;
+      parentRoute: typeof AuthedWidRoute;
+    };
+    "/_authed/$wid/monitors/$mid": {
+      id: "/_authed/$wid/monitors/$mid";
+      path: "/monitors/$mid";
+      fullPath: "/$wid/monitors/$mid";
+      preLoaderRoute: typeof AuthedWidMonitorsMidRouteImport;
+      parentRoute: typeof AuthedWidRoute;
+    };
+    "/_authed/$wid/logs/$project": {
+      id: "/_authed/$wid/logs/$project";
+      path: "/logs/$project";
+      fullPath: "/$wid/logs/$project";
+      preLoaderRoute: typeof AuthedWidLogsProjectRouteImport;
+      parentRoute: typeof AuthedWidRoute;
+    };
+    "/_authed/$wid/incidents/$id": {
+      id: "/_authed/$wid/incidents/$id";
+      path: "/$id";
+      fullPath: "/$wid/incidents/$id";
+      preLoaderRoute: typeof AuthedWidIncidentsIdRouteImport;
+      parentRoute: typeof AuthedWidIncidentsRoute;
+    };
+    "/_authed/$wid/admin/workers": {
+      id: "/_authed/$wid/admin/workers";
+      path: "/workers";
+      fullPath: "/$wid/admin/workers";
+      preLoaderRoute: typeof AuthedWidAdminWorkersRouteImport;
+      parentRoute: typeof AuthedWidAdminRoute;
+    };
+    "/_authed/$wid/admin/usage": {
+      id: "/_authed/$wid/admin/usage";
+      path: "/usage";
+      fullPath: "/$wid/admin/usage";
+      preLoaderRoute: typeof AuthedWidAdminUsageRouteImport;
+      parentRoute: typeof AuthedWidAdminRoute;
+    };
+    "/_authed/$wid/admin/log-storage": {
+      id: "/_authed/$wid/admin/log-storage";
+      path: "/log-storage";
+      fullPath: "/$wid/admin/log-storage";
+      preLoaderRoute: typeof AuthedWidAdminLogStorageRouteImport;
+      parentRoute: typeof AuthedWidAdminRoute;
+    };
+    "/_authed/$wid/admin/log-buckets": {
+      id: "/_authed/$wid/admin/log-buckets";
+      path: "/log-buckets";
+      fullPath: "/$wid/admin/log-buckets";
+      preLoaderRoute: typeof AuthedWidAdminLogBucketsRouteImport;
+      parentRoute: typeof AuthedWidAdminRoute;
+    };
+    "/_authed/$wid/admin/log-access": {
+      id: "/_authed/$wid/admin/log-access";
+      path: "/log-access";
+      fullPath: "/$wid/admin/log-access";
+      preLoaderRoute: typeof AuthedWidAdminLogAccessRouteImport;
+      parentRoute: typeof AuthedWidAdminRoute;
+    };
+    "/_authed/$wid/admin/deploy-access": {
+      id: "/_authed/$wid/admin/deploy-access";
+      path: "/deploy-access";
+      fullPath: "/$wid/admin/deploy-access";
+      preLoaderRoute: typeof AuthedWidAdminDeployAccessRouteImport;
+      parentRoute: typeof AuthedWidAdminRoute;
+    };
   }
 }
 
 interface AuthedWidAdminRouteChildren {
-  AuthedWidAdminLogAccessRoute: typeof AuthedWidAdminLogAccessRoute
-  AuthedWidAdminLogBucketsRoute: typeof AuthedWidAdminLogBucketsRoute
-  AuthedWidAdminLogStorageRoute: typeof AuthedWidAdminLogStorageRoute
-  AuthedWidAdminUsageRoute: typeof AuthedWidAdminUsageRoute
-  AuthedWidAdminWorkersRoute: typeof AuthedWidAdminWorkersRoute
-  AuthedWidAdminIndexRoute: typeof AuthedWidAdminIndexRoute
+  AuthedWidAdminDeployAccessRoute: typeof AuthedWidAdminDeployAccessRoute;
+  AuthedWidAdminLogAccessRoute: typeof AuthedWidAdminLogAccessRoute;
+  AuthedWidAdminLogBucketsRoute: typeof AuthedWidAdminLogBucketsRoute;
+  AuthedWidAdminLogStorageRoute: typeof AuthedWidAdminLogStorageRoute;
+  AuthedWidAdminUsageRoute: typeof AuthedWidAdminUsageRoute;
+  AuthedWidAdminWorkersRoute: typeof AuthedWidAdminWorkersRoute;
+  AuthedWidAdminIndexRoute: typeof AuthedWidAdminIndexRoute;
 }
 
 const AuthedWidAdminRouteChildren: AuthedWidAdminRouteChildren = {
+  AuthedWidAdminDeployAccessRoute: AuthedWidAdminDeployAccessRoute,
   AuthedWidAdminLogAccessRoute: AuthedWidAdminLogAccessRoute,
   AuthedWidAdminLogBucketsRoute: AuthedWidAdminLogBucketsRoute,
   AuthedWidAdminLogStorageRoute: AuthedWidAdminLogStorageRoute,
   AuthedWidAdminUsageRoute: AuthedWidAdminUsageRoute,
   AuthedWidAdminWorkersRoute: AuthedWidAdminWorkersRoute,
   AuthedWidAdminIndexRoute: AuthedWidAdminIndexRoute,
-}
+};
 
 const AuthedWidAdminRouteWithChildren = AuthedWidAdminRoute._addFileChildren(
   AuthedWidAdminRouteChildren,
-)
+);
 
 interface AuthedWidIncidentsRouteChildren {
-  AuthedWidIncidentsIdRoute: typeof AuthedWidIncidentsIdRoute
+  AuthedWidIncidentsIdRoute: typeof AuthedWidIncidentsIdRoute;
 }
 
 const AuthedWidIncidentsRouteChildren: AuthedWidIncidentsRouteChildren = {
   AuthedWidIncidentsIdRoute: AuthedWidIncidentsIdRoute,
-}
+};
 
-const AuthedWidIncidentsRouteWithChildren =
-  AuthedWidIncidentsRoute._addFileChildren(AuthedWidIncidentsRouteChildren)
+const AuthedWidIncidentsRouteWithChildren = AuthedWidIncidentsRoute._addFileChildren(
+  AuthedWidIncidentsRouteChildren,
+);
 
 interface AuthedWidSettingsRouteChildren {
-  AuthedWidSettingsBillingRoute: typeof AuthedWidSettingsBillingRoute
-  AuthedWidSettingsLogAccessRoute: typeof AuthedWidSettingsLogAccessRoute
-  AuthedWidSettingsLogStorageRoute: typeof AuthedWidSettingsLogStorageRoute
-  AuthedWidSettingsMembersRoute: typeof AuthedWidSettingsMembersRoute
-  AuthedWidSettingsNotificationsRoute: typeof AuthedWidSettingsNotificationsRoute
-  AuthedWidSettingsUsageRoute: typeof AuthedWidSettingsUsageRoute
-  AuthedWidSettingsWorkersRoute: typeof AuthedWidSettingsWorkersRoute
-  AuthedWidSettingsIndexRoute: typeof AuthedWidSettingsIndexRoute
+  AuthedWidSettingsBillingRoute: typeof AuthedWidSettingsBillingRoute;
+  AuthedWidSettingsLogAccessRoute: typeof AuthedWidSettingsLogAccessRoute;
+  AuthedWidSettingsLogStorageRoute: typeof AuthedWidSettingsLogStorageRoute;
+  AuthedWidSettingsMembersRoute: typeof AuthedWidSettingsMembersRoute;
+  AuthedWidSettingsNotificationsRoute: typeof AuthedWidSettingsNotificationsRoute;
+  AuthedWidSettingsUsageRoute: typeof AuthedWidSettingsUsageRoute;
+  AuthedWidSettingsWorkersRoute: typeof AuthedWidSettingsWorkersRoute;
+  AuthedWidSettingsIndexRoute: typeof AuthedWidSettingsIndexRoute;
 }
 
 const AuthedWidSettingsRouteChildren: AuthedWidSettingsRouteChildren = {
@@ -912,27 +945,30 @@ const AuthedWidSettingsRouteChildren: AuthedWidSettingsRouteChildren = {
   AuthedWidSettingsUsageRoute: AuthedWidSettingsUsageRoute,
   AuthedWidSettingsWorkersRoute: AuthedWidSettingsWorkersRoute,
   AuthedWidSettingsIndexRoute: AuthedWidSettingsIndexRoute,
-}
+};
 
-const AuthedWidSettingsRouteWithChildren =
-  AuthedWidSettingsRoute._addFileChildren(AuthedWidSettingsRouteChildren)
+const AuthedWidSettingsRouteWithChildren = AuthedWidSettingsRoute._addFileChildren(
+  AuthedWidSettingsRouteChildren,
+);
 
 interface AuthedWidRouteChildren {
-  AuthedWidAdminRoute: typeof AuthedWidAdminRouteWithChildren
-  AuthedWidIncidentsRoute: typeof AuthedWidIncidentsRouteWithChildren
-  AuthedWidMembersRoute: typeof AuthedWidMembersRoute
-  AuthedWidSettingsRoute: typeof AuthedWidSettingsRouteWithChildren
-  AuthedWidStatusRoute: typeof AuthedWidStatusRoute
-  AuthedWidIndexRoute: typeof AuthedWidIndexRoute
-  AuthedWidLogsProjectRoute: typeof AuthedWidLogsProjectRoute
-  AuthedWidMonitorsMidRoute: typeof AuthedWidMonitorsMidRoute
-  AuthedWidMonitorsNewRoute: typeof AuthedWidMonitorsNewRoute
-  AuthedWidLogsIndexRoute: typeof AuthedWidLogsIndexRoute
-  AuthedWidMonitorsIndexRoute: typeof AuthedWidMonitorsIndexRoute
+  AuthedWidAdminRoute: typeof AuthedWidAdminRouteWithChildren;
+  AuthedWidDeploymentsRoute: typeof AuthedWidDeploymentsRoute;
+  AuthedWidIncidentsRoute: typeof AuthedWidIncidentsRouteWithChildren;
+  AuthedWidMembersRoute: typeof AuthedWidMembersRoute;
+  AuthedWidSettingsRoute: typeof AuthedWidSettingsRouteWithChildren;
+  AuthedWidStatusRoute: typeof AuthedWidStatusRoute;
+  AuthedWidIndexRoute: typeof AuthedWidIndexRoute;
+  AuthedWidLogsProjectRoute: typeof AuthedWidLogsProjectRoute;
+  AuthedWidMonitorsMidRoute: typeof AuthedWidMonitorsMidRoute;
+  AuthedWidMonitorsNewRoute: typeof AuthedWidMonitorsNewRoute;
+  AuthedWidLogsIndexRoute: typeof AuthedWidLogsIndexRoute;
+  AuthedWidMonitorsIndexRoute: typeof AuthedWidMonitorsIndexRoute;
 }
 
 const AuthedWidRouteChildren: AuthedWidRouteChildren = {
   AuthedWidAdminRoute: AuthedWidAdminRouteWithChildren,
+  AuthedWidDeploymentsRoute: AuthedWidDeploymentsRoute,
   AuthedWidIncidentsRoute: AuthedWidIncidentsRouteWithChildren,
   AuthedWidMembersRoute: AuthedWidMembersRoute,
   AuthedWidSettingsRoute: AuthedWidSettingsRouteWithChildren,
@@ -943,58 +979,53 @@ const AuthedWidRouteChildren: AuthedWidRouteChildren = {
   AuthedWidMonitorsNewRoute: AuthedWidMonitorsNewRoute,
   AuthedWidLogsIndexRoute: AuthedWidLogsIndexRoute,
   AuthedWidMonitorsIndexRoute: AuthedWidMonitorsIndexRoute,
-}
+};
 
-const AuthedWidRouteWithChildren = AuthedWidRoute._addFileChildren(
-  AuthedWidRouteChildren,
-)
+const AuthedWidRouteWithChildren = AuthedWidRoute._addFileChildren(AuthedWidRouteChildren);
 
 interface AuthedRouteChildren {
-  AuthedWidRoute: typeof AuthedWidRouteWithChildren
+  AuthedWidRoute: typeof AuthedWidRouteWithChildren;
 }
 
 const AuthedRouteChildren: AuthedRouteChildren = {
   AuthedWidRoute: AuthedWidRouteWithChildren,
-}
+};
 
-const AuthedRouteWithChildren =
-  AuthedRoute._addFileChildren(AuthedRouteChildren)
+const AuthedRouteWithChildren = AuthedRoute._addFileChildren(AuthedRouteChildren);
 
 interface IncidentsRouteChildren {
-  IncidentsIdRoute: typeof IncidentsIdRoute
+  IncidentsIdRoute: typeof IncidentsIdRoute;
 }
 
 const IncidentsRouteChildren: IncidentsRouteChildren = {
   IncidentsIdRoute: IncidentsIdRoute,
-}
+};
 
-const IncidentsRouteWithChildren = IncidentsRoute._addFileChildren(
-  IncidentsRouteChildren,
-)
+const IncidentsRouteWithChildren = IncidentsRoute._addFileChildren(IncidentsRouteChildren);
 
 interface SSlugIncidentsRouteChildren {
-  SSlugIncidentsIdRoute: typeof SSlugIncidentsIdRoute
+  SSlugIncidentsIdRoute: typeof SSlugIncidentsIdRoute;
 }
 
 const SSlugIncidentsRouteChildren: SSlugIncidentsRouteChildren = {
   SSlugIncidentsIdRoute: SSlugIncidentsIdRoute,
-}
+};
 
 const SSlugIncidentsRouteWithChildren = SSlugIncidentsRoute._addFileChildren(
   SSlugIncidentsRouteChildren,
-)
+);
 
 interface SSlugRouteChildren {
-  SSlugIncidentsRoute: typeof SSlugIncidentsRouteWithChildren
-  SSlugIndexRoute: typeof SSlugIndexRoute
+  SSlugIncidentsRoute: typeof SSlugIncidentsRouteWithChildren;
+  SSlugIndexRoute: typeof SSlugIndexRoute;
 }
 
 const SSlugRouteChildren: SSlugRouteChildren = {
   SSlugIncidentsRoute: SSlugIncidentsRouteWithChildren,
   SSlugIndexRoute: SSlugIndexRoute,
-}
+};
 
-const SSlugRouteWithChildren = SSlugRoute._addFileChildren(SSlugRouteChildren)
+const SSlugRouteWithChildren = SSlugRoute._addFileChildren(SSlugRouteChildren);
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -1009,7 +1040,7 @@ const rootRouteChildren: RootRouteChildren = {
   InviteTokenRoute: InviteTokenRoute,
   LegalDocRoute: LegalDocRoute,
   SSlugRoute: SSlugRouteWithChildren,
-}
+};
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>()
+  ._addFileTypes<FileRouteTypes>();

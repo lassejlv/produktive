@@ -9,6 +9,7 @@ import type {
 } from "./billing";
 import type {
   AdminLogAccessRequest,
+  AdminDeployAccessRequest,
   AdminLogBucket,
   AdminRegion,
   AdminUsageResetResult,
@@ -16,6 +17,14 @@ import type {
   AuthResponse,
   Check,
   LogAccess,
+  DeployAccess,
+  DeployEvent,
+  Deployment,
+  DeployLogLine,
+  DeployMetricPoint,
+  DeployRegistryCredential,
+  DeployRegistryKind,
+  DeployService,
   IncidentUpdateStatus,
   CustomDomain,
   Incident,
@@ -227,6 +236,24 @@ export function useDecideLogAccessRequest() {
   });
 }
 
+export const adminDeployAccessRequestsQuery = {
+  queryKey: ["admin", "deploy-access-requests"] as const,
+  queryFn: () => api.get<AdminDeployAccessRequest[]>("/admin/deploy-access-requests"),
+};
+
+export function useAdminDeployAccessRequests(enabled = true) {
+  return useQuery({ ...adminDeployAccessRequestsQuery, enabled });
+}
+
+export function useDecideDeployAccessRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: "approved" | "denied" }) =>
+      api.patch<AdminDeployAccessRequest>(`/admin/deploy-access-requests/${id}`, { status }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "deploy-access-requests"] }),
+  });
+}
+
 export const adminWorkspaceUsageQuery = (ident: string) => ({
   queryKey: ["admin", "workspace-usage", ident] as const,
   queryFn: () =>
@@ -241,9 +268,7 @@ export function useResetWorkspaceUsage() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (ident: string) =>
-      api.post<AdminUsageResetResult>(
-        `/admin/workspaces/${encodeURIComponent(ident)}/usage/reset`,
-      ),
+      api.post<AdminUsageResetResult>(`/admin/workspaces/${encodeURIComponent(ident)}/usage/reset`),
     onSuccess: (_result, ident) =>
       qc.invalidateQueries({ queryKey: ["admin", "workspace-usage", ident] }),
   });
@@ -444,6 +469,161 @@ export function useRequestLogAccess(wid: string) {
     mutationFn: () => api.post<LogAccess>(`/workspaces/${wid}/logs/access/request`),
     onSuccess: (data) => qc.setQueryData(["logs", wid, "access"], data),
   });
+}
+
+export const deployAccessQuery = (wid: string) => ({
+  queryKey: ["deployments", wid, "access"] as const,
+  queryFn: () => api.get<DeployAccess>(`/workspaces/${wid}/deployments/access`),
+});
+
+export function useDeployAccess(wid: string) {
+  return useQuery(deployAccessQuery(wid));
+}
+
+export function useRequestDeployAccess(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<DeployAccess>(`/workspaces/${wid}/deployments/access/request`),
+    onSuccess: (data) => qc.setQueryData(["deployments", wid, "access"], data),
+  });
+}
+
+export const deployServicesQuery = (wid: string) => ({
+  queryKey: ["deployments", wid, "services"] as const,
+  queryFn: () => api.get<DeployService[]>(`/workspaces/${wid}/deployments/services`),
+  refetchInterval: 15_000,
+});
+
+export function useDeployServices(wid: string, enabled = true) {
+  return useQuery({ ...deployServicesQuery(wid), enabled });
+}
+
+export const deployCredentialsQuery = (wid: string) => ({
+  queryKey: ["deployments", wid, "registry-credentials"] as const,
+  queryFn: () =>
+    api.get<DeployRegistryCredential[]>(`/workspaces/${wid}/deployments/registry-credentials`),
+});
+
+export function useDeployCredentials(wid: string, enabled = true) {
+  return useQuery({ ...deployCredentialsQuery(wid), enabled });
+}
+
+export function useCreateDeployCredential(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      name: string;
+      registry_kind: DeployRegistryKind;
+      username: string;
+      password: string;
+    }) =>
+      api.post<DeployRegistryCredential>(
+        `/workspaces/${wid}/deployments/registry-credentials`,
+        body,
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["deployments", wid, "registry-credentials"] }),
+  });
+}
+
+export function useCreateDeployService(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      name: string;
+      image: string;
+      registry_kind: DeployRegistryKind;
+      registry_credential_id?: string | null;
+      internal_port: number;
+      env?: Record<string, string>;
+      secrets?: Record<string, string>;
+      environment?: string;
+      health_check_path?: string;
+      region?: string;
+    }) => api.post<DeployService>(`/workspaces/${wid}/deployments/services`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["deployments", wid] }),
+  });
+}
+
+export const deploymentsQuery = (wid: string, serviceId: string) => ({
+  queryKey: ["deployments", wid, serviceId, "deployments"] as const,
+  queryFn: () =>
+    api.get<Deployment[]>(
+      `/workspaces/${wid}/deployments/services/${serviceId}/deployments?limit=20`,
+    ),
+  refetchInterval: 10_000,
+});
+
+export function useDeployments(wid: string, serviceId: string | null) {
+  return useQuery({ ...deploymentsQuery(wid, serviceId ?? ""), enabled: !!serviceId });
+}
+
+export function useCreateDeployment(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ serviceId, image }: { serviceId: string; image?: string }) =>
+      api.post<Deployment>(`/workspaces/${wid}/deployments/services/${serviceId}/deployments`, {
+        image,
+      }),
+    onSuccess: (_deployment, input) => {
+      qc.invalidateQueries({ queryKey: ["deployments", wid, "services"] });
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId] });
+    },
+  });
+}
+
+export function useRollbackDeployment(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (serviceId: string) =>
+      api.post<Deployment>(`/workspaces/${wid}/deployments/services/${serviceId}/rollback`),
+    onSuccess: (_deployment, serviceId) => {
+      qc.invalidateQueries({ queryKey: ["deployments", wid, "services"] });
+      qc.invalidateQueries({ queryKey: ["deployments", wid, serviceId] });
+    },
+  });
+}
+
+export function useStopDeployService(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (serviceId: string) =>
+      api.post<DeployService>(`/workspaces/${wid}/deployments/services/${serviceId}/stop`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["deployments", wid] }),
+  });
+}
+
+export const deployEventsQuery = (wid: string, serviceId: string) => ({
+  queryKey: ["deployments", wid, serviceId, "events"] as const,
+  queryFn: () =>
+    api.get<DeployEvent[]>(`/workspaces/${wid}/deployments/services/${serviceId}/events?limit=50`),
+  refetchInterval: 10_000,
+});
+
+export function useDeployEvents(wid: string, serviceId: string | null) {
+  return useQuery({ ...deployEventsQuery(wid, serviceId ?? ""), enabled: !!serviceId });
+}
+
+export const deployLogsQuery = (wid: string, serviceId: string) => ({
+  queryKey: ["deployments", wid, serviceId, "logs"] as const,
+  queryFn: () =>
+    api.get<DeployLogLine[]>(`/workspaces/${wid}/deployments/services/${serviceId}/logs?limit=100`),
+  refetchInterval: 10_000,
+});
+
+export function useDeployLogs(wid: string, serviceId: string | null) {
+  return useQuery({ ...deployLogsQuery(wid, serviceId ?? ""), enabled: !!serviceId });
+}
+
+export const deployMetricsQuery = (wid: string, serviceId: string) => ({
+  queryKey: ["deployments", wid, serviceId, "metrics"] as const,
+  queryFn: () =>
+    api.get<DeployMetricPoint[]>(`/workspaces/${wid}/deployments/services/${serviceId}/metrics`),
+  refetchInterval: 15_000,
+});
+
+export function useDeployMetrics(wid: string, serviceId: string | null) {
+  return useQuery({ ...deployMetricsQuery(wid, serviceId ?? ""), enabled: !!serviceId });
 }
 
 export const logProjectsQuery = (wid: string) => ({

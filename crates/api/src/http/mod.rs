@@ -2,6 +2,7 @@ pub mod admin;
 pub mod billing;
 pub mod checks;
 pub mod custom_domains;
+pub mod deployments;
 pub mod health;
 pub mod incidents;
 pub mod internal_workers;

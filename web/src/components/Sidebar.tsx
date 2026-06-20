@@ -8,6 +8,7 @@ import {
   Globe,
   LayoutDashboard,
   LogOut,
+  Rocket,
   ScrollText,
   Settings,
   Shield,
@@ -32,7 +33,7 @@ import {
 } from "./ui/sidebar";
 import { cn } from "#/lib/cn";
 import { BRAND_NAME } from "#/lib/brand";
-import { LOGS_ENABLED } from "#/lib/features";
+import { DEPLOYMENTS_ENABLED, LOGS_ENABLED } from "#/lib/features";
 import { auth } from "../lib/api";
 import { useMe, useWorkspaces } from "../lib/queries";
 
@@ -61,12 +62,20 @@ const UPTIME: NavItem[] = [
     icon: ScrollText,
     anim: "wiggle",
   },
+  ...(DEPLOYMENTS_ENABLED
+    ? [
+        {
+          to: "/$wid/deployments",
+          label: "Deployments",
+          icon: Rocket,
+          anim: "pop",
+        } satisfies NavItem,
+      ]
+    : []),
   { to: "/$wid/status", label: "Status page", icon: Globe, anim: "spin" },
 ];
 
-const LOGGING: NavItem[] = [
-  { to: "/$wid/logs", label: "Projects", icon: FolderTree, anim: "pop" },
-];
+const LOGGING: NavItem[] = [{ to: "/$wid/logs", label: "Projects", icon: FolderTree, anim: "pop" }];
 
 const SETTINGS: NavItem = {
   to: "/$wid/settings",

@@ -67,6 +67,7 @@ async fn main() -> Result<()> {
         .nest("/notifications", http::notifications::routes())
         .nest("/logs", http::logs::workspace_routes(state.clone()))
         .nest("/custom-domains", http::custom_domains::routes())
+        .nest("/deployments", http::deployments::routes(state.clone()))
         .nest("/billing", http::billing::routes())
         .nest("/regions", http::regions::routes())
         .merge(http::checks::routes())

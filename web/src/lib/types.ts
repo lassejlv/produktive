@@ -277,6 +277,117 @@ export interface LogAccess {
   decided_at: Iso | null;
 }
 
+export type DeployAccessStatus = "none" | "pending" | "approved" | "denied" | "disabled";
+export type DeployStatus =
+  | "queued"
+  | "provisioning"
+  | "pulling"
+  | "starting"
+  | "healthy"
+  | "live"
+  | "failed"
+  | "rolling_back"
+  | "rolled_back"
+  | "stopped"
+  | "unknown";
+export type DeployRegistryKind = "ghcr" | "docker_hub";
+
+export interface DeployAccess {
+  status: DeployAccessStatus;
+  requested_at: Iso | null;
+  decided_at: Iso | null;
+}
+
+export interface AdminDeployAccessRequest {
+  id: Uuid;
+  workspace_id: Uuid;
+  workspace_name: string;
+  workspace_slug: string;
+  status: "pending" | "approved" | "denied" | "unknown";
+  requested_by_email: string | null;
+  requested_at: Iso;
+  decided_by_email: string | null;
+  decided_at: Iso | null;
+}
+
+export interface DeployRegistryCredential {
+  id: Uuid;
+  workspace_id: Uuid;
+  name: string;
+  registry_kind: DeployRegistryKind | string;
+  username: string;
+  revoked_at: Iso | null;
+  created_at: Iso;
+  updated_at: Iso;
+}
+
+export interface DeployService {
+  id: Uuid;
+  workspace_id: Uuid;
+  registry_credential_id: Uuid | null;
+  provider: "fly" | string;
+  provider_service_id: string | null;
+  provider_metadata: unknown;
+  slug: string;
+  name: string;
+  image: string;
+  registry_kind: DeployRegistryKind | string;
+  internal_port: number;
+  env: Record<string, string>;
+  environment: string;
+  health_check_path: string;
+  region: string;
+  resource_preset: string;
+  url: string | null;
+  status: DeployStatus;
+  disabled_at: Iso | null;
+  created_at: Iso;
+  updated_at: Iso;
+}
+
+export interface Deployment {
+  id: Uuid;
+  workspace_id: Uuid;
+  service_id: Uuid;
+  image: string;
+  image_digest: string | null;
+  status: DeployStatus;
+  provider: "fly" | string;
+  provider_deployment_id: string | null;
+  provider_instance_id: string | null;
+  provider_metadata: unknown;
+  failure_message: string | null;
+  url: string | null;
+  started_at: Iso | null;
+  finished_at: Iso | null;
+  created_at: Iso;
+  updated_at: Iso;
+}
+
+export interface DeployEvent {
+  id: Uuid;
+  service_id: Uuid;
+  deployment_id: Uuid | null;
+  level: "info" | "warn" | "error" | string;
+  message: string;
+  data: unknown;
+  created_at: Iso;
+}
+
+export interface DeployLogLine {
+  timestamp: Iso;
+  level: string;
+  message: string;
+  data: unknown;
+}
+
+export interface DeployMetricPoint {
+  bucket_start: Iso;
+  cpu_percent: number | null;
+  memory_mb: number | null;
+  requests: number | null;
+}
+
 export interface AdminWorkspaceUsage {
   workspace_id: Uuid;
   workspace_name: string;
