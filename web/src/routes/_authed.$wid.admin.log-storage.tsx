@@ -8,6 +8,7 @@ import { EmptyState } from "../components/EmptyState";
 import { Input } from "../components/Input";
 import { PageActions } from "../components/PageLayout";
 import { Spinner } from "#/components/ui/spinner";
+import { StatTile } from "../components/StatTile";
 import {
   adminLogBucketsQuery,
   useAdminLogBuckets,
@@ -64,6 +65,8 @@ function LogStorageAdminPage() {
 
   const totalCapacity = sorted.reduce((sum, bucket) => sum + bucket.max_projects, 0);
   const assignedProjects = sorted.reduce((sum, bucket) => sum + bucket.project_count, 0);
+  const enabledCount = sorted.filter((b) => b.enabled).length;
+  const loading = buckets.isLoading;
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -116,9 +119,25 @@ function LogStorageAdminPage() {
 
       <div className="space-y-4">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Metric label="Buckets" value={String(sorted.length)} />
-          <Metric label="Enabled" value={String(sorted.filter((b) => b.enabled).length)} />
-          <Metric label="Assigned" value={`${assignedProjects}/${totalCapacity || 0}`} />
+          <StatTile label="Buckets" value={String(sorted.length)} loading={loading} />
+          <StatTile
+            label="Enabled"
+            value={String(enabledCount)}
+            sub={`${sorted.length - enabledCount} disabled`}
+            accent="var(--color-ok)"
+            loading={loading}
+          />
+          <StatTile
+            label="Assigned"
+            value={`${assignedProjects}/${totalCapacity || 0}`}
+            sub={totalCapacity ? `${Math.round((assignedProjects / totalCapacity) * 100)}% used` : undefined}
+            accent={
+              totalCapacity && assignedProjects / totalCapacity >= 0.9
+                ? "var(--color-warn)"
+                : undefined
+            }
+            loading={loading}
+          />
         </div>
 
         {createOpen && (
@@ -223,11 +242,8 @@ function LogStorageAdminPage() {
           </section>
         )}
 
-        {buckets.isLoading ? (
-          <div className="flex h-40 items-center justify-center text-[13px] text-[var(--color-fg-muted)]">
-            <Spinner className="size-3.75" />
-            <span className="ml-2">loading buckets...</span>
-          </div>
+        {loading ? (
+          <BucketsSkeleton />
         ) : sorted.length === 0 ? (
           <EmptyState
             icon={Database}
@@ -416,13 +432,37 @@ function BucketRow({
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function BucketsSkeleton() {
   return (
-    <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-3 shadow-[var(--shadow-sm)]">
-      <div className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
-        {label}
+    <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)]">
+      <div className="grid grid-cols-[minmax(210px,1.2fr)_minmax(240px,1.4fr)_120px_190px] border-b border-[var(--color-border)] bg-[var(--color-bg-row)] px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)] max-lg:hidden">
+        <span>Bucket</span>
+        <span>Storage</span>
+        <span>Capacity</span>
+        <span className="text-right">Actions</span>
       </div>
-      <div className="mt-1 text-[22px] font-medium text-[var(--color-fg)]">{value}</div>
+      <div className="divide-y divide-[var(--color-border)]">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="grid grid-cols-1 gap-3 px-4 py-3 lg:grid-cols-[minmax(210px,1.2fr)_minmax(240px,1.4fr)_120px_190px] lg:items-center"
+          >
+            <div className="space-y-2">
+              <div className="shimmer h-3.5 w-32 rounded-[var(--radius-sm)]" />
+              <div className="shimmer h-2.5 w-24 rounded-[var(--radius-sm)]" />
+            </div>
+            <div className="space-y-1.5">
+              <div className="shimmer h-3 w-40 rounded-[var(--radius-sm)]" />
+              <div className="shimmer h-2.5 w-28 rounded-[var(--radius-sm)]" />
+            </div>
+            <div className="shimmer h-7 w-full rounded-[var(--radius-md)]" />
+            <div className="flex gap-2 lg:justify-end">
+              <div className="shimmer h-7 w-16 rounded-[var(--radius-md)]" />
+              <div className="shimmer h-7 w-7 rounded-[var(--radius-md)]" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

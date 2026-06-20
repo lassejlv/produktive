@@ -6,7 +6,7 @@ import { Button } from "#/components/ui/button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState } from "../components/EmptyState";
 import { Input } from "../components/Input";
-import { Spinner } from "#/components/ui/spinner";
+import { StatTile } from "../components/StatTile";
 import {
   adminRegionsQuery,
   useAdminRegions,
@@ -80,16 +80,9 @@ function WorkersAdminPage() {
     });
   }
 
-  if (regions.isLoading) {
-    return (
-      <div className="flex h-40 items-center justify-center text-[13px] text-[var(--color-fg-muted)]">
-        <Spinner className="size-3.75" />
-        <span className="ml-2">loading workers...</span>
-      </div>
-    );
-  }
+  const loading = regions.isLoading;
 
-  if (!sorted.length) {
+  if (!loading && !sorted.length) {
     return (
       <EmptyState
         icon={ServerCog}
@@ -99,36 +92,55 @@ function WorkersAdminPage() {
     );
   }
 
+  const enabledCount = sorted.filter((r) => r.enabled).length;
+  const freshCount = sorted.filter(isFresh).length;
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Metric label="Regions" value={String(sorted.length)} />
-        <Metric label="Enabled" value={String(sorted.filter((r) => r.enabled).length)} />
-        <Metric label="Heartbeating" value={String(sorted.filter(isFresh).length)} />
+        <StatTile label="Regions" value={String(sorted.length)} loading={loading} />
+        <StatTile
+          label="Enabled"
+          value={String(enabledCount)}
+          sub={`${sorted.length - enabledCount} disabled`}
+          accent="var(--color-ok)"
+          loading={loading}
+        />
+        <StatTile
+          label="Heartbeating"
+          value={String(freshCount)}
+          sub={freshCount < enabledCount ? `${enabledCount - freshCount} stale` : "all fresh"}
+          accent={freshCount < enabledCount ? "var(--color-warn)" : "var(--color-ok)"}
+          loading={loading}
+        />
       </div>
 
-      <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)]">
-        <div className="grid grid-cols-[minmax(150px,1fr)_150px_120px_190px] border-b border-[var(--color-border)] bg-[var(--color-bg-row)] px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)] max-lg:hidden">
-          <span>Region</span>
-          <span>State</span>
-          <span>Runtime</span>
-          <span className="text-right">Actions</span>
+      {loading ? (
+        <WorkersSkeleton />
+      ) : (
+        <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)]">
+          <div className="grid grid-cols-[minmax(150px,1fr)_150px_120px_190px] border-b border-[var(--color-border)] bg-[var(--color-bg-row)] px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)] max-lg:hidden">
+            <span>Region</span>
+            <span>State</span>
+            <span>Runtime</span>
+            <span className="text-right">Actions</span>
+          </div>
+          <div className="divide-y divide-[var(--color-border)]">
+            {sorted.map((region) => (
+              <RegionRow
+                key={region.id}
+                region={region}
+                name={editing[region.id] ?? region.name}
+                setName={(name) => setEditing((current) => ({ ...current, [region.id]: name }))}
+                saveName={() => setName(region)}
+                setEnabled={(enabled) => setEnabled(region, enabled)}
+                onDelete={() => setToDelete(region)}
+                pending={update.isPending || remove.isPending}
+              />
+            ))}
+          </div>
         </div>
-        <div className="divide-y divide-[var(--color-border)]">
-          {sorted.map((region) => (
-            <RegionRow
-              key={region.id}
-              region={region}
-              name={editing[region.id] ?? region.name}
-              setName={(name) => setEditing((current) => ({ ...current, [region.id]: name }))}
-              saveName={() => setName(region)}
-              setEnabled={(enabled) => setEnabled(region, enabled)}
-              onDelete={() => setToDelete(region)}
-              pending={update.isPending || remove.isPending}
-            />
-          ))}
-        </div>
-      </div>
+      )}
 
       <ConfirmDialog
         open={toDelete !== null}
@@ -236,13 +248,37 @@ function RegionRow({
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function WorkersSkeleton() {
   return (
-    <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-3 shadow-[var(--shadow-sm)]">
-      <div className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
-        {label}
+    <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)]">
+      <div className="grid grid-cols-[minmax(150px,1fr)_150px_120px_190px] border-b border-[var(--color-border)] bg-[var(--color-bg-row)] px-4 py-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)] max-lg:hidden">
+        <span>Region</span>
+        <span>State</span>
+        <span>Runtime</span>
+        <span className="text-right">Actions</span>
       </div>
-      <div className="mt-1 text-[22px] font-medium text-[var(--color-fg)]">{value}</div>
+      <div className="divide-y divide-[var(--color-border)]">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div
+            key={i}
+            className="grid grid-cols-1 gap-3 px-4 py-3 lg:grid-cols-[minmax(150px,1fr)_150px_120px_190px] lg:items-center"
+          >
+            <div className="space-y-2">
+              <div className="shimmer h-3.5 w-28 rounded-[var(--radius-sm)]" />
+              <div className="shimmer h-7 w-full rounded-[var(--radius-md)]" />
+            </div>
+            <div className="shimmer h-3.5 w-20 rounded-[var(--radius-sm)]" />
+            <div className="space-y-1.5">
+              <div className="shimmer h-3.5 w-24 rounded-[var(--radius-sm)]" />
+              <div className="shimmer h-2.5 w-16 rounded-[var(--radius-sm)]" />
+            </div>
+            <div className="flex gap-2 lg:justify-end">
+              <div className="shimmer h-7 w-16 rounded-[var(--radius-md)]" />
+              <div className="shimmer h-7 w-7 rounded-[var(--radius-md)]" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
