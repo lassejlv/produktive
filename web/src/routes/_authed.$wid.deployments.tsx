@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
   ExternalLink,
@@ -58,12 +58,15 @@ export const Route = createFileRoute("/_authed/$wid/deployments")({
   },
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(deployAccessQuery(params.wid)),
-  component: DeploymentsPage,
+  component: DeploymentsIndexPage,
 });
 
-function DeploymentsPage() {
+function DeploymentsIndexPage() {
   const { wid } = Route.useParams();
+  return <DeploymentsRoute wid={wid} />;
+}
 
+export function DeploymentsRoute({ wid, serviceId }: { wid: string; serviceId?: string }) {
   if (!DEPLOYMENTS_ENABLED) {
     return (
       <EmptyState
@@ -74,10 +77,17 @@ function DeploymentsPage() {
     );
   }
 
-  return <DeploymentsContent wid={wid} />;
+  return <DeploymentsContent wid={wid} selectedServiceId={serviceId ?? null} />;
 }
 
-function DeploymentsContent({ wid }: { wid: string }) {
+function DeploymentsContent({
+  wid,
+  selectedServiceId,
+}: {
+  wid: string;
+  selectedServiceId: string | null;
+}) {
+  const navigate = useNavigate();
   const access = useDeployAccess(wid);
   const approved = access.data?.status === "approved";
   const services = useDeployServices(wid, approved);
@@ -86,13 +96,14 @@ function DeploymentsContent({ wid }: { wid: string }) {
   const createCredential = useCreateDeployCredential(wid);
   const [serviceOpen, setServiceOpen] = useState(false);
   const [credentialOpen, setCredentialOpen] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const sorted = useMemo(
     () => [...(services.data ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)),
     [services.data],
   );
-  const selected = sorted.find((service) => service.id === selectedId) ?? sorted[0] ?? null;
+  const selected =
+    sorted.find((service) => service.id === selectedServiceId) ??
+    (selectedServiceId ? null : (sorted[0] ?? null));
 
   return (
     <>
@@ -153,13 +164,21 @@ function DeploymentsContent({ wid }: { wid: string }) {
                 {sorted.map((service) => (
                   <ServiceCard
                     key={service.id}
+                    wid={wid}
                     service={service}
                     selected={service.id === selected?.id}
-                    onSelect={() => setSelectedId(service.id)}
                   />
                 ))}
               </div>
-              {selected && <ServiceDetails wid={wid} service={selected} />}
+              {selected ? (
+                <ServiceDetails wid={wid} service={selected} />
+              ) : (
+                <EmptyState
+                  icon={Server}
+                  title="Service not found"
+                  description="This deployment service does not exist in this workspace."
+                />
+              )}
             </div>
           )}
         </div>
@@ -199,8 +218,11 @@ function DeploymentsContent({ wid }: { wid: string }) {
           createService.mutate(body, {
             onSuccess: (service) => {
               toast.success("Service created");
-              setSelectedId(service.id);
               setServiceOpen(false);
+              void navigate({
+                to: "/$wid/deployments/$serviceId",
+                params: { wid, serviceId: service.id },
+              });
             },
             onError: (err) => toast.error((err as Error).message),
           })
@@ -266,20 +288,20 @@ function RequestAccessOverlay({ wid, status }: { wid: string; status: DeployAcce
 }
 
 function ServiceCard({
+  wid,
   service,
   selected,
-  onSelect,
 }: {
+  wid: string;
   service: DeployService;
   selected: boolean;
-  onSelect: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
+    <Link
+      to="/$wid/deployments/$serviceId"
+      params={{ wid, serviceId: service.id }}
       className={cn(
-        "w-full rounded-[var(--radius-lg)] border bg-[var(--color-bg-elev)] p-4 text-left shadow-[var(--shadow-sm)] transition-colors",
+        "block w-full rounded-[var(--radius-lg)] border bg-[var(--color-bg-elev)] p-4 text-left no-underline shadow-[var(--shadow-sm)] transition-colors",
         selected
           ? "border-[var(--color-accent)]"
           : "border-[var(--color-border)] hover:border-[var(--color-border-strong)]",
@@ -305,7 +327,7 @@ function ServiceCard({
         <span>:{service.internal_port}</span>
         {service.url && <span className="truncate">{service.url.replace(/^https?:\/\//, "")}</span>}
       </div>
-    </button>
+    </Link>
   );
 }
 

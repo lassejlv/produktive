@@ -221,6 +221,13 @@ pub struct LimitQuery {
     pub limit: Option<u64>,
 }
 
+#[derive(Deserialize)]
+pub struct ServicePath {
+    #[serde(rename = "wid")]
+    pub _wid: String,
+    pub service_id: Uuid,
+}
+
 #[utoipa::path(
     get,
     path = "/api/workspaces/{wid}/deployments/access",
@@ -506,7 +513,7 @@ pub async fn create_service(
 pub async fn get_service(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
-    Path(service_id): Path<Uuid>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
 ) -> ApiResult<Json<DeployServiceView>> {
     load_service(&state, m.workspace.id, service_id)
         .await
@@ -529,7 +536,7 @@ pub async fn set_service_secrets(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
     auth: AuthUser,
-    Path(service_id): Path<Uuid>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
     Json(body): Json<SetServiceSecretsBody>,
 ) -> ApiResult<Json<DeployServiceView>> {
     m.require_owner()?;
@@ -585,7 +592,7 @@ pub async fn set_service_secrets(
 pub async fn list_deployments(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
-    Path(service_id): Path<Uuid>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
     Query(q): Query<LimitQuery>,
 ) -> ApiResult<Json<Vec<DeployDeploymentView>>> {
     ensure_service(&state, m.workspace.id, service_id).await?;
@@ -609,7 +616,7 @@ pub async fn create_deployment(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
     auth: AuthUser,
-    Path(service_id): Path<Uuid>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
     Json(body): Json<CreateDeploymentBody>,
 ) -> ApiResult<Json<DeployDeploymentView>> {
     m.require_owner()?;
@@ -656,7 +663,7 @@ pub async fn rollback_service(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
     auth: AuthUser,
-    Path(service_id): Path<Uuid>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
 ) -> ApiResult<Json<DeployDeploymentView>> {
     m.require_owner()?;
     let service = load_service(&state, m.workspace.id, service_id).await?;
@@ -731,7 +738,7 @@ pub async fn rollback_service(
 pub async fn stop_service(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
-    Path(service_id): Path<Uuid>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
 ) -> ApiResult<Json<DeployServiceView>> {
     m.require_owner()?;
     ensure_service(&state, m.workspace.id, service_id).await?;
@@ -804,7 +811,7 @@ pub async fn stop_service(
 pub async fn list_events(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
-    Path(service_id): Path<Uuid>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
     Query(q): Query<LimitQuery>,
 ) -> ApiResult<Json<Vec<DeployEventView>>> {
     ensure_service(&state, m.workspace.id, service_id).await?;
@@ -828,7 +835,7 @@ pub async fn list_events(
 pub async fn list_logs(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
-    Path(service_id): Path<Uuid>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
     Query(q): Query<LimitQuery>,
 ) -> ApiResult<Json<Vec<DeployLogLineView>>> {
     ensure_service(&state, m.workspace.id, service_id).await?;
@@ -860,7 +867,7 @@ pub async fn list_logs(
 pub async fn list_metrics(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
-    Path(service_id): Path<Uuid>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
 ) -> ApiResult<Json<Vec<DeployMetricPointView>>> {
     ensure_service(&state, m.workspace.id, service_id).await?;
     let rows = DeployMetricPointView::find_by_statement(Statement::from_sql_and_values(
