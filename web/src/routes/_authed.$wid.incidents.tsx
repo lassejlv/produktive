@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { AlertTriangle, CheckCircle2, Clock, MessageSquare, Plus, ScrollText } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Clock, Plus, ScrollText } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "#/lib/toast";
 import { Button } from "#/components/ui/button";
@@ -15,13 +15,18 @@ import {
   SelectValue,
 } from "#/components/ui/select";
 import {
+  formatIncidentDuration,
+  incidentHeading,
+  severityColor,
+  severityLabel,
+} from "#/lib/incidents";
+import {
   incidentsQuery,
-  useAddIncidentUpdate,
   useCreateIncident,
   useIncidents,
   useMonitors,
 } from "../lib/queries";
-import type { Incident, IncidentSeverity, IncidentUpdateStatus, Monitor } from "../lib/types";
+import type { Incident, IncidentSeverity, Monitor } from "../lib/types";
 import { lastSeen } from "../lib/status";
 import { cn } from "#/lib/cn";
 
@@ -54,14 +59,9 @@ function IncidentsPage() {
   const { wid } = Route.useParams();
   const [filter, setFilter] = useState<Filter>("open");
   const [createOpen, setCreateOpen] = useState(false);
-  const [updateTarget, setUpdateTarget] = useState<{
-    incident: Incident;
-    status: Exclude<IncidentUpdateStatus, "unknown">;
-  } | null>(null);
   const { data: incidents = [], isLoading } = useIncidents(wid, filter);
   const { data: monitors = [] } = useMonitors(wid);
   const createIncident = useCreateIncident(wid);
-  const addUpdate = useAddIncidentUpdate(wid);
 
   return (
     <>
@@ -105,13 +105,7 @@ function IncidentsPage() {
       ) : (
         <div className="space-y-3">
           {incidents.map((incident) => (
-            <IncidentRow
-              key={incident.id}
-              wid={wid}
-              incident={incident}
-              onUpdate={() => setUpdateTarget({ incident, status: "monitoring" })}
-              onResolve={() => setUpdateTarget({ incident, status: "resolved" })}
-            />
+            <IncidentRow key={incident.id} wid={wid} incident={incident} />
           ))}
         </div>
       )}
@@ -135,55 +129,32 @@ function IncidentsPage() {
           });
         }}
       />
-
-      <IncidentUpdateDialog
-        target={updateTarget}
-        pending={addUpdate.isPending}
-        onOpenChange={(open) => {
-          if (!open && addUpdate.isPending) return;
-          if (!open) setUpdateTarget(null);
-        }}
-        onSubmit={(body) => {
-          addUpdate.mutate(body, {
-            onSuccess: () => {
-              setUpdateTarget(null);
-              toast.success(body.status === "resolved" ? "Incident resolved" : "Update posted");
-            },
-            onError: (err) => toast.error((err as Error).message),
-          });
-        }}
-      />
     </>
   );
 }
 
-function IncidentRow({
-  wid,
-  incident,
-  onUpdate,
-  onResolve,
-}: {
-  wid: string;
-  incident: Incident;
-  onUpdate: () => void;
-  onResolve: () => void;
-}) {
+function IncidentRow({ wid, incident }: { wid: string; incident: Incident }) {
   const open = incident.status === "open";
   const color = severityColor(incident.severity);
   const Icon = open ? AlertTriangle : CheckCircle2;
   const duration = incident.resolved_at
-    ? formatDuration(
+    ? formatIncidentDuration(
         new Date(incident.resolved_at).getTime() - new Date(incident.started_at).getTime(),
       )
     : lastSeen(incident.started_at);
   const isManual = incident.source === "manual";
+  const title = incidentHeading(incident);
 
   return (
-    <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)] overflow-hidden">
+    <Link
+      to="/$wid/incidents/$id"
+      params={{ wid, id: incident.id }}
+      className="block rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)] no-underline transition-colors hover:bg-[var(--color-bg-row)]"
+    >
       <div className="flex items-start justify-between gap-4 px-4 py-3.5">
-        <div className="flex items-start gap-3 min-w-0">
+        <div className="flex min-w-0 items-start gap-3">
           <span
-            className="mt-0.5 w-8 h-8 rounded-[var(--radius-md)] flex items-center justify-center shrink-0"
+            className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)]"
             style={{
               background: `color-mix(in srgb, ${color} 12%, transparent)`,
               color,
@@ -192,22 +163,10 @@ function IncidentRow({
             <Icon size={15} />
           </span>
           <div className="min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              {incident.monitor_id ? (
-                <Link
-                  to="/$wid/monitors/$mid"
-                  params={{ wid, mid: incident.monitor_slug || incident.monitor_id }}
-                  className="truncate text-[14px] text-[var(--color-fg)] no-underline hover:text-[var(--color-link)] font-medium"
-                >
-                  {incident.title || incident.monitor_name}
-                </Link>
-              ) : (
-                <span className="truncate text-[14px] font-medium text-[var(--color-fg)]">
-                  {incident.title}
-                </span>
-              )}
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-[14px] font-medium text-[var(--color-fg)]">{title}</span>
               <span
-                className="shrink-0 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] font-semibold"
+                className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
                 style={{
                   color,
                   background: `color-mix(in srgb, ${color} 10%, transparent)`,
@@ -231,28 +190,15 @@ function IncidentRow({
                   ? `last seen ${lastSeen(incident.last_seen_at)}`
                   : `resolved ${lastSeen(incident.resolved_at)}`}
               </span>
+              {incident.updates.length > 0 && (
+                <span>
+                  {incident.updates.length} update{incident.updates.length === 1 ? "" : "s"}
+                </span>
+              )}
             </div>
             {incident.error_message && (
-              <div className="mt-2 text-[12px] text-[var(--color-fg-muted)] max-w-[720px]">
+              <div className="mt-2 line-clamp-2 max-w-[720px] text-[12px] text-[var(--color-fg-muted)]">
                 {incident.error_message}
-              </div>
-            )}
-            {incident.updates.length > 0 && (
-              <div className="mt-3 space-y-2">
-                {incident.updates.map((update) => (
-                  <div
-                    key={update.id}
-                    className="border-l border-[var(--color-border-hi)] pl-3 text-[12px]"
-                  >
-                    <div className="flex flex-wrap items-center gap-2 text-[var(--color-fg-dim)]">
-                      <span className="font-medium capitalize text-[var(--color-fg-muted)]">
-                        {update.status.replace("_", " ")}
-                      </span>
-                      <span>{lastSeen(update.created_at)}</span>
-                    </div>
-                    <div className="mt-0.5 text-[var(--color-fg-muted)]">{update.message}</div>
-                  </div>
-                ))}
               </div>
             )}
           </div>
@@ -268,19 +214,10 @@ function IncidentRow({
           >
             {incident.status}
           </span>
-          {open && (
-            <div className="flex items-center gap-1.5">
-              <Button type="button" variant="secondary" size="sm" onClick={onUpdate}>
-                <MessageSquare size={13} /> Update
-              </Button>
-              <Button type="button" variant="default" size="sm" onClick={onResolve}>
-                Resolve
-              </Button>
-            </div>
-          )}
+          <ChevronRight size={16} className="text-[var(--color-fg-dim)]" />
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
@@ -403,92 +340,6 @@ function CreateIncidentDialog({
   );
 }
 
-function IncidentUpdateDialog({
-  target,
-  pending,
-  onOpenChange,
-  onSubmit,
-}: {
-  target: { incident: Incident; status: Exclude<IncidentUpdateStatus, "unknown"> } | null;
-  pending: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSubmit: (body: {
-    incidentId: string;
-    message: string;
-    status: Exclude<IncidentUpdateStatus, "unknown">;
-  }) => void;
-}) {
-  const [status, setStatus] = useState<Exclude<IncidentUpdateStatus, "unknown">>("monitoring");
-  const [message, setMessage] = useState("");
-  const open = target !== null;
-
-  useEffect(() => {
-    if (target) {
-      setStatus(target.status);
-      setMessage(target.status === "resolved" ? "The incident has been resolved." : "");
-    }
-  }, [target]);
-
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!target) return;
-    onSubmit({ incidentId: target.incident.id, status, message });
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        title={status === "resolved" ? "Resolve incident" : "Post incident update"}
-        description={target?.incident.title}
-        size="lg"
-        footer={
-          <>
-            <DialogClose asChild>
-              <Button type="button" variant="secondary" disabled={pending}>
-                Cancel
-              </Button>
-            </DialogClose>
-            <Button type="submit" form="incident-update-form" variant="default" disabled={pending}>
-              {pending && <Spinner className="size-3" />}
-              {status === "resolved" ? "Resolve incident" : "Post update"}
-            </Button>
-          </>
-        }
-      >
-        <form id="incident-update-form" onSubmit={submit} className="space-y-4">
-          <Field label="Status">
-            <Select
-              value={status}
-              onValueChange={(value) =>
-                setStatus(value as Exclude<IncidentUpdateStatus, "unknown">)
-              }
-            >
-              <SelectTrigger className={cn(fieldControlClass, "h-9")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="investigating">Investigating</SelectItem>
-                <SelectItem value="identified">Identified</SelectItem>
-                <SelectItem value="monitoring">Monitoring</SelectItem>
-                <SelectItem value="resolved">Resolved</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="Update">
-            <textarea
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              className={cn(fieldControlClass, "min-h-28 resize-y py-2")}
-              maxLength={4000}
-              required
-            />
-          </Field>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
@@ -496,27 +347,4 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       {children}
     </label>
   );
-}
-
-function severityColor(severity: IncidentSeverity) {
-  if (severity === "down" || severity === "critical") return "var(--color-err)";
-  if (severity === "degraded" || severity === "maintenance" || severity === "minor") {
-    return "var(--color-warn)";
-  }
-  if (severity === "informational") return "var(--color-accent)";
-  return "var(--color-unknown)";
-}
-
-function severityLabel(severity: IncidentSeverity): string {
-  return SEVERITY_OPTIONS.find((option) => option.value === severity)?.label ?? "Unknown";
-}
-
-function formatDuration(ms: number) {
-  const seconds = Math.max(0, Math.round(ms / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.round(hours / 24)}d`;
 }

@@ -46,6 +46,7 @@ import { Route as AuthedWidSettingsBillingRouteImport } from './routes/_authed.$
 import { Route as AuthedWidMonitorsNewRouteImport } from './routes/_authed.$wid.monitors.new'
 import { Route as AuthedWidMonitorsMidRouteImport } from './routes/_authed.$wid.monitors.$mid'
 import { Route as AuthedWidLogsProjectRouteImport } from './routes/_authed.$wid.logs.$project'
+import { Route as AuthedWidIncidentsIdRouteImport } from './routes/_authed.$wid.incidents.$id'
 import { Route as AuthedWidAdminWorkersRouteImport } from './routes/_authed.$wid.admin.workers'
 import { Route as AuthedWidAdminUsageRouteImport } from './routes/_authed.$wid.admin.usage'
 import { Route as AuthedWidAdminLogStorageRouteImport } from './routes/_authed.$wid.admin.log-storage'
@@ -242,6 +243,11 @@ const AuthedWidLogsProjectRoute = AuthedWidLogsProjectRouteImport.update({
   path: '/logs/$project',
   getParentRoute: () => AuthedWidRoute,
 } as any)
+const AuthedWidIncidentsIdRoute = AuthedWidIncidentsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AuthedWidIncidentsRoute,
+} as any)
 const AuthedWidAdminWorkersRoute = AuthedWidAdminWorkersRouteImport.update({
   id: '/workers',
   path: '/workers',
@@ -285,7 +291,7 @@ export interface FileRoutesByFullPath {
   '/legal/$doc': typeof LegalDocRoute
   '/s/$slug': typeof SSlugRouteWithChildren
   '/$wid/admin': typeof AuthedWidAdminRouteWithChildren
-  '/$wid/incidents': typeof AuthedWidIncidentsRoute
+  '/$wid/incidents': typeof AuthedWidIncidentsRouteWithChildren
   '/$wid/members': typeof AuthedWidMembersRoute
   '/$wid/settings': typeof AuthedWidSettingsRouteWithChildren
   '/$wid/status': typeof AuthedWidStatusRoute
@@ -297,6 +303,7 @@ export interface FileRoutesByFullPath {
   '/$wid/admin/log-storage': typeof AuthedWidAdminLogStorageRoute
   '/$wid/admin/usage': typeof AuthedWidAdminUsageRoute
   '/$wid/admin/workers': typeof AuthedWidAdminWorkersRoute
+  '/$wid/incidents/$id': typeof AuthedWidIncidentsIdRoute
   '/$wid/logs/$project': typeof AuthedWidLogsProjectRoute
   '/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
   '/$wid/monitors/new': typeof AuthedWidMonitorsNewRoute
@@ -325,7 +332,7 @@ export interface FileRoutesByTo {
   '/incidents/$id': typeof IncidentsIdRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$doc': typeof LegalDocRoute
-  '/$wid/incidents': typeof AuthedWidIncidentsRoute
+  '/$wid/incidents': typeof AuthedWidIncidentsRouteWithChildren
   '/$wid/members': typeof AuthedWidMembersRoute
   '/$wid/status': typeof AuthedWidStatusRoute
   '/s/$slug/incidents': typeof SSlugIncidentsRouteWithChildren
@@ -336,6 +343,7 @@ export interface FileRoutesByTo {
   '/$wid/admin/log-storage': typeof AuthedWidAdminLogStorageRoute
   '/$wid/admin/usage': typeof AuthedWidAdminUsageRoute
   '/$wid/admin/workers': typeof AuthedWidAdminWorkersRoute
+  '/$wid/incidents/$id': typeof AuthedWidIncidentsIdRoute
   '/$wid/logs/$project': typeof AuthedWidLogsProjectRoute
   '/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
   '/$wid/monitors/new': typeof AuthedWidMonitorsNewRoute
@@ -369,7 +377,7 @@ export interface FileRoutesById {
   '/legal/$doc': typeof LegalDocRoute
   '/s_/$slug': typeof SSlugRouteWithChildren
   '/_authed/$wid/admin': typeof AuthedWidAdminRouteWithChildren
-  '/_authed/$wid/incidents': typeof AuthedWidIncidentsRoute
+  '/_authed/$wid/incidents': typeof AuthedWidIncidentsRouteWithChildren
   '/_authed/$wid/members': typeof AuthedWidMembersRoute
   '/_authed/$wid/settings': typeof AuthedWidSettingsRouteWithChildren
   '/_authed/$wid/status': typeof AuthedWidStatusRoute
@@ -381,6 +389,7 @@ export interface FileRoutesById {
   '/_authed/$wid/admin/log-storage': typeof AuthedWidAdminLogStorageRoute
   '/_authed/$wid/admin/usage': typeof AuthedWidAdminUsageRoute
   '/_authed/$wid/admin/workers': typeof AuthedWidAdminWorkersRoute
+  '/_authed/$wid/incidents/$id': typeof AuthedWidIncidentsIdRoute
   '/_authed/$wid/logs/$project': typeof AuthedWidLogsProjectRoute
   '/_authed/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
   '/_authed/$wid/monitors/new': typeof AuthedWidMonitorsNewRoute
@@ -426,6 +435,7 @@ export interface FileRouteTypes {
     | '/$wid/admin/log-storage'
     | '/$wid/admin/usage'
     | '/$wid/admin/workers'
+    | '/$wid/incidents/$id'
     | '/$wid/logs/$project'
     | '/$wid/monitors/$mid'
     | '/$wid/monitors/new'
@@ -465,6 +475,7 @@ export interface FileRouteTypes {
     | '/$wid/admin/log-storage'
     | '/$wid/admin/usage'
     | '/$wid/admin/workers'
+    | '/$wid/incidents/$id'
     | '/$wid/logs/$project'
     | '/$wid/monitors/$mid'
     | '/$wid/monitors/new'
@@ -509,6 +520,7 @@ export interface FileRouteTypes {
     | '/_authed/$wid/admin/log-storage'
     | '/_authed/$wid/admin/usage'
     | '/_authed/$wid/admin/workers'
+    | '/_authed/$wid/incidents/$id'
     | '/_authed/$wid/logs/$project'
     | '/_authed/$wid/monitors/$mid'
     | '/_authed/$wid/monitors/new'
@@ -802,6 +814,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedWidLogsProjectRouteImport
       parentRoute: typeof AuthedWidRoute
     }
+    '/_authed/$wid/incidents/$id': {
+      id: '/_authed/$wid/incidents/$id'
+      path: '/$id'
+      fullPath: '/$wid/incidents/$id'
+      preLoaderRoute: typeof AuthedWidIncidentsIdRouteImport
+      parentRoute: typeof AuthedWidIncidentsRoute
+    }
     '/_authed/$wid/admin/workers': {
       id: '/_authed/$wid/admin/workers'
       path: '/workers'
@@ -862,6 +881,17 @@ const AuthedWidAdminRouteWithChildren = AuthedWidAdminRoute._addFileChildren(
   AuthedWidAdminRouteChildren,
 )
 
+interface AuthedWidIncidentsRouteChildren {
+  AuthedWidIncidentsIdRoute: typeof AuthedWidIncidentsIdRoute
+}
+
+const AuthedWidIncidentsRouteChildren: AuthedWidIncidentsRouteChildren = {
+  AuthedWidIncidentsIdRoute: AuthedWidIncidentsIdRoute,
+}
+
+const AuthedWidIncidentsRouteWithChildren =
+  AuthedWidIncidentsRoute._addFileChildren(AuthedWidIncidentsRouteChildren)
+
 interface AuthedWidSettingsRouteChildren {
   AuthedWidSettingsBillingRoute: typeof AuthedWidSettingsBillingRoute
   AuthedWidSettingsLogAccessRoute: typeof AuthedWidSettingsLogAccessRoute
@@ -889,7 +919,7 @@ const AuthedWidSettingsRouteWithChildren =
 
 interface AuthedWidRouteChildren {
   AuthedWidAdminRoute: typeof AuthedWidAdminRouteWithChildren
-  AuthedWidIncidentsRoute: typeof AuthedWidIncidentsRoute
+  AuthedWidIncidentsRoute: typeof AuthedWidIncidentsRouteWithChildren
   AuthedWidMembersRoute: typeof AuthedWidMembersRoute
   AuthedWidSettingsRoute: typeof AuthedWidSettingsRouteWithChildren
   AuthedWidStatusRoute: typeof AuthedWidStatusRoute
@@ -903,7 +933,7 @@ interface AuthedWidRouteChildren {
 
 const AuthedWidRouteChildren: AuthedWidRouteChildren = {
   AuthedWidAdminRoute: AuthedWidAdminRouteWithChildren,
-  AuthedWidIncidentsRoute: AuthedWidIncidentsRoute,
+  AuthedWidIncidentsRoute: AuthedWidIncidentsRouteWithChildren,
   AuthedWidMembersRoute: AuthedWidMembersRoute,
   AuthedWidSettingsRoute: AuthedWidSettingsRouteWithChildren,
   AuthedWidStatusRoute: AuthedWidStatusRoute,

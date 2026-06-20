@@ -756,19 +756,11 @@ function IncidentLine({ wid, incident }: { wid: string; incident: Incident }) {
   const className =
     "flex items-center justify-between gap-4 border-b border-[var(--color-border)] px-4 py-3 no-underline transition-colors last:border-b-0 hover:bg-[var(--color-bg-row)]";
 
-  if (incident.monitor_id) {
-    return (
-      <Link
-        to="/$wid/monitors/$mid"
-        params={{ wid, mid: incident.monitor_slug || incident.monitor_id }}
-        className={className}
-      >
-        {content}
-      </Link>
-    );
-  }
-
-  return <div className={className}>{content}</div>;
+  return (
+    <Link to="/$wid/incidents/$id" params={{ wid, id: incident.id }} className={className}>
+      {content}
+    </Link>
+  );
 }
 
 function SectionHead({ children, className }: { children: string; className?: string }) {
