@@ -29,6 +29,12 @@ worker:
 worker-build:
     cargo build --release -p produktive-worker
 
+deploy-worker:
+    cargo run -p produktive-deploy-worker
+
+deploy-worker-build:
+    cargo build --release -p produktive-deploy-worker
+
 # --- frontend ---
 
 web-install:

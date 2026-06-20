@@ -4,8 +4,9 @@ import { DeploymentsRoute } from "./_authed.$wid.deployments";
 
 export const Route = createFileRoute("/_authed/$wid/deployments/$serviceId")({
   staticData: {
-    title: "Deployment Service",
-    description: "Inspect deployment history, events, logs, and metrics for a service.",
+    title: "Deployment service",
+    layout: "bare",
+    parent: { label: "Deployments", to: "/$wid/deployments" },
   },
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(deployAccessQuery(params.wid)),

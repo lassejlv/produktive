@@ -1,4 +1,4 @@
-import type { MonitorStatus } from "./types";
+import type { DeployStatus, MonitorStatus } from "./types";
 
 export const STATUS_COLOR: Record<MonitorStatus, string> = {
   up: "var(--color-ok)",
@@ -20,6 +20,48 @@ export const GLOW_CLASS: Record<MonitorStatus, string> = {
   degraded: "glow-warn",
   unknown: "glow-unknown",
 };
+
+export const DEPLOY_STATUS_COLOR: Record<DeployStatus, string> = {
+  live: "var(--color-ok)",
+  healthy: "var(--color-ok)",
+  failed: "var(--color-err)",
+  stopped: "var(--color-fg-muted)",
+  rolled_back: "var(--color-fg-dim)",
+  queued: "var(--color-warn)",
+  provisioning: "var(--color-warn)",
+  pulling: "var(--color-warn)",
+  starting: "var(--color-warn)",
+  rolling_back: "var(--color-warn)",
+  unknown: "var(--color-unknown)",
+};
+
+export const DEPLOY_STATUS_LABEL: Record<DeployStatus, string> = {
+  live: "Live",
+  healthy: "Healthy",
+  failed: "Failed",
+  stopped: "Stopped",
+  rolled_back: "Rolled back",
+  queued: "Queued",
+  provisioning: "Provisioning",
+  pulling: "Pulling",
+  starting: "Starting",
+  rolling_back: "Rolling back",
+  unknown: "Unknown",
+};
+
+export function deployStatusActive(status: DeployStatus): boolean {
+  return status === "live" || status === "healthy";
+}
+
+export function deployStatusPending(status: DeployStatus): boolean {
+  return (
+    status === "queued" ||
+    status === "provisioning" ||
+    status === "pulling" ||
+    status === "starting" ||
+    status === "rolling_back"
+  );
+}
 
 export function lastSeen(iso: string | null): string {
   if (!iso) return "never";

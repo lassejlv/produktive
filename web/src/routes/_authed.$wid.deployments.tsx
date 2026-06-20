@@ -1,9 +1,12 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
+  ArrowLeft,
   ExternalLink,
+  Globe,
   KeyRound,
   Lock,
+  MapPin,
   Plus,
   Rocket,
   RotateCcw,
@@ -14,12 +17,23 @@ import {
 } from "lucide-react";
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "#/components/ui/button";
+import { ScrollArea } from "#/components/ui/scroll-area";
+import { Skeleton } from "#/components/ui/skeleton";
 import { Dialog, DialogClose, DialogContent } from "../components/Dialog";
 import { EmptyState } from "../components/EmptyState";
 import { PageActions } from "../components/PageLayout";
+import { Segmented } from "../components/Segmented";
+import { StatTile } from "../components/StatTile";
 import { Spinner } from "#/components/ui/spinner";
 import { cn } from "#/lib/cn";
 import { DEPLOYMENTS_ENABLED } from "#/lib/features";
+import {
+  DEPLOY_STATUS_COLOR,
+  DEPLOY_STATUS_LABEL,
+  deployStatusActive,
+  deployStatusPending,
+  lastSeen,
+} from "#/lib/status";
 import { toast } from "#/lib/toast";
 import {
   deployAccessQuery,
@@ -37,9 +51,9 @@ import {
   useRollbackDeployment,
   useStopDeployService,
 } from "../lib/queries";
-import { lastSeen } from "../lib/status";
 import type {
   DeployAccessStatus,
+  Deployment,
   DeployRegistryCredential,
   DeployRegistryKind,
   DeployService,
@@ -101,38 +115,41 @@ function DeploymentsContent({
     () => [...(services.data ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)),
     [services.data],
   );
-  const selected =
-    sorted.find((service) => service.id === selectedServiceId) ??
-    (selectedServiceId ? null : (sorted[0] ?? null));
+  const selected = selectedServiceId
+    ? (sorted.find((service) => service.id === selectedServiceId) ?? null)
+    : null;
+  const isDetailView = selectedServiceId != null;
 
   return (
     <>
-      <PageActions>
-        <div className="flex flex-wrap items-center gap-2">
-          {approved && (
-            <>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setCredentialOpen(true)}
-              >
-                <KeyRound size={14} /> Registry credential
-              </Button>
-              <Button
-                type="button"
-                variant="default"
-                size="sm"
-                onClick={() => setServiceOpen(true)}
-              >
-                <Plus size={14} /> New service
-              </Button>
-            </>
-          )}
-        </div>
-      </PageActions>
+      {!isDetailView && (
+        <PageActions>
+          <div className="flex flex-wrap items-center gap-2">
+            {approved && (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setCredentialOpen(true)}
+                >
+                  <KeyRound size={14} /> Registry credential
+                </Button>
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={() => setServiceOpen(true)}
+                >
+                  <Plus size={14} /> New service
+                </Button>
+              </>
+            )}
+          </div>
+        </PageActions>
+      )}
 
-      <div className="relative">
+      <div className={cn("relative", isDetailView && "fade-in mx-auto max-w-5xl px-6 py-7 lg:px-8")}>
         <div
           className={cn(
             "transition-opacity",
@@ -141,7 +158,17 @@ function DeploymentsContent({
           aria-hidden={!approved}
         >
           {!approved || services.isLoading ? (
-            <ServiceGridSkeleton />
+            isDetailView ? (
+              <ServiceDetailSkeleton />
+            ) : (
+              <ServiceGridSkeleton />
+            )
+          ) : isDetailView ? (
+            selected ? (
+              <ServiceDetailPage wid={wid} service={selected} />
+            ) : (
+              <ServiceNotFound wid={wid} />
+            )
           ) : sorted.length === 0 ? (
             <EmptyState
               icon={Rocket}
@@ -159,26 +186,10 @@ function DeploymentsContent({
               }
             />
           ) : (
-            <div className="grid gap-4 xl:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.2fr)]">
-              <div className="space-y-3">
-                {sorted.map((service) => (
-                  <ServiceCard
-                    key={service.id}
-                    wid={wid}
-                    service={service}
-                    selected={service.id === selected?.id}
-                  />
-                ))}
-              </div>
-              {selected ? (
-                <ServiceDetails wid={wid} service={selected} />
-              ) : (
-                <EmptyState
-                  icon={Server}
-                  title="Service not found"
-                  description="This deployment service does not exist in this workspace."
-                />
-              )}
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {sorted.map((service) => (
+                <ServiceCard key={service.id} wid={wid} service={service} />
+              ))}
             </div>
           )}
         </div>
@@ -287,68 +298,141 @@ function RequestAccessOverlay({ wid, status }: { wid: string; status: DeployAcce
   );
 }
 
-function ServiceCard({
-  wid,
-  service,
-  selected,
-}: {
-  wid: string;
-  service: DeployService;
-  selected: boolean;
-}) {
+function ServiceNotFound({ wid }: { wid: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+      <EmptyState
+        icon={Server}
+        title="Service not found"
+        description="This deployment service does not exist in this workspace."
+      />
+      <Link
+        to="/$wid/deployments"
+        params={{ wid }}
+        className="text-[13px] text-[var(--color-link)] no-underline hover:underline"
+      >
+        Back to deployments
+      </Link>
+    </div>
+  );
+}
+
+function ServiceCard({ wid, service }: { wid: string; service: DeployService }) {
+  const color = DEPLOY_STATUS_COLOR[service.status];
+  const active = deployStatusActive(service.status);
+  const pending = deployStatusPending(service.status);
+
   return (
     <Link
       to="/$wid/deployments/$serviceId"
       params={{ wid, serviceId: service.id }}
-      className={cn(
-        "block w-full rounded-[var(--radius-lg)] border bg-[var(--color-bg-elev)] p-4 text-left no-underline shadow-[var(--shadow-sm)] transition-colors",
-        selected
-          ? "border-[var(--color-accent)]"
-          : "border-[var(--color-border)] hover:border-[var(--color-border-strong)]",
-      )}
+      className="group flex min-h-44 flex-col justify-between rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-4 text-left no-underline shadow-[var(--shadow-sm)] transition-colors hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-row)]"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <Server size={14} className="text-[var(--color-fg-muted)]" />
-            <span className="truncate text-[14px] font-medium text-[var(--color-fg)]">
-              {service.name}
-            </span>
+      <div className="min-w-0">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "inline-block h-2 w-2 shrink-0 rounded-full",
+                  active && "pulse-dot",
+                  pending && "animate-pulse",
+                )}
+                style={{
+                  background: color,
+                  boxShadow: active
+                    ? `0 0 10px color-mix(in srgb, ${color} 55%, transparent)`
+                    : undefined,
+                }}
+              />
+              <h2 className="truncate text-[15px] font-medium text-[var(--color-fg)]">
+                {service.name}
+              </h2>
+            </div>
+            <div className="mono mt-1 truncate text-[11px] text-[var(--color-fg-muted)]">
+              {service.image}
+            </div>
           </div>
-          <div className="mono mt-1 truncate text-[11px] text-[var(--color-fg-muted)]">
-            {service.image}
-          </div>
+          <StatusBadge status={service.status} />
         </div>
-        <StatusBadge status={service.status} />
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <MetaChip icon={MapPin} label={service.region} />
+          <MetaChip label={service.environment} />
+          <MetaChip label={`:${service.internal_port}`} />
+        </div>
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-[var(--color-fg-muted)]">
-        <span>{service.environment}</span>
-        <span>{service.region}</span>
-        <span>:{service.internal_port}</span>
-        {service.url && <span className="truncate">{service.url.replace(/^https?:\/\//, "")}</span>}
+
+      <div className="mt-5 grid grid-cols-2 gap-2">
+        <CardMetric label="Preset" value={service.resource_preset} />
+        <CardMetric
+          label="Health"
+          value={service.health_check_path}
+          mono
+        />
+        <div className="col-span-2 truncate text-[11px] text-[var(--color-fg-muted)]">
+          {service.url
+            ? service.url.replace(/^https?:\/\//, "")
+            : `updated ${lastSeen(service.updated_at)}`}
+        </div>
       </div>
     </Link>
   );
 }
 
-function ServiceDetails({ wid, service }: { wid: string; service: DeployService }) {
+function ServiceDetailPage({ wid, service }: { wid: string; service: DeployService }) {
   const [tab, setTab] = useState<DetailTab>("deployments");
   const createDeployment = useCreateDeployment(wid);
   const rollback = useRollbackDeployment(wid);
   const stop = useStopDeployService(wid);
+  const color = DEPLOY_STATUS_COLOR[service.status];
+  const active = deployStatusActive(service.status);
 
   return (
-    <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)]">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3.5">
+    <>
+      <Link
+        to="/$wid/deployments"
+        params={{ wid }}
+        className="mb-5 inline-flex items-center gap-1.5 text-[12px] text-[var(--color-fg-muted)] no-underline hover:text-[var(--color-fg)]"
+      >
+        <ArrowLeft size={12} /> All services
+      </Link>
+
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h2 className="truncate text-[15px] font-medium text-[var(--color-fg)]">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span
+              className={cn(
+                "inline-block h-2.5 w-2.5 rounded-full",
+                active && "pulse-dot",
+              )}
+              style={{
+                background: color,
+                boxShadow: active
+                  ? `0 0 12px color-mix(in srgb, ${color} 60%, transparent)`
+                  : undefined,
+              }}
+            />
+            <h1 className="truncate text-[23px] font-medium tracking-tight text-[var(--color-fg)]">
               {service.name}
-            </h2>
+            </h1>
             <StatusBadge status={service.status} />
           </div>
-          <div className="mono mt-1 truncate text-[11px] text-[var(--color-fg-muted)]">
-            {service.provider_service_id ?? service.slug}
+          <div className="mono mt-2 truncate text-[12px] text-[var(--color-fg-muted)]">
+            {service.image}
+          </div>
+          <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-[var(--color-fg-muted)]">
+            <span className="inline-flex items-center gap-1.5">
+              <MapPin size={12} className="text-[var(--color-fg-dim)]" /> {service.region}
+            </span>
+            <span>{service.environment}</span>
+            <span className="mono">:{service.internal_port}</span>
+            <span>{service.resource_preset}</span>
+            {service.url && (
+              <span className="inline-flex items-center gap-1.5">
+                <Globe size={12} className="text-[var(--color-fg-dim)]" />
+                {service.url.replace(/^https?:\/\//, "")}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -410,131 +494,193 @@ function ServiceDetails({ wid, service }: { wid: string; service: DeployService 
         </div>
       </div>
 
-      <div className="border-b border-[var(--color-border)] px-3 pt-2">
-        <div className="flex gap-1">
-          {[
-            ["deployments", Rocket],
-            ["events", ScrollText],
-            ["logs", Terminal],
-            ["metrics", Activity],
-          ].map(([value, Icon]) => (
-            <Button
-              key={value as string}
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setTab(value as DetailTab)}
-              className={cn(
-                "rounded-b-none capitalize",
-                tab === value && "bg-[var(--color-bg-row)] text-[var(--color-fg)]",
-              )}
-            >
-              <Icon size={13} /> {value as string}
-            </Button>
-          ))}
-        </div>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "deployments", label: "Deployments", icon: Rocket },
+            { value: "events", label: "Events", icon: ScrollText },
+            { value: "logs", label: "Logs", icon: Terminal },
+            { value: "metrics", label: "Metrics", icon: Activity },
+          ]}
+        />
+        <span className="mono text-[11px] text-[var(--color-fg-dim)]">
+          {service.provider_service_id ?? service.slug}
+        </span>
       </div>
 
-      <div className="min-h-[280px] p-4">
-        {tab === "deployments" && <DeploymentsPanel wid={wid} service={service} />}
-        {tab === "events" && <EventsPanel wid={wid} service={service} />}
-        {tab === "logs" && <LogsPanel wid={wid} service={service} />}
-        {tab === "metrics" && <MetricsPanel wid={wid} service={service} />}
+      <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)]">
+        <div className="min-h-[360px] p-4">
+          {tab === "deployments" && <DeploymentsPanel wid={wid} service={service} />}
+          {tab === "events" && <EventsPanel wid={wid} service={service} />}
+          {tab === "logs" && <LogsPanel wid={wid} service={service} />}
+          {tab === "metrics" && <MetricsPanel wid={wid} service={service} />}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
 function DeploymentsPanel({ wid, service }: { wid: string; service: DeployService }) {
   const deployments = useDeployments(wid, service.id);
-  if (deployments.isLoading) return <PanelLoading label="loading deployments..." />;
-  if (!deployments.data?.length) return <PanelEmpty label="No deployments queued yet." />;
+  if (deployments.isLoading) return <PanelLoading label="Loading deployments…" />;
+  if (!deployments.data?.length) {
+    return (
+      <PanelEmpty
+        icon={Rocket}
+        label="No deployments yet"
+        hint="Deploy pushes the current image and starts a new release."
+      />
+    );
+  }
   return (
     <div className="space-y-2">
       {deployments.data.map((deployment) => (
-        <div
-          key={deployment.id}
-          className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2.5"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="mono truncate text-[12px] text-[var(--color-fg)]">
-              {deployment.image}
-            </div>
-            <StatusBadge status={deployment.status} />
-          </div>
-          <div className="mt-1 flex flex-wrap gap-3 text-[11px] text-[var(--color-fg-muted)]">
-            <span>queued {lastSeen(deployment.created_at)}</span>
-            {deployment.started_at && <span>started {lastSeen(deployment.started_at)}</span>}
-            {deployment.failure_message && (
-              <span className="text-[var(--color-err)]">{deployment.failure_message}</span>
-            )}
-          </div>
-        </div>
+        <DeploymentRow key={deployment.id} deployment={deployment} />
       ))}
+    </div>
+  );
+}
+
+function DeploymentRow({ deployment }: { deployment: Deployment }) {
+  const color = DEPLOY_STATUS_COLOR[deployment.status];
+  return (
+    <div
+      className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-3"
+      style={{ borderLeft: `3px solid ${color}` }}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="mono truncate text-[12px] text-[var(--color-fg)]">{deployment.image}</div>
+          {deployment.image_digest && (
+            <div className="mono mt-0.5 truncate text-[10px] text-[var(--color-fg-dim)]">
+              {deployment.image_digest.slice(0, 19)}…
+            </div>
+          )}
+        </div>
+        <StatusBadge status={deployment.status} />
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--color-fg-muted)]">
+        <span>queued {lastSeen(deployment.created_at)}</span>
+        {deployment.started_at && <span>started {lastSeen(deployment.started_at)}</span>}
+        {deployment.finished_at && <span>finished {lastSeen(deployment.finished_at)}</span>}
+      </div>
+      {deployment.failure_message && (
+        <p className="mt-2 text-[12px] leading-5 text-[var(--color-err)]">
+          {deployment.failure_message}
+        </p>
+      )}
     </div>
   );
 }
 
 function EventsPanel({ wid, service }: { wid: string; service: DeployService }) {
   const events = useDeployEvents(wid, service.id);
-  if (events.isLoading) return <PanelLoading label="loading events..." />;
-  if (!events.data?.length) return <PanelEmpty label="No events yet." />;
+  if (events.isLoading) return <PanelLoading label="Loading events…" />;
+  if (!events.data?.length) {
+    return (
+      <PanelEmpty icon={ScrollText} label="No events yet" hint="Lifecycle events appear here." />
+    );
+  }
   return (
-    <div className="space-y-2">
+    <LogStream>
       {events.data.map((event) => (
-        <LogRow
+        <LogLine
           key={event.id}
           level={event.level}
           message={event.message}
           timestamp={event.created_at}
         />
       ))}
-    </div>
+    </LogStream>
   );
 }
 
 function LogsPanel({ wid, service }: { wid: string; service: DeployService }) {
   const logs = useDeployLogs(wid, service.id);
-  if (logs.isLoading) return <PanelLoading label="loading logs..." />;
-  if (!logs.data?.length) return <PanelEmpty label="No logs ingested yet." />;
+  if (logs.isLoading) return <PanelLoading label="Loading logs…" />;
+  if (!logs.data?.length) {
+    return (
+      <PanelEmpty
+        icon={Terminal}
+        label="No logs ingested yet"
+        hint="Runtime logs from the service will stream here."
+      />
+    );
+  }
   return (
-    <div className="space-y-2">
+    <LogStream>
       {logs.data.map((line, index) => (
-        <LogRow
+        <LogLine
           key={`${line.timestamp}-${index}`}
           level={line.level}
           message={line.message}
           timestamp={line.timestamp}
         />
       ))}
-    </div>
+    </LogStream>
   );
 }
 
 function MetricsPanel({ wid, service }: { wid: string; service: DeployService }) {
   const metrics = useDeployMetrics(wid, service.id);
-  if (metrics.isLoading) return <PanelLoading label="loading metrics..." />;
-  if (!metrics.data?.length) return <PanelEmpty label="No metrics collected yet." />;
+  if (metrics.isLoading) {
+    return (
+      <div className="grid gap-3 sm:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <StatTile key={index} label="Loading" value="—" loading />
+        ))}
+      </div>
+    );
+  }
+  if (!metrics.data?.length) {
+    return (
+      <PanelEmpty
+        icon={Activity}
+        label="No metrics collected yet"
+        hint="CPU, memory, and request counts appear after the service is live."
+      />
+    );
+  }
   const latest = metrics.data[metrics.data.length - 1];
   return (
     <div className="grid gap-3 sm:grid-cols-3">
-      <MetricTile
+      <StatTile
         label="CPU"
-        value={latest.cpu_percent == null ? "-" : `${latest.cpu_percent.toFixed(1)}%`}
+        value={latest.cpu_percent == null ? "—" : `${latest.cpu_percent.toFixed(1)}%`}
+        accent={
+          latest.cpu_percent != null && latest.cpu_percent >= 80
+            ? "var(--color-warn)"
+            : undefined
+        }
+        sub={`bucket ${lastSeen(latest.bucket_start)}`}
       />
-      <MetricTile
+      <StatTile
         label="Memory"
-        value={latest.memory_mb == null ? "-" : `${latest.memory_mb.toFixed(0)} MB`}
+        value={latest.memory_mb == null ? "—" : `${latest.memory_mb.toFixed(0)} MB`}
+        sub={`bucket ${lastSeen(latest.bucket_start)}`}
       />
-      <MetricTile
+      <StatTile
         label="Requests"
-        value={latest.requests == null ? "-" : latest.requests.toFixed(0)}
+        value={latest.requests == null ? "—" : latest.requests.toFixed(0)}
+        sub={`${metrics.data.length} buckets`}
       />
     </div>
   );
 }
 
-function LogRow({
+function LogStream({ children }: { children: ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-sunken)]">
+      <ScrollArea className="h-[360px]">
+        <div className="mono space-y-0 p-3 text-[11px] leading-5">{children}</div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+function LogLine({
   level,
   message,
   timestamp,
@@ -543,22 +689,61 @@ function LogRow({
   message: string;
   timestamp: string;
 }) {
+  const levelColor =
+    level === "error" || level === "fatal"
+      ? "var(--color-err)"
+      : level === "warn"
+        ? "var(--color-warn)"
+        : "var(--color-fg-dim)";
+
   return (
-    <div className="grid gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2 text-[12px] sm:grid-cols-[90px_1fr_120px]">
-      <span className="mono uppercase text-[var(--color-fg-dim)]">{level}</span>
-      <span className="text-[var(--color-fg-muted)]">{message}</span>
-      <span className="text-right text-[var(--color-fg-dim)]">{lastSeen(timestamp)}</span>
+    <div className="flex gap-3 py-0.5">
+      <span className="w-12 shrink-0 text-[var(--color-fg-dim)]">{lastSeen(timestamp)}</span>
+      <span className="w-12 shrink-0 uppercase" style={{ color: levelColor }}>
+        {level}
+      </span>
+      <span className="min-w-0 text-[var(--color-fg-muted)]">{message}</span>
     </div>
   );
 }
 
-function MetricTile({ label, value }: { label: string; value: string }) {
+function MetaChip({
+  icon: Icon,
+  label,
+}: {
+  icon?: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+}) {
   return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] p-4">
-      <div className="text-[11px] uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
+    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] text-[var(--color-fg-dim)]">
+      {Icon && <Icon size={10} />}
+      {label}
+    </span>
+  );
+}
+
+function CardMetric({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2">
+      <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
         {label}
       </div>
-      <div className="mt-2 text-[22px] font-medium text-[var(--color-fg)]">{value}</div>
+      <div
+        className={cn(
+          "mt-1 truncate text-[15px] font-medium text-[var(--color-fg)]",
+          mono && "mono text-[12px]",
+        )}
+      >
+        {value}
+      </div>
     </div>
   );
 }
@@ -837,20 +1022,17 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function StatusBadge({ status }: { status: DeployStatus }) {
-  const color =
-    status === "live" || status === "healthy"
-      ? "var(--color-ok)"
-      : status === "failed"
-        ? "var(--color-err)"
-        : status === "stopped"
-          ? "var(--color-fg-muted)"
-          : "var(--color-warn)";
+  const color = DEPLOY_STATUS_COLOR[status];
   return (
     <span
-      className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
-      style={{ color, background: `color-mix(in srgb, ${color} 10%, transparent)` }}
+      className="inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
+      style={{
+        color,
+        background: `color-mix(in srgb, ${color} 10%, transparent)`,
+        borderColor: `color-mix(in srgb, ${color} 25%, transparent)`,
+      }}
     >
-      {status.replace("_", " ")}
+      {DEPLOY_STATUS_LABEL[status]}
     </span>
   );
 }
@@ -858,25 +1040,75 @@ function StatusBadge({ status }: { status: DeployStatus }) {
 function ServiceGridSkeleton() {
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      {Array.from({ length: 4 }).map((_, index) => (
-        <div key={index} className="shimmer h-32 rounded-[var(--radius-lg)]" />
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div
+          key={index}
+          className="flex min-h-44 flex-col justify-between rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-4 shadow-[var(--shadow-sm)]"
+        >
+          <div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-36" />
+                <Skeleton className="h-3 w-48" />
+              </div>
+              <Skeleton className="h-5 w-14 rounded-full" />
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Skeleton className="h-5 w-12 rounded-full" />
+              <Skeleton className="h-5 w-16 rounded-full" />
+              <Skeleton className="h-5 w-10 rounded-full" />
+            </div>
+          </div>
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            <Skeleton className="h-14 rounded-[var(--radius-md)]" />
+            <Skeleton className="h-14 rounded-[var(--radius-md)]" />
+            <Skeleton className="col-span-2 h-3 w-32" />
+          </div>
+        </div>
       ))}
+    </div>
+  );
+}
+
+function ServiceDetailSkeleton() {
+  return (
+    <div className="space-y-6">
+      <Skeleton className="h-3 w-24" />
+      <div className="space-y-3">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-3 w-80" />
+        <Skeleton className="h-3 w-48" />
+      </div>
+      <Skeleton className="h-8 w-72" />
+      <Skeleton className="h-[360px] w-full rounded-[var(--radius-lg)]" />
     </div>
   );
 }
 
 function PanelLoading({ label }: { label: string }) {
   return (
-    <div className="flex h-[220px] items-center justify-center text-[12px] text-[var(--color-fg-muted)]">
+    <div className="flex h-[280px] items-center justify-center text-[12px] text-[var(--color-fg-muted)]">
       <Spinner className="size-4" /> <span className="ml-2">{label}</span>
     </div>
   );
 }
 
-function PanelEmpty({ label }: { label: string }) {
+function PanelEmpty({
+  icon: Icon,
+  label,
+  hint,
+}: {
+  icon: typeof Rocket;
+  label: string;
+  hint?: string;
+}) {
   return (
-    <div className="flex h-[220px] items-center justify-center text-[13px] text-[var(--color-fg-muted)]">
-      {label}
+    <div className="flex h-[280px] flex-col items-center justify-center gap-2 px-6 text-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg-row)] text-[var(--color-fg-muted)]">
+        <Icon size={16} />
+      </div>
+      <p className="text-[13px] font-medium text-[var(--color-fg)]">{label}</p>
+      {hint && <p className="max-w-sm text-[12px] leading-5 text-[var(--color-fg-muted)]">{hint}</p>}
     </div>
   );
 }
