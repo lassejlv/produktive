@@ -62,17 +62,16 @@ const UPTIME: NavItem[] = [
     icon: ScrollText,
     anim: "wiggle",
   },
-  ...(DEPLOYMENTS_ENABLED
-    ? [
-        {
-          to: "/$wid/deployments",
-          label: "Deployments",
-          icon: Rocket,
-          anim: "pop",
-        } satisfies NavItem,
-      ]
-    : []),
   { to: "/$wid/status", label: "Status page", icon: Globe, anim: "spin" },
+];
+
+const DEPLOYMENTS: NavItem[] = [
+  {
+    to: "/$wid/deployments",
+    label: "Services",
+    icon: Rocket,
+    anim: "pop",
+  },
 ];
 
 const LOGGING: NavItem[] = [{ to: "/$wid/logs", label: "Projects", icon: FolderTree, anim: "pop" }];
@@ -203,6 +202,25 @@ export function AppSidebar() {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          {DEPLOYMENTS_ENABLED && (
+            <SidebarGroup>
+              <SidebarGroupLabel>Deployments</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {DEPLOYMENTS.map((it) => (
+                    <NavMenuButton
+                      key={it.to}
+                      item={it}
+                      wid={widParam}
+                      active={isActive(loc.pathname, it, wid, widParam)}
+                      onNavigate={closeOnNavigate}
+                    />
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
 
           {LOGS_ENABLED && (
             <SidebarGroup>
