@@ -29,11 +29,13 @@ pub fn routes(index_html: String) -> Router<AppState> {
         // Slug-addressed status pages on the app origin.
         .route("/s/{slug}", get(slug_html))
         .route("/s/{slug}/incidents", get(slug_html))
+        .route("/s/{slug}/incidents/{id}", get(slug_incident_html))
         // Custom domains serve the status page from the root path (and their
         // incident history from /incidents); on the app origin these fall
         // through to the stock shell.
         .route("/", get(domain_html))
         .route("/incidents", get(domain_html))
+        .route("/incidents/{id}", get(domain_html))
         .layer(Extension(SpaIndex(Arc::new(index_html))))
 }
 
@@ -42,6 +44,25 @@ async fn slug_html(
     Extension(idx): Extension<SpaIndex>,
     Path(slug): Path<String>,
 ) -> Response {
+    slug_html_for(&state, &idx, slug).await
+}
+
+async fn slug_incident_html(
+    State(state): State<AppState>,
+    Extension(idx): Extension<SpaIndex>,
+    Path(path): Path<SlugIncidentPath>,
+) -> Response {
+    slug_html_for(&state, &idx, path.slug).await
+}
+
+#[derive(serde::Deserialize)]
+struct SlugIncidentPath {
+    slug: String,
+    #[allow(dead_code)]
+    id: String,
+}
+
+async fn slug_html_for(state: &AppState, idx: &SpaIndex, slug: String) -> Response {
     let slug = slug.trim().to_lowercase();
     let ws = workspace::Entity::find()
         .filter(workspace::Column::StatusSlug.eq(&slug))
@@ -50,7 +71,7 @@ async fn slug_html(
         .await
         .ok()
         .flatten();
-    respond(&idx, ws)
+    respond(idx, ws)
 }
 
 async fn domain_html(
@@ -82,10 +103,37 @@ async fn domain_html(
 
 /// The request's hostname, normalized — `None` for anything that can't be a
 /// custom status domain.
+///
+/// When the request arrives via the custom-domain TLS proxy (Caddy), the
+/// `Host` header is normalized to the app origin so the backend can't see the
+/// real hostname. The proxy flags this with
+/// `X-Produktive-Is-Custom-Domain: true` and preserves the original host in
+/// `X-Forwarded-Host`. Prefer that forwarded host when the flag is present;
+/// fall back to `Host` for direct access / local dev.
 fn host_domain(headers: &HeaderMap) -> Option<String> {
-    let host = headers.get(header::HOST)?.to_str().ok()?;
+    let host = if is_custom_domain_proxy(headers) {
+        header_host(headers, "x-forwarded-host").or_else(|| header_host(headers, "host"))
+    } else {
+        header_host(headers, "host")
+    };
+    host.as_deref().and_then(normalize_domain)
+}
+
+/// Read a host-valued header, stripping any `:port` suffix.
+fn header_host(headers: &HeaderMap, name: &str) -> Option<String> {
+    let host = headers.get(name)?.to_str().ok()?;
     let host = host.rsplit_once(':').map_or(host, |(h, _)| h);
-    normalize_domain(host)
+    Some(host.to_owned())
+}
+
+/// True when the request came through the custom-domain TLS proxy, which
+/// rewrites `Host` to the app origin and sets `X-Produktive-Is-Custom-Domain`.
+fn is_custom_domain_proxy(headers: &HeaderMap) -> bool {
+    headers
+        .get("x-produktive-is-custom-domain")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
 }
 
 fn respond(idx: &SpaIndex, ws: Option<workspace::Model>) -> Response {

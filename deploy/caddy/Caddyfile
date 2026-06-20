@@ -17,5 +17,6 @@ https:// {
 	reverse_proxy {$PRODUKTIVE_ORIGIN} {
 		header_up Host produktive.app
 		header_up X-Forwarded-Proto https
+		header_up X-Produktive-Is-Custom-Domain true
 	}
 }

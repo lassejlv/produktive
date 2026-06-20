@@ -103,7 +103,7 @@ function SettingsPage() {
         )}
 
         {channels.isLoading ? (
-          <LoadingLine label="Loading channels…" />
+          <ChannelListSkeleton />
         ) : channelList.length === 0 ? (
           <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border)] px-4 py-5 text-center">
             <p className="text-[13px] text-[var(--color-fg-muted)]">No channels yet</p>
@@ -141,11 +141,13 @@ function SettingsPage() {
         </h3>
 
         {notifications.isLoading ? (
-          <LoadingLine label="Loading activity…" />
+          <NotificationListSkeleton />
         ) : recentNotifications.length === 0 ? (
-          <p className="text-[13px] text-[var(--color-fg-muted)]">
-            No notifications yet. Events appear when monitors open or resolve incidents.
-          </p>
+          <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--color-border)] px-4 py-5 text-center">
+            <p className="text-[13px] text-[var(--color-fg-muted)]">
+              No notifications yet. Events appear when monitors open or resolve incidents.
+            </p>
+          </div>
         ) : (
           <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)]">
             {recentNotifications.map((notification, index) => (
@@ -294,7 +296,14 @@ function ChannelRow({
       {expanded && (
         <div className="mt-2.5 space-y-2 border-t border-[var(--color-border)] pt-2.5">
           {deliveries.isLoading ? (
-            <p className="text-[12px] text-[var(--color-fg-muted)]">Loading deliveries…</p>
+            <div className="space-y-2">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between gap-3">
+                  <div className="shimmer h-3 w-32 rounded-[var(--radius-sm)]" />
+                  <div className="shimmer h-3 w-12 rounded-[var(--radius-sm)]" />
+                </div>
+              ))}
+            </div>
           ) : deliveries.data?.length ? (
             deliveries.data.map((delivery) => (
               <div
@@ -561,11 +570,47 @@ function Toggle({
   );
 }
 
-function LoadingLine({ label }: { label: string }) {
+function ChannelListSkeleton() {
   return (
-    <div className="flex items-center gap-2 text-[12px] text-[var(--color-fg-muted)]">
-      <Spinner className="size-3.5" />
-      {label}
+    <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)]">
+      {Array.from({ length: 2 }).map((_, i) => (
+        <div
+          key={i}
+          className={cn(
+            "flex items-center gap-3 px-4 py-3",
+            i > 0 && "border-t border-[var(--color-border)]",
+          )}
+        >
+          <div className="shimmer h-7 w-7 rounded-[var(--radius-md)]" />
+          <div className="flex-1 space-y-1.5">
+            <div className="shimmer h-3.5 w-32 rounded-[var(--radius-sm)]" />
+            <div className="shimmer h-2.5 w-48 rounded-[var(--radius-sm)]" />
+          </div>
+          <div className="shimmer h-6 w-14 rounded-[var(--radius-md)]" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NotificationListSkeleton() {
+  return (
+    <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)]">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div
+          key={i}
+          className={cn(
+            "flex items-center gap-3 px-4 py-3",
+            i > 0 && "border-t border-[var(--color-border)]",
+          )}
+        >
+          <div className="flex-1 space-y-1.5">
+            <div className="shimmer h-3.5 w-40 rounded-[var(--radius-sm)]" />
+            <div className="shimmer h-2.5 w-24 rounded-[var(--radius-sm)]" />
+          </div>
+          <div className="shimmer h-3 w-16 rounded-[var(--radius-sm)]" />
+        </div>
+      ))}
     </div>
   );
 }

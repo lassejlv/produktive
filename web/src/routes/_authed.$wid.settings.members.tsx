@@ -52,27 +52,25 @@ function MembersSettingsPage() {
   const revokeInvite = useRevokeInvite(wid);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<WorkspaceMember | null>(null);
-
-  const loading = members.isLoading || workspaces.isLoading;
+  const [pendingRoleUser, setPendingRoleUser] = useState<string | null>(null);
+  const [pendingRemoveUser, setPendingRemoveUser] = useState<string | null>(null);
 
   function remove(target: WorkspaceMember) {
+    setPendingRemoveUser(target.user_id);
     removeMember.mutate(target.user_id, {
       onSuccess: () => {
         const self = target.user_id === me.data?.id;
         toast.success(self ? "You left the workspace" : "Member removed");
         setRemoveTarget(null);
+        setPendingRemoveUser(null);
         if (self) void navigate({ to: "/", replace: true });
       },
       onError: (err) => toast.error((err as Error).message),
     });
   }
 
-  if (loading) {
-    return (
-      <div className="flex h-40 items-center justify-center text-[12px] text-[var(--color-fg-muted)]">
-        <Spinner className="size-3.5" /> <span className="ml-2">Loading members...</span>
-      </div>
-    );
+  if (members.isLoading) {
+    return <MembersSkeleton />;
   }
 
   if (members.error) {
@@ -131,15 +129,22 @@ function MembersSettingsPage() {
 
               <Select
                 value={member.role}
-                disabled={!isOwner || updateRole.isPending}
+                disabled={!isOwner || pendingRoleUser === member.user_id}
                 onValueChange={(role) => {
                   const nextRole = role as WorkspaceRole;
                   if (nextRole === member.role) return;
+                  setPendingRoleUser(member.user_id);
                   updateRole.mutate(
                     { userId: member.user_id, role: nextRole },
                     {
-                      onSuccess: () => toast.success("Role updated"),
-                      onError: (err) => toast.error((err as Error).message),
+                      onSuccess: () => {
+                        toast.success("Role updated");
+                        setPendingRoleUser(null);
+                      },
+                      onError: (err) => {
+                        toast.error((err as Error).message);
+                        setPendingRoleUser(null);
+                      },
                     },
                   );
                 }}
@@ -159,7 +164,7 @@ function MembersSettingsPage() {
               <Button
                 variant={self ? "secondary" : "destructive"}
                 size="xs"
-                disabled={!canRemove || removeMember.isPending}
+                disabled={!canRemove || pendingRemoveUser === member.user_id}
                 onClick={() => setRemoveTarget(member)}
               >
                 <Trash2 size={12} /> {self ? "Leave" : "Remove"}
@@ -202,7 +207,7 @@ function MembersSettingsPage() {
         }
         confirmLabel={removeTarget?.user_id === me.data?.id ? "Leave workspace" : "Remove member"}
         destructive={removeTarget?.user_id !== me.data?.id}
-        pending={removeMember.isPending}
+        pending={pendingRemoveUser === removeTarget?.user_id}
         onConfirm={() => {
           if (removeTarget) remove(removeTarget);
         }}
@@ -232,8 +237,19 @@ function PendingInvites({
       </div>
 
       {loading ? (
-        <div className="flex h-16 items-center justify-center text-[12px] text-[var(--color-fg-muted)]">
-          <Spinner className="size-3.5" /> <span className="ml-2">Loading invites...</span>
+        <div className="flex flex-col">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between gap-3 border-t border-[var(--color-border)] py-3 first:border-t-0 first:pt-0"
+            >
+              <div className="space-y-1.5">
+                <div className="shimmer h-3.5 w-36 rounded-[var(--radius-sm)]" />
+                <div className="shimmer h-2.5 w-28 rounded-[var(--radius-sm)]" />
+              </div>
+              <div className="shimmer h-6 w-16 rounded-[var(--radius-md)]" />
+            </div>
+          ))}
         </div>
       ) : invites.length === 0 ? (
         <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--color-border)] px-3 py-4 text-center text-[12px] text-[var(--color-fg-dim)]">
@@ -392,6 +408,38 @@ function InviteMemberDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function MembersSkeleton() {
+  return (
+    <div className="flex max-w-[860px] flex-col gap-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2">
+          <div className="shimmer h-4 w-24 rounded-[var(--radius-sm)]" />
+          <div className="shimmer h-3 w-48 rounded-[var(--radius-sm)]" />
+        </div>
+        <div className="shimmer h-8 w-28 rounded-[var(--radius-md)]" />
+      </div>
+      <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)]">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-[var(--color-border)] px-4 py-3 last:border-b-0 max-sm:grid-cols-1"
+          >
+            <div className="flex items-center gap-3">
+              <div className="shimmer h-8 w-8 rounded-[var(--radius-md)]" />
+              <div className="space-y-1.5">
+                <div className="shimmer h-3.5 w-40 rounded-[var(--radius-sm)]" />
+                <div className="shimmer h-2.5 w-24 rounded-[var(--radius-sm)]" />
+              </div>
+            </div>
+            <div className="shimmer h-8 w-[112px] rounded-[var(--radius-md)]" />
+            <div className="shimmer h-7 w-20 rounded-[var(--radius-md)]" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

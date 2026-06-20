@@ -360,10 +360,19 @@ pub async fn get_status(
 pub async fn get_status_by_domain(
     State(state): State<AppState>,
     Path(domain): Path<String>,
-) -> ApiResult<Json<PublicStatus>> {
+) -> ApiResult<Response> {
     let ws = workspace_by_domain(&state, &domain).await?;
     let loaded = load_public_status(&state, ws).await?;
-    Ok(Json(loaded.status))
+    let body = serde_json::to_vec(&loaded.status).map_err(|e| ApiError::Internal(e.into()))?;
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "application/json"),
+            (header::CACHE_CONTROL, SUMMARY_CACHE_CONTROL),
+        ],
+        body,
+    )
+        .into_response())
 }
 
 #[utoipa::path(

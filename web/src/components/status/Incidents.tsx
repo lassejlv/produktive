@@ -50,7 +50,14 @@ function fmtDate(iso: string): string {
   });
 }
 
-export function IncidentRow({ incident }: { incident: PublicIncident }) {
+export function IncidentRow({
+  incident,
+  href,
+}: {
+  incident: PublicIncident;
+  /** When set, the row links to the incident detail page. */
+  href?: string;
+}) {
   const open = incident.status === "open";
   const color = severityColor(incident);
   const title =
@@ -66,8 +73,8 @@ export function IncidentRow({ incident }: { incident: PublicIncident }) {
         new Date(resolvedAt).getTime() - new Date(incident.started_at).getTime(),
       )}`;
 
-  return (
-    <div className="flex items-center gap-2.5 px-4 py-2.5">
+  const row = (
+    <>
       <span
         className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
         style={{ background: open ? color : "var(--color-ok)" }}
@@ -76,8 +83,21 @@ export function IncidentRow({ incident }: { incident: PublicIncident }) {
         <div className="truncate text-[13px] text-[var(--color-fg)]">{title}</div>
         <div className="text-[11px] text-[var(--color-fg-dim)]">{when}</div>
       </div>
-    </div>
+    </>
   );
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        className="flex items-center gap-2.5 px-4 py-2.5 no-underline transition-colors hover:bg-[var(--color-bg-row)]"
+      >
+        {row}
+      </a>
+    );
+  }
+
+  return <div className="flex items-center gap-2.5 px-4 py-2.5">{row}</div>;
 }
 
 function severityLabel(severity: PublicIncident["severity"]): string {
@@ -106,9 +126,12 @@ function severityLabel(severity: PublicIncident["severity"]): string {
  */
 export function ActiveIncidents({
   incidents,
+  incidentsHref,
   className,
 }: {
   incidents: PublicIncident[];
+  /** Base path to the incident history page; rows link to `${incidentsHref}/${id}`. */
+  incidentsHref?: string;
   className?: string;
 }) {
   if (incidents.length === 0) return null;
@@ -117,7 +140,11 @@ export function ActiveIncidents({
     <section className={className}>
       <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
         {sorted.map((incident) => (
-          <IncidentRow key={incident.id} incident={incident} />
+          <IncidentRow
+            key={incident.id}
+            incident={incident}
+            href={incidentsHref ? `${incidentsHref}/${incident.id}` : undefined}
+          />
         ))}
       </div>
     </section>
@@ -128,7 +155,14 @@ export function ActiveIncidents({
  * Full incident history, shown on the dedicated `<status>/incidents` page.
  * Active incidents are split out above the resolved history.
  */
-export function IncidentList({ incidents }: { incidents: PublicIncident[] }) {
+export function IncidentList({
+  incidents,
+  incidentsHref,
+}: {
+  incidents: PublicIncident[];
+  /** Base path to the incident history page; rows link to `${incidentsHref}/${id}`. */
+  incidentsHref?: string;
+}) {
   const sorted = sortIncidents(incidents);
   const open = sorted.filter((i) => i.status === "open");
   const resolved = sorted.filter((i) => i.status !== "open");
@@ -150,7 +184,11 @@ export function IncidentList({ incidents }: { incidents: PublicIncident[] }) {
           </h2>
           <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
             {open.map((incident) => (
-              <IncidentRow key={incident.id} incident={incident} />
+              <IncidentRow
+                key={incident.id}
+                incident={incident}
+                href={incidentsHref ? `${incidentsHref}/${incident.id}` : undefined}
+              />
             ))}
           </div>
         </section>
@@ -162,7 +200,11 @@ export function IncidentList({ incidents }: { incidents: PublicIncident[] }) {
           </h2>
           <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
             {resolved.map((incident) => (
-              <IncidentRow key={incident.id} incident={incident} />
+              <IncidentRow
+                key={incident.id}
+                incident={incident}
+                href={incidentsHref ? `${incidentsHref}/${incident.id}` : undefined}
+              />
             ))}
           </div>
         </section>
@@ -212,7 +254,11 @@ export function MiniIncidentHistory({
       ) : (
         <div className="divide-y divide-[var(--color-border)] overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
           {recent.map((incident) => (
-            <IncidentRow key={incident.id} incident={incident} />
+            <IncidentRow
+              key={incident.id}
+              incident={incident}
+              href={href ? `${href}/${incident.id}` : undefined}
+            />
           ))}
         </div>
       )}

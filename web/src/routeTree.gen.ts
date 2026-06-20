@@ -21,6 +21,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SSlugRouteImport } from './routes/s_.$slug'
 import { Route as LegalDocRouteImport } from './routes/legal.$doc'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as IncidentsIdRouteImport } from './routes/incidents.$id'
 import { Route as AuthedWidRouteImport } from './routes/_authed.$wid'
 import { Route as SSlugIndexRouteImport } from './routes/s_.$slug.index'
 import { Route as AuthedWidIndexRouteImport } from './routes/_authed.$wid.index'
@@ -34,6 +35,7 @@ import { Route as AuthedWidSettingsIndexRouteImport } from './routes/_authed.$wi
 import { Route as AuthedWidMonitorsIndexRouteImport } from './routes/_authed.$wid.monitors.index'
 import { Route as AuthedWidLogsIndexRouteImport } from './routes/_authed.$wid.logs.index'
 import { Route as AuthedWidAdminIndexRouteImport } from './routes/_authed.$wid.admin.index'
+import { Route as SSlugIncidentsIdRouteImport } from './routes/s_.$slug.incidents.$id'
 import { Route as AuthedWidSettingsWorkersRouteImport } from './routes/_authed.$wid.settings.workers'
 import { Route as AuthedWidSettingsUsageRouteImport } from './routes/_authed.$wid.settings.usage'
 import { Route as AuthedWidSettingsNotificationsRouteImport } from './routes/_authed.$wid.settings.notifications'
@@ -109,6 +111,11 @@ const InviteTokenRoute = InviteTokenRouteImport.update({
   path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const IncidentsIdRoute = IncidentsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => IncidentsRoute,
+} as any)
 const AuthedWidRoute = AuthedWidRouteImport.update({
   id: '/$wid',
   path: '/$wid',
@@ -173,6 +180,11 @@ const AuthedWidAdminIndexRoute = AuthedWidAdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AuthedWidAdminRoute,
+} as any)
+const SSlugIncidentsIdRoute = SSlugIncidentsIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => SSlugIncidentsRoute,
 } as any)
 const AuthedWidSettingsWorkersRoute =
   AuthedWidSettingsWorkersRouteImport.update({
@@ -261,13 +273,14 @@ const AuthedWidAdminLogAccessRoute = AuthedWidAdminLogAccessRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
-  '/incidents': typeof IncidentsRoute
+  '/incidents': typeof IncidentsRouteWithChildren
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/s': typeof SRoute
   '/signup': typeof SignupRoute
   '/$wid': typeof AuthedWidRouteWithChildren
+  '/incidents/$id': typeof IncidentsIdRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$doc': typeof LegalDocRoute
   '/s/$slug': typeof SSlugRouteWithChildren
@@ -276,7 +289,7 @@ export interface FileRoutesByFullPath {
   '/$wid/members': typeof AuthedWidMembersRoute
   '/$wid/settings': typeof AuthedWidSettingsRouteWithChildren
   '/$wid/status': typeof AuthedWidStatusRoute
-  '/s/$slug/incidents': typeof SSlugIncidentsRoute
+  '/s/$slug/incidents': typeof SSlugIncidentsRouteWithChildren
   '/$wid/': typeof AuthedWidIndexRoute
   '/s/$slug/': typeof SSlugIndexRoute
   '/$wid/admin/log-access': typeof AuthedWidAdminLogAccessRoute
@@ -294,6 +307,7 @@ export interface FileRoutesByFullPath {
   '/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
   '/$wid/settings/usage': typeof AuthedWidSettingsUsageRoute
   '/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
+  '/s/$slug/incidents/$id': typeof SSlugIncidentsIdRoute
   '/$wid/admin/': typeof AuthedWidAdminIndexRoute
   '/$wid/logs/': typeof AuthedWidLogsIndexRoute
   '/$wid/monitors/': typeof AuthedWidMonitorsIndexRoute
@@ -302,18 +316,19 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/forgot-password': typeof ForgotPasswordRoute
-  '/incidents': typeof IncidentsRoute
+  '/incidents': typeof IncidentsRouteWithChildren
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/s': typeof SRoute
   '/signup': typeof SignupRoute
+  '/incidents/$id': typeof IncidentsIdRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$doc': typeof LegalDocRoute
   '/$wid/incidents': typeof AuthedWidIncidentsRoute
   '/$wid/members': typeof AuthedWidMembersRoute
   '/$wid/status': typeof AuthedWidStatusRoute
-  '/s/$slug/incidents': typeof SSlugIncidentsRoute
+  '/s/$slug/incidents': typeof SSlugIncidentsRouteWithChildren
   '/$wid': typeof AuthedWidIndexRoute
   '/s/$slug': typeof SSlugIndexRoute
   '/$wid/admin/log-access': typeof AuthedWidAdminLogAccessRoute
@@ -331,6 +346,7 @@ export interface FileRoutesByTo {
   '/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
   '/$wid/settings/usage': typeof AuthedWidSettingsUsageRoute
   '/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
+  '/s/$slug/incidents/$id': typeof SSlugIncidentsIdRoute
   '/$wid/admin': typeof AuthedWidAdminIndexRoute
   '/$wid/logs': typeof AuthedWidLogsIndexRoute
   '/$wid/monitors': typeof AuthedWidMonitorsIndexRoute
@@ -341,13 +357,14 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authed': typeof AuthedRouteWithChildren
   '/forgot-password': typeof ForgotPasswordRoute
-  '/incidents': typeof IncidentsRoute
+  '/incidents': typeof IncidentsRouteWithChildren
   '/login': typeof LoginRoute
   '/pricing': typeof PricingRoute
   '/reset-password': typeof ResetPasswordRoute
   '/s': typeof SRoute
   '/signup': typeof SignupRoute
   '/_authed/$wid': typeof AuthedWidRouteWithChildren
+  '/incidents/$id': typeof IncidentsIdRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$doc': typeof LegalDocRoute
   '/s_/$slug': typeof SSlugRouteWithChildren
@@ -356,7 +373,7 @@ export interface FileRoutesById {
   '/_authed/$wid/members': typeof AuthedWidMembersRoute
   '/_authed/$wid/settings': typeof AuthedWidSettingsRouteWithChildren
   '/_authed/$wid/status': typeof AuthedWidStatusRoute
-  '/s_/$slug/incidents': typeof SSlugIncidentsRoute
+  '/s_/$slug/incidents': typeof SSlugIncidentsRouteWithChildren
   '/_authed/$wid/': typeof AuthedWidIndexRoute
   '/s_/$slug/': typeof SSlugIndexRoute
   '/_authed/$wid/admin/log-access': typeof AuthedWidAdminLogAccessRoute
@@ -374,6 +391,7 @@ export interface FileRoutesById {
   '/_authed/$wid/settings/notifications': typeof AuthedWidSettingsNotificationsRoute
   '/_authed/$wid/settings/usage': typeof AuthedWidSettingsUsageRoute
   '/_authed/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
+  '/s_/$slug/incidents/$id': typeof SSlugIncidentsIdRoute
   '/_authed/$wid/admin/': typeof AuthedWidAdminIndexRoute
   '/_authed/$wid/logs/': typeof AuthedWidLogsIndexRoute
   '/_authed/$wid/monitors/': typeof AuthedWidMonitorsIndexRoute
@@ -391,6 +409,7 @@ export interface FileRouteTypes {
     | '/s'
     | '/signup'
     | '/$wid'
+    | '/incidents/$id'
     | '/invite/$token'
     | '/legal/$doc'
     | '/s/$slug'
@@ -417,6 +436,7 @@ export interface FileRouteTypes {
     | '/$wid/settings/notifications'
     | '/$wid/settings/usage'
     | '/$wid/settings/workers'
+    | '/s/$slug/incidents/$id'
     | '/$wid/admin/'
     | '/$wid/logs/'
     | '/$wid/monitors/'
@@ -431,6 +451,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/s'
     | '/signup'
+    | '/incidents/$id'
     | '/invite/$token'
     | '/legal/$doc'
     | '/$wid/incidents'
@@ -454,6 +475,7 @@ export interface FileRouteTypes {
     | '/$wid/settings/notifications'
     | '/$wid/settings/usage'
     | '/$wid/settings/workers'
+    | '/s/$slug/incidents/$id'
     | '/$wid/admin'
     | '/$wid/logs'
     | '/$wid/monitors'
@@ -470,6 +492,7 @@ export interface FileRouteTypes {
     | '/s'
     | '/signup'
     | '/_authed/$wid'
+    | '/incidents/$id'
     | '/invite/$token'
     | '/legal/$doc'
     | '/s_/$slug'
@@ -496,6 +519,7 @@ export interface FileRouteTypes {
     | '/_authed/$wid/settings/notifications'
     | '/_authed/$wid/settings/usage'
     | '/_authed/$wid/settings/workers'
+    | '/s_/$slug/incidents/$id'
     | '/_authed/$wid/admin/'
     | '/_authed/$wid/logs/'
     | '/_authed/$wid/monitors/'
@@ -506,7 +530,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthedRoute: typeof AuthedRouteWithChildren
   ForgotPasswordRoute: typeof ForgotPasswordRoute
-  IncidentsRoute: typeof IncidentsRoute
+  IncidentsRoute: typeof IncidentsRouteWithChildren
   LoginRoute: typeof LoginRoute
   PricingRoute: typeof PricingRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
@@ -603,6 +627,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/incidents/$id': {
+      id: '/incidents/$id'
+      path: '/$id'
+      fullPath: '/incidents/$id'
+      preLoaderRoute: typeof IncidentsIdRouteImport
+      parentRoute: typeof IncidentsRoute
+    }
     '/_authed/$wid': {
       id: '/_authed/$wid'
       path: '/$wid'
@@ -693,6 +724,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/$wid/admin/'
       preLoaderRoute: typeof AuthedWidAdminIndexRouteImport
       parentRoute: typeof AuthedWidAdminRoute
+    }
+    '/s_/$slug/incidents/$id': {
+      id: '/s_/$slug/incidents/$id'
+      path: '/$id'
+      fullPath: '/s/$slug/incidents/$id'
+      preLoaderRoute: typeof SSlugIncidentsIdRouteImport
+      parentRoute: typeof SSlugIncidentsRoute
     }
     '/_authed/$wid/settings/workers': {
       id: '/_authed/$wid/settings/workers'
@@ -892,13 +930,37 @@ const AuthedRouteChildren: AuthedRouteChildren = {
 const AuthedRouteWithChildren =
   AuthedRoute._addFileChildren(AuthedRouteChildren)
 
+interface IncidentsRouteChildren {
+  IncidentsIdRoute: typeof IncidentsIdRoute
+}
+
+const IncidentsRouteChildren: IncidentsRouteChildren = {
+  IncidentsIdRoute: IncidentsIdRoute,
+}
+
+const IncidentsRouteWithChildren = IncidentsRoute._addFileChildren(
+  IncidentsRouteChildren,
+)
+
+interface SSlugIncidentsRouteChildren {
+  SSlugIncidentsIdRoute: typeof SSlugIncidentsIdRoute
+}
+
+const SSlugIncidentsRouteChildren: SSlugIncidentsRouteChildren = {
+  SSlugIncidentsIdRoute: SSlugIncidentsIdRoute,
+}
+
+const SSlugIncidentsRouteWithChildren = SSlugIncidentsRoute._addFileChildren(
+  SSlugIncidentsRouteChildren,
+)
+
 interface SSlugRouteChildren {
-  SSlugIncidentsRoute: typeof SSlugIncidentsRoute
+  SSlugIncidentsRoute: typeof SSlugIncidentsRouteWithChildren
   SSlugIndexRoute: typeof SSlugIndexRoute
 }
 
 const SSlugRouteChildren: SSlugRouteChildren = {
-  SSlugIncidentsRoute: SSlugIncidentsRoute,
+  SSlugIncidentsRoute: SSlugIncidentsRouteWithChildren,
   SSlugIndexRoute: SSlugIndexRoute,
 }
 
@@ -908,7 +970,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthedRoute: AuthedRouteWithChildren,
   ForgotPasswordRoute: ForgotPasswordRoute,
-  IncidentsRoute: IncidentsRoute,
+  IncidentsRoute: IncidentsRouteWithChildren,
   LoginRoute: LoginRoute,
   PricingRoute: PricingRoute,
   ResetPasswordRoute: ResetPasswordRoute,

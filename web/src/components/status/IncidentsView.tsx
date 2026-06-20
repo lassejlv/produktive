@@ -32,7 +32,7 @@ export function IncidentsView({ title, incidents, statusHref, style, showBrandin
         <h1 className="text-[26px] font-medium leading-tight tracking-tight">Incident history</h1>
       </div>
 
-      <IncidentList incidents={incidents} />
+      <IncidentList incidents={incidents} incidentsHref={`${statusHref.replace(/\/?$/, "")}/incidents`} />
     </StatusShell>
   );
 }

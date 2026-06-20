@@ -130,7 +130,11 @@ export function StatusView({
       </div>
 
       {/* what's broken should never be buried — open incidents sit above the card */}
-      <ActiveIncidents incidents={openIncidents} className="mb-4" />
+      <ActiveIncidents
+        incidents={openIncidents}
+        incidentsHref={incidentsHref}
+        className="mb-4"
+      />
 
       {/* the status card: centered overall headline + components */}
       <section className="rounded-[var(--radius-xl)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-5 py-6 shadow-[var(--shadow-sm)] sm:px-7">

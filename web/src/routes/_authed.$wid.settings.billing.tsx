@@ -10,6 +10,7 @@ import { Button } from "#/components/ui/button";
 import { EmptyState } from "../components/EmptyState";
 import { PageActions } from "../components/PageLayout";
 import { Spinner } from "#/components/ui/spinner";
+import { StatTile } from "../components/StatTile";
 import {
   hasActivePaidSubscription,
   nextResetText,
@@ -71,8 +72,14 @@ function BillingPage() {
 
   if (summary.isLoading) {
     return (
-      <div className="flex h-40 items-center justify-center text-[12px] text-[var(--color-fg-muted)]">
-        <Spinner className="size-4" /> <span className="ml-2">Loading billing…</span>
+      <div className="flex flex-col gap-6">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <StatTile label="Monitors" value="" loading />
+          <StatTile label="Members" value="" loading />
+          <StatTile label="Events" value="" loading />
+        </div>
+        <div className="shimmer h-28 rounded-[var(--radius-lg)]" />
+        <div className="shimmer h-64 rounded-[var(--radius-lg)]" />
       </div>
     );
   }
@@ -304,15 +311,15 @@ function UsageCard({
   eventsSub?: string;
 }) {
   return (
-    <div className="divide-y divide-[var(--color-border)] rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)]">
-      <UsageRow label="Monitors" usage={monitors} />
-      <UsageRow label="Members" usage={members} />
-      <UsageRow label="Events" usage={events} sub={eventsSub} />
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <UsageTile label="Monitors" usage={monitors} />
+      <UsageTile label="Members" usage={members} />
+      <UsageTile label="Events" usage={events} sub={eventsSub} />
     </div>
   );
 }
 
-function UsageRow({
+function UsageTile({
   label,
   usage,
   sub,
@@ -327,20 +334,25 @@ function UsageRow({
     width >= 90 ? "var(--color-err)" : width >= 70 ? "var(--color-warn)" : "var(--color-accent)";
 
   return (
-    <div className="px-4 py-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-[13px] text-[var(--color-fg)]">{label}</span>
-        <span className="tabular text-[12px] text-[var(--color-fg-muted)]">{usage.primaryText}</span>
-      </div>
-      {showBar && (
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-bg-sunken)]">
-          <div
-            className="h-full rounded-full transition-[width] duration-300"
-            style={{ width: `${width}%`, background: barColor }}
-          />
-        </div>
-      )}
-      {sub && <div className="mt-1.5 text-[11px] text-[var(--color-fg-dim)]">{sub}</div>}
-    </div>
+    <StatTile
+      label={label}
+      value={usage.primaryText}
+      sub={
+        showBar ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-bg-sunken)]">
+              <div
+                className="h-full rounded-full transition-[width] duration-300"
+                style={{ width: `${width}%`, background: barColor }}
+              />
+            </div>
+            {sub && <span>{sub}</span>}
+          </div>
+        ) : (
+          sub
+        )
+      }
+      accent={showBar ? barColor : undefined}
+    />
   );
 }
