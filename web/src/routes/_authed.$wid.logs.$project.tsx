@@ -209,16 +209,7 @@ function LogExplorer({
   onDeleteProject: () => void;
 }) {
   const navigate = useNavigate();
-  const filters = useMemo(
-    () => normalizeLogExplorerSearch(searchParams),
-    [
-      searchParams.event,
-      searchParams.level,
-      searchParams.q,
-      searchParams.range,
-      searchParams.service,
-    ],
-  );
+  const filters = useMemo(() => normalizeLogExplorerSearch(searchParams), [searchParams]);
   const [draft, setDraft] = useState<LogExplorerFilters>(filters);
   const [submittedAt, setSubmittedAt] = useState(() => Date.now());
 
@@ -257,7 +248,7 @@ function LogExplorer({
   }, [filters, submittedAt]);
 
   const search = useLogSearch(wid, project.slug, input);
-  const events = search.data?.events ?? [];
+  const events = useMemo(() => search.data?.events ?? [], [search.data?.events]);
   const selectedEvent = filters.event
     ? (events.find((event) => event.event_id === filters.event) ?? null)
     : null;

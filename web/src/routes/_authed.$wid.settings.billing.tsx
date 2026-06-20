@@ -1,6 +1,6 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { CreditCard, ExternalLink } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "#/lib/toast";
 import { BillingActionDialog } from "../components/billing/BillingActionDialog";
 import { CurrentPlanCard } from "../components/billing/CurrentPlanCard";
@@ -60,14 +60,14 @@ function BillingPage() {
   const setupPayment = useBillingSetupPayment(wid);
   const polarCheckout = usePolarCheckout();
 
-  const checkoutComplete = () => {
+  const checkoutComplete = useCallback(() => {
     toast.success("Checkout completed — your plan may take a moment to update.");
     void summary.refetch();
-  };
+  }, [summary]);
 
   useEffect(() => {
     if (checkout === "success") checkoutComplete();
-  }, [checkout]);
+  }, [checkout, checkoutComplete]);
 
   if (summary.isLoading) {
     return (
