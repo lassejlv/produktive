@@ -125,10 +125,6 @@ function OverviewPage() {
   const avgLatency = latencies.length
     ? Math.round(latencies.reduce((s, m) => s + (m.last_latency_ms ?? 0), 0) / latencies.length)
     : null;
-  const slowest = latencies.reduce<Monitor | null>(
-    (worst, m) => (!worst || (m.last_latency_ms ?? 0) > (worst.last_latency_ms ?? 0) ? m : worst),
-    null,
-  );
   const checksPerMin = active.reduce((s, m) => s + 60 / m.interval_seconds, 0);
   const regionCount = new Set(monitors.flatMap((m) => m.regions.map((r) => r.id))).size;
   const lastChecked = monitors.reduce<string | null>(
@@ -211,6 +207,9 @@ function OverviewPage() {
             {lastChecked && ` · last check ${lastSeen(lastChecked)}`}
             {" · "}refreshes every 15s
           </div>
+          {monitors.length > 0 && (
+            <StatusBreakdownBar counts={byStatus} total={monitors.length} className="mt-3" />
+          )}
         </div>
         {statusPageLive && publicUrl && (
           <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -274,20 +273,30 @@ function OverviewPage() {
         </section>
       )}
 
-      {/* additive KPI row — performance & scale, not a restatement of the hero */}
+      {/* additive KPI row — health & scale, not a restatement of the hero */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile label="Avg latency" value={withUnit(avgLatency)} sub="across monitors" />
         <StatTile
-          label="Slowest now"
-          value={withUnit(slowest?.last_latency_ms ?? null)}
-          sub={slowest?.name ?? "—"}
+          label="Monitors"
+          value={String(monitors.length)}
+          sub={`${active.length} active${pausedCount > 0 ? ` · ${pausedCount} paused` : ""}`}
+        />
+        <StatTile
+          label="Avg latency"
+          value={withUnit(avgLatency)}
+          sub="across monitors"
+          accent={avgLatency != null && avgLatency > 1000 ? "var(--color-warn)" : undefined}
+        />
+        <StatTile
+          label="Open incidents"
+          value={String(openIncidents.length)}
+          sub={openIncidents.length > 0 ? "needs attention" : "all clear"}
+          accent={openIncidents.length > 0 ? "var(--color-err)" : "var(--color-ok)"}
         />
         <StatTile
           label="Checks / min"
           value={checksPerMin > 0 && checksPerMin < 1 ? "<1" : Math.round(checksPerMin)}
-          sub="probe volume"
+          sub={`${regionCount} regions`}
         />
-        <StatTile label="Regions" value={regionCount} sub="in use" />
       </div>
 
       {/* every monitor, worst-first, filterable */}
@@ -313,6 +322,15 @@ function OverviewPage() {
         {shown.length === 0 ? (
           <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-5 text-[13px] text-[var(--color-fg-muted)] shadow-[var(--shadow-xs)]">
             No {filter === "all" ? "" : filter + " "}monitors.
+            {filter !== "all" && (
+              <button
+                type="button"
+                onClick={() => setFilter("all")}
+                className="ml-1 text-[var(--color-link)] hover:underline"
+              >
+                Show all
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)]">
@@ -322,24 +340,6 @@ function OverviewPage() {
           </div>
         )}
       </section>
-
-      {!needsAttention && (
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <SectionHead className="mb-0">Open incidents</SectionHead>
-            <Link
-              to="/$wid/incidents"
-              params={{ wid }}
-              className="inline-flex items-center gap-1 text-[12px] text-[var(--color-link)] no-underline hover:underline"
-            >
-              View all <ArrowRight size={12} />
-            </Link>
-          </div>
-          <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-5 text-[13px] text-[var(--color-fg-muted)] shadow-[var(--shadow-xs)]">
-            No open incidents.
-          </div>
-        </section>
-      )}
     </div>
   );
 }
@@ -416,6 +416,51 @@ function CopyLinkButton({ url }: { url: string }) {
       {copied ? <CheckIcon size={13} /> : <Copy size={13} />}
       {copied ? "Copied" : "Copy link"}
     </Button>
+  );
+}
+
+/** Thin segmented bar showing the proportion of monitors in each status. */
+function StatusBreakdownBar({
+  counts,
+  total,
+  className,
+}: {
+  counts: Record<MonitorStatus, number>;
+  total: number;
+  className?: string;
+}) {
+  const segments: { status: MonitorStatus; n: number; color: string }[] = (
+    [
+      { status: "up", n: counts.up, color: STATUS_COLOR.up },
+      { status: "degraded", n: counts.degraded, color: STATUS_COLOR.degraded },
+      { status: "down", n: counts.down, color: STATUS_COLOR.down },
+      { status: "unknown", n: counts.unknown, color: STATUS_COLOR.unknown },
+    ] as { status: MonitorStatus; n: number; color: string }[]
+  ).filter((s) => s.n > 0);
+
+  if (segments.length === 0) return null;
+
+  return (
+    <div className={cn("flex items-center gap-2", className)}>
+      <div className="flex h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--color-bg-row)]">
+        {segments.map((s) => (
+          <div
+            key={s.status}
+            className="h-full transition-all duration-500"
+            style={{ width: `${(s.n / total) * 100}%`, background: s.color }}
+            title={`${s.n} ${s.status}`}
+          />
+        ))}
+      </div>
+      <div className="flex shrink-0 items-center gap-2.5 text-[11px] text-[var(--color-fg-dim)] tabular">
+        {segments.map((s) => (
+          <span key={s.status} className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />
+            {s.n}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
