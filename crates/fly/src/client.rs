@@ -1,8 +1,10 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
-use deploy::{DeployError, DeployResult};
+use chrono::{DateTime, FixedOffset, Utc};
+use deploy::{DeployError, DeployResult, LogLine};
 use reqwest::{Method, StatusCode};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_json::{json, Value};
 use url::Url;
 
 use crate::models::{
@@ -10,6 +12,7 @@ use crate::models::{
 };
 
 const DEFAULT_API_HOSTNAME: &str = "https://api.machines.dev";
+const DEFAULT_PLATFORM_API_HOSTNAME: &str = "https://api.fly.io";
 const DEFAULT_USER_AGENT: &str = "produktive-fly/0.1";
 
 #[derive(Clone, Debug)]
@@ -67,6 +70,21 @@ impl Fly {
 
     pub fn app_url(&self, app_name: &str) -> String {
         format!("https://{app_name}.fly.dev")
+    }
+
+    pub async fn ensure_public_ips(&self, app_name: &str) -> DeployResult<Vec<AllocatedIpAddress>> {
+        let mut allocated = Vec::new();
+        for kind in ["v6", "shared_v4"] {
+            match self.allocate_ip(app_name, kind).await {
+                Ok(Some(ip)) => allocated.push(ip),
+                Ok(None) => {}
+                Err(DeployError::Provider(message))
+                    if is_already_allocated_error(&message)
+                        || is_not_allocatable_error(&message) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(allocated)
     }
 
     pub async fn ensure_app(&self, app_name: &str, network: &str) -> DeployResult<AppResponse> {
@@ -139,6 +157,121 @@ impl Fly {
         .map(|_| ())
     }
 
+    pub async fn logs(
+        &self,
+        app_name: &str,
+        instance: Option<&str>,
+        limit: u16,
+    ) -> DeployResult<Vec<LogLine>> {
+        let mut url = Url::parse(&format!(
+            "{DEFAULT_PLATFORM_API_HOSTNAME}/api/v1/apps/{app_name}/logs"
+        ))
+        .map_err(|error| DeployError::Config(format!("invalid Fly logs URL: {error}")))?;
+        {
+            let mut query = url.query_pairs_mut();
+            if let Some(instance) = instance.filter(|value| !value.trim().is_empty()) {
+                query.append_pair("instance", instance);
+            }
+            query.append_pair("limit", &limit.clamp(1, 500).to_string());
+        }
+
+        let response = self
+            .inner
+            .http
+            .get(url)
+            .header("Authorization", self.inner.api_token.as_str())
+            .send()
+            .await
+            .map_err(|error| DeployError::Transport(error.to_string()))?;
+        let status = response.status();
+        let text = response
+            .text()
+            .await
+            .map_err(|error| DeployError::Transport(error.to_string()))?;
+        if !status.is_success() {
+            return Err(DeployError::Provider(format!(
+                "Fly logs API {status}: {text}"
+            )));
+        }
+        let payload: Value =
+            serde_json::from_str(&text).map_err(|error| DeployError::Decode(error.to_string()))?;
+        Ok(parse_log_payload(&payload))
+    }
+
+    async fn allocate_ip(
+        &self,
+        app_name: &str,
+        kind: &str,
+    ) -> DeployResult<Option<AllocatedIpAddress>> {
+        let data: AllocateIpData = self
+            .graphql(
+                r#"
+                mutation AllocateIp($input: AllocateIPAddressInput!) {
+                    allocateIpAddress(input: $input) {
+                        ipAddress {
+                            id
+                            address
+                            type
+                        }
+                    }
+                }
+                "#,
+                &AllocateIpVariables {
+                    input: AllocateIpInput {
+                        app_id: app_name,
+                        kind,
+                    },
+                },
+            )
+            .await?;
+        Ok(data
+            .allocate_ip_address
+            .and_then(|payload| payload.ip_address))
+    }
+
+    async fn graphql<V, T>(&self, query: &str, variables: &V) -> DeployResult<T>
+    where
+        V: Serialize,
+        T: DeserializeOwned,
+    {
+        let url = Url::parse(&format!("{DEFAULT_PLATFORM_API_HOSTNAME}/graphql"))
+            .map_err(|error| DeployError::Config(format!("invalid Fly GraphQL URL: {error}")))?;
+        let response = self
+            .inner
+            .http
+            .post(url)
+            .bearer_auth(&self.inner.api_token)
+            .json(&GraphqlRequest { query, variables })
+            .send()
+            .await
+            .map_err(|error| DeployError::Transport(error.to_string()))?;
+        let status = response.status();
+        let text = response
+            .text()
+            .await
+            .map_err(|error| DeployError::Transport(error.to_string()))?;
+        if !status.is_success() {
+            return Err(DeployError::Provider(format!(
+                "Fly GraphQL {status}: {text}"
+            )));
+        }
+        let payload: GraphqlResponse<T> =
+            serde_json::from_str(&text).map_err(|error| DeployError::Decode(error.to_string()))?;
+        if let Some(errors) = payload.errors.filter(|errors| !errors.is_empty()) {
+            let message = errors
+                .into_iter()
+                .map(|error| error.message)
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(DeployError::Provider(format!(
+                "Fly GraphQL error: {message}"
+            )));
+        }
+        payload
+            .data
+            .ok_or_else(|| DeployError::Decode("Fly GraphQL response missing data".into()))
+    }
+
     async fn request<B, T>(&self, method: Method, path: &str, body: Option<B>) -> DeployResult<T>
     where
         B: Serialize,
@@ -184,6 +317,172 @@ impl Fly {
         }
         serde_json::from_str(&text).map_err(|error| DeployError::Decode(error.to_string()))
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AllocatedIpAddress {
+    pub id: Option<String>,
+    pub address: Option<String>,
+    #[serde(rename = "type")]
+    pub kind: Option<String>,
+}
+
+#[derive(Serialize)]
+struct GraphqlRequest<'a, V> {
+    query: &'a str,
+    variables: &'a V,
+}
+
+#[derive(Deserialize)]
+struct GraphqlResponse<T> {
+    data: Option<T>,
+    errors: Option<Vec<GraphqlError>>,
+}
+
+#[derive(Deserialize)]
+struct GraphqlError {
+    message: String,
+}
+
+#[derive(Serialize)]
+struct AllocateIpVariables<'a> {
+    input: AllocateIpInput<'a>,
+}
+
+#[derive(Serialize)]
+struct AllocateIpInput<'a> {
+    #[serde(rename = "appId")]
+    app_id: &'a str,
+    #[serde(rename = "type")]
+    kind: &'a str,
+}
+
+#[derive(Deserialize)]
+struct AllocateIpData {
+    #[serde(rename = "allocateIpAddress")]
+    allocate_ip_address: Option<AllocateIpPayload>,
+}
+
+#[derive(Deserialize)]
+struct AllocateIpPayload {
+    #[serde(rename = "ipAddress")]
+    ip_address: Option<AllocatedIpAddress>,
+}
+
+fn is_already_allocated_error(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.contains("already") && (message.contains("allocated") || message.contains("exists"))
+}
+
+fn is_not_allocatable_error(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    message.contains("unavailable") && message.contains("shared_v4")
+}
+
+fn parse_log_payload(payload: &Value) -> Vec<LogLine> {
+    let Some(rows) = payload.get("data").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    rows.iter().filter_map(parse_log_entry).collect()
+}
+
+fn parse_log_entry(row: &Value) -> Option<LogLine> {
+    let attributes = row.get("attributes").unwrap_or(row);
+    let message = string_at(
+        attributes,
+        &[
+            &["message"],
+            &["msg"],
+            &["text"],
+            &["log"],
+            &["line"],
+            &["event", "message"],
+        ],
+    )?;
+    let timestamp = value_at(
+        attributes,
+        &[
+            &["timestamp"],
+            &["time"],
+            &["created_at"],
+            &["createdAt"],
+            &["event", "timestamp"],
+        ],
+    )
+    .and_then(parse_timestamp)
+    .unwrap_or_else(|| Utc::now().fixed_offset());
+    let stream = string_at(
+        attributes,
+        &[&["stream"], &["source"], &["level"], &["event", "provider"]],
+    )
+    .unwrap_or_else(|| "stdout".into());
+    let provider_instance_id = string_at(
+        attributes,
+        &[
+            &["instance"],
+            &["instance_id"],
+            &["instanceId"],
+            &["machine"],
+            &["machine_id"],
+            &["machineId"],
+        ],
+    );
+    let source_id = string_at(row, &[&["id"]]).or_else(|| {
+        Some(format!(
+            "{}:{}:{}",
+            timestamp.timestamp_nanos_opt().unwrap_or_default(),
+            provider_instance_id.as_deref().unwrap_or("app"),
+            message
+        ))
+    });
+
+    let mut metadata = BTreeMap::new();
+    for key in ["region", "level", "source", "stream"] {
+        if let Some(value) = attributes.get(key) {
+            metadata.insert(key.to_owned(), value.clone());
+        }
+    }
+    if let Some(instance) = provider_instance_id.as_ref() {
+        metadata.insert("provider_instance_id".into(), json!(instance));
+    }
+
+    Some(LogLine {
+        timestamp,
+        stream,
+        message,
+        source_id,
+        provider_instance_id,
+        metadata: Value::Object(metadata.into_iter().collect()),
+    })
+}
+
+fn value_at<'a>(value: &'a Value, paths: &[&[&str]]) -> Option<&'a Value> {
+    paths.iter().find_map(|path| {
+        let mut cursor = value;
+        for segment in *path {
+            cursor = cursor.get(*segment)?;
+        }
+        Some(cursor)
+    })
+}
+
+fn string_at(value: &Value, paths: &[&[&str]]) -> Option<String> {
+    value_at(value, paths)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn parse_timestamp(value: &Value) -> Option<DateTime<FixedOffset>> {
+    if let Some(raw) = value.as_str() {
+        return DateTime::parse_from_rfc3339(raw).ok();
+    }
+    let nanos = value.as_i64()?;
+    let seconds = nanos.div_euclid(1_000_000_000);
+    let subsecond_nanos = nanos.rem_euclid(1_000_000_000) as u32;
+    DateTime::<Utc>::from_timestamp(seconds, subsecond_nanos)
+        .map(|timestamp| timestamp.fixed_offset())
 }
 
 impl FlyBuilder {

@@ -105,7 +105,7 @@ async fn main() -> Result<()> {
 
     if let Some(dir) = config.web_dist_dir.as_ref() {
         let index = dir.join("index.html");
-        let serve_dir = ServeDir::new(dir).not_found_service(ServeFile::new(&index));
+        let serve_dir = ServeDir::new(dir).fallback(ServeFile::new(&index));
         tracing::info!(path = %dir.display(), "serving web frontend");
         // Public status-page HTML goes through per-workspace <title>/OG meta
         // injection; everything else falls through to the static dist dir.

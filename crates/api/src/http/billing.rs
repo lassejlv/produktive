@@ -772,9 +772,15 @@ async fn build_balances(
             continue;
         };
         let usage = match feature {
-            "events" => {
-                Some(crate::billing::effective_events_consumed(state, workspace_id, cstate, &ent.meter_id).await?)
-            }
+            "events" => Some(
+                crate::billing::effective_events_consumed(
+                    state,
+                    workspace_id,
+                    cstate,
+                    &ent.meter_id,
+                )
+                .await?,
+            ),
             "monitors" => Some(billing_monitor_count(state, workspace_id).await?),
             "members" => Some(billing_member_count(state, workspace_id).await?),
             _ => None,

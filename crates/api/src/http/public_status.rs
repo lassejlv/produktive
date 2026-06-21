@@ -428,8 +428,8 @@ pub async fn summary_by_host(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> ApiResult<Response> {
-    let domain = host_from_headers(&headers)
-        .ok_or_else(|| ApiError::not_found("status page not found"))?;
+    let domain =
+        host_from_headers(&headers).ok_or_else(|| ApiError::not_found("status page not found"))?;
     let ws = workspace_by_domain(&state, &domain).await?;
     let page_url = page_url_from_headers(&headers, &domain);
     summary_for_workspace(&state, ws, page_url).await
@@ -863,9 +863,7 @@ fn statuspage_scheduled_maintenance(
         "in_progress" | "monitoring" | "identified" | "investigating" => "in_progress",
         _ => "scheduled",
     };
-    let scheduled_until = incident
-        .resolved_at
-        .unwrap_or(incident.last_seen_at);
+    let scheduled_until = incident.resolved_at.unwrap_or(incident.last_seen_at);
     StatuspageScheduledMaintenance {
         id: incident.id.to_string(),
         name: incident.title.clone(),

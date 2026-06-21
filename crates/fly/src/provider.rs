@@ -51,6 +51,7 @@ impl DeployProvider for FlyProvider {
         let app_name = self.app_name(deployment);
         let network = self.network_name(deployment);
         let app = self.client.ensure_app(&app_name, &network).await?;
+        let public_ips = self.client.ensure_public_ips(&app_name).await?;
         Ok(ProviderService {
             provider: ProviderKind::Fly,
             provider_service_id: app.name,
@@ -58,6 +59,14 @@ impl DeployProvider for FlyProvider {
             metadata: json!({
                 "fly_app_id": app.id,
                 "network": network,
+                "public_ips": public_ips
+                    .into_iter()
+                    .map(|ip| json!({
+                        "id": ip.id,
+                        "address": ip.address,
+                        "type": ip.kind,
+                    }))
+                    .collect::<Vec<_>>(),
                 "status": app.status,
                 "organization": app.organization,
             }),
@@ -198,8 +207,13 @@ impl DeployProvider for FlyProvider {
             .await
     }
 
-    async fn logs(&self, _query: &LogQuery) -> DeployResult<Vec<LogLine>> {
-        Ok(Vec::new())
+    async fn logs(&self, query: &LogQuery) -> DeployResult<Vec<LogLine>> {
+        let Some(app_name) = query.provider_service_id.as_deref() else {
+            return Ok(Vec::new());
+        };
+        self.client
+            .logs(app_name, query.provider_instance_id.as_deref(), query.limit)
+            .await
     }
 
     async fn metrics(&self, _query: &MetricQuery) -> DeployResult<Vec<MetricPoint>> {

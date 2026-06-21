@@ -165,7 +165,7 @@ pub struct DeployMetricPointView {
     pub requests: Option<f64>,
 }
 
-#[derive(Serialize, ToSchema)]
+#[derive(Serialize, FromQueryResult, ToSchema)]
 pub struct DeployLogLineView {
     pub timestamp: DateTime<FixedOffset>,
     pub level: String,
@@ -839,18 +839,30 @@ pub async fn list_logs(
     Query(q): Query<LimitQuery>,
 ) -> ApiResult<Json<Vec<DeployLogLineView>>> {
     ensure_service(&state, m.workspace.id, service_id).await?;
-    let events = event_rows(&state, m.workspace.id, service_id, q.limit.unwrap_or(100)).await?;
-    Ok(Json(
-        events
-            .into_iter()
-            .map(|event| DeployLogLineView {
-                timestamp: event.created_at,
-                level: event.level,
-                message: event.message,
-                data: event.data,
-            })
-            .collect(),
+    let rows = DeployLogLineView::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT observed_at AS timestamp,
+               CASE
+                   WHEN stream = 'stderr' THEN 'error'
+                   ELSE COALESCE(NULLIF(data->>'level', ''), stream)
+               END AS level,
+               message,
+               data
+        FROM deploy_log_lines
+        WHERE workspace_id = $1 AND service_id = $2
+        ORDER BY observed_at DESC
+        LIMIT $3
+        "#,
+        [
+            m.workspace.id.into(),
+            service_id.into(),
+            q.limit.unwrap_or(100).into(),
+        ],
     ))
+    .all(&state.db)
+    .await?;
+    Ok(Json(rows))
 }
 
 #[utoipa::path(

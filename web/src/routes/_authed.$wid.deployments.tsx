@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   Activity,
   ArrowLeft,
@@ -77,7 +77,8 @@ export const Route = createFileRoute("/_authed/$wid/deployments")({
 
 function DeploymentsIndexPage() {
   const { wid } = Route.useParams();
-  return <DeploymentsRoute wid={wid} />;
+  const { serviceId } = useParams({ strict: false }) as { serviceId?: string };
+  return <DeploymentsRoute wid={wid} serviceId={serviceId} />;
 }
 
 export function DeploymentsRoute({ wid, serviceId }: { wid: string; serviceId?: string }) {

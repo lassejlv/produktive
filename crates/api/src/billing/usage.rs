@@ -578,7 +578,11 @@ fn same_period(a: Option<DateTime<Utc>>, b: Option<DateTime<Utc>>) -> bool {
 
 /// Subtract a usage-reset baseline from raw Polar consumption, but only while the
 /// reset still applies to the current period (the meter resets next period).
-fn apply_events_baseline(consumed: f64, period_end: Option<DateTime<Utc>>, reset: &UsageReset) -> f64 {
+fn apply_events_baseline(
+    consumed: f64,
+    period_end: Option<DateTime<Utc>>,
+    reset: &UsageReset,
+) -> f64 {
     if same_period(reset.events_baseline_period_end, period_end) {
         (consumed - reset.events_consumed_baseline).max(0.0)
     } else {
@@ -694,7 +698,10 @@ mod tests {
             usage_reset_at: Some(period_end(5000)),
             ..UsageReset::default()
         };
-        assert_eq!(effective_window_start(start, end, &inside), period_end(5000));
+        assert_eq!(
+            effective_window_start(start, end, &inside),
+            period_end(5000)
+        );
         // A reset from a previous period (before this window) is ignored.
         let stale = UsageReset {
             usage_reset_at: Some(period_end(500)),

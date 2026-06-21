@@ -123,12 +123,17 @@ pub struct LogLine {
     pub timestamp: DateTime<FixedOffset>,
     pub stream: String,
     pub message: String,
+    pub source_id: Option<String>,
+    pub provider_instance_id: Option<String>,
+    pub metadata: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogQuery {
     pub service_id: Uuid,
     pub deployment_id: Option<Uuid>,
+    pub provider_service_id: Option<String>,
+    pub provider_instance_id: Option<String>,
     pub limit: u16,
 }
 

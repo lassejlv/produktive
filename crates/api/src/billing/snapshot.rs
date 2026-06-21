@@ -268,7 +268,9 @@ pub async fn load_usage_reset(state: &AppState, workspace_id: Uuid) -> ApiResult
     Ok(UsageReset {
         usage_reset_at: row.usage_reset_at.map(|d| d.with_timezone(&Utc)),
         events_consumed_baseline: row.events_consumed_baseline,
-        events_baseline_period_end: row.events_baseline_period_end.map(|d| d.with_timezone(&Utc)),
+        events_baseline_period_end: row
+            .events_baseline_period_end
+            .map(|d| d.with_timezone(&Utc)),
     })
 }
 
