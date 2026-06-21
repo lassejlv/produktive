@@ -24,7 +24,10 @@ import type {
   DeployMetricPoint,
   DeployRegistryCredential,
   DeployRegistryKind,
+  DeployResourcePreset,
   DeployService,
+  DeployServiceDomain,
+  DeployServiceVolume,
   IncidentUpdateStatus,
   CustomDomain,
   Incident,
@@ -540,7 +543,37 @@ export function useCreateDeployService(wid: string) {
       environment?: string;
       health_check_path?: string;
       region?: string;
+      resource_preset?: DeployResourcePreset;
     }) => api.post<DeployService>(`/workspaces/${wid}/deployments/services`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["deployments", wid] }),
+  });
+}
+
+export function useUpdateDeployService(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      serviceId,
+      resource_preset,
+    }: {
+      serviceId: string;
+      resource_preset: DeployResourcePreset;
+    }) =>
+      api.patch<DeployService>(`/workspaces/${wid}/deployments/services/${serviceId}`, {
+        resource_preset,
+      }),
+    onSuccess: (_service, input) => {
+      qc.invalidateQueries({ queryKey: ["deployments", wid, "services"] });
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "events"] });
+    },
+  });
+}
+
+export function useDeleteDeployService(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (serviceId: string) =>
+      api.del<OkResponse>(`/workspaces/${wid}/deployments/services/${serviceId}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["deployments", wid] }),
   });
 }
@@ -590,6 +623,108 @@ export function useStopDeployService(wid: string) {
     mutationFn: (serviceId: string) =>
       api.post<DeployService>(`/workspaces/${wid}/deployments/services/${serviceId}/stop`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["deployments", wid] }),
+  });
+}
+
+export const deployServiceVolumesQuery = (wid: string, serviceId: string) => ({
+  queryKey: ["deployments", wid, serviceId, "volumes"] as const,
+  queryFn: () =>
+    api.get<DeployServiceVolume[]>(`/workspaces/${wid}/deployments/services/${serviceId}/volumes`),
+  refetchInterval: 15_000,
+});
+
+export function useDeployServiceVolumes(wid: string, serviceId: string | null) {
+  return useQuery({ ...deployServiceVolumesQuery(wid, serviceId ?? ""), enabled: !!serviceId });
+}
+
+export function useCreateDeployServiceVolume(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      serviceId,
+      name,
+      mount_path,
+      size_gb,
+    }: {
+      serviceId: string;
+      name: string;
+      mount_path: string;
+      size_gb: number;
+    }) =>
+      api.post<DeployServiceVolume>(
+        `/workspaces/${wid}/deployments/services/${serviceId}/volumes`,
+        { name, mount_path, size_gb },
+      ),
+    onSuccess: (_volume, input) => {
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "volumes"] });
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "events"] });
+    },
+  });
+}
+
+export function useDeleteDeployServiceVolume(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ serviceId, volumeId }: { serviceId: string; volumeId: string }) =>
+      api.del<OkResponse>(
+        `/workspaces/${wid}/deployments/services/${serviceId}/volumes/${volumeId}`,
+      ),
+    onSuccess: (_response, input) => {
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "volumes"] });
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "events"] });
+    },
+  });
+}
+
+export const deployServiceDomainsQuery = (wid: string, serviceId: string) => ({
+  queryKey: ["deployments", wid, serviceId, "domains"] as const,
+  queryFn: () =>
+    api.get<DeployServiceDomain[]>(`/workspaces/${wid}/deployments/services/${serviceId}/domains`),
+  refetchInterval: 15_000,
+});
+
+export function useDeployServiceDomains(wid: string, serviceId: string | null) {
+  return useQuery({ ...deployServiceDomainsQuery(wid, serviceId ?? ""), enabled: !!serviceId });
+}
+
+export function useCreateDeployServiceDomain(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ serviceId, hostname }: { serviceId: string; hostname: string }) =>
+      api.post<DeployServiceDomain>(
+        `/workspaces/${wid}/deployments/services/${serviceId}/domains`,
+        { hostname },
+      ),
+    onSuccess: (_domain, input) => {
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "domains"] });
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "events"] });
+    },
+  });
+}
+
+export function useVerifyDeployServiceDomain(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ serviceId, domainId }: { serviceId: string; domainId: string }) =>
+      api.post<DeployServiceDomain>(
+        `/workspaces/${wid}/deployments/services/${serviceId}/domains/${domainId}/verify`,
+      ),
+    onSuccess: (_domain, input) =>
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "domains"] }),
+  });
+}
+
+export function useDeleteDeployServiceDomain(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ serviceId, domainId }: { serviceId: string; domainId: string }) =>
+      api.del<OkResponse>(
+        `/workspaces/${wid}/deployments/services/${serviceId}/domains/${domainId}`,
+      ),
+    onSuccess: (_response, input) => {
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "domains"] });
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "events"] });
+    },
   });
 }
 

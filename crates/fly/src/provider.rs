@@ -2,16 +2,17 @@ use std::collections::BTreeMap;
 
 use async_trait::async_trait;
 use deploy::{
-    provider_app_name, DeployProvider, DeployResult, DeploymentSpec, DeploymentStatus, LogLine,
-    LogQuery, MetricPoint, MetricQuery, ProviderDeployment, ProviderKind, ProviderService,
+    provider_app_name, DeployError, DeployProvider, DeployResult, DeploymentSpec, DeploymentStatus,
+    LogLine, LogQuery, MetricPoint, MetricQuery, ProviderDeployment, ProviderDomain, ProviderKind,
+    ProviderService, ProviderServiceRef, ProviderVolume, VolumeSpec,
 };
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::{
     client::Fly,
     models::{
-        CheckConfig, CreateMachineRequest, GuestConfig, MachineConfig, RestartConfig,
-        ServiceConfig, ServicePort,
+        CertificateResponse, CheckConfig, CreateMachineRequest, CreateVolumeRequest, GuestConfig,
+        MachineConfig, MachineMountConfig, RestartConfig, ServiceConfig, ServicePort,
     },
 };
 
@@ -36,8 +37,89 @@ impl FlyProvider {
         })
     }
 
+    fn service_app_name(&self, service: &ProviderServiceRef) -> String {
+        service.provider_service_id.clone().unwrap_or_else(|| {
+            provider_app_name(
+                self.client.app_name_prefix(),
+                service.workspace_id,
+                service.service_id,
+                &service.app_name,
+            )
+        })
+    }
+
     fn network_name(&self, deployment: &DeploymentSpec) -> String {
         format!("{}-network", self.app_name(deployment))
+    }
+
+    fn provider_domain(&self, certificate: CertificateResponse) -> ProviderDomain {
+        let status = normalize_certificate_status(&certificate);
+        let configured = certificate.configured.unwrap_or(false) || status == "active";
+        ProviderDomain {
+            provider: ProviderKind::Fly,
+            provider_domain_id: Some(certificate.hostname.clone()),
+            hostname: certificate.hostname.clone(),
+            status,
+            configured,
+            dns_requirements: certificate.dns_requirements.unwrap_or_else(|| json!({})),
+            validation_errors: certificate.validation_errors.unwrap_or_else(|| json!([])),
+            metadata: json!({
+                "hostname": certificate.hostname,
+                "configured": certificate.configured,
+                "acme_requested": certificate.acme_requested,
+                "provider_status": certificate.status,
+                "dns_provider": certificate.dns_provider,
+                "rate_limited_until": certificate.rate_limited_until,
+                "certificates": certificate.certificates,
+                "validation": certificate.validation,
+                "dns_records": certificate.dns_records,
+            }),
+        }
+    }
+
+    async fn ensure_volume(
+        &self,
+        app_name: &str,
+        volume: &VolumeSpec,
+    ) -> DeployResult<ProviderVolume> {
+        if let Some(provider_volume_id) = volume.provider_volume_id.as_deref() {
+            return Ok(ProviderVolume {
+                volume_id: volume.id,
+                provider_volume_id: provider_volume_id.to_owned(),
+                name: volume.name.clone(),
+                mount_path: volume.mount_path.clone(),
+                region: volume.region.clone(),
+                size_gb: volume.size_gb,
+                metadata: json!({ "volume_id": provider_volume_id, "reused": true }),
+            });
+        }
+
+        let created = self
+            .client
+            .create_volume(
+                app_name,
+                &CreateVolumeRequest {
+                    name: volume.name.clone(),
+                    region: volume.region.clone(),
+                    size_gb: volume.size_gb,
+                },
+            )
+            .await?;
+        Ok(ProviderVolume {
+            volume_id: volume.id,
+            provider_volume_id: created.id.clone(),
+            name: created.name.unwrap_or_else(|| volume.name.clone()),
+            mount_path: volume.mount_path.clone(),
+            region: created.region.unwrap_or_else(|| volume.region.clone()),
+            size_gb: created.size_gb.unwrap_or(volume.size_gb),
+            metadata: json!({
+                "volume_id": created.id,
+                "state": created.state,
+                "created_at": created.created_at,
+                "attached_machine_id": created.attached_machine_id,
+                "host_status": created.host_status,
+            }),
+        })
     }
 }
 
@@ -74,11 +156,34 @@ impl DeployProvider for FlyProvider {
     }
 
     async fn deploy_image(&self, deployment: &DeploymentSpec) -> DeployResult<ProviderDeployment> {
+        if deployment.volumes.len() > 1 {
+            return Err(DeployError::Validation(
+                "Fly Machines support only one volume mount per machine".into(),
+            ));
+        }
+
         let service = self.ensure_service(deployment).await?;
         let app_name = service.provider_service_id.clone();
         let mut env = deployment.env.clone();
         env.extend(deployment.secrets.clone());
         env.insert("PORT".into(), deployment.internal_port.to_string());
+
+        let mut provider_volumes = Vec::new();
+        let mut mounts = Vec::new();
+        for volume in &deployment.volumes {
+            if volume.region != deployment.region {
+                return Err(DeployError::Validation(format!(
+                    "volume {} is in {}, but service deploy region is {}",
+                    volume.name, volume.region, deployment.region
+                )));
+            }
+            let provider_volume = self.ensure_volume(&app_name, volume).await?;
+            mounts.push(MachineMountConfig {
+                volume: provider_volume.provider_volume_id.clone(),
+                path: provider_volume.mount_path.clone(),
+            });
+            provider_volumes.push(provider_volume);
+        }
 
         let mut checks = BTreeMap::new();
         checks.insert(
@@ -117,6 +222,7 @@ impl DeployProvider for FlyProvider {
                     cpus: deployment.resource_preset.cpus(),
                     memory_mb: deployment.resource_preset.memory_mb(),
                 },
+                mounts,
                 services: vec![ServiceConfig {
                     protocol: "tcp".into(),
                     internal_port: deployment.internal_port,
@@ -148,6 +254,7 @@ impl DeployProvider for FlyProvider {
             status: DeploymentStatus::from_provider_state(machine.state.as_deref().unwrap_or("")),
             image_digest: machine.image_ref.and_then(|image| image.digest),
             url: Some(self.client.app_url(&app_name)),
+            volumes: provider_volumes.clone(),
             metadata: json!({
                 "app_name": app_name,
                 "machine_id": machine_id,
@@ -157,6 +264,7 @@ impl DeployProvider for FlyProvider {
                 "name": machine.name,
                 "created_at": machine.created_at,
                 "updated_at": machine.updated_at,
+                "volumes": provider_volumes,
                 "config": machine.config,
             }),
         })
@@ -175,6 +283,7 @@ impl DeployProvider for FlyProvider {
                 status: DeploymentStatus::Queued,
                 image_digest: deployment.image_digest.clone(),
                 url: Some(self.client.app_url(&app_name)),
+                volumes: Vec::new(),
                 metadata: json!({ "app_name": app_name }),
             });
         };
@@ -187,6 +296,7 @@ impl DeployProvider for FlyProvider {
             status: DeploymentStatus::from_provider_state(machine.state.as_deref().unwrap_or("")),
             image_digest: machine.image_ref.and_then(|image| image.digest),
             url: Some(self.client.app_url(&app_name)),
+            volumes: Vec::new(),
             metadata: json!({
                 "app_name": app_name,
                 "machine_id": refreshed_machine_id,
@@ -207,6 +317,87 @@ impl DeployProvider for FlyProvider {
             .await
     }
 
+    async fn destroy_deployment(&self, deployment: &DeploymentSpec) -> DeployResult<()> {
+        let Some(machine_id) = deployment.provider_instance_id.as_deref() else {
+            return Ok(());
+        };
+        match self
+            .client
+            .delete_machine(&self.app_name(deployment), machine_id)
+            .await
+        {
+            Ok(()) | Err(deploy::DeployError::NotFound(_)) => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn destroy_service(&self, service: &ProviderServiceRef) -> DeployResult<()> {
+        let app_name = self.service_app_name(service);
+        match self.client.delete_app(&app_name).await {
+            Ok(()) | Err(deploy::DeployError::NotFound(_)) => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn delete_volume(
+        &self,
+        service: &ProviderServiceRef,
+        provider_volume_id: &str,
+    ) -> DeployResult<()> {
+        let app_name = self.service_app_name(service);
+        match self
+            .client
+            .delete_volume(&app_name, provider_volume_id)
+            .await
+        {
+            Ok(()) | Err(deploy::DeployError::NotFound(_)) => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn ensure_domain(
+        &self,
+        service: &ProviderServiceRef,
+        hostname: &str,
+    ) -> DeployResult<ProviderDomain> {
+        let app_name = self.service_app_name(service);
+        match self
+            .client
+            .request_acme_certificate(&app_name, hostname)
+            .await
+        {
+            Ok(certificate) => Ok(self.provider_domain(certificate)),
+            Err(deploy::DeployError::Provider(message))
+                if message.contains("409") || message.to_ascii_lowercase().contains("already") =>
+            {
+                self.check_domain(service, hostname).await
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn check_domain(
+        &self,
+        service: &ProviderServiceRef,
+        hostname: &str,
+    ) -> DeployResult<ProviderDomain> {
+        let app_name = self.service_app_name(service);
+        let certificate = self.client.check_certificate(&app_name, hostname).await?;
+        Ok(self.provider_domain(certificate))
+    }
+
+    async fn delete_domain(
+        &self,
+        service: &ProviderServiceRef,
+        hostname: &str,
+    ) -> DeployResult<()> {
+        let app_name = self.service_app_name(service);
+        match self.client.delete_certificate(&app_name, hostname).await {
+            Ok(()) | Err(deploy::DeployError::NotFound(_)) => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
+
     async fn logs(&self, query: &LogQuery) -> DeployResult<Vec<LogLine>> {
         let Some(app_name) = query.provider_service_id.as_deref() else {
             return Ok(Vec::new());
@@ -216,8 +407,41 @@ impl DeployProvider for FlyProvider {
             .await
     }
 
-    async fn metrics(&self, _query: &MetricQuery) -> DeployResult<Vec<MetricPoint>> {
-        Ok(Vec::new())
+    async fn metrics(&self, query: &MetricQuery) -> DeployResult<Vec<MetricPoint>> {
+        let Some(app_name) = query.provider_service_id.as_deref() else {
+            return Ok(Vec::new());
+        };
+        self.client.metrics(app_name, query.from, query.to).await
+    }
+}
+
+fn normalize_certificate_status(certificate: &CertificateResponse) -> String {
+    let provider_status = certificate
+        .status
+        .as_deref()
+        .unwrap_or("pending_validation")
+        .trim()
+        .to_ascii_lowercase();
+    if certificate.configured.unwrap_or(false) || provider_status == "active" {
+        "active".into()
+    } else if matches!(provider_status.as_str(), "failed" | "error") {
+        "failed".into()
+    } else if provider_status.is_empty() {
+        "pending_validation".into()
+    } else if has_validation_errors(certificate.validation_errors.as_ref()) {
+        "pending_validation".into()
+    } else {
+        provider_status
+    }
+}
+
+fn has_validation_errors(value: Option<&Value>) -> bool {
+    match value {
+        Some(Value::Array(values)) => !values.is_empty(),
+        Some(Value::Null) | None => false,
+        Some(Value::Object(values)) => !values.is_empty(),
+        Some(Value::String(value)) => !value.trim().is_empty(),
+        Some(_) => true,
     }
 }
 
@@ -251,10 +475,65 @@ mod tests {
             health_check_path: "/health".into(),
             region: "fra".into(),
             resource_preset: ResourcePreset::PreviewSmall,
+            volumes: Vec::new(),
             env: BTreeMap::new(),
             secrets: BTreeMap::new(),
         };
 
         assert_eq!(provider.app_name(&deployment), "prd-018f18e0-018f18e0-api");
+    }
+
+    #[tokio::test]
+    async fn rejects_multiple_volumes_before_provider_calls() {
+        let fly = Fly::builder()
+            .api_token("token")
+            .org_slug("personal")
+            .app_name_prefix("prd")
+            .build()
+            .unwrap();
+        let provider = FlyProvider::new(fly);
+        let mut deployment = DeploymentSpec {
+            workspace_id: Uuid::parse_str("018f18e0-0000-7000-8000-000000000000").unwrap(),
+            service_id: Uuid::parse_str("018f18e0-1111-7000-8000-000000000000").unwrap(),
+            deployment_id: Uuid::now_v7(),
+            provider_service_id: None,
+            provider_instance_id: None,
+            app_name: "api".into(),
+            image: "ghcr.io/acme/api:latest".into(),
+            image_digest: None,
+            internal_port: 3000,
+            environment: "production".into(),
+            health_check_path: "/health".into(),
+            region: "fra".into(),
+            resource_preset: ResourcePreset::PreviewSmall,
+            volumes: Vec::new(),
+            env: BTreeMap::new(),
+            secrets: BTreeMap::new(),
+        };
+        deployment.volumes = vec![
+            VolumeSpec {
+                id: Uuid::now_v7(),
+                provider_volume_id: None,
+                name: "data".into(),
+                mount_path: "/data".into(),
+                region: "fra".into(),
+                size_gb: 1,
+            },
+            VolumeSpec {
+                id: Uuid::now_v7(),
+                provider_volume_id: None,
+                name: "cache".into(),
+                mount_path: "/cache".into(),
+                region: "fra".into(),
+                size_gb: 1,
+            },
+        ];
+
+        let error = provider.deploy_image(&deployment).await.unwrap_err();
+        assert!(matches!(
+            error,
+            DeployError::Validation(message)
+                if message == "Fly Machines support only one volume mount per machine"
+        ));
     }
 }

@@ -2,20 +2,30 @@ import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-r
 import {
   Activity,
   ArrowLeft,
+  CheckCircle2,
+  Copy,
+  Cpu,
+  Download,
   ExternalLink,
   Globe,
+  HardDrive,
   KeyRound,
   Lock,
   MapPin,
+  MemoryStick,
+  Network,
   Plus,
   Rocket,
   RotateCcw,
   ScrollText,
   Server,
+  Settings,
   Square,
   Terminal,
+  Trash2,
 } from "lucide-react";
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { ChartTooltip, Grid, Line, LineChart, XAxis } from "#/charts";
 import { Button } from "#/components/ui/button";
 import { ScrollArea } from "#/components/ui/scroll-area";
 import { Skeleton } from "#/components/ui/skeleton";
@@ -23,7 +33,6 @@ import { Dialog, DialogClose, DialogContent } from "../components/Dialog";
 import { EmptyState } from "../components/EmptyState";
 import { PageActions } from "../components/PageLayout";
 import { Segmented } from "../components/Segmented";
-import { StatTile } from "../components/StatTile";
 import { Spinner } from "#/components/ui/spinner";
 import { cn } from "#/lib/cn";
 import { DEPLOYMENTS_ENABLED } from "#/lib/features";
@@ -38,29 +47,53 @@ import { toast } from "#/lib/toast";
 import {
   deployAccessQuery,
   useCreateDeployCredential,
+  useCreateDeployServiceVolume,
+  useCreateDeployServiceDomain,
   useCreateDeployService,
   useCreateDeployment,
+  useDeleteDeployService,
+  useDeleteDeployServiceVolume,
   useDeployAccess,
   useDeployCredentials,
   useDeployEvents,
   useDeployLogs,
   useDeployMetrics,
+  useDeployServiceDomains,
+  useDeployServiceVolumes,
   useDeployServices,
   useDeployments,
+  useDeleteDeployServiceDomain,
   useRequestDeployAccess,
   useRollbackDeployment,
   useStopDeployService,
+  useUpdateDeployService,
+  useVerifyDeployServiceDomain,
 } from "../lib/queries";
 import type {
   DeployAccessStatus,
   Deployment,
+  DeployMetricPoint,
   DeployRegistryCredential,
   DeployRegistryKind,
+  DeployResourcePreset,
+  DeployServiceDomain,
   DeployService,
+  DeployServiceVolume,
   DeployStatus,
 } from "../lib/types";
 
-type DetailTab = "deployments" | "events" | "logs" | "metrics";
+type DetailTab = "deployments" | "events" | "logs" | "metrics" | "domains" | "settings";
+type MetricChartKind = "cpu" | "memory" | "requests";
+
+const RESOURCE_PRESETS: Array<{
+  value: DeployResourcePreset;
+  label: string;
+  detail: string;
+}> = [
+  { value: "preview_small", label: "Small", detail: "1 shared CPU / 512 MB" },
+  { value: "preview_medium", label: "Medium", detail: "1 shared CPU / 1 GB" },
+  { value: "preview_large", label: "Large", detail: "2 shared CPUs / 2 GB" },
+];
 
 const fieldControlClass =
   "w-full rounded-[var(--radius-md)] border border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] px-3 text-[13px] text-[var(--color-fg)] shadow-[var(--shadow-xs)] outline-none transition-[border-color,box-shadow] focus:border-[var(--color-accent)] focus:shadow-[var(--ring-accent)]";
@@ -364,7 +397,7 @@ function ServiceCard({ wid, service }: { wid: string; service: DeployService }) 
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-2">
-        <CardMetric label="Preset" value={service.resource_preset} />
+        <CardMetric label="Compute" value={resourcePresetLabel(service.resource_preset)} />
         <CardMetric
           label="Health"
           value={service.health_check_path}
@@ -427,7 +460,7 @@ function ServiceDetailPage({ wid, service }: { wid: string; service: DeployServi
             </span>
             <span>{service.environment}</span>
             <span className="mono">:{service.internal_port}</span>
-            <span>{service.resource_preset}</span>
+            <span>{resourcePresetDetail(service.resource_preset)}</span>
             {service.url && (
               <span className="inline-flex items-center gap-1.5">
                 <Globe size={12} className="text-[var(--color-fg-dim)]" />
@@ -504,6 +537,8 @@ function ServiceDetailPage({ wid, service }: { wid: string; service: DeployServi
             { value: "events", label: "Events", icon: ScrollText },
             { value: "logs", label: "Logs", icon: Terminal },
             { value: "metrics", label: "Metrics", icon: Activity },
+            { value: "domains", label: "Domains", icon: Globe },
+            { value: "settings", label: "Settings", icon: Settings },
           ]}
         />
         <span className="mono text-[11px] text-[var(--color-fg-dim)]">
@@ -517,6 +552,8 @@ function ServiceDetailPage({ wid, service }: { wid: string; service: DeployServi
           {tab === "events" && <EventsPanel wid={wid} service={service} />}
           {tab === "logs" && <LogsPanel wid={wid} service={service} />}
           {tab === "metrics" && <MetricsPanel wid={wid} service={service} />}
+          {tab === "domains" && <DomainsPanel wid={wid} service={service} />}
+          {tab === "settings" && <SettingsPanel wid={wid} service={service} />}
         </div>
       </div>
     </>
@@ -585,16 +622,16 @@ function EventsPanel({ wid, service }: { wid: string; service: DeployService }) 
     );
   }
   return (
-    <LogStream>
-      {events.data.map((event) => (
-        <LogLine
-          key={event.id}
-          level={event.level}
-          message={event.message}
-          timestamp={event.created_at}
-        />
-      ))}
-    </LogStream>
+    <LogConsole
+      title="Lifecycle events"
+      icon={ScrollText}
+      lines={events.data.map((event) => ({
+        id: event.id,
+        level: event.level,
+        message: event.message,
+        timestamp: event.created_at,
+      }))}
+    />
   );
 }
 
@@ -611,30 +648,48 @@ function LogsPanel({ wid, service }: { wid: string; service: DeployService }) {
     );
   }
   return (
-    <LogStream>
-      {logs.data.map((line, index) => (
-        <LogLine
-          key={`${line.timestamp}-${index}`}
-          level={line.level}
-          message={line.message}
-          timestamp={line.timestamp}
-        />
-      ))}
-    </LogStream>
+    <LogConsole
+      title="Runtime logs"
+      icon={Terminal}
+      lines={logs.data.map((line, index) => ({
+        id: `${line.timestamp}-${index}`,
+        level: line.level,
+        message: line.message,
+        timestamp: line.timestamp,
+      }))}
+    />
   );
 }
 
+const METRIC_TILES: Array<{ kind: MetricChartKind; label: string; icon: typeof Cpu }> = [
+  { kind: "cpu", label: "CPU", icon: Cpu },
+  { kind: "memory", label: "Memory", icon: MemoryStick },
+  { kind: "requests", label: "Requests", icon: Network },
+];
+
 function MetricsPanel({ wid, service }: { wid: string; service: DeployService }) {
   const metrics = useDeployMetrics(wid, service.id);
+  const [chartKind, setChartKind] = useState<MetricChartKind>("cpu");
+
   if (metrics.isLoading) {
     return (
-      <div className="grid gap-3 sm:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <StatTile key={index} label="Loading" value="—" loading />
-        ))}
+      <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
+        <div className="grid grid-cols-3 divide-x divide-[var(--color-border)] border-b border-[var(--color-border)]">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="space-y-2 px-3.5 py-3">
+              <Skeleton className="h-2.5 w-14" />
+              <Skeleton className="h-5 w-16" />
+              <Skeleton className="h-2.5 w-12" />
+            </div>
+          ))}
+        </div>
+        <div className="p-3">
+          <MetricsLineChart points={[]} metric="cpu" loading />
+        </div>
       </div>
     );
   }
+
   if (!metrics.data?.length) {
     return (
       <PanelEmpty
@@ -644,68 +699,983 @@ function MetricsPanel({ wid, service }: { wid: string; service: DeployService })
       />
     );
   }
-  const latest = metrics.data[metrics.data.length - 1];
+
+  const points = metrics.data;
+  const lastBucket = points[points.length - 1].bucket_start;
+  const selected = metricStats(points, chartKind);
+
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
-      <StatTile
-        label="CPU"
-        value={latest.cpu_percent == null ? "—" : `${latest.cpu_percent.toFixed(1)}%`}
-        accent={
-          latest.cpu_percent != null && latest.cpu_percent >= 80
-            ? "var(--color-warn)"
-            : undefined
-        }
-        sub={`bucket ${lastSeen(latest.bucket_start)}`}
-      />
-      <StatTile
-        label="Memory"
-        value={latest.memory_mb == null ? "—" : `${latest.memory_mb.toFixed(0)} MB`}
-        sub={`bucket ${lastSeen(latest.bucket_start)}`}
-      />
-      <StatTile
-        label="Requests"
-        value={latest.requests == null ? "—" : latest.requests.toFixed(0)}
-        sub={`${metrics.data.length} buckets`}
-      />
+    <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
+      <div className="grid grid-cols-3 divide-x divide-[var(--color-border)] border-b border-[var(--color-border)]">
+        {METRIC_TILES.map((tile) => {
+          const stats = metricStats(points, tile.kind);
+          const high = tile.kind === "cpu" && stats.latest != null && stats.latest >= 80;
+          return (
+            <MetricTile
+              key={tile.kind}
+              icon={tile.icon}
+              label={tile.label}
+              value={formatStat(stats.latest, tile.kind)}
+              sub={
+                stats.peak == null
+                  ? "no samples"
+                  : `peak ${formatMetricChartValue(stats.peak, tile.kind)}`
+              }
+              active={chartKind === tile.kind}
+              accent={high ? "var(--color-warn)" : undefined}
+              onClick={() => setChartKind(tile.kind)}
+            />
+          );
+        })}
+      </div>
+      <div className="p-3">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[12px] font-medium text-[var(--color-fg)]">
+            {metricChartLabel(chartKind)} over time
+          </span>
+          <span className="mono tabular text-[11px] text-[var(--color-fg-dim)]">
+            avg {formatStat(selected.avg, chartKind)} · {selected.samples} pts ·{" "}
+            {lastSeen(lastBucket)}
+          </span>
+        </div>
+        <MetricsLineChart points={points} metric={chartKind} />
+      </div>
     </div>
   );
 }
 
-function LogStream({ children }: { children: ReactNode }) {
+function MetricTile({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  active,
+  accent,
+  onClick,
+}: {
+  icon: typeof Cpu;
+  label: string;
+  value: string;
+  sub: string;
+  active: boolean;
+  accent?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "relative flex flex-col gap-1 px-3.5 py-3 text-left transition-colors",
+        active
+          ? "bg-[color-mix(in_srgb,var(--color-accent)_7%,transparent)]"
+          : "hover:bg-[var(--color-bg-row)]",
+      )}
+    >
+      <span className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
+        <Icon size={11} />
+        {label}
+      </span>
+      <span
+        className="tabular text-[19px] font-medium leading-none text-[var(--color-fg)]"
+        style={accent ? { color: accent } : undefined}
+      >
+        {value}
+      </span>
+      <span className="tabular text-[10px] text-[var(--color-fg-muted)]">{sub}</span>
+      {active && (
+        <span className="absolute inset-x-0 -bottom-px h-[2px] bg-[var(--color-accent)]" />
+      )}
+    </button>
+  );
+}
+
+interface MetricChartRow extends Record<string, unknown> {
+  date: Date;
+  value: number;
+  raw: number | null;
+}
+
+function MetricsLineChart({
+  points,
+  metric,
+  loading = false,
+}: {
+  points: DeployMetricPoint[];
+  metric: MetricChartKind;
+  loading?: boolean;
+}) {
+  const data = useMemo<MetricChartRow[]>(
+    () =>
+      points.map((point) => {
+        const raw = metricChartValue(point, metric);
+        return {
+          date: new Date(point.bucket_start),
+          value: raw ?? 0,
+          raw,
+        };
+      }),
+    [points, metric],
+  );
+
+  return (
+    <LineChart
+      data={data}
+      xDataKey="date"
+      aspectRatio=""
+      style={{ height: 220 }}
+      status={loading ? "loading" : "ready"}
+      loadingLabel={loading ? "Loading metrics" : undefined}
+      margin={{ top: 16, right: 10, bottom: 26, left: 10 }}
+      revealSignature={`${metric}:${data.length}`}
+    >
+      <Grid horizontal numTicksRows={4} />
+      <Line dataKey="value" strokeWidth={1.75} />
+      <XAxis numTicks={5} />
+      <ChartTooltip
+        rows={(point) => {
+          const row = point as MetricChartRow;
+          return [
+            {
+              color: "var(--chart-line-primary)",
+              label: metricChartLabel(metric),
+              value:
+                typeof row.raw === "number"
+                  ? formatMetricChartValue(row.raw, metric)
+                  : "No sample",
+            },
+          ];
+        }}
+        dotColor="var(--chart-line-primary)"
+      />
+    </LineChart>
+  );
+}
+
+function metricChartValue(point: DeployMetricPoint, metric: MetricChartKind): number | null {
+  switch (metric) {
+    case "cpu":
+      return point.cpu_percent;
+    case "memory":
+      return point.memory_mb;
+    case "requests":
+      return point.requests;
+  }
+}
+
+function metricChartLabel(metric: MetricChartKind): string {
+  switch (metric) {
+    case "cpu":
+      return "CPU";
+    case "memory":
+      return "Memory";
+    case "requests":
+      return "Requests";
+  }
+}
+
+function formatMetricChartValue(value: number, metric: MetricChartKind): string {
+  switch (metric) {
+    case "cpu":
+      return `${value.toFixed(1)}%`;
+    case "memory":
+      return `${value.toFixed(0)} MB`;
+    case "requests":
+      return Math.round(value).toLocaleString();
+  }
+}
+
+function formatStat(value: number | null, metric: MetricChartKind): string {
+  return value == null ? "—" : formatMetricChartValue(value, metric);
+}
+
+interface MetricStats {
+  latest: number | null;
+  peak: number | null;
+  avg: number | null;
+  samples: number;
+}
+
+function metricStats(points: DeployMetricPoint[], metric: MetricChartKind): MetricStats {
+  const values: number[] = [];
+  for (const point of points) {
+    const value = metricChartValue(point, metric);
+    if (value != null) values.push(value);
+  }
+  const latest = points.length ? metricChartValue(points[points.length - 1], metric) : null;
+  const peak = values.length ? Math.max(...values) : null;
+  const avg = values.length
+    ? values.reduce((sum, value) => sum + value, 0) / values.length
+    : null;
+  return { latest, peak, avg, samples: points.length };
+}
+
+function normalizeResourcePreset(value: string): DeployResourcePreset {
+  return RESOURCE_PRESETS.some((preset) => preset.value === value)
+    ? (value as DeployResourcePreset)
+    : "preview_small";
+}
+
+function resourcePresetLabel(value: string): string {
+  return (
+    RESOURCE_PRESETS.find((preset) => preset.value === value)?.label ??
+    value.replace(/^preview_/, "")
+  );
+}
+
+function resourcePresetDetail(value: string): string {
+  return RESOURCE_PRESETS.find((preset) => preset.value === value)?.detail ?? value;
+}
+
+function SettingsPanel({ wid, service }: { wid: string; service: DeployService }) {
+  const navigate = useNavigate();
+  const updateService = useUpdateDeployService(wid);
+  const deleteService = useDeleteDeployService(wid);
+  const volumes = useDeployServiceVolumes(wid, service.id);
+  const createVolume = useCreateDeployServiceVolume(wid);
+  const deleteVolume = useDeleteDeployServiceVolume(wid);
+  const [volumeName, setVolumeName] = useState("");
+  const [mountPath, setMountPath] = useState("/data");
+  const [sizeGb, setSizeGb] = useState(1);
+
+  function submitVolume(event: FormEvent) {
+    event.preventDefault();
+    createVolume.mutate(
+      {
+        serviceId: service.id,
+        name: volumeName,
+        mount_path: mountPath,
+        size_gb: sizeGb,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Volume attached");
+          setVolumeName("");
+          setMountPath("/data");
+          setSizeGb(1);
+        },
+        onError: (err) => toast.error((err as Error).message),
+      },
+    );
+  }
+
+  function removeService() {
+    if (!window.confirm(`Delete ${service.name}? This stops deployments and queues provider cleanup.`)) {
+      return;
+    }
+    deleteService.mutate(service.id, {
+      onSuccess: () => {
+        toast.success("Service deletion queued");
+        void navigate({ to: "/$wid/deployments", params: { wid } });
+      },
+      onError: (err) => toast.error((err as Error).message),
+    });
+  }
+
+  return (
+    <div className="space-y-6">
+      <section className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(220px,280px)] md:items-end">
+        <div>
+          <h2 className="text-[13px] font-medium text-[var(--color-fg)]">Compute</h2>
+          <p className="mt-1 text-[12px] leading-5 text-[var(--color-fg-muted)]">
+            Applied when the next deployment creates a machine.
+          </p>
+        </div>
+        <select
+          className={cn(fieldControlClass, "h-9")}
+          value={normalizeResourcePreset(service.resource_preset)}
+          disabled={updateService.isPending}
+          onChange={(event) =>
+            updateService.mutate(
+              {
+                serviceId: service.id,
+                resource_preset: event.target.value as DeployResourcePreset,
+              },
+              {
+                onSuccess: () => toast.success("Compute size updated"),
+                onError: (err) => toast.error((err as Error).message),
+              },
+            )
+          }
+        >
+          {RESOURCE_PRESETS.map((preset) => (
+            <option key={preset.value} value={preset.value}>
+              {preset.label} · {preset.detail}
+            </option>
+          ))}
+        </select>
+      </section>
+
+      <section className="border-t border-[var(--color-border)] pt-5">
+        <div className="mb-3 flex items-center gap-2">
+          <HardDrive size={14} className="text-[var(--color-fg-muted)]" />
+          <h2 className="text-[13px] font-medium text-[var(--color-fg)]">Volumes</h2>
+        </div>
+        <form onSubmit={submitVolume} className="grid gap-2 sm:grid-cols-[1fr_1fr_120px_auto]">
+          <input
+            className={cn(fieldControlClass, "h-9")}
+            value={volumeName}
+            onChange={(event) => setVolumeName(event.target.value)}
+            placeholder="data"
+            autoCapitalize="none"
+            autoCorrect="off"
+            required
+          />
+          <input
+            className={cn(fieldControlClass, "h-9")}
+            value={mountPath}
+            onChange={(event) => setMountPath(event.target.value)}
+            placeholder="/data"
+            autoCapitalize="none"
+            autoCorrect="off"
+            required
+          />
+          <input
+            type="number"
+            min={1}
+            max={50}
+            className={cn(fieldControlClass, "h-9")}
+            value={sizeGb}
+            onChange={(event) => setSizeGb(Number(event.target.value))}
+            required
+          />
+          <Button
+            type="submit"
+            variant="default"
+            size="sm"
+            disabled={createVolume.isPending || !volumeName.trim() || !mountPath.trim()}
+          >
+            {createVolume.isPending && <Spinner className="size-3" />}
+            <Plus size={13} /> Attach
+          </Button>
+        </form>
+
+        <div className="mt-3 space-y-2">
+          {volumes.isLoading ? (
+            <PanelLoading label="Loading volumes…" />
+          ) : !volumes.data?.length ? (
+            <PanelEmpty
+              icon={HardDrive}
+              label="No volumes attached"
+              hint="Attach a volume, then deploy to mount it on the next machine."
+            />
+          ) : (
+            volumes.data.map((volume) => (
+              <VolumeRow
+                key={volume.id}
+                volume={volume}
+                deleting={deleteVolume.isPending}
+                onDelete={(volumeId) =>
+                  deleteVolume.mutate(
+                    { serviceId: service.id, volumeId },
+                    {
+                      onSuccess: () => toast.success("Volume removal queued"),
+                      onError: (err) => toast.error((err as Error).message),
+                    },
+                  )
+                }
+              />
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="border-t border-[var(--color-border)] pt-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-[13px] font-medium text-[var(--color-fg)]">Delete service</h2>
+            <p className="mt-1 text-[12px] leading-5 text-[var(--color-fg-muted)]">
+              Hides the service and queues Fly resource cleanup.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={deleteService.isPending}
+            onClick={removeService}
+          >
+            {deleteService.isPending && <Spinner className="size-3" />}
+            <Trash2 size={13} /> Delete
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function VolumeRow({
+  volume,
+  deleting,
+  onDelete,
+}: {
+  volume: DeployServiceVolume;
+  deleting: boolean;
+  onDelete: (volumeId: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-3">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="truncate text-[13px] font-medium text-[var(--color-fg)]">{volume.name}</p>
+          <VolumeStatus status={volume.status} />
+        </div>
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--color-fg-muted)]">
+          <span className="mono">{volume.mount_path}</span>
+          <span>{volume.size_gb} GB</span>
+          <span>{volume.region}</span>
+          {volume.provider_volume_id && (
+            <span className="mono">{volume.provider_volume_id.slice(0, 18)}</span>
+          )}
+        </div>
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={deleting}
+        onClick={() => onDelete(volume.id)}
+      >
+        <Trash2 size={13} /> Remove
+      </Button>
+    </div>
+  );
+}
+
+function VolumeStatus({ status }: { status: string }) {
+  const active = status === "created";
+  const tone = active
+    ? "border-[color-mix(in_srgb,var(--color-ok)_35%,transparent)] text-[var(--color-ok)]"
+    : status === "failed"
+      ? "border-[color-mix(in_srgb,var(--color-err)_35%,transparent)] text-[var(--color-err)]"
+      : "border-[color-mix(in_srgb,var(--color-warn)_35%,transparent)] text-[var(--color-warn)]";
+  return (
+    <span
+      className={cn(
+        "inline-flex h-5 items-center rounded-full border px-2 text-[10px] font-medium uppercase",
+        tone,
+      )}
+    >
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+function DomainsPanel({ wid, service }: { wid: string; service: DeployService }) {
+  const [hostname, setHostname] = useState("");
+  const domains = useDeployServiceDomains(wid, service.id);
+  const createDomain = useCreateDeployServiceDomain(wid);
+  const verifyDomain = useVerifyDeployServiceDomain(wid);
+  const deleteDomain = useDeleteDeployServiceDomain(wid);
+  const canAddDomain = Boolean(service.provider_service_id);
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const value = hostname.trim();
+    if (!value) return;
+    createDomain.mutate(
+      { serviceId: service.id, hostname: value },
+      {
+        onSuccess: () => {
+          toast.success("Custom domain queued");
+          setHostname("");
+        },
+        onError: (err) => toast.error((err as Error).message),
+      },
+    );
+  }
+
+  if (!canAddDomain) {
+    return (
+      <PanelEmpty
+        icon={Globe}
+        label="Deploy before adding domains"
+        hint="Fly needs a provisioned app before Produktive can request certificates."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row">
+        <input
+          className={cn(fieldControlClass, "h-9")}
+          value={hostname}
+          onChange={(event) => setHostname(event.target.value)}
+          placeholder="app.example.com"
+          autoCapitalize="none"
+          autoCorrect="off"
+        />
+        <Button
+          type="submit"
+          variant="default"
+          size="sm"
+          disabled={createDomain.isPending || !hostname.trim()}
+        >
+          {createDomain.isPending && <Spinner className="size-3" />}
+          <Plus size={13} /> Add domain
+        </Button>
+      </form>
+
+      {domains.isLoading ? (
+        <PanelLoading label="Loading domains…" />
+      ) : !domains.data?.length ? (
+        <PanelEmpty
+          icon={Globe}
+          label="No custom domains"
+          hint="Add a hostname to request a Fly certificate and DNS records."
+        />
+      ) : (
+        <div className="space-y-3">
+          {domains.data.map((domain) => (
+            <DomainRow
+              key={domain.id}
+              domain={domain}
+              verifying={verifyDomain.isPending}
+              deleting={deleteDomain.isPending}
+              onVerify={(domainId) =>
+                verifyDomain.mutate(
+                  { serviceId: service.id, domainId },
+                  {
+                    onSuccess: () => toast.success("Domain check queued"),
+                    onError: (err) => toast.error((err as Error).message),
+                  },
+                )
+              }
+              onDelete={(domainId) =>
+                deleteDomain.mutate(
+                  { serviceId: service.id, domainId },
+                  {
+                    onSuccess: () => toast.success("Domain removal queued"),
+                    onError: (err) => toast.error((err as Error).message),
+                  },
+                )
+              }
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DomainRow({
+  domain,
+  verifying,
+  deleting,
+  onVerify,
+  onDelete,
+}: {
+  domain: DeployServiceDomain;
+  verifying: boolean;
+  deleting: boolean;
+  onVerify: (domainId: string) => void;
+  onDelete: (domainId: string) => void;
+}) {
+  const records = dnsRecords(domain);
+  const active = domain.status === "active" || Boolean(domain.verified_at);
+  const errors = validationErrors(domain.validation_errors);
+  const errorTone =
+    domain.status === "failed"
+      ? "text-[var(--color-err)]"
+      : "text-[var(--color-warn)]";
+
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="truncate text-[13px] font-medium text-[var(--color-fg)]">
+              {domain.hostname}
+            </p>
+            <DomainStatus status={domain.status} active={active} />
+          </div>
+          <p className="mt-1 text-[11px] text-[var(--color-fg-muted)]">
+            {active ? "certificate active" : `updated ${lastSeen(domain.updated_at)}`}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={records.length === 0}
+            title={records.length === 0 ? "Waiting for DNS records" : "Download DNS records"}
+            onClick={() => downloadDnsFile(domain, records)}
+          >
+            <Download size={13} /> DNS file
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={verifying || deleting}
+            onClick={() => onVerify(domain.id)}
+          >
+            <CheckCircle2 size={13} /> Check
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={deleting}
+            onClick={() => onDelete(domain.id)}
+          >
+            <Trash2 size={13} /> Remove
+          </Button>
+        </div>
+      </div>
+
+      {records.length > 0 ? (
+        <div className="mt-3 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
+          {records.map((record, index) => (
+            <DnsRecordRow
+              key={`${record.type}-${record.name}-${record.value}-${index}`}
+              record={record}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-sunken)] px-3 py-2 text-[12px] text-[var(--color-fg-muted)]">
+          Waiting for Fly DNS requirements.
+        </p>
+      )}
+
+      {errors.length > 0 && (
+        <div className="mt-3 space-y-1">
+          {errors.map((error, index) => (
+            <p key={index} className={cn("text-[12px] leading-5", errorTone)}>
+              {error}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DnsRecordRow({ record }: { record: DnsRecord }) {
+  return (
+    <div className="grid gap-2 border-b border-[var(--color-border)] px-3 py-2 last:border-b-0 sm:grid-cols-[72px_minmax(0,1fr)_minmax(0,1.4fr)_32px] sm:items-center">
+      <span className="mono text-[11px] font-medium text-[var(--color-fg)]">{record.type}</span>
+      <span className="mono min-w-0 break-all text-[11px] text-[var(--color-fg-muted)]">
+        {record.name}
+      </span>
+      <span className="mono min-w-0 break-all text-[11px] text-[var(--color-fg)]">
+        {record.value}
+      </span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label="Copy DNS value"
+        onClick={() => {
+          void navigator.clipboard?.writeText(record.value);
+          toast.success("DNS value copied");
+        }}
+      >
+        <Copy size={13} />
+      </Button>
+    </div>
+  );
+}
+
+function DomainStatus({ status, active }: { status: string; active: boolean }) {
+  const tone = active
+    ? "border-[color-mix(in_srgb,var(--color-ok)_35%,transparent)] text-[var(--color-ok)]"
+    : status === "failed"
+      ? "border-[color-mix(in_srgb,var(--color-err)_35%,transparent)] text-[var(--color-err)]"
+      : "border-[color-mix(in_srgb,var(--color-warn)_35%,transparent)] text-[var(--color-warn)]";
+  return (
+    <span
+      className={cn(
+        "inline-flex h-5 items-center rounded-full border px-2 text-[10px] font-medium uppercase",
+        tone,
+      )}
+    >
+      {active ? "active" : status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+type DnsRecord = {
+  type: string;
+  name: string;
+  value: string;
+};
+
+type FlyDnsRequirements = {
+  a?: string[];
+  aaaa?: string[];
+  cname?: string;
+  acme_challenge?: { name?: string; target?: string };
+  ownership?: { name?: string; app_value?: string; org_value?: string };
+};
+
+function dnsRecords(domain: DeployServiceDomain): DnsRecord[] {
+  const req = flyDnsRequirements(domain.dns_requirements);
+  const records: DnsRecord[] = [];
+  if (req.cname) {
+    records.push({ type: "CNAME", name: domain.hostname, value: req.cname });
+  } else {
+    for (const value of req.a ?? []) {
+      records.push({ type: "A", name: domain.hostname, value });
+    }
+    for (const value of req.aaaa ?? []) {
+      records.push({ type: "AAAA", name: domain.hostname, value });
+    }
+  }
+  if (req.ownership?.name && (req.ownership.app_value || req.ownership.org_value)) {
+    records.push({
+      type: "TXT",
+      name: req.ownership.name,
+      value: req.ownership.app_value ?? req.ownership.org_value ?? "",
+    });
+  }
+  if (req.acme_challenge?.name && req.acme_challenge.target) {
+    records.push({
+      type: "CNAME",
+      name: req.acme_challenge.name,
+      value: req.acme_challenge.target,
+    });
+  }
+  return records.filter((record) => record.value.length > 0);
+}
+
+function downloadDnsFile(domain: DeployServiceDomain, records: DnsRecord[]) {
+  if (records.length === 0) {
+    toast.error("DNS records are not ready yet");
+    return;
+  }
+  const blob = new Blob([dnsFileContents(domain, records)], {
+    type: "text/plain;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = dnsFileName(domain.hostname);
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  toast.success("DNS file downloaded");
+}
+
+function dnsFileName(hostname: string): string {
+  const safeHostname = hostname
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `produktive-dns-${safeHostname || "domain"}.zone`;
+}
+
+function dnsFileContents(domain: DeployServiceDomain, records: DnsRecord[]): string {
+  const lines = [
+    `; Produktive DNS records for ${domain.hostname}`,
+    `; Generated ${new Date().toISOString()}`,
+    "; Add these records at your DNS provider, then run Check in Produktive.",
+    "",
+    "$TTL 300",
+    ...records.map((record) => dnsZoneLine(record)),
+    "",
+  ];
+  return lines.join("\n");
+}
+
+function dnsZoneLine(record: DnsRecord): string {
+  return `${absoluteDnsName(record.name)} 300 IN ${record.type} ${dnsZoneValue(record)}`;
+}
+
+function dnsZoneValue(record: DnsRecord): string {
+  if (record.type === "TXT") return quoteDnsText(record.value);
+  if (record.type === "CNAME") return absoluteDnsName(record.value);
+  return record.value;
+}
+
+function quoteDnsText(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function absoluteDnsName(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "@") return trimmed;
+  return trimmed.endsWith(".") ? trimmed : `${trimmed}.`;
+}
+
+function flyDnsRequirements(value: unknown): FlyDnsRequirements {
+  if (!value || typeof value !== "object") return {};
+  return value as FlyDnsRequirements;
+}
+
+function validationErrors(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map(formatValidationError);
+  }
+  if (typeof value === "string" && value.trim()) return [value];
+  if (value && typeof value === "object" && Object.keys(value).length > 0) {
+    return [formatValidationError(value)];
+  }
+  return [];
+}
+
+function formatValidationError(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return String(value);
+  const record = value as Record<string, unknown>;
+  const message = typeof record.message === "string" ? record.message : "";
+  const remediation = typeof record.remediation === "string" ? record.remediation : "";
+  if (message && remediation) return `${message}. ${remediation}`;
+  if (message) return message;
+  return JSON.stringify(value);
+}
+
+type LevelFilter = "all" | "warn" | "error";
+
+interface ConsoleLine {
+  id: string;
+  level: string;
+  message: string;
+  timestamp: string;
+}
+
+const LEVEL_FILTERS: Array<{ value: LevelFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "warn", label: "Warnings" },
+  { value: "error", label: "Errors" },
+];
+
+function LogConsole({
+  title,
+  icon: Icon,
+  lines,
+}: {
+  title: string;
+  icon: typeof Rocket;
+  lines: ConsoleLine[];
+}) {
+  const [filter, setFilter] = useState<LevelFilter>("all");
+  const visible = useMemo(
+    () => lines.filter((line) => lineMatchesFilter(line.level, filter)),
+    [lines, filter],
+  );
+
+  function copyAll() {
+    const text = visible
+      .map((line) => `${logClock(line.timestamp)} ${line.level.toUpperCase()} ${line.message}`)
+      .join("\n");
+    if (!text) {
+      toast.error("Nothing to copy");
+      return;
+    }
+    void navigator.clipboard?.writeText(text);
+    toast.success("Copied to clipboard");
+  }
+
   return (
     <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-sunken)]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-bg-elev)] px-3 py-2">
+        <div className="flex items-center gap-2 text-[12px] text-[var(--color-fg)]">
+          <Icon size={13} className="text-[var(--color-fg-muted)]" />
+          <span className="font-medium">{title}</span>
+          <span className="tabular text-[11px] text-[var(--color-fg-muted)]">
+            {filter === "all" ? `${lines.length} lines` : `${visible.length} / ${lines.length}`}
+          </span>
+          <span className="ml-0.5 inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
+            <span
+              className="pulse-dot inline-block h-1.5 w-1.5 rounded-full"
+              style={{ background: "var(--color-ok)" }}
+            />
+            Live
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Segmented<LevelFilter>
+            size="sm"
+            value={filter}
+            onChange={setFilter}
+            options={LEVEL_FILTERS}
+          />
+          <Button type="button" variant="ghost" size="sm" onClick={copyAll}>
+            <Copy size={13} /> Copy
+          </Button>
+        </div>
+      </div>
       <ScrollArea className="h-[360px]">
-        <div className="mono space-y-0 p-3 text-[11px] leading-5">{children}</div>
+        <div className="mono space-y-px p-2 text-[11px] leading-5">
+          {visible.length === 0 ? (
+            <div className="flex h-[320px] items-center justify-center text-[12px] text-[var(--color-fg-dim)]">
+              No matching lines
+            </div>
+          ) : (
+            visible.map((line) => <LogRow key={line.id} line={line} />)
+          )}
+        </div>
       </ScrollArea>
     </div>
   );
 }
 
-function LogLine({
-  level,
-  message,
-  timestamp,
-}: {
-  level: string;
-  message: string;
-  timestamp: string;
-}) {
-  const levelColor =
-    level === "error" || level === "fatal"
-      ? "var(--color-err)"
-      : level === "warn"
-        ? "var(--color-warn)"
-        : "var(--color-fg-dim)";
-
+function LogRow({ line }: { line: ConsoleLine }) {
+  const color = levelColor(line.level);
   return (
-    <div className="flex gap-3 py-0.5">
-      <span className="w-12 shrink-0 text-[var(--color-fg-dim)]">{lastSeen(timestamp)}</span>
-      <span className="w-12 shrink-0 uppercase" style={{ color: levelColor }}>
-        {level}
+    <div
+      className="group grid grid-cols-[58px_46px_minmax(0,1fr)] items-baseline gap-x-2.5 rounded-[var(--radius-sm)] border-l-2 py-[3px] pl-2 pr-1.5 transition-colors hover:bg-[var(--color-bg-row)]"
+      style={{ borderColor: `color-mix(in srgb, ${color} 45%, transparent)` }}
+    >
+      <span className="tabular text-[var(--color-fg-dim)]" title={logFullTime(line.timestamp)}>
+        {logClock(line.timestamp)}
       </span>
-      <span className="min-w-0 text-[var(--color-fg-muted)]">{message}</span>
+      <span
+        className="truncate text-[10px] font-semibold uppercase tracking-[0.04em]"
+        style={{ color }}
+      >
+        {line.level}
+      </span>
+      <span className="min-w-0 whitespace-pre-wrap break-words text-[var(--color-fg-muted)] group-hover:text-[var(--color-fg)]">
+        {line.message}
+      </span>
     </div>
   );
+}
+
+function levelColor(level: string): string {
+  const normalized = level.toLowerCase();
+  if (["error", "err", "fatal", "critical", "panic"].includes(normalized)) {
+    return "var(--color-err)";
+  }
+  if (["warn", "warning"].includes(normalized)) {
+    return "var(--color-warn)";
+  }
+  if (["debug", "trace"].includes(normalized)) {
+    return "var(--color-fg-dim)";
+  }
+  return "var(--color-fg-muted)";
+}
+
+function lineMatchesFilter(level: string, filter: LevelFilter): boolean {
+  if (filter === "all") return true;
+  const normalized = level.toLowerCase();
+  const isError = ["error", "err", "fatal", "critical", "panic"].includes(normalized);
+  if (filter === "error") return isError;
+  return isError || ["warn", "warning"].includes(normalized);
+}
+
+function logClock(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "--:--:--";
+  return date.toLocaleTimeString([], {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function logFullTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString();
 }
 
 function MetaChip({
@@ -862,6 +1832,7 @@ function CreateServiceDialog({
     environment: string;
     health_check_path: string;
     region: string;
+    resource_preset: DeployResourcePreset;
   }) => void;
 }) {
   const [name, setName] = useState("");
@@ -872,6 +1843,7 @@ function CreateServiceDialog({
   const [environment, setEnvironment] = useState("production");
   const [region, setRegion] = useState("fra");
   const [health, setHealth] = useState("/");
+  const [resourcePreset, setResourcePreset] = useState<DeployResourcePreset>("preview_small");
   const [envText, setEnvText] = useState("");
   const [secretText, setSecretText] = useState("");
 
@@ -889,6 +1861,7 @@ function CreateServiceDialog({
         environment,
         health_check_path: health,
         region,
+        resource_preset: resourcePreset,
       });
     } catch (error) {
       toast.error((error as Error).message);
@@ -899,7 +1872,7 @@ function CreateServiceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         title="New deployment service"
-        description="HTTP-only, stateless containers with the preview small resource preset."
+        description="HTTP-only Docker services with private-preview compute limits."
         size="lg"
         footer={
           <>
@@ -990,6 +1963,19 @@ function CreateServiceDialog({
               onChange={(e) => setHealth(e.target.value)}
               required
             />
+          </Field>
+          <Field label="Compute">
+            <select
+              className={cn(fieldControlClass, "h-9")}
+              value={resourcePreset}
+              onChange={(e) => setResourcePreset(e.target.value as DeployResourcePreset)}
+            >
+              {RESOURCE_PRESETS.map((preset) => (
+                <option key={preset.value} value={preset.value}>
+                  {preset.label} · {preset.detail}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label="Env vars">
             <textarea

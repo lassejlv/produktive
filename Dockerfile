@@ -64,6 +64,8 @@ RUN apt-get update && \
 RUN useradd --create-home --shell /usr/sbin/nologin app
 
 COPY --from=builder /tmp/produktive-api /usr/local/bin/produktive-api
+COPY --from=builder /tmp/produktive-worker /usr/local/bin/produktive-worker
+COPY --from=builder /tmp/produktive-deploy-worker /usr/local/bin/produktive-deploy-worker
 COPY --from=web-builder /web/dist /app/web/dist
 
 ENV WEB_DIST_DIR=/app/web/dist
@@ -72,4 +74,4 @@ USER app
 
 EXPOSE 3000
 
-CMD ["produktive-api"]
+CMD ["sh", "-c", "case \"$RAILWAY_SERVICE_NAME\" in \"Deploy Worker\") exec produktive-deploy-worker ;; \"Worker \"*) exec produktive-worker ;; *) exec produktive-api ;; esac"]

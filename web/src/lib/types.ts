@@ -291,6 +291,7 @@ export type DeployStatus =
   | "stopped"
   | "unknown";
 export type DeployRegistryKind = "ghcr" | "docker_hub";
+export type DeployResourcePreset = "preview_small" | "preview_medium" | "preview_large";
 
 export interface DeployAccess {
   status: DeployAccessStatus;
@@ -337,7 +338,7 @@ export interface DeployService {
   environment: string;
   health_check_path: string;
   region: string;
-  resource_preset: string;
+  resource_preset: DeployResourcePreset | string;
   url: string | null;
   status: DeployStatus;
   disabled_at: Iso | null;
@@ -360,6 +361,38 @@ export interface Deployment {
   url: string | null;
   started_at: Iso | null;
   finished_at: Iso | null;
+  created_at: Iso;
+  updated_at: Iso;
+}
+
+export interface DeployServiceDomain {
+  id: Uuid;
+  workspace_id: Uuid;
+  service_id: Uuid;
+  provider: "fly" | string;
+  provider_domain_id: string | null;
+  hostname: string;
+  status: string;
+  dns_requirements: unknown;
+  validation_errors: unknown;
+  provider_metadata: unknown;
+  verified_at: Iso | null;
+  created_at: Iso;
+  updated_at: Iso;
+}
+
+export interface DeployServiceVolume {
+  id: Uuid;
+  workspace_id: Uuid;
+  service_id: Uuid;
+  provider: "fly" | string;
+  provider_volume_id: string | null;
+  name: string;
+  mount_path: string;
+  region: string;
+  size_gb: number;
+  status: string;
+  provider_metadata: unknown;
   created_at: Iso;
   updated_at: Iso;
 }

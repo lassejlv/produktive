@@ -38,10 +38,18 @@ pub struct MachineConfig {
     pub image: String,
     pub env: BTreeMap<String, String>,
     pub guest: GuestConfig,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub mounts: Vec<MachineMountConfig>,
     pub services: Vec<ServiceConfig>,
     pub checks: BTreeMap<String, CheckConfig>,
     pub restart: RestartConfig,
     pub metadata: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MachineMountConfig {
+    pub volume: String,
+    pub path: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -82,6 +90,30 @@ pub struct RestartConfig {
     pub policy: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct CreateCertificateRequest {
+    pub hostname: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateVolumeRequest {
+    pub name: String,
+    pub region: String,
+    pub size_gb: i32,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct VolumeResponse {
+    pub id: String,
+    pub name: Option<String>,
+    pub region: Option<String>,
+    pub size_gb: Option<i32>,
+    pub state: Option<String>,
+    pub created_at: Option<String>,
+    pub attached_machine_id: Option<String>,
+    pub host_status: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct MachineResponse {
     pub id: String,
@@ -101,4 +133,19 @@ pub struct ImageRef {
     pub registry: Option<String>,
     pub repository: Option<String>,
     pub tag: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct CertificateResponse {
+    pub hostname: String,
+    pub configured: Option<bool>,
+    pub acme_requested: Option<bool>,
+    pub status: Option<String>,
+    pub dns_provider: Option<String>,
+    pub rate_limited_until: Option<Value>,
+    pub certificates: Option<Value>,
+    pub validation: Option<Value>,
+    pub dns_requirements: Option<Value>,
+    pub validation_errors: Option<Value>,
+    pub dns_records: Option<Value>,
 }

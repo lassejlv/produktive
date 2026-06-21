@@ -4,13 +4,14 @@ use axum::{
     extract::{Path, Query, Request, State},
     middleware::{from_fn_with_state, Next},
     response::Response,
-    routing::{get, post},
+    routing::{delete, get, post},
     Extension, Json, Router,
 };
 use chrono::{DateTime, FixedOffset, Utc};
 use deploy::{
     validate_env_name, validate_health_path, validate_image_for_registry, validate_internal_port,
-    validate_region, DeploymentStatus, RegistryKind, ResourcePreset, SecretCipher,
+    validate_region, validate_volume_mount_path, validate_volume_name, validate_volume_size_gb,
+    DeploymentStatus, RegistryKind, ResourcePreset, SecretCipher,
 };
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 use serde::{Deserialize, Serialize};
@@ -26,6 +27,8 @@ use crate::{
     state::AppState,
 };
 
+use super::custom_domains::normalize_domain;
+
 const ACCESS_PENDING: i16 = 0;
 const ACCESS_APPROVED: i16 = 1;
 const ACCESS_DENIED: i16 = 2;
@@ -37,14 +40,39 @@ pub fn routes(state: AppState) -> Router<AppState> {
             get(list_credentials).post(create_credential),
         )
         .route("/services", get(list_services).post(create_service))
-        .route("/services/{service_id}", get(get_service))
+        .route(
+            "/services/{service_id}",
+            get(get_service)
+                .patch(update_service_settings)
+                .delete(delete_service),
+        )
         .route("/services/{service_id}/secrets", post(set_service_secrets))
+        .route(
+            "/services/{service_id}/volumes",
+            get(list_service_volumes).post(create_service_volume),
+        )
+        .route(
+            "/services/{service_id}/volumes/{volume_id}",
+            delete(delete_service_volume),
+        )
         .route(
             "/services/{service_id}/deployments",
             get(list_deployments).post(create_deployment),
         )
         .route("/services/{service_id}/rollback", post(rollback_service))
         .route("/services/{service_id}/stop", post(stop_service))
+        .route(
+            "/services/{service_id}/domains",
+            get(list_service_domains).post(create_service_domain),
+        )
+        .route(
+            "/services/{service_id}/domains/{domain_id}/verify",
+            post(verify_service_domain),
+        )
+        .route(
+            "/services/{service_id}/domains/{domain_id}",
+            delete(remove_service_domain),
+        )
         .route("/services/{service_id}/events", get(list_events))
         .route("/services/{service_id}/logs", get(list_logs))
         .route("/services/{service_id}/metrics", get(list_metrics))
@@ -145,6 +173,44 @@ pub struct DeployDeploymentView {
     pub updated_at: DateTime<FixedOffset>,
 }
 
+#[derive(Serialize, FromQueryResult, ToSchema, Clone)]
+pub struct DeployServiceDomainView {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub service_id: Uuid,
+    pub provider: String,
+    pub provider_domain_id: Option<String>,
+    pub hostname: String,
+    pub status: String,
+    #[schema(value_type = Object)]
+    pub dns_requirements: Value,
+    #[schema(value_type = Object)]
+    pub validation_errors: Value,
+    #[schema(value_type = Object)]
+    pub provider_metadata: Value,
+    pub verified_at: Option<DateTime<FixedOffset>>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+#[derive(Serialize, FromQueryResult, ToSchema, Clone)]
+pub struct DeployServiceVolumeView {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub service_id: Uuid,
+    pub provider: String,
+    pub provider_volume_id: Option<String>,
+    pub name: String,
+    pub mount_path: String,
+    pub region: String,
+    pub size_gb: i32,
+    pub status: String,
+    #[schema(value_type = Object)]
+    pub provider_metadata: Value,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
 #[derive(Serialize, FromQueryResult, ToSchema)]
 pub struct DeployEventView {
     pub id: Uuid,
@@ -200,6 +266,14 @@ pub struct CreateServiceBody {
     pub health_check_path: Option<String>,
     #[serde(default)]
     pub region: Option<String>,
+    #[serde(default)]
+    pub resource_preset: Option<String>,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateServiceSettingsBody {
+    #[serde(default)]
+    pub resource_preset: Option<String>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -208,11 +282,23 @@ pub struct SetServiceSecretsBody {
 }
 
 #[derive(Deserialize, ToSchema)]
+pub struct CreateServiceVolumeBody {
+    pub name: String,
+    pub mount_path: String,
+    pub size_gb: i32,
+}
+
+#[derive(Deserialize, ToSchema)]
 pub struct CreateDeploymentBody {
     #[serde(default)]
     pub image: Option<String>,
     #[serde(default)]
     pub image_digest: Option<String>,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct CreateServiceDomainBody {
+    pub hostname: String,
 }
 
 #[derive(Deserialize, IntoParams)]
@@ -226,6 +312,22 @@ pub struct ServicePath {
     #[serde(rename = "wid")]
     pub _wid: String,
     pub service_id: Uuid,
+}
+
+#[derive(Deserialize)]
+pub struct ServiceDomainPath {
+    #[serde(rename = "wid")]
+    pub _wid: String,
+    pub service_id: Uuid,
+    pub domain_id: Uuid,
+}
+
+#[derive(Deserialize)]
+pub struct ServiceVolumePath {
+    #[serde(rename = "wid")]
+    pub _wid: String,
+    pub service_id: Uuid,
+    pub volume_id: Uuid,
 }
 
 #[utoipa::path(
@@ -425,6 +527,13 @@ pub async fn create_service(
         .trim()
         .to_lowercase();
     validate_region(&region).map_err(deploy_error)?;
+    let resource_preset = body
+        .resource_preset
+        .as_deref()
+        .map(ResourcePreset::parse)
+        .transpose()
+        .map_err(deploy_error)?
+        .unwrap_or(ResourcePreset::PreviewSmall);
     for name in body.env.keys().chain(body.secrets.keys()) {
         validate_env_name(name).map_err(deploy_error)?;
     }
@@ -468,7 +577,7 @@ pub async fn create_service(
                 environment.into(),
                 health_check_path.into(),
                 region.into(),
-                ResourcePreset::PreviewSmall.as_str().into(),
+                resource_preset.as_str().into(),
                 DeploymentStatus::Stopped.code().into(),
                 auth.user.id.into(),
                 now.into(),
@@ -518,6 +627,171 @@ pub async fn get_service(
     load_service(&state, m.workspace.id, service_id)
         .await
         .map(Json)
+}
+
+#[utoipa::path(
+    patch,
+    path = "/api/workspaces/{wid}/deployments/services/{service_id}",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("service_id" = Uuid, Path, description = "deployment service id"),
+    ),
+    request_body = UpdateServiceSettingsBody,
+    responses((status = 200, body = DeployServiceView)),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn update_service_settings(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
+    Json(body): Json<UpdateServiceSettingsBody>,
+) -> ApiResult<Json<DeployServiceView>> {
+    m.require_owner()?;
+    ensure_service(&state, m.workspace.id, service_id).await?;
+    let Some(resource_preset) = body.resource_preset.as_deref() else {
+        return load_service(&state, m.workspace.id, service_id)
+            .await
+            .map(Json);
+    };
+    let resource_preset = ResourcePreset::parse(resource_preset).map_err(deploy_error)?;
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_services
+            SET resource_preset = $3, updated_at = now()
+            WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+            "#,
+            [
+                m.workspace.id.into(),
+                service_id.into(),
+                resource_preset.as_str().into(),
+            ],
+        ))
+        .await?;
+    insert_event(
+        &state,
+        m.workspace.id,
+        service_id,
+        None,
+        "info",
+        "compute size updated",
+        json!({
+            "resource_preset": resource_preset.as_str(),
+            "applies_on": "next_deployment"
+        }),
+    )
+    .await?;
+    load_service(&state, m.workspace.id, service_id)
+        .await
+        .map(Json)
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/workspaces/{wid}/deployments/services/{service_id}",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("service_id" = Uuid, Path, description = "deployment service id"),
+    ),
+    responses((status = 200, body = crate::http::workspaces::OkResponse)),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn delete_service(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
+) -> ApiResult<Json<crate::http::workspaces::OkResponse>> {
+    m.require_owner()?;
+    ensure_service(&state, m.workspace.id, service_id).await?;
+    let now = Utc::now().fixed_offset();
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_services
+            SET status = $3,
+                disabled_at = COALESCE(disabled_at, $4),
+                deleted_at = COALESCE(deleted_at, $4),
+                updated_at = $4
+            WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+            "#,
+            [
+                m.workspace.id.into(),
+                service_id.into(),
+                DeploymentStatus::Stopped.code().into(),
+                now.into(),
+            ],
+        ))
+        .await?;
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_service_domains
+            SET status = 'removing',
+                deleted_at = COALESCE(deleted_at, $3),
+                updated_at = $3
+            WHERE workspace_id = $1
+              AND service_id = $2
+              AND deleted_at IS NULL
+            "#,
+            [m.workspace.id.into(), service_id.into(), now.into()],
+        ))
+        .await?;
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_service_volumes
+            SET status = 'deleting',
+                deleted_at = COALESCE(deleted_at, $3),
+                updated_at = $3
+            WHERE workspace_id = $1
+              AND service_id = $2
+              AND deleted_at IS NULL
+            "#,
+            [m.workspace.id.into(), service_id.into(), now.into()],
+        ))
+        .await?;
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deployments
+            SET status = $3, finished_at = COALESCE(finished_at, $4), updated_at = $4
+            WHERE workspace_id = $1
+              AND service_id = $2
+              AND status = $5
+              AND provider_instance_id IS NULL
+            "#,
+            [
+                m.workspace.id.into(),
+                service_id.into(),
+                DeploymentStatus::Stopped.code().into(),
+                now.into(),
+                DeploymentStatus::Queued.code().into(),
+            ],
+        ))
+        .await?;
+    insert_event(
+        &state,
+        m.workspace.id,
+        service_id,
+        None,
+        "warn",
+        "service deletion requested",
+        json!({}),
+    )
+    .await?;
+    Ok(Json(crate::http::workspaces::OkResponse { ok: true }))
 }
 
 #[utoipa::path(
@@ -579,6 +853,162 @@ pub async fn set_service_secrets(
 
 #[utoipa::path(
     get,
+    path = "/api/workspaces/{wid}/deployments/services/{service_id}/volumes",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("service_id" = Uuid, Path, description = "deployment service id"),
+    ),
+    responses((status = 200, body = [DeployServiceVolumeView])),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn list_service_volumes(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
+) -> ApiResult<Json<Vec<DeployServiceVolumeView>>> {
+    ensure_service(&state, m.workspace.id, service_id).await?;
+    Ok(Json(
+        service_volume_rows(&state, m.workspace.id, service_id, None).await?,
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/workspaces/{wid}/deployments/services/{service_id}/volumes",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("service_id" = Uuid, Path, description = "deployment service id"),
+    ),
+    request_body = CreateServiceVolumeBody,
+    responses((status = 200, body = DeployServiceVolumeView)),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn create_service_volume(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    auth: AuthUser,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
+    Json(body): Json<CreateServiceVolumeBody>,
+) -> ApiResult<Json<DeployServiceVolumeView>> {
+    m.require_owner()?;
+    let service = load_service(&state, m.workspace.id, service_id).await?;
+    if service_volume_count(&state, m.workspace.id, service_id).await? >= 1 {
+        return Err(ApiError::conflict(
+            "Fly Machines support one volume per service",
+        ));
+    }
+    let name = body.name.trim().to_lowercase();
+    validate_volume_name(&name).map_err(deploy_error)?;
+    let mount_path = body.mount_path.trim().to_owned();
+    validate_volume_mount_path(&mount_path).map_err(deploy_error)?;
+    validate_volume_size_gb(body.size_gb).map_err(deploy_error)?;
+    let now = Utc::now().fixed_offset();
+    let id = Uuid::now_v7();
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            INSERT INTO deploy_service_volumes (
+                id, workspace_id, service_id, provider, name, mount_path, region,
+                size_gb, status, created_by, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, 'fly', $4, $5, $6, $7, 'queued', $8, $9, $9)
+            "#,
+            [
+                id.into(),
+                m.workspace.id.into(),
+                service_id.into(),
+                name.clone().into(),
+                mount_path.clone().into(),
+                service.region.into(),
+                body.size_gb.into(),
+                auth.user.id.into(),
+                now.into(),
+            ],
+        ))
+        .await
+        .map_err(map_service_volume_unique_err)?;
+    insert_event(
+        &state,
+        m.workspace.id,
+        service_id,
+        None,
+        "info",
+        "volume attached",
+        json!({
+            "name": name,
+            "mount_path": mount_path,
+            "size_gb": body.size_gb,
+            "applies_on": "next_deployment"
+        }),
+    )
+    .await?;
+    Ok(Json(
+        load_service_volume(&state, m.workspace.id, service_id, id).await?,
+    ))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/workspaces/{wid}/deployments/services/{service_id}/volumes/{volume_id}",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("service_id" = Uuid, Path, description = "deployment service id"),
+        ("volume_id" = Uuid, Path, description = "service volume id"),
+    ),
+    responses((status = 200, body = crate::http::workspaces::OkResponse)),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn delete_service_volume(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path(ServiceVolumePath {
+        service_id,
+        volume_id,
+        ..
+    }): Path<ServiceVolumePath>,
+) -> ApiResult<Json<crate::http::workspaces::OkResponse>> {
+    m.require_owner()?;
+    let volume = load_service_volume(&state, m.workspace.id, service_id, volume_id).await?;
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_service_volumes
+            SET status = 'deleting',
+                deleted_at = COALESCE(deleted_at, now()),
+                updated_at = now()
+            WHERE workspace_id = $1
+              AND service_id = $2
+              AND id = $3
+            "#,
+            [m.workspace.id.into(), service_id.into(), volume_id.into()],
+        ))
+        .await?;
+    insert_event(
+        &state,
+        m.workspace.id,
+        service_id,
+        None,
+        "warn",
+        "volume removal requested",
+        json!({
+            "name": volume.name,
+            "mount_path": volume.mount_path,
+            "applies_on": "next_deployment"
+        }),
+    )
+    .await?;
+    Ok(Json(crate::http::workspaces::OkResponse { ok: true }))
+}
+
+#[utoipa::path(
+    get,
     path = "/api/workspaces/{wid}/deployments/services/{service_id}/deployments",
     params(
         ("wid" = String, Path, description = "workspace id or slug"),
@@ -628,9 +1058,7 @@ pub async fn create_deployment(
         ));
     }
     let service = load_service(&state, m.workspace.id, service_id).await?;
-    if service.disabled_at.is_some() {
-        return Err(ApiError::conflict("deployment service is stopped"));
-    }
+    let was_stopped = service.disabled_at.is_some();
     let registry = parse_registry_kind(&service.registry_kind)?;
     let image = body.image.unwrap_or_else(|| service.image.clone());
     validate_image_for_registry(registry, &image).map_err(deploy_error)?;
@@ -645,6 +1073,7 @@ pub async fn create_deployment(
         "deployment queued",
     )
     .await?;
+    mark_service_queued_for_deployment(&state, m.workspace.id, service_id, was_stopped).await?;
     Ok(Json(deployment))
 }
 
@@ -667,9 +1096,7 @@ pub async fn rollback_service(
 ) -> ApiResult<Json<DeployDeploymentView>> {
     m.require_owner()?;
     let service = load_service(&state, m.workspace.id, service_id).await?;
-    if service.disabled_at.is_some() {
-        return Err(ApiError::conflict("deployment service is stopped"));
-    }
+    let was_stopped = service.disabled_at.is_some();
     if active_deployment_count(&state, m.workspace.id).await?
         >= state.config.deploy_max_active_deployments_per_workspace
     {
@@ -721,6 +1148,7 @@ pub async fn rollback_service(
         "rollback queued",
     )
     .await?;
+    mark_service_queued_for_deployment(&state, m.workspace.id, service_id, was_stopped).await?;
     Ok(Json(deployment))
 }
 
@@ -794,6 +1222,194 @@ pub async fn stop_service(
     load_service(&state, m.workspace.id, service_id)
         .await
         .map(Json)
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/workspaces/{wid}/deployments/services/{service_id}/domains",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("service_id" = Uuid, Path, description = "deployment service id"),
+    ),
+    responses((status = 200, body = [DeployServiceDomainView])),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn list_service_domains(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
+) -> ApiResult<Json<Vec<DeployServiceDomainView>>> {
+    ensure_service(&state, m.workspace.id, service_id).await?;
+    Ok(Json(
+        service_domain_rows(&state, m.workspace.id, service_id, None).await?,
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/workspaces/{wid}/deployments/services/{service_id}/domains",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("service_id" = Uuid, Path, description = "deployment service id"),
+    ),
+    request_body = CreateServiceDomainBody,
+    responses((status = 200, body = DeployServiceDomainView)),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn create_service_domain(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    auth: AuthUser,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
+    Json(body): Json<CreateServiceDomainBody>,
+) -> ApiResult<Json<DeployServiceDomainView>> {
+    m.require_owner()?;
+    let service = load_service(&state, m.workspace.id, service_id).await?;
+    if service.provider_service_id.is_none() {
+        return Err(ApiError::bad_request(
+            "deploy the service once before adding a custom domain",
+        ));
+    }
+    let hostname = normalize_domain(&body.hostname)
+        .ok_or_else(|| ApiError::bad_request("hostname must be a valid domain"))?;
+    if hostname.ends_with(".fly.dev") {
+        return Err(ApiError::bad_request("use the generated Fly URL directly"));
+    }
+
+    let now = Utc::now().fixed_offset();
+    let id = Uuid::now_v7();
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            INSERT INTO deploy_service_domains (
+                id, workspace_id, service_id, provider, hostname, status,
+                created_by, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, 'fly', $4, 'queued', $5, $6, $6)
+            "#,
+            [
+                id.into(),
+                m.workspace.id.into(),
+                service_id.into(),
+                hostname.clone().into(),
+                auth.user.id.into(),
+                now.into(),
+            ],
+        ))
+        .await
+        .map_err(map_service_domain_unique_err)?;
+    insert_event(
+        &state,
+        m.workspace.id,
+        service_id,
+        None,
+        "info",
+        "custom domain requested",
+        json!({ "hostname": hostname }),
+    )
+    .await?;
+    Ok(Json(
+        load_service_domain(&state, m.workspace.id, service_id, id).await?,
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/workspaces/{wid}/deployments/services/{service_id}/domains/{domain_id}/verify",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("service_id" = Uuid, Path, description = "deployment service id"),
+        ("domain_id" = Uuid, Path, description = "service domain id"),
+    ),
+    responses((status = 200, body = DeployServiceDomainView)),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn verify_service_domain(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path(ServiceDomainPath {
+        service_id,
+        domain_id,
+        ..
+    }): Path<ServiceDomainPath>,
+) -> ApiResult<Json<DeployServiceDomainView>> {
+    m.require_owner()?;
+    let _ = load_service_domain(&state, m.workspace.id, service_id, domain_id).await?;
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_service_domains
+            SET status = 'checking', updated_at = now()
+            WHERE workspace_id = $1
+              AND service_id = $2
+              AND id = $3
+              AND deleted_at IS NULL
+            "#,
+            [m.workspace.id.into(), service_id.into(), domain_id.into()],
+        ))
+        .await?;
+    Ok(Json(
+        load_service_domain(&state, m.workspace.id, service_id, domain_id).await?,
+    ))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/workspaces/{wid}/deployments/services/{service_id}/domains/{domain_id}",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("service_id" = Uuid, Path, description = "deployment service id"),
+        ("domain_id" = Uuid, Path, description = "service domain id"),
+    ),
+    responses((status = 200, body = crate::http::workspaces::OkResponse)),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn remove_service_domain(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path(ServiceDomainPath {
+        service_id,
+        domain_id,
+        ..
+    }): Path<ServiceDomainPath>,
+) -> ApiResult<Json<crate::http::workspaces::OkResponse>> {
+    m.require_owner()?;
+    let domain = load_service_domain(&state, m.workspace.id, service_id, domain_id).await?;
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_service_domains
+            SET status = 'removing',
+                deleted_at = COALESCE(deleted_at, now()),
+                updated_at = now()
+            WHERE workspace_id = $1
+              AND service_id = $2
+              AND id = $3
+            "#,
+            [m.workspace.id.into(), service_id.into(), domain_id.into()],
+        ))
+        .await?;
+    insert_event(
+        &state,
+        m.workspace.id,
+        service_id,
+        None,
+        "warn",
+        "custom domain removal requested",
+        json!({ "hostname": domain.hostname }),
+    )
+    .await?;
+    Ok(Json(crate::http::workspaces::OkResponse { ok: true }))
 }
 
 #[utoipa::path(
@@ -1010,7 +1626,9 @@ async fn service_rows(
                END AS status,
                disabled_at, created_at, updated_at
         FROM deploy_services
-        WHERE workspace_id = $1 AND ($2 IS NULL OR id = $2)
+        WHERE workspace_id = $1
+          AND deleted_at IS NULL
+          AND ($2 IS NULL OR id = $2)
         ORDER BY created_at DESC
         "#,
         [workspace_id.into(), service_id.into()],
@@ -1035,6 +1653,84 @@ async fn load_service(
 async fn ensure_service(state: &AppState, workspace_id: Uuid, service_id: Uuid) -> ApiResult<()> {
     let _ = load_service(state, workspace_id, service_id).await?;
     Ok(())
+}
+
+async fn service_volume_rows(
+    state: &AppState,
+    workspace_id: Uuid,
+    service_id: Uuid,
+    volume_id: Option<Uuid>,
+) -> ApiResult<Vec<DeployServiceVolumeView>> {
+    let rows = DeployServiceVolumeView::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT id, workspace_id, service_id, provider, provider_volume_id,
+               name, mount_path, region, size_gb, status, provider_metadata,
+               created_at, updated_at
+        FROM deploy_service_volumes
+        WHERE workspace_id = $1
+          AND service_id = $2
+          AND ($3 IS NULL OR id = $3)
+          AND deleted_at IS NULL
+        ORDER BY created_at DESC
+        "#,
+        [workspace_id.into(), service_id.into(), volume_id.into()],
+    ))
+    .all(&state.db)
+    .await?;
+    Ok(rows)
+}
+
+async fn load_service_volume(
+    state: &AppState,
+    workspace_id: Uuid,
+    service_id: Uuid,
+    volume_id: Uuid,
+) -> ApiResult<DeployServiceVolumeView> {
+    service_volume_rows(state, workspace_id, service_id, Some(volume_id))
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| ApiError::not_found("deployment service volume not found"))
+}
+
+async fn service_domain_rows(
+    state: &AppState,
+    workspace_id: Uuid,
+    service_id: Uuid,
+    domain_id: Option<Uuid>,
+) -> ApiResult<Vec<DeployServiceDomainView>> {
+    let rows = DeployServiceDomainView::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT id, workspace_id, service_id, provider, provider_domain_id,
+               hostname, status, dns_requirements, validation_errors, provider_metadata,
+               verified_at, created_at, updated_at
+        FROM deploy_service_domains
+        WHERE workspace_id = $1
+          AND service_id = $2
+          AND ($3 IS NULL OR id = $3)
+          AND deleted_at IS NULL
+        ORDER BY created_at DESC
+        "#,
+        [workspace_id.into(), service_id.into(), domain_id.into()],
+    ))
+    .all(&state.db)
+    .await?;
+    Ok(rows)
+}
+
+async fn load_service_domain(
+    state: &AppState,
+    workspace_id: Uuid,
+    service_id: Uuid,
+    domain_id: Uuid,
+) -> ApiResult<DeployServiceDomainView> {
+    service_domain_rows(state, workspace_id, service_id, Some(domain_id))
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| ApiError::not_found("deployment service domain not found"))
 }
 
 async fn deployment_rows(
@@ -1124,6 +1820,45 @@ async fn insert_deployment(
         .into_iter()
         .next()
         .expect("deployment just inserted"))
+}
+
+async fn mark_service_queued_for_deployment(
+    state: &AppState,
+    workspace_id: Uuid,
+    service_id: Uuid,
+    was_stopped: bool,
+) -> ApiResult<()> {
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_services
+            SET status = $3,
+                disabled_at = NULL,
+                updated_at = now()
+            WHERE workspace_id = $1 AND id = $2
+            "#,
+            [
+                workspace_id.into(),
+                service_id.into(),
+                DeploymentStatus::Queued.code().into(),
+            ],
+        ))
+        .await?;
+    if was_stopped {
+        insert_event(
+            state,
+            workspace_id,
+            service_id,
+            None,
+            "info",
+            "service resumed for deployment",
+            json!({}),
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 async fn event_rows(
@@ -1230,7 +1965,11 @@ async fn workspace_service_count(state: &AppState, workspace_id: Uuid) -> ApiRes
         .db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT COUNT(*)::BIGINT AS count FROM deploy_services WHERE workspace_id = $1",
+            r#"
+            SELECT COUNT(*)::BIGINT AS count
+            FROM deploy_services
+            WHERE workspace_id = $1 AND deleted_at IS NULL
+            "#,
             [workspace_id.into()],
         ))
         .await?;
@@ -1250,6 +1989,30 @@ async fn active_deployment_count(state: &AppState, workspace_id: Uuid) -> ApiRes
             WHERE workspace_id = $1 AND status IN (0, 1, 2, 3, 4, 5, 7)
             "#,
             [workspace_id.into()],
+        ))
+        .await?;
+    Ok(row
+        .and_then(|row| row.try_get::<i64>("", "count").ok())
+        .unwrap_or(0))
+}
+
+async fn service_volume_count(
+    state: &AppState,
+    workspace_id: Uuid,
+    service_id: Uuid,
+) -> ApiResult<i64> {
+    let row = state
+        .db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT COUNT(*)::BIGINT AS count
+            FROM deploy_service_volumes
+            WHERE workspace_id = $1
+              AND service_id = $2
+              AND deleted_at IS NULL
+            "#,
+            [workspace_id.into(), service_id.into()],
         ))
         .await?;
     Ok(row
@@ -1306,6 +2069,28 @@ fn validate_slug_like(value: &str, label: &str) -> ApiResult<()> {
         Ok(())
     } else {
         Err(ApiError::bad_request(format!("invalid {label}")))
+    }
+}
+
+fn map_service_domain_unique_err(error: sea_orm::DbErr) -> ApiError {
+    let message = error.to_string();
+    if message.contains("uniq_deploy_service_domains_hostname_active")
+        || message.contains("duplicate key")
+    {
+        ApiError::conflict("custom domain already added")
+    } else {
+        ApiError::from(error)
+    }
+}
+
+fn map_service_volume_unique_err(error: sea_orm::DbErr) -> ApiError {
+    let message = error.to_string();
+    if message.contains("uniq_deploy_service_volumes_mount_active")
+        || message.contains("duplicate key")
+    {
+        ApiError::conflict("a volume is already attached at that mount path")
+    } else {
+        ApiError::from(error)
     }
 }
 

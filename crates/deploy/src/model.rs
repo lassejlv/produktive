@@ -43,21 +43,43 @@ impl RegistryKind {
 #[serde(rename_all = "snake_case")]
 pub enum ResourcePreset {
     PreviewSmall,
+    PreviewMedium,
+    PreviewLarge,
 }
 
 impl ResourcePreset {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::PreviewSmall => "preview_small",
+            Self::PreviewMedium => "preview_medium",
+            Self::PreviewLarge => "preview_large",
+        }
+    }
+
+    pub fn parse(value: &str) -> DeployResult<Self> {
+        match value.trim() {
+            "preview_small" | "small" => Ok(Self::PreviewSmall),
+            "preview_medium" | "medium" => Ok(Self::PreviewMedium),
+            "preview_large" | "large" => Ok(Self::PreviewLarge),
+            _ => Err(DeployError::Validation(
+                "resource_preset must be preview_small, preview_medium, or preview_large".into(),
+            )),
         }
     }
 
     pub fn cpus(self) -> u16 {
-        1
+        match self {
+            Self::PreviewSmall | Self::PreviewMedium => 1,
+            Self::PreviewLarge => 2,
+        }
     }
 
     pub fn memory_mb(self) -> u16 {
-        512
+        match self {
+            Self::PreviewSmall => 512,
+            Self::PreviewMedium => 1024,
+            Self::PreviewLarge => 2048,
+        }
     }
 
     pub fn cpu_kind(self) -> &'static str {
@@ -95,8 +117,19 @@ pub struct DeploymentSpec {
     pub health_check_path: String,
     pub region: String,
     pub resource_preset: ResourcePreset,
+    pub volumes: Vec<VolumeSpec>,
     pub env: BTreeMap<String, String>,
     pub secrets: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VolumeSpec {
+    pub id: Uuid,
+    pub provider_volume_id: Option<String>,
+    pub name: String,
+    pub mount_path: String,
+    pub region: String,
+    pub size_gb: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,6 +141,14 @@ pub struct ProviderService {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderServiceRef {
+    pub workspace_id: Uuid,
+    pub service_id: Uuid,
+    pub provider_service_id: Option<String>,
+    pub app_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderDeployment {
     pub provider: ProviderKind,
     pub provider_deployment_id: String,
@@ -115,6 +156,30 @@ pub struct ProviderDeployment {
     pub status: DeploymentStatus,
     pub image_digest: Option<String>,
     pub url: Option<String>,
+    pub volumes: Vec<ProviderVolume>,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderVolume {
+    pub volume_id: Uuid,
+    pub provider_volume_id: String,
+    pub name: String,
+    pub mount_path: String,
+    pub region: String,
+    pub size_gb: i32,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderDomain {
+    pub provider: ProviderKind,
+    pub hostname: String,
+    pub provider_domain_id: Option<String>,
+    pub status: String,
+    pub configured: bool,
+    pub dns_requirements: serde_json::Value,
+    pub validation_errors: serde_json::Value,
     pub metadata: serde_json::Value,
 }
 
@@ -148,6 +213,7 @@ pub struct MetricPoint {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricQuery {
     pub service_id: Uuid,
+    pub provider_service_id: Option<String>,
     pub from: DateTime<FixedOffset>,
     pub to: DateTime<FixedOffset>,
 }
@@ -202,6 +268,49 @@ pub fn validate_region(region: &str) -> DeployResult<()> {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
     if !valid {
         return Err(DeployError::Validation("invalid deployment region".into()));
+    }
+    Ok(())
+}
+
+pub fn validate_volume_name(name: &str) -> DeployResult<()> {
+    let name = name.trim();
+    let valid = !name.is_empty()
+        && name.len() <= 63
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_');
+    if !valid {
+        return Err(DeployError::Validation(
+            "volume name must be lowercase letters, numbers, dashes, or underscores".into(),
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_volume_mount_path(path: &str) -> DeployResult<()> {
+    let path = path.trim();
+    let valid = path.starts_with('/')
+        && path.len() <= 256
+        && !path.contains(char::is_whitespace)
+        && !path.ends_with('/');
+    if !valid
+        || matches!(
+            path,
+            "/" | "/app" | "/tmp" | "/var" | "/usr" | "/bin" | "/etc"
+        )
+    {
+        return Err(DeployError::Validation(
+            "volume mount_path must be an absolute non-system path like /data".into(),
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_volume_size_gb(size_gb: i32) -> DeployResult<()> {
+    if !(1..=50).contains(&size_gb) {
+        return Err(DeployError::Validation(
+            "volume size_gb must be between 1 and 50 for private preview".into(),
+        ));
     }
     Ok(())
 }

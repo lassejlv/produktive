@@ -28,6 +28,9 @@ mod m20260616_000025_create_password_reset_tokens;
 mod m20260619_000026_add_legal_terms_acceptance;
 mod m20260621_000027_create_deployments;
 mod m20260621_000028_create_deploy_log_lines;
+mod m20260621_000029_create_deploy_service_domains;
+mod m20260621_000030_add_deploy_retention_indexes;
+mod m20260621_000031_add_deploy_service_management;
 
 pub struct Migrator;
 
@@ -63,6 +66,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20260619_000026_add_legal_terms_acceptance::Migration),
             Box::new(m20260621_000027_create_deployments::Migration),
             Box::new(m20260621_000028_create_deploy_log_lines::Migration),
+            Box::new(m20260621_000029_create_deploy_service_domains::Migration),
+            Box::new(m20260621_000030_add_deploy_retention_indexes::Migration),
+            Box::new(m20260621_000031_add_deploy_service_management::Migration),
         ]
     }
 }

@@ -1,14 +1,16 @@
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use chrono::{DateTime, FixedOffset, Utc};
-use deploy::{DeployError, DeployResult, LogLine};
+use deploy::{DeployError, DeployResult, LogLine, MetricPoint};
 use reqwest::{Method, StatusCode};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 use url::Url;
 
 use crate::models::{
-    AppResponse, CreateAppRequest, CreateAppResponse, CreateMachineRequest, MachineResponse,
+    AppResponse, CertificateResponse, CreateAppRequest, CreateAppResponse,
+    CreateCertificateRequest, CreateMachineRequest, CreateVolumeRequest, MachineResponse,
+    VolumeResponse,
 };
 
 const DEFAULT_API_HOSTNAME: &str = "https://api.machines.dev";
@@ -121,6 +123,12 @@ impl Fly {
             .await
     }
 
+    pub async fn delete_app(&self, app_name: &str) -> DeployResult<()> {
+        self.request::<(), serde_json::Value>(Method::DELETE, &format!("/v1/apps/{app_name}"), None)
+            .await
+            .map(|_| ())
+    }
+
     pub async fn create_machine(
         &self,
         app_name: &str,
@@ -151,6 +159,77 @@ impl Fly {
         self.request::<(), serde_json::Value>(
             Method::POST,
             &format!("/v1/apps/{app_name}/machines/{machine_id}/stop"),
+            None,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    pub async fn delete_machine(&self, app_name: &str, machine_id: &str) -> DeployResult<()> {
+        self.request::<(), serde_json::Value>(
+            Method::DELETE,
+            &format!("/v1/apps/{app_name}/machines/{machine_id}?force=true"),
+            None,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    pub async fn create_volume(
+        &self,
+        app_name: &str,
+        body: &CreateVolumeRequest,
+    ) -> DeployResult<VolumeResponse> {
+        self.request(
+            Method::POST,
+            &format!("/v1/apps/{app_name}/volumes"),
+            Some(body),
+        )
+        .await
+    }
+
+    pub async fn delete_volume(&self, app_name: &str, volume_id: &str) -> DeployResult<()> {
+        self.request::<(), serde_json::Value>(
+            Method::DELETE,
+            &format!("/v1/apps/{app_name}/volumes/{volume_id}?force=true"),
+            None,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    pub async fn request_acme_certificate(
+        &self,
+        app_name: &str,
+        hostname: &str,
+    ) -> DeployResult<CertificateResponse> {
+        self.request(
+            Method::POST,
+            &format!("/v1/apps/{app_name}/certificates/acme"),
+            Some(&CreateCertificateRequest {
+                hostname: hostname.to_owned(),
+            }),
+        )
+        .await
+    }
+
+    pub async fn check_certificate(
+        &self,
+        app_name: &str,
+        hostname: &str,
+    ) -> DeployResult<CertificateResponse> {
+        self.request::<(), CertificateResponse>(
+            Method::POST,
+            &format!("/v1/apps/{app_name}/certificates/{hostname}/check"),
+            None,
+        )
+        .await
+    }
+
+    pub async fn delete_certificate(&self, app_name: &str, hostname: &str) -> DeployResult<()> {
+        self.request::<(), serde_json::Value>(
+            Method::DELETE,
+            &format!("/v1/apps/{app_name}/certificates/{hostname}"),
             None,
         )
         .await
@@ -196,6 +275,96 @@ impl Fly {
         let payload: Value =
             serde_json::from_str(&text).map_err(|error| DeployError::Decode(error.to_string()))?;
         Ok(parse_log_payload(&payload))
+    }
+
+    pub async fn metrics(
+        &self,
+        app_name: &str,
+        from: DateTime<FixedOffset>,
+        to: DateTime<FixedOffset>,
+    ) -> DeployResult<Vec<MetricPoint>> {
+        let app = prometheus_label_value(app_name);
+        let cpu_query = format!(
+            r#"100 * sum(rate(fly_instance_cpu{{app="{app}",mode!="idle"}}[2m])) / sum(rate(fly_instance_cpu{{app="{app}"}}[2m]))"#
+        );
+        let memory_query = format!(
+            r#"sum(fly_instance_memory_mem_total{{app="{app}"}} - fly_instance_memory_mem_available{{app="{app}"}}) / 1024 / 1024"#
+        );
+        let requests_query =
+            format!(r#"sum(increase(fly_app_http_responses_count{{app="{app}"}}[1m]))"#);
+
+        let cpu = self.prometheus_query_range(&cpu_query, from, to).await?;
+        let memory = self.prometheus_query_range(&memory_query, from, to).await?;
+        let requests = self
+            .prometheus_query_range(&requests_query, from, to)
+            .await?;
+        Ok(merge_metric_series(cpu, memory, requests))
+    }
+
+    async fn prometheus_query_range(
+        &self,
+        query: &str,
+        from: DateTime<FixedOffset>,
+        to: DateTime<FixedOffset>,
+    ) -> DeployResult<Vec<(DateTime<FixedOffset>, f64)>> {
+        let mut url = Url::parse(&format!(
+            "{DEFAULT_PLATFORM_API_HOSTNAME}/prometheus/{}/api/v1/query_range",
+            self.inner.org_slug
+        ))
+        .map_err(|error| DeployError::Config(format!("invalid Fly metrics URL: {error}")))?;
+        {
+            let mut query_pairs = url.query_pairs_mut();
+            query_pairs.append_pair("query", query);
+            query_pairs.append_pair("start", &from.timestamp().to_string());
+            query_pairs.append_pair("end", &to.timestamp().to_string());
+            query_pairs.append_pair("step", "60");
+        }
+
+        let mut last_failure = None;
+        let mut text = None;
+        for authorization in fly_authorization_headers(&self.inner.api_token) {
+            let response = self
+                .inner
+                .http
+                .get(url.clone())
+                .header("Authorization", authorization)
+                .send()
+                .await
+                .map_err(|error| DeployError::Transport(error.to_string()))?;
+            let status = response.status();
+            let response_text = response
+                .text()
+                .await
+                .map_err(|error| DeployError::Transport(error.to_string()))?;
+            if status.is_success() {
+                text = Some(response_text);
+                break;
+            }
+            last_failure = Some(format!("Fly metrics API {status}: {response_text}"));
+            if !matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                break;
+            }
+        }
+        let text = text.ok_or_else(|| {
+            DeployError::Provider(
+                last_failure.unwrap_or_else(|| "Fly metrics API request failed".into()),
+            )
+        })?;
+        let payload: PrometheusRangeResponse =
+            serde_json::from_str(&text).map_err(|error| DeployError::Decode(error.to_string()))?;
+        if payload.status != "success" {
+            return Err(DeployError::Provider(format!(
+                "Fly metrics query failed: {}",
+                payload
+                    .error
+                    .or(payload.error_type)
+                    .unwrap_or_else(|| "unknown error".into())
+            )));
+        }
+        Ok(payload
+            .data
+            .map(|data| parse_prometheus_values(&data.result))
+            .unwrap_or_default())
     }
 
     async fn allocate_ip(
@@ -315,6 +484,10 @@ impl Fly {
             }
             return Err(DeployError::Provider(format!("Fly API {status}: {text}")));
         }
+        if text.trim().is_empty() {
+            return serde_json::from_value(serde_json::Value::Null)
+                .map_err(|error| DeployError::Decode(error.to_string()));
+        }
         serde_json::from_str(&text).map_err(|error| DeployError::Decode(error.to_string()))
     }
 }
@@ -342,6 +515,25 @@ struct GraphqlResponse<T> {
 #[derive(Deserialize)]
 struct GraphqlError {
     message: String,
+}
+
+#[derive(Deserialize)]
+struct PrometheusRangeResponse {
+    status: String,
+    data: Option<PrometheusRangeData>,
+    error: Option<String>,
+    #[serde(rename = "errorType")]
+    error_type: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PrometheusRangeData {
+    result: Vec<PrometheusSeries>,
+}
+
+#[derive(Deserialize)]
+struct PrometheusSeries {
+    values: Vec<Value>,
 }
 
 #[derive(Serialize)]
@@ -377,6 +569,107 @@ fn is_already_allocated_error(message: &str) -> bool {
 fn is_not_allocatable_error(message: &str) -> bool {
     let message = message.to_ascii_lowercase();
     message.contains("unavailable") && message.contains("shared_v4")
+}
+
+fn fly_authorization_headers(token: &str) -> Vec<String> {
+    if token.starts_with("Bearer ") || token.starts_with("FlyV1 ") {
+        return vec![token.to_owned()];
+    }
+    if token.starts_with("fm") {
+        vec![format!("FlyV1 {token}"), format!("Bearer {token}")]
+    } else {
+        vec![format!("Bearer {token}"), format!("FlyV1 {token}")]
+    }
+}
+
+fn prometheus_label_value(value: &str) -> String {
+    value.replace('\\', r"\\").replace('"', r#"\""#)
+}
+
+fn parse_prometheus_values(series: &[PrometheusSeries]) -> Vec<(DateTime<FixedOffset>, f64)> {
+    let mut values = BTreeMap::<i64, f64>::new();
+    for item in series {
+        for value in &item.values {
+            let Some((timestamp, metric_value)) = parse_prometheus_sample(value) else {
+                continue;
+            };
+            *values.entry(timestamp).or_default() += metric_value;
+        }
+    }
+    values
+        .into_iter()
+        .filter_map(|(timestamp, value)| {
+            DateTime::<Utc>::from_timestamp(timestamp, 0)
+                .map(|timestamp| (timestamp.fixed_offset(), value))
+        })
+        .collect()
+}
+
+fn parse_prometheus_sample(value: &Value) -> Option<(i64, f64)> {
+    let values = value.as_array()?;
+    let timestamp = values.first().and_then(prometheus_timestamp)?;
+    let metric_value = values.get(1).and_then(prometheus_f64)?;
+    if metric_value.is_finite() {
+        Some((timestamp, metric_value))
+    } else {
+        None
+    }
+}
+
+fn prometheus_timestamp(value: &Value) -> Option<i64> {
+    if let Some(timestamp) = value.as_i64() {
+        return Some(timestamp);
+    }
+    if let Some(timestamp) = value.as_f64() {
+        return Some(timestamp as i64);
+    }
+    value
+        .as_str()?
+        .parse::<f64>()
+        .ok()
+        .map(|value| value as i64)
+}
+
+fn prometheus_f64(value: &Value) -> Option<f64> {
+    if let Some(value) = value.as_f64() {
+        return Some(value);
+    }
+    value.as_str()?.parse().ok()
+}
+
+fn merge_metric_series(
+    cpu: Vec<(DateTime<FixedOffset>, f64)>,
+    memory: Vec<(DateTime<FixedOffset>, f64)>,
+    requests: Vec<(DateTime<FixedOffset>, f64)>,
+) -> Vec<MetricPoint> {
+    let mut points = BTreeMap::<i64, MetricPoint>::new();
+    apply_metric_series(&mut points, cpu, |point, value| {
+        point.cpu_percent = Some(value.clamp(0.0, 100.0));
+    });
+    apply_metric_series(&mut points, memory, |point, value| {
+        point.memory_mb = Some(value.max(0.0));
+    });
+    apply_metric_series(&mut points, requests, |point, value| {
+        point.requests = Some(value.max(0.0));
+    });
+    points.into_values().collect()
+}
+
+fn apply_metric_series(
+    points: &mut BTreeMap<i64, MetricPoint>,
+    series: Vec<(DateTime<FixedOffset>, f64)>,
+    apply: impl Fn(&mut MetricPoint, f64),
+) {
+    for (timestamp, value) in series {
+        let key = timestamp.timestamp();
+        let point = points.entry(key).or_insert_with(|| MetricPoint {
+            timestamp,
+            cpu_percent: None,
+            memory_mb: None,
+            requests: None,
+        });
+        apply(point, value);
+    }
 }
 
 fn parse_log_payload(payload: &Value) -> Vec<LogLine> {
