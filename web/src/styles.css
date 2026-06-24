@@ -469,6 +469,28 @@ select {
   box-shadow: inset 0 0 0 1px var(--color-border);
 }
 
+/* deployments — horizontal tab rail on narrow viewports */
+.deploy-tab-rail {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.deploy-tab-rail::-webkit-scrollbar {
+  display: none;
+}
+
+/* deployments — card lift on hover (desktop) */
+@media (hover: hover) {
+  .deploy-card:hover {
+    transform: translateY(-2px);
+  }
+}
+.deploy-card {
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
 .legal-markdown {
   color: var(--color-fg);
   font-size: 14px;

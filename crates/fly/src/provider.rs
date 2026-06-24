@@ -11,8 +11,8 @@ use serde_json::{json, Value};
 use crate::{
     client::Fly,
     models::{
-        CertificateResponse, CheckConfig, CreateMachineRequest, CreateVolumeRequest, GuestConfig,
-        MachineConfig, MachineMountConfig, RestartConfig, ServiceConfig, ServicePort,
+        CertificateResponse, CreateMachineRequest, CreateVolumeRequest, GuestConfig, MachineConfig,
+        MachineMountConfig, RestartConfig, ServiceConfig, ServicePort,
     },
 };
 
@@ -185,20 +185,7 @@ impl DeployProvider for FlyProvider {
             provider_volumes.push(provider_volume);
         }
 
-        let mut checks = BTreeMap::new();
-        checks.insert(
-            "http".into(),
-            CheckConfig {
-                kind: "http".into(),
-                port: deployment.internal_port,
-                interval: "15s".into(),
-                timeout: "10s".into(),
-                grace_period: "30s".into(),
-                method: "GET".into(),
-                path: deployment.health_check_path.clone(),
-                protocol: "http".into(),
-            },
-        );
+        let checks = BTreeMap::new();
         let mut metadata = BTreeMap::new();
         metadata.insert(
             "produktive_service_id".into(),

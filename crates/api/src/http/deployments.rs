@@ -53,7 +53,7 @@ pub fn routes(state: AppState) -> Router<AppState> {
         )
         .route(
             "/services/{service_id}/volumes/{volume_id}",
-            delete(delete_service_volume),
+            delete(delete_service_volume).patch(update_service_volume),
         )
         .route(
             "/services/{service_id}/deployments",
@@ -286,6 +286,12 @@ pub struct CreateServiceVolumeBody {
     pub name: String,
     pub mount_path: String,
     pub size_gb: i32,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct UpdateServiceVolumeBody {
+    #[serde(default)]
+    pub mount_path: Option<String>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -948,6 +954,81 @@ pub async fn create_service_volume(
     .await?;
     Ok(Json(
         load_service_volume(&state, m.workspace.id, service_id, id).await?,
+    ))
+}
+
+#[utoipa::path(
+    patch,
+    path = "/api/workspaces/{wid}/deployments/services/{service_id}/volumes/{volume_id}",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("service_id" = Uuid, Path, description = "deployment service id"),
+        ("volume_id" = Uuid, Path, description = "service volume id"),
+    ),
+    request_body = UpdateServiceVolumeBody,
+    responses((status = 200, body = DeployServiceVolumeView)),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn update_service_volume(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path(ServiceVolumePath {
+        service_id,
+        volume_id,
+        ..
+    }): Path<ServiceVolumePath>,
+    Json(body): Json<UpdateServiceVolumeBody>,
+) -> ApiResult<Json<DeployServiceVolumeView>> {
+    m.require_owner()?;
+    let volume = load_service_volume(&state, m.workspace.id, service_id, volume_id).await?;
+    let Some(mount_path) = body.mount_path else {
+        return Ok(Json(volume));
+    };
+    let mount_path = mount_path.trim().to_owned();
+    validate_volume_mount_path(&mount_path).map_err(deploy_error)?;
+    if mount_path == volume.mount_path {
+        return Ok(Json(volume));
+    }
+
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_service_volumes
+            SET mount_path = $4, updated_at = now()
+            WHERE workspace_id = $1
+              AND service_id = $2
+              AND id = $3
+              AND deleted_at IS NULL
+            "#,
+            [
+                m.workspace.id.into(),
+                service_id.into(),
+                volume_id.into(),
+                mount_path.clone().into(),
+            ],
+        ))
+        .await
+        .map_err(map_service_volume_unique_err)?;
+    insert_event(
+        &state,
+        m.workspace.id,
+        service_id,
+        None,
+        "info",
+        "volume mount path updated",
+        json!({
+            "name": volume.name,
+            "previous_mount_path": volume.mount_path,
+            "mount_path": mount_path,
+            "applies_on": "next_deployment"
+        }),
+    )
+    .await?;
+    Ok(Json(
+        load_service_volume(&state, m.workspace.id, service_id, volume_id).await?,
     ))
 }
 

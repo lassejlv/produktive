@@ -63,6 +63,20 @@ export function deployStatusPending(status: DeployStatus): boolean {
   );
 }
 
+export const DEPLOY_GLOW_CLASS: Record<DeployStatus, string> = {
+  live: "glow-up",
+  healthy: "glow-up",
+  failed: "glow-down",
+  stopped: "glow-unknown",
+  rolled_back: "glow-unknown",
+  queued: "glow-warn",
+  provisioning: "glow-warn",
+  pulling: "glow-warn",
+  starting: "glow-warn",
+  rolling_back: "glow-warn",
+  unknown: "glow-unknown",
+};
+
 export function lastSeen(iso: string | null): string {
   if (!iso) return "never";
   const diff = Date.now() - new Date(iso).getTime();

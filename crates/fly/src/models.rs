@@ -41,6 +41,7 @@ pub struct MachineConfig {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub mounts: Vec<MachineMountConfig>,
     pub services: Vec<ServiceConfig>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub checks: BTreeMap<String, CheckConfig>,
     pub restart: RestartConfig,
     pub metadata: BTreeMap<String, String>,

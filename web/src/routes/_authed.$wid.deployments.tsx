@@ -3,6 +3,8 @@ import {
   Activity,
   ArrowLeft,
   CheckCircle2,
+  ChevronRight,
+  Clock,
   Copy,
   Cpu,
   Download,
@@ -17,14 +19,16 @@ import {
   Plus,
   Rocket,
   RotateCcw,
+  Save,
   ScrollText,
   Server,
   Settings,
   Square,
   Terminal,
   Trash2,
+  X,
 } from "lucide-react";
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { ChartTooltip, Grid, Line, LineChart, XAxis } from "#/charts";
 import { Button } from "#/components/ui/button";
 import { ScrollArea } from "#/components/ui/scroll-area";
@@ -33,12 +37,14 @@ import { Dialog, DialogClose, DialogContent } from "../components/Dialog";
 import { EmptyState } from "../components/EmptyState";
 import { PageActions } from "../components/PageLayout";
 import { Segmented } from "../components/Segmented";
+import { StatTile } from "../components/StatTile";
 import { Spinner } from "#/components/ui/spinner";
 import { cn } from "#/lib/cn";
 import { DEPLOYMENTS_ENABLED } from "#/lib/features";
 import {
   DEPLOY_STATUS_COLOR,
   DEPLOY_STATUS_LABEL,
+  DEPLOY_GLOW_CLASS,
   deployStatusActive,
   deployStatusPending,
   lastSeen,
@@ -67,6 +73,7 @@ import {
   useRollbackDeployment,
   useStopDeployService,
   useUpdateDeployService,
+  useUpdateDeployServiceVolume,
   useVerifyDeployServiceDomain,
 } from "../lib/queries";
 import type {
@@ -97,6 +104,108 @@ const RESOURCE_PRESETS: Array<{
 
 const fieldControlClass =
   "w-full rounded-[var(--radius-md)] border border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] px-3 text-[13px] text-[var(--color-fg)] shadow-[var(--shadow-xs)] outline-none transition-[border-color,box-shadow] focus:border-[var(--color-accent)] focus:shadow-[var(--ring-accent)]";
+
+/** Status-tinted elevation for service surfaces — echoes the monitor-card glow language. */
+function surfaceShadow(status: DeployStatus): string {
+  const color = DEPLOY_STATUS_COLOR[status];
+  if (status === "failed") {
+    return `var(--shadow-md), 0 0 0 1px color-mix(in srgb, ${color} 16%, transparent), 0 16px 38px -18px color-mix(in srgb, ${color} 34%, transparent)`;
+  }
+  if (deployStatusActive(status)) {
+    return `var(--shadow-sm), 0 0 0 1px color-mix(in srgb, ${color} 13%, transparent)`;
+  }
+  return "var(--shadow-sm)";
+}
+
+/** A live "ticking" indicator used in panel headers backed by polling queries. */
+function LiveDot({ label = "Live", color = "var(--color-ok)" }: { label?: string; color?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
+      <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+      {label}
+    </span>
+  );
+}
+
+/** Consistent panel chrome: a bordered surface with a hairline-separated header. */
+function PanelCard({
+  title,
+  icon: Icon,
+  count,
+  live,
+  actions,
+  children,
+  className,
+  bodyClassName,
+}: {
+  title: ReactNode;
+  icon?: typeof Rocket;
+  count?: ReactNode;
+  live?: boolean;
+  actions?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  bodyClassName?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)]",
+        className,
+      )}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-[var(--color-border)] px-3.5 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          {Icon && <Icon size={14} className="shrink-0 text-[var(--color-fg-muted)]" />}
+          <span className="truncate text-[13px] font-medium text-[var(--color-fg)]">{title}</span>
+          {count != null && (
+            <span className="tabular text-[11px] text-[var(--color-fg-dim)]">{count}</span>
+          )}
+          {live && <LiveDot />}
+        </div>
+        {actions && <div className="flex flex-wrap items-center gap-1.5">{actions}</div>}
+      </div>
+      <div className={cn("p-3.5", bodyClassName)}>{children}</div>
+    </div>
+  );
+}
+
+/** A click-to-copy mono chip — used for image refs, digests, and provider ids. */
+function CopyChip({
+  value,
+  icon: Icon,
+  label,
+  className,
+}: {
+  value: string;
+  icon?: typeof Rocket;
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard?.writeText(value);
+        toast.success("Copied to clipboard");
+      }}
+      title="Copy"
+      className={cn(
+        "group/copy inline-flex max-w-full items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-2 py-1 text-left transition-colors hover:border-[var(--color-border-hi)] hover:bg-[var(--color-bg-sunken)]",
+        className,
+      )}
+    >
+      {Icon && <Icon size={12} className="shrink-0 text-[var(--color-fg-dim)]" />}
+      <span className="mono min-w-0 truncate text-[11.5px] text-[var(--color-fg-muted)] group-hover/copy:text-[var(--color-fg)]">
+        {label ?? value}
+      </span>
+      <Copy
+        size={11}
+        className="shrink-0 text-[var(--color-fg-dim)] opacity-0 transition-opacity group-hover/copy:opacity-100"
+      />
+    </button>
+  );
+}
 
 export const Route = createFileRoute("/_authed/$wid/deployments")({
   staticData: {
@@ -183,7 +292,7 @@ function DeploymentsContent({
         </PageActions>
       )}
 
-      <div className={cn("relative", isDetailView && "fade-in mx-auto max-w-5xl px-6 py-7 lg:px-8")}>
+      <div className={cn("relative", isDetailView && "fade-in mx-auto max-w-5xl px-4 py-6 pb-24 sm:px-6 sm:py-7 sm:pb-7 lg:px-8")}>
         <div
           className={cn(
             "transition-opacity",
@@ -220,10 +329,13 @@ function DeploymentsContent({
               }
             />
           ) : (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {sorted.map((service) => (
-                <ServiceCard key={service.id} wid={wid} service={service} />
-              ))}
+            <div className="space-y-5">
+              <ServiceSummaryBar services={sorted} />
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {sorted.map((service) => (
+                  <ServiceCard key={service.id} wid={wid} service={service} />
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -297,35 +409,40 @@ function RequestAccessOverlay({ wid, status }: { wid: string; status: DeployAcce
         : "Request access to deploy HTTP services from Docker images.";
 
   return (
-    <div className="absolute inset-0 z-10 flex items-start justify-center px-4 pt-10 sm:pt-16">
-      <div className="w-full max-w-md rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-6 text-center shadow-[var(--shadow-pop)]">
-        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg-row)] text-[var(--color-fg-muted)]">
-          <Lock size={18} />
-        </div>
-        <h2 className="mt-4 text-[16px] font-medium text-[var(--color-fg)]">{title}</h2>
-        <p className="mt-2 text-[13px] leading-5 text-[var(--color-fg-muted)]">{description}</p>
-        <div className="mt-5">
-          {pending || disabled ? (
-            <Button type="button" variant="secondary" size="sm" disabled>
-              {disabled ? "Unavailable" : "Request pending"}
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="default"
-              size="sm"
-              disabled={request.isPending}
-              onClick={() =>
-                request.mutate(undefined, {
-                  onSuccess: () => toast.success("Access requested"),
-                  onError: (err) => toast.error((err as Error).message),
-                })
-              }
-            >
-              {request.isPending && <Spinner className="size-3" />}
-              Request access
-            </Button>
-          )}
+    <div className="absolute inset-0 z-10 flex items-start justify-center px-4 pt-8 sm:pt-16">
+      <div className="w-full max-w-md overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-pop)]">
+        <div className="h-1 bg-[linear-gradient(90deg,var(--color-accent)_0%,color-mix(in_srgb,var(--color-accent)_40%,transparent)_100%)]" />
+        <div className="p-6 text-center sm:p-8">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg-row)] text-[var(--color-fg-muted)]">
+            <Lock size={20} />
+          </div>
+          <h2 className="mt-5 text-[17px] font-medium tracking-tight text-[var(--color-fg)]">
+            {title}
+          </h2>
+          <p className="mt-2 text-[13px] leading-6 text-[var(--color-fg-muted)]">{description}</p>
+          <div className="mt-6">
+            {pending || disabled ? (
+              <Button type="button" variant="secondary" size="sm" disabled>
+                {disabled ? "Unavailable" : "Request pending"}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                disabled={request.isPending}
+                onClick={() =>
+                  request.mutate(undefined, {
+                    onSuccess: () => toast.success("Access requested"),
+                    onError: (err) => toast.error((err as Error).message),
+                  })
+                }
+              >
+                {request.isPending && <Spinner className="size-3" />}
+                Request access
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -351,65 +468,157 @@ function ServiceNotFound({ wid }: { wid: string }) {
   );
 }
 
+function ServiceSummaryBar({ services }: { services: DeployService[] }) {
+  const counts = services.reduce(
+    (acc, service) => {
+      if (deployStatusActive(service.status)) acc.live += 1;
+      else if (deployStatusPending(service.status)) acc.pending += 1;
+      else if (service.status === "failed") acc.failed += 1;
+      else acc.other += 1;
+      return acc;
+    },
+    { live: 0, pending: 0, failed: 0, other: 0 },
+  );
+
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <StatTile label="Services" value={services.length} sub="in workspace" />
+      <StatTile
+        label="Live"
+        value={counts.live}
+        accent={counts.live > 0 ? "var(--color-ok)" : undefined}
+        sub="healthy or running"
+      />
+      <StatTile
+        label="Deploying"
+        value={counts.pending}
+        accent={counts.pending > 0 ? "var(--color-warn)" : undefined}
+        sub="in progress"
+      />
+      <StatTile
+        label="Failed"
+        value={counts.failed}
+        accent={counts.failed > 0 ? "var(--color-err)" : undefined}
+        sub="needs attention"
+      />
+    </div>
+  );
+}
+
 function ServiceCard({ wid, service }: { wid: string; service: DeployService }) {
   const color = DEPLOY_STATUS_COLOR[service.status];
   const active = deployStatusActive(service.status);
   const pending = deployStatusPending(service.status);
+  const glow = DEPLOY_GLOW_CLASS[service.status];
 
   return (
     <Link
       to="/$wid/deployments/$serviceId"
       params={{ wid, serviceId: service.id }}
-      className="group flex min-h-44 flex-col justify-between rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-4 text-left no-underline shadow-[var(--shadow-sm)] transition-colors hover:border-[var(--color-border-strong)] hover:bg-[var(--color-bg-row)]"
+      className={cn(
+        "deploy-card group relative flex flex-col overflow-hidden rounded-[var(--radius-lg)]",
+        "border border-[var(--color-border)] bg-[var(--color-bg-elev)] no-underline",
+        glow,
+      )}
+      style={{ boxShadow: surfaceShadow(service.status) }}
     >
-      <div className="min-w-0">
-        <div className="flex items-start justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className={cn(
+              "inline-block h-2 w-2 shrink-0 rounded-full",
+              active && "pulse-dot",
+              pending && "animate-pulse",
+            )}
+            style={{
+              background: color,
+              boxShadow: active
+                ? `0 0 10px color-mix(in srgb, ${color} 55%, transparent)`
+                : undefined,
+            }}
+          />
+          <h2 className="truncate text-[13px] font-medium tracking-tight text-[var(--color-fg)] group-hover:text-[var(--color-link)]">
+            {service.name}
+          </h2>
+        </div>
+        <ChevronRight
+          size={14}
+          className="shrink-0 text-[var(--color-fg-dim)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--color-fg-muted)]"
+        />
+      </div>
+
+      <div className="flex flex-1 flex-col px-4 py-3.5">
+        <div className="flex items-end justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span
-                className={cn(
-                  "inline-block h-2 w-2 shrink-0 rounded-full",
-                  active && "pulse-dot",
-                  pending && "animate-pulse",
-                )}
-                style={{
-                  background: color,
-                  boxShadow: active
-                    ? `0 0 10px color-mix(in srgb, ${color} 55%, transparent)`
-                    : undefined,
-                }}
-              />
-              <h2 className="truncate text-[15px] font-medium text-[var(--color-fg)]">
-                {service.name}
-              </h2>
+            <div
+              className="text-[10px] font-semibold uppercase tracking-[0.08em]"
+              style={{ color }}
+            >
+              {DEPLOY_STATUS_LABEL[service.status]}
             </div>
-            <div className="mono mt-1 truncate text-[11px] text-[var(--color-fg-muted)]">
+            <div className="mono mt-1.5 truncate text-[12px] text-[var(--color-fg-muted)]">
               {service.image}
             </div>
           </div>
-          <StatusBadge status={service.status} />
+          <div className="shrink-0 text-right">
+            <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
+              compute
+            </div>
+            <div className="mt-1.5 text-[12px] font-medium text-[var(--color-fg)]">
+              {resourcePresetLabel(service.resource_preset)}
+            </div>
+          </div>
         </div>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <MetaChip icon={MapPin} label={service.region} />
-          <MetaChip label={service.environment} />
-          <MetaChip label={`:${service.internal_port}`} />
-        </div>
-      </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-2">
-        <CardMetric label="Compute" value={resourcePresetLabel(service.resource_preset)} />
-        <CardMetric
-          label="Health"
-          value={service.health_check_path}
-          mono
-        />
-        <div className="col-span-2 truncate text-[11px] text-[var(--color-fg-muted)]">
-          {service.url
-            ? service.url.replace(/^https?:\/\//, "")
-            : `updated ${lastSeen(service.updated_at)}`}
+        <DeployHealthStrip status={service.status} />
+
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap gap-1.5">
+            <MetaChip icon={MapPin} label={service.region} />
+            <MetaChip label={service.environment} />
+            <MetaChip label={`:${service.internal_port}`} />
+          </div>
+          <span className="mono shrink-0 text-[10px] text-[var(--color-fg-dim)]">
+            {service.url
+              ? service.url.replace(/^https?:\/\//, "")
+              : lastSeen(service.updated_at)}
+          </span>
         </div>
       </div>
     </Link>
+  );
+}
+
+function DeployHealthStrip({ status }: { status: DeployStatus }) {
+  const ticks = 24;
+  const items = Array.from({ length: ticks }, (_, i) => {
+    if (i !== ticks - 1) return "idle";
+    if (deployStatusActive(status)) return "live";
+    if (deployStatusPending(status)) return "pending";
+    if (status === "failed") return "failed";
+    return "idle";
+  });
+
+  return (
+    <div className="mt-3.5 flex h-2 items-center gap-[2px]">
+      {items.map((kind, i) => (
+        <span
+          key={i}
+          className="h-full flex-1 rounded-[2px]"
+          style={{
+            background:
+              kind === "live"
+                ? "var(--color-ok)"
+                : kind === "pending"
+                  ? "var(--color-warn)"
+                  : kind === "failed"
+                    ? "var(--color-err)"
+                    : "var(--color-border-hi)",
+            opacity: kind === "idle" ? 0.45 : 0.92,
+          }}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -420,6 +629,7 @@ function ServiceDetailPage({ wid, service }: { wid: string; service: DeployServi
   const stop = useStopDeployService(wid);
   const color = DEPLOY_STATUS_COLOR[service.status];
   const active = deployStatusActive(service.status);
+  const glow = DEPLOY_GLOW_CLASS[service.status];
 
   return (
     <>
@@ -431,123 +641,95 @@ function ServiceDetailPage({ wid, service }: { wid: string; service: DeployServi
         <ArrowLeft size={12} /> All services
       </Link>
 
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span
-              className={cn(
-                "inline-block h-2.5 w-2.5 rounded-full",
-                active && "pulse-dot",
-              )}
-              style={{
-                background: color,
-                boxShadow: active
-                  ? `0 0 12px color-mix(in srgb, ${color} 60%, transparent)`
-                  : undefined,
-              }}
+      <div
+        className={cn(
+          "mb-6 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]",
+          glow,
+        )}
+      >
+        <div className="border-b border-[var(--color-border)] px-4 py-4 sm:px-5 sm:py-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span
+                  className={cn(
+                    "inline-block h-2.5 w-2.5 rounded-full",
+                    active && "pulse-dot",
+                  )}
+                  style={{
+                    background: color,
+                    boxShadow: active
+                      ? `0 0 12px color-mix(in srgb, ${color} 60%, transparent)`
+                      : undefined,
+                  }}
+                />
+                <h1 className="truncate text-[22px] font-medium tracking-tight text-[var(--color-fg)] sm:text-[23px]">
+                  {service.name}
+                </h1>
+                <StatusBadge status={service.status} />
+              </div>
+              <div className="mono mt-2 truncate text-[12px] text-[var(--color-fg-muted)]">
+                {service.image}
+              </div>
+            </div>
+
+            <div className="hidden flex-wrap items-center gap-2 sm:flex">
+              <ServiceActionButtons
+                service={service}
+                createDeployment={createDeployment}
+                rollback={rollback}
+                stop={stop}
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+            <DetailStat label="Region" value={service.region} icon={MapPin} />
+            <DetailStat label="Environment" value={service.environment} />
+            <DetailStat label="Port" value={`:${service.internal_port}`} mono />
+            <DetailStat
+              label="Compute"
+              value={resourcePresetLabel(service.resource_preset)}
+              sub={resourcePresetDetail(service.resource_preset)}
             />
-            <h1 className="truncate text-[23px] font-medium tracking-tight text-[var(--color-fg)]">
-              {service.name}
-            </h1>
-            <StatusBadge status={service.status} />
           </div>
-          <div className="mono mt-2 truncate text-[12px] text-[var(--color-fg-muted)]">
-            {service.image}
-          </div>
-          <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-[var(--color-fg-muted)]">
-            <span className="inline-flex items-center gap-1.5">
-              <MapPin size={12} className="text-[var(--color-fg-dim)]" /> {service.region}
-            </span>
-            <span>{service.environment}</span>
-            <span className="mono">:{service.internal_port}</span>
-            <span>{resourcePresetDetail(service.resource_preset)}</span>
-            {service.url && (
-              <span className="inline-flex items-center gap-1.5">
-                <Globe size={12} className="text-[var(--color-fg-dim)]" />
-                {service.url.replace(/^https?:\/\//, "")}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+
           {service.url && (
-            <Button
-              render={<a href={service.url} target="_blank" rel="noreferrer" />}
-              variant="secondary"
-              size="sm"
+            <a
+              href={service.url}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex max-w-full items-center gap-1.5 text-[12px] text-[var(--color-link)] no-underline hover:underline"
             >
-              <ExternalLink size={13} /> Open
-            </Button>
+              <Globe size={12} className="shrink-0" />
+              <span className="truncate">{service.url.replace(/^https?:\/\//, "")}</span>
+              <ExternalLink size={11} className="shrink-0 opacity-60" />
+            </a>
           )}
-          <Button
-            type="button"
-            variant="default"
-            size="sm"
-            disabled={createDeployment.isPending}
-            onClick={() =>
-              createDeployment.mutate(
-                { serviceId: service.id },
-                {
-                  onSuccess: () => toast.success("Deployment queued"),
-                  onError: (err) => toast.error((err as Error).message),
-                },
-              )
-            }
-          >
-            {createDeployment.isPending && <Spinner className="size-3" />}
-            <Rocket size={13} /> Deploy
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={rollback.isPending}
-            onClick={() =>
-              rollback.mutate(service.id, {
-                onSuccess: () => toast.success("Rollback queued"),
-                onError: (err) => toast.error((err as Error).message),
-              })
-            }
-          >
-            <RotateCcw size={13} /> Rollback
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={stop.isPending}
-            onClick={() =>
-              stop.mutate(service.id, {
-                onSuccess: () => toast.success("Service stop requested"),
-                onError: (err) => toast.error((err as Error).message),
-              })
-            }
-          >
-            <Square size={13} /> Stop
-          </Button>
         </div>
-      </div>
 
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <Segmented
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: "deployments", label: "Deployments", icon: Rocket },
-            { value: "events", label: "Events", icon: ScrollText },
-            { value: "logs", label: "Logs", icon: Terminal },
-            { value: "metrics", label: "Metrics", icon: Activity },
-            { value: "domains", label: "Domains", icon: Globe },
-            { value: "settings", label: "Settings", icon: Settings },
-          ]}
-        />
-        <span className="mono text-[11px] text-[var(--color-fg-dim)]">
-          {service.provider_service_id ?? service.slug}
-        </span>
-      </div>
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-2.5 sm:px-5">
+          <div className="deploy-tab-rail -mx-1 min-w-0 flex-1 overflow-x-auto px-1">
+            <Segmented
+              value={tab}
+              onChange={setTab}
+              size="sm"
+              options={[
+                { value: "deployments", label: "Deploys", icon: Rocket },
+                { value: "events", label: "Events", icon: ScrollText },
+                { value: "logs", label: "Logs", icon: Terminal },
+                { value: "metrics", label: "Metrics", icon: Activity },
+                { value: "domains", label: "Domains", icon: Globe },
+                { value: "settings", label: "Settings", icon: Settings },
+              ]}
+            />
+          </div>
+          <span className="mono hidden shrink-0 text-[10px] text-[var(--color-fg-dim)] sm:inline">
+            {service.provider_service_id ?? service.slug}
+          </span>
+        </div>
 
-      <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)]">
-        <div className="min-h-[360px] p-4">
+        <div className="min-h-[360px] p-4 sm:p-5">
           {tab === "deployments" && <DeploymentsPanel wid={wid} service={service} />}
           {tab === "events" && <EventsPanel wid={wid} service={service} />}
           {tab === "logs" && <LogsPanel wid={wid} service={service} />}
@@ -556,7 +738,127 @@ function ServiceDetailPage({ wid, service }: { wid: string; service: DeployServi
           {tab === "settings" && <SettingsPanel wid={wid} service={service} />}
         </div>
       </div>
+
+      <div className="sticky bottom-0 z-20 -mx-4 border-t border-[var(--color-border)] bg-[color-mix(in_srgb,var(--color-bg)_92%,transparent)] px-4 py-3 backdrop-blur-md sm:hidden">
+        <ServiceActionButtons
+          service={service}
+          createDeployment={createDeployment}
+          rollback={rollback}
+          stop={stop}
+          fullWidth
+        />
+      </div>
     </>
+  );
+}
+
+function DetailStat({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  icon?: typeof MapPin;
+  mono?: boolean;
+}) {
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2.5">
+      <div className="flex items-center gap-1 text-[10px] uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
+        {Icon && <Icon size={10} />}
+        {label}
+      </div>
+      <div
+        className={cn(
+          "mt-1 truncate text-[13px] font-medium text-[var(--color-fg)]",
+          mono && "mono text-[12px]",
+        )}
+      >
+        {value}
+      </div>
+      {sub && <div className="mt-0.5 truncate text-[10px] text-[var(--color-fg-muted)]">{sub}</div>}
+    </div>
+  );
+}
+
+function ServiceActionButtons({
+  service,
+  createDeployment,
+  rollback,
+  stop,
+  fullWidth = false,
+}: {
+  service: DeployService;
+  createDeployment: ReturnType<typeof useCreateDeployment>;
+  rollback: ReturnType<typeof useRollbackDeployment>;
+  stop: ReturnType<typeof useStopDeployService>;
+  fullWidth?: boolean;
+}) {
+  return (
+    <div className={cn("flex flex-wrap items-center gap-2", fullWidth && "w-full [&>button]:flex-1")}>
+      {service.url && (
+        <Button
+          render={<a href={service.url} target="_blank" rel="noreferrer" />}
+          variant="secondary"
+          size="sm"
+          className={fullWidth ? "flex-1" : undefined}
+        >
+          <ExternalLink size={13} /> Open
+        </Button>
+      )}
+      <Button
+        type="button"
+        variant="default"
+        size="sm"
+        className={fullWidth ? "flex-1" : undefined}
+        disabled={createDeployment.isPending}
+        onClick={() =>
+          createDeployment.mutate(
+            { serviceId: service.id },
+            {
+              onSuccess: () => toast.success("Deployment queued"),
+              onError: (err) => toast.error((err as Error).message),
+            },
+          )
+        }
+      >
+        {createDeployment.isPending && <Spinner className="size-3" />}
+        <Rocket size={13} /> Deploy
+      </Button>
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        className={fullWidth ? "flex-1" : undefined}
+        disabled={rollback.isPending}
+        onClick={() =>
+          rollback.mutate(service.id, {
+            onSuccess: () => toast.success("Rollback queued"),
+            onError: (err) => toast.error((err as Error).message),
+          })
+        }
+      >
+        <RotateCcw size={13} /> Rollback
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={stop.isPending}
+        onClick={() =>
+          stop.mutate(service.id, {
+            onSuccess: () => toast.success("Service stop requested"),
+            onError: (err) => toast.error((err as Error).message),
+          })
+        }
+      >
+        <Square size={13} />
+        {!fullWidth && " Stop"}
+      </Button>
+    </div>
   );
 }
 
@@ -574,8 +876,14 @@ function DeploymentsPanel({ wid, service }: { wid: string; service: DeployServic
   }
   return (
     <div className="space-y-2">
-      {deployments.data.map((deployment) => (
-        <DeploymentRow key={deployment.id} deployment={deployment} />
+      {deployments.data.map((deployment, index) => (
+        <div
+          key={deployment.id}
+          className="fade-in"
+          style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
+        >
+          <DeploymentRow deployment={deployment} />
+        </div>
       ))}
     </div>
   );
@@ -583,31 +891,49 @@ function DeploymentsPanel({ wid, service }: { wid: string; service: DeployServic
 
 function DeploymentRow({ deployment }: { deployment: Deployment }) {
   const color = DEPLOY_STATUS_COLOR[deployment.status];
+  const active = deployStatusActive(deployment.status);
+  const pending = deployStatusPending(deployment.status);
+
   return (
     <div
-      className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-3"
+      className="group relative overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] transition-colors hover:border-[var(--color-border-hi)]"
       style={{ borderLeft: `3px solid ${color}` }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <div className="mono truncate text-[12px] text-[var(--color-fg)]">{deployment.image}</div>
+      <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                "inline-block h-1.5 w-1.5 shrink-0 rounded-full",
+                active && "pulse-dot",
+                pending && "animate-pulse",
+              )}
+              style={{ background: color }}
+            />
+            <div className="mono truncate text-[12px] font-medium text-[var(--color-fg)]">
+              {deployment.image}
+            </div>
+          </div>
           {deployment.image_digest && (
-            <div className="mono mt-0.5 truncate text-[10px] text-[var(--color-fg-dim)]">
-              {deployment.image_digest.slice(0, 19)}…
+            <div className="mt-1 pl-3.5">
+              <CopyChip value={deployment.image_digest} label={`${deployment.image_digest.slice(0, 24)}…`} />
             </div>
           )}
+          <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 pl-3.5 text-[11px] text-[var(--color-fg-muted)]">
+            <span className="inline-flex items-center gap-1">
+              <Clock size={10} className="text-[var(--color-fg-dim)]" />
+              queued {lastSeen(deployment.created_at)}
+            </span>
+            {deployment.started_at && <span>started {lastSeen(deployment.started_at)}</span>}
+            {deployment.finished_at && <span>finished {lastSeen(deployment.finished_at)}</span>}
+          </div>
         </div>
         <StatusBadge status={deployment.status} />
       </div>
-      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--color-fg-muted)]">
-        <span>queued {lastSeen(deployment.created_at)}</span>
-        {deployment.started_at && <span>started {lastSeen(deployment.started_at)}</span>}
-        {deployment.finished_at && <span>finished {lastSeen(deployment.finished_at)}</span>}
-      </div>
       {deployment.failure_message && (
-        <p className="mt-2 text-[12px] leading-5 text-[var(--color-err)]">
-          {deployment.failure_message}
-        </p>
+        <div className="border-t border-[color-mix(in_srgb,var(--color-err)_20%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-err)_6%,transparent)] px-4 py-2.5">
+          <p className="text-[12px] leading-5 text-[var(--color-err)]">{deployment.failure_message}</p>
+        </div>
       )}
     </div>
   );
@@ -674,7 +1000,7 @@ function MetricsPanel({ wid, service }: { wid: string; service: DeployService })
   if (metrics.isLoading) {
     return (
       <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
-        <div className="grid grid-cols-3 divide-x divide-[var(--color-border)] border-b border-[var(--color-border)]">
+        <div className="grid grid-cols-1 divide-y divide-[var(--color-border)] border-b border-[var(--color-border)] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           {Array.from({ length: 3 }).map((_, index) => (
             <div key={index} className="space-y-2 px-3.5 py-3">
               <Skeleton className="h-2.5 w-14" />
@@ -683,7 +1009,7 @@ function MetricsPanel({ wid, service }: { wid: string; service: DeployService })
             </div>
           ))}
         </div>
-        <div className="p-3">
+        <div className="p-3 sm:p-4">
           <MetricsLineChart points={[]} metric="cpu" loading />
         </div>
       </div>
@@ -706,7 +1032,7 @@ function MetricsPanel({ wid, service }: { wid: string; service: DeployService })
 
   return (
     <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
-      <div className="grid grid-cols-3 divide-x divide-[var(--color-border)] border-b border-[var(--color-border)]">
+      <div className="grid grid-cols-1 divide-y divide-[var(--color-border)] border-b border-[var(--color-border)] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         {METRIC_TILES.map((tile) => {
           const stats = metricStats(points, tile.kind);
           const high = tile.kind === "cpu" && stats.latest != null && stats.latest >= 80;
@@ -728,8 +1054,8 @@ function MetricsPanel({ wid, service }: { wid: string; service: DeployService })
           );
         })}
       </div>
-      <div className="p-3">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div className="p-3 sm:p-4">
+        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
           <span className="text-[12px] font-medium text-[var(--color-fg)]">
             {metricChartLabel(chartKind)} over time
           </span>
@@ -767,7 +1093,7 @@ function MetricTile({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "relative flex flex-col gap-1 px-3.5 py-3 text-left transition-colors",
+        "relative flex flex-col gap-1 px-4 py-3.5 text-left transition-colors sm:px-3.5 sm:py-3",
         active
           ? "bg-[color-mix(in_srgb,var(--color-accent)_7%,transparent)]"
           : "hover:bg-[var(--color-bg-row)]",
@@ -934,6 +1260,7 @@ function SettingsPanel({ wid, service }: { wid: string; service: DeployService }
   const deleteService = useDeleteDeployService(wid);
   const volumes = useDeployServiceVolumes(wid, service.id);
   const createVolume = useCreateDeployServiceVolume(wid);
+  const updateVolume = useUpdateDeployServiceVolume(wid);
   const deleteVolume = useDeleteDeployServiceVolume(wid);
   const [volumeName, setVolumeName] = useState("");
   const [mountPath, setMountPath] = useState("/data");
@@ -1065,7 +1392,17 @@ function SettingsPanel({ wid, service }: { wid: string; service: DeployService }
               <VolumeRow
                 key={volume.id}
                 volume={volume}
+                updating={updateVolume.isPending}
                 deleting={deleteVolume.isPending}
+                onUpdate={(volumeId, mountPath) =>
+                  updateVolume.mutate(
+                    { serviceId: service.id, volumeId, mount_path: mountPath },
+                    {
+                      onSuccess: () => toast.success("Volume mount path updated"),
+                      onError: (err) => toast.error((err as Error).message),
+                    },
+                  )
+                }
                 onDelete={(volumeId) =>
                   deleteVolume.mutate(
                     { serviceId: service.id, volumeId },
@@ -1107,34 +1444,85 @@ function SettingsPanel({ wid, service }: { wid: string; service: DeployService }
 
 function VolumeRow({
   volume,
+  updating,
   deleting,
+  onUpdate,
   onDelete,
 }: {
   volume: DeployServiceVolume;
+  updating: boolean;
   deleting: boolean;
+  onUpdate: (volumeId: string, mountPath: string) => void;
   onDelete: (volumeId: string) => void;
 }) {
+  const [mountPath, setMountPath] = useState(volume.mount_path);
+  useEffect(() => {
+    setMountPath(volume.mount_path);
+  }, [volume.mount_path]);
+
+  const trimmedMountPath = mountPath.trim();
+  const changed = trimmedMountPath !== volume.mount_path;
+  const busy = updating || deleting;
+
+  function submitMountPath(event: FormEvent) {
+    event.preventDefault();
+    if (!trimmedMountPath || !changed || busy) {
+      return;
+    }
+    onUpdate(volume.id, trimmedMountPath);
+  }
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-3">
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <p className="truncate text-[13px] font-medium text-[var(--color-fg)]">{volume.name}</p>
           <VolumeStatus status={volume.status} />
         </div>
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--color-fg-muted)]">
-          <span className="mono">{volume.mount_path}</span>
           <span>{volume.size_gb} GB</span>
           <span>{volume.region}</span>
           {volume.provider_volume_id && (
             <span className="mono">{volume.provider_volume_id.slice(0, 18)}</span>
           )}
         </div>
+        <form onSubmit={submitMountPath} className="mt-2 flex max-w-md items-center gap-1.5">
+          <input
+            className={cn(fieldControlClass, "mono h-8 min-w-0 flex-1")}
+            value={mountPath}
+            onChange={(event) => setMountPath(event.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            required
+          />
+          <Button
+            type="submit"
+            variant="ghost"
+            size="icon-sm"
+            disabled={!trimmedMountPath || !changed || busy}
+            aria-label="Save mount path"
+          >
+            {updating ? <Spinner className="size-3" /> : <Save size={13} />}
+          </Button>
+          {changed && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={busy}
+              onClick={() => setMountPath(volume.mount_path)}
+              aria-label="Reset mount path"
+            >
+              <X size={13} />
+            </Button>
+          )}
+        </form>
       </div>
       <Button
         type="button"
         variant="ghost"
         size="sm"
-        disabled={deleting}
+        disabled={busy}
         onClick={() => onDelete(volume.id)}
       >
         <Trash2 size={13} /> Remove
@@ -1282,10 +1670,10 @@ function DomainRow({
       : "text-[var(--color-warn)]";
 
   return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] p-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] p-3 sm:p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-[13px] font-medium text-[var(--color-fg)]">
               {domain.hostname}
             </p>
@@ -1295,7 +1683,7 @@ function DomainRow({
             {active ? "certificate active" : `updated ${lastSeen(domain.updated_at)}`}
           </p>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Button
             type="button"
             variant="secondary"
@@ -1304,7 +1692,7 @@ function DomainRow({
             title={records.length === 0 ? "Waiting for DNS records" : "Download DNS records"}
             onClick={() => downloadDnsFile(domain, records)}
           >
-            <Download size={13} /> DNS file
+            <Download size={13} /> DNS
           </Button>
           <Button
             type="button"
@@ -1322,7 +1710,7 @@ function DomainRow({
             disabled={deleting}
             onClick={() => onDelete(domain.id)}
           >
-            <Trash2 size={13} /> Remove
+            <Trash2 size={13} />
           </Button>
         </div>
       </div>
@@ -1573,23 +1961,13 @@ function LogConsole({
   }
 
   return (
-    <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-sunken)]">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border)] bg-[var(--color-bg-elev)] px-3 py-2">
-        <div className="flex items-center gap-2 text-[12px] text-[var(--color-fg)]">
-          <Icon size={13} className="text-[var(--color-fg-muted)]" />
-          <span className="font-medium">{title}</span>
-          <span className="tabular text-[11px] text-[var(--color-fg-muted)]">
-            {filter === "all" ? `${lines.length} lines` : `${visible.length} / ${lines.length}`}
-          </span>
-          <span className="ml-0.5 inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
-            <span
-              className="pulse-dot inline-block h-1.5 w-1.5 rounded-full"
-              style={{ background: "var(--color-ok)" }}
-            />
-            Live
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
+    <PanelCard
+      title={title}
+      icon={Icon}
+      count={filter === "all" ? `${lines.length} lines` : `${visible.length} / ${lines.length}`}
+      live
+      actions={
+        <>
           <Segmented<LevelFilter>
             size="sm"
             value={filter}
@@ -1597,11 +1975,15 @@ function LogConsole({
             options={LEVEL_FILTERS}
           />
           <Button type="button" variant="ghost" size="sm" onClick={copyAll}>
-            <Copy size={13} /> Copy
+            <Copy size={13} />
+            <span className="hidden sm:inline"> Copy</span>
           </Button>
-        </div>
-      </div>
-      <ScrollArea className="h-[360px]">
+        </>
+      }
+      className="bg-[var(--color-bg-sunken)] shadow-none"
+      bodyClassName="p-0"
+    >
+      <ScrollArea className="h-[min(360px,50vh)] sm:h-[360px]">
         <div className="mono space-y-px p-2 text-[11px] leading-5">
           {visible.length === 0 ? (
             <div className="flex h-[320px] items-center justify-center text-[12px] text-[var(--color-fg-dim)]">
@@ -1612,7 +1994,7 @@ function LogConsole({
           )}
         </div>
       </ScrollArea>
-    </div>
+    </PanelCard>
   );
 }
 
@@ -1620,18 +2002,20 @@ function LogRow({ line }: { line: ConsoleLine }) {
   const color = levelColor(line.level);
   return (
     <div
-      className="group grid grid-cols-[58px_46px_minmax(0,1fr)] items-baseline gap-x-2.5 rounded-[var(--radius-sm)] border-l-2 py-[3px] pl-2 pr-1.5 transition-colors hover:bg-[var(--color-bg-row)]"
+      className="group grid grid-cols-1 gap-0.5 rounded-[var(--radius-sm)] border-l-2 py-[4px] pl-2.5 pr-1.5 transition-colors hover:bg-[var(--color-bg-row)] sm:grid-cols-[58px_46px_minmax(0,1fr)] sm:items-baseline sm:gap-x-2.5"
       style={{ borderColor: `color-mix(in srgb, ${color} 45%, transparent)` }}
     >
-      <span className="tabular text-[var(--color-fg-dim)]" title={logFullTime(line.timestamp)}>
-        {logClock(line.timestamp)}
-      </span>
-      <span
-        className="truncate text-[10px] font-semibold uppercase tracking-[0.04em]"
-        style={{ color }}
-      >
-        {line.level}
-      </span>
+      <div className="flex items-baseline gap-2 sm:contents">
+        <span className="tabular text-[var(--color-fg-dim)]" title={logFullTime(line.timestamp)}>
+          {logClock(line.timestamp)}
+        </span>
+        <span
+          className="truncate text-[10px] font-semibold uppercase tracking-[0.04em] sm:max-w-none"
+          style={{ color }}
+        >
+          {line.level}
+        </span>
+      </div>
       <span className="min-w-0 whitespace-pre-wrap break-words text-[var(--color-fg-muted)] group-hover:text-[var(--color-fg)]">
         {line.message}
       </span>
@@ -1690,32 +2074,6 @@ function MetaChip({
       {Icon && <Icon size={10} />}
       {label}
     </span>
-  );
-}
-
-function CardMetric({
-  label,
-  value,
-  mono = false,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2">
-      <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
-        {label}
-      </div>
-      <div
-        className={cn(
-          "mt-1 truncate text-[15px] font-medium text-[var(--color-fg)]",
-          mono && "mono text-[12px]",
-        )}
-      >
-        {value}
-      </div>
-    </div>
   );
 }
 
@@ -2026,33 +2384,32 @@ function StatusBadge({ status }: { status: DeployStatus }) {
 
 function ServiceGridSkeleton() {
   return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      {Array.from({ length: 6 }).map((_, index) => (
-        <div
-          key={index}
-          className="flex min-h-44 flex-col justify-between rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] p-4 shadow-[var(--shadow-sm)]"
-        >
-          <div>
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-36" />
-                <Skeleton className="h-3 w-48" />
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Skeleton key={index} className="h-20 rounded-[var(--radius-lg)]" />
+        ))}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div
+            key={index}
+            className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]"
+          >
+            <div className="border-b border-[var(--color-border)] px-4 py-3">
+              <Skeleton className="h-4 w-36" />
+            </div>
+            <div className="space-y-3 px-4 py-3.5">
+              <Skeleton className="h-3 w-48" />
+              <Skeleton className="h-2 w-full" />
+              <div className="flex gap-2">
+                <Skeleton className="h-5 w-12 rounded-full" />
+                <Skeleton className="h-5 w-16 rounded-full" />
               </div>
-              <Skeleton className="h-5 w-14 rounded-full" />
-            </div>
-            <div className="mt-3 flex gap-2">
-              <Skeleton className="h-5 w-12 rounded-full" />
-              <Skeleton className="h-5 w-16 rounded-full" />
-              <Skeleton className="h-5 w-10 rounded-full" />
             </div>
           </div>
-          <div className="mt-5 grid grid-cols-2 gap-2">
-            <Skeleton className="h-14 rounded-[var(--radius-md)]" />
-            <Skeleton className="h-14 rounded-[var(--radius-md)]" />
-            <Skeleton className="col-span-2 h-3 w-32" />
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -2061,13 +2418,19 @@ function ServiceDetailSkeleton() {
   return (
     <div className="space-y-6">
       <Skeleton className="h-3 w-24" />
-      <div className="space-y-3">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-3 w-80" />
-        <Skeleton className="h-3 w-48" />
+      <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)]">
+        <div className="space-y-3 border-b border-[var(--color-border)] p-5">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-3 w-80" />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 rounded-[var(--radius-md)]" />
+            ))}
+          </div>
+        </div>
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="m-5 h-[360px] w-[calc(100%-2.5rem)] rounded-[var(--radius-md)]" />
       </div>
-      <Skeleton className="h-8 w-72" />
-      <Skeleton className="h-[360px] w-full rounded-[var(--radius-lg)]" />
     </div>
   );
 }

@@ -676,6 +676,29 @@ export function useDeleteDeployServiceVolume(wid: string) {
   });
 }
 
+export function useUpdateDeployServiceVolume(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      serviceId,
+      volumeId,
+      mount_path,
+    }: {
+      serviceId: string;
+      volumeId: string;
+      mount_path: string;
+    }) =>
+      api.patch<DeployServiceVolume>(
+        `/workspaces/${wid}/deployments/services/${serviceId}/volumes/${volumeId}`,
+        { mount_path },
+      ),
+    onSuccess: (_volume, input) => {
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "volumes"] });
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "events"] });
+    },
+  });
+}
+
 export const deployServiceDomainsQuery = (wid: string, serviceId: string) => ({
   queryKey: ["deployments", wid, serviceId, "domains"] as const,
   queryFn: () =>
