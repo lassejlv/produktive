@@ -158,6 +158,7 @@ export function AppSidebar() {
                     key={w.id}
                     to="/$wid"
                     params={{ wid: w.slug }}
+                    search={{ q: undefined, status: undefined }}
                     onClick={() => {
                       setWsOpen(false);
                       closeOnNavigate();
@@ -311,7 +312,20 @@ function NavMenuButton({
       <SidebarMenuButton
         isActive={active}
         tooltip={item.label}
-        render={<Link to={item.to} params={{ wid }} onClick={onNavigate} />}
+        render={
+          <Link
+            to={item.to}
+            params={{ wid }}
+            search={
+              item.to === "/$wid"
+                ? { q: undefined, status: undefined }
+                : item.to === "/$wid/deployments"
+                  ? { q: undefined, status: undefined }
+                  : undefined
+            }
+            onClick={onNavigate}
+          />
+        }
       >
         <motion.span
           initial="rest"

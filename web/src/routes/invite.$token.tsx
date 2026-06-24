@@ -56,6 +56,7 @@ function InvitePage() {
       await navigate({
         to: "/$wid",
         params: { wid: workspace?.slug ?? preview.data.workspace_id },
+        search: { q: undefined, status: undefined },
         replace: true,
       });
     } catch (err) {

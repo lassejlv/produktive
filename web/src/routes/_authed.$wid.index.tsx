@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
   Activity,
@@ -10,28 +10,48 @@ import {
   Copy,
   ExternalLink,
   Plus,
+  Rocket,
+  Search,
+  X,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "#/lib/cn";
 import { usageNumbers } from "#/lib/billing";
+import { DEPLOYMENTS_ENABLED } from "#/lib/features";
 import { AnimatedIcon } from "../components/AnimatedIcon";
 import { Button } from "#/components/ui/button";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "#/components/ui/input-group";
 import { EmptyState } from "../components/EmptyState";
+import { PageActions } from "../components/PageLayout";
 import { StatTile } from "../components/StatTile";
 import { PROBE_ICON } from "../components/ProbeIcons";
 import {
+  deployAccessQuery,
   incidentsQuery,
   monitorsQuery,
   useBillingSummary,
   useChecks,
+  useDeployAccess,
+  useDeployServices,
   useIncidents,
   useMonitors,
   useWorkspaces,
 } from "../lib/queries";
-import { STATUS_COLOR, STATUS_LABEL, lastSeen } from "../lib/status";
+import {
+  STATUS_COLOR,
+  STATUS_LABEL,
+  deployStatusActive,
+  deployStatusPending,
+  lastSeen,
+} from "../lib/status";
 import {
   monitorStatus,
   type Check,
+  type DeployService,
   type Incident,
   type IncidentSeverity,
   type Monitor,
@@ -44,27 +64,65 @@ export const Route = createFileRoute("/_authed/$wid/")({
     description: "Live health of every monitor in this workspace.",
     primaryAction: { label: "New monitor", to: "/$wid/monitors/new", icon: Plus },
   },
+  validateSearch: (search: Record<string, unknown>) => ({
+    q: typeof search.q === "string" && search.q.trim() ? search.q : undefined,
+    status:
+      search.status === "down" ||
+      search.status === "degraded" ||
+      search.status === "up" ||
+      search.status === "unknown"
+        ? search.status
+        : undefined,
+  }),
   loader: ({ context, params }) =>
     Promise.all([
       context.queryClient.ensureQueryData(monitorsQuery(params.wid)),
       context.queryClient.ensureQueryData(incidentsQuery(params.wid, "open")),
+      DEPLOYMENTS_ENABLED
+        ? context.queryClient.ensureQueryData(deployAccessQuery(params.wid))
+        : Promise.resolve(),
     ]),
   component: OverviewPage,
 });
 
 type Filter = "all" | MonitorStatus;
 
+type OverviewSearch = {
+  q?: string;
+  status?: MonitorStatus;
+};
+
 /** Worst-first ordering so anything needing attention floats to the top. */
 const STATUS_RANK: Record<MonitorStatus, number> = { down: 0, degraded: 1, unknown: 2, up: 3 };
 
 function OverviewPage() {
   const { wid } = Route.useParams();
-  const { data: monitors = [] } = useMonitors(wid);
+  const search = Route.useSearch() as OverviewSearch;
+  const navigate = useNavigate();
+  const monitorsQueryResult = useMonitors(wid);
+  const monitors = monitorsQueryResult.data ?? [];
   const { data: openIncidents = [] } = useIncidents(wid, "open");
   const { data: workspaces = [] } = useWorkspaces();
   const billing = useBillingSummary(wid);
+  const deployAccess = useDeployAccess(wid);
+  const deployApproved = DEPLOYMENTS_ENABLED && deployAccess.data?.status === "approved";
+  const deployServices = useDeployServices(wid, deployApproved);
   const workspace = workspaces.find((w) => w.id === wid || w.slug === wid);
-  const [filter, setFilter] = useState<Filter>("all");
+  const filter: Filter = search.status ?? "all";
+  const searchQuery = search.q ?? "";
+
+  const setOverviewSearch = (patch: Partial<OverviewSearch>) => {
+    void navigate({
+      to: "/$wid",
+      params: { wid },
+      search: {
+        q: "q" in patch ? patch.q : searchQuery || undefined,
+        status:
+          "status" in patch ? patch.status : filter === "all" ? undefined : filter,
+      },
+      replace: true,
+    });
+  };
 
   const byStatus = useMemo(
     () =>
@@ -88,10 +146,28 @@ function OverviewPage() {
     [monitors],
   );
 
-  const shown = useMemo(
-    () => (filter === "all" ? ranked : ranked.filter((m) => monitorStatus(m) === filter)),
-    [ranked, filter],
-  );
+  const shown = useMemo(() => {
+    const byFilter =
+      filter === "all" ? ranked : ranked.filter((m) => monitorStatus(m) === filter);
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return byFilter;
+    return byFilter.filter(
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.target.toLowerCase().includes(q) ||
+        m.kind.toLowerCase().includes(q) ||
+        (m.slug?.toLowerCase().includes(q) ?? false),
+    );
+  }, [ranked, filter, searchQuery]);
+
+  const refreshedLabel = useMemo(() => {
+    const updatedAt = monitorsQueryResult.dataUpdatedAt;
+    if (!updatedAt) return "refreshing…";
+    const seconds = Math.max(0, Math.round((Date.now() - updatedAt) / 1000));
+    if (seconds < 5) return "updated just now";
+    if (seconds < 60) return `updated ${seconds}s ago`;
+    return `updated ${Math.round(seconds / 60)}m ago`;
+  }, [monitorsQueryResult.dataUpdatedAt]);
 
   const affected = useMemo(
     () =>
@@ -168,6 +244,33 @@ function OverviewPage() {
 
   return (
     <div className="flex flex-col gap-7">
+      <PageActions>
+        <InputGroup className="h-8 w-full min-w-[200px] max-w-xs rounded-[var(--radius-md)] border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)] sm:max-w-sm">
+          <InputGroupAddon>
+            <Search size={14} className="text-[var(--color-fg-dim)]" />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={searchQuery}
+            onChange={(event) => setOverviewSearch({ q: event.target.value || undefined })}
+            placeholder="Search monitors…"
+            className="text-[12px]"
+          />
+          {searchQuery && (
+            <InputGroupAddon align="inline-end">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Clear search"
+                onClick={() => setOverviewSearch({ q: undefined })}
+              >
+                <X size={13} />
+              </Button>
+            </InputGroupAddon>
+          )}
+        </InputGroup>
+      </PageActions>
+
       {(pausedCount > 0 || usageWarning) && (
         <BillingAlert
           wid={wid}
@@ -205,7 +308,8 @@ function OverviewPage() {
           <div className="mt-0.5 text-[13px] text-[var(--color-fg-muted)]">
             {openIncidents.length} open incident{openIncidents.length === 1 ? "" : "s"}
             {lastChecked && ` · last check ${lastSeen(lastChecked)}`}
-            {" · "}refreshes every 15s
+            {" · "}
+            {refreshedLabel}
           </div>
           {monitors.length > 0 && (
             <StatusBreakdownBar counts={byStatus} total={monitors.length} className="mt-3" />
@@ -226,6 +330,10 @@ function OverviewPage() {
           </div>
         )}
       </div>
+
+      {deployApproved && (deployServices.data?.length ?? 0) > 0 && (
+        <DeploymentsOverviewStrip wid={wid} services={deployServices.data ?? []} />
+      )}
 
       {needsAttention && (
         <section className="flex flex-col gap-5">
@@ -258,7 +366,11 @@ function OverviewPage() {
                   variant="ghost"
                   size="sm"
                   className="h-7 text-[12px] text-[var(--color-link)]"
-                  onClick={() => setFilter(byStatus.down > 0 ? "down" : "degraded")}
+                  onClick={() =>
+                    setOverviewSearch({
+                      status: byStatus.down > 0 ? "down" : "degraded",
+                    })
+                  }
                 >
                   Jump to list <ArrowRight size={12} />
                 </Button>
@@ -301,7 +413,7 @@ function OverviewPage() {
 
       {/* every monitor, worst-first, filterable */}
       <section>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <SectionHead className="mb-0">All monitors</SectionHead>
             <Link
@@ -316,28 +428,37 @@ function OverviewPage() {
             counts={byStatus}
             total={monitors.length}
             value={filter}
-            onChange={setFilter}
+            onChange={(next) =>
+              setOverviewSearch({ status: next === "all" ? undefined : next })
+            }
           />
         </div>
         {shown.length === 0 ? (
           <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-5 text-[13px] text-[var(--color-fg-muted)] shadow-[var(--shadow-xs)]">
-            No {filter === "all" ? "" : filter + " "}monitors.
-            {filter !== "all" && (
+            No {filter === "all" && !searchQuery ? "" : "matching "}monitors.
+            {(filter !== "all" || searchQuery) && (
               <button
                 type="button"
-                onClick={() => setFilter("all")}
+                onClick={() => setOverviewSearch({ q: undefined, status: undefined })}
                 className="ml-1 text-[var(--color-link)] hover:underline"
               >
-                Show all
+                Clear filters
               </button>
             )}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)]">
-            {shown.map((m) => (
-              <MonitorRow key={m.id} wid={wid} monitor={m} trends={showTrends} />
-            ))}
-          </div>
+          <>
+            {(searchQuery || filter !== "all") && (
+              <p className="mb-2 text-[12px] text-[var(--color-fg-muted)] tabular">
+                {shown.length} of {monitors.length} shown
+              </p>
+            )}
+            <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-sm)]">
+              {shown.map((m) => (
+                <MonitorRow key={m.id} wid={wid} monitor={m} trends={showTrends} />
+              ))}
+            </div>
+          </>
         )}
       </section>
     </div>
@@ -351,6 +472,56 @@ function withUnit(ms: number | null) {
       {ms}
       <span className="ml-0.5 text-[12px] font-normal text-[var(--color-fg-dim)]">ms</span>
     </>
+  );
+}
+
+function DeploymentsOverviewStrip({ wid, services }: { wid: string; services: DeployService[] }) {
+  const counts = services.reduce(
+    (acc, service) => {
+      if (deployStatusActive(service.status)) acc.live += 1;
+      else if (deployStatusPending(service.status)) acc.pending += 1;
+      else if (service.status === "failed") acc.failed += 1;
+      return acc;
+    },
+    { live: 0, pending: 0, failed: 0 },
+  );
+  const accent =
+    counts.failed > 0
+      ? "var(--color-err)"
+      : counts.pending > 0
+        ? "var(--color-warn)"
+        : counts.live > 0
+          ? "var(--color-ok)"
+          : undefined;
+
+  return (
+    <Link
+      to="/$wid/deployments"
+      params={{ wid }}
+      search={{ q: undefined, status: undefined }}
+      className="group flex items-center justify-between gap-4 rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-3.5 no-underline shadow-[var(--shadow-xs)] transition-colors hover:border-[var(--color-border-hi)] hover:bg-[var(--color-bg-row)]"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <span
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-bg-row)] text-[var(--color-fg-muted)]"
+          style={accent ? { color: accent } : undefined}
+        >
+          <Rocket size={16} />
+        </span>
+        <div className="min-w-0">
+          <div className="text-[13px] font-medium text-[var(--color-fg)]">Deployments</div>
+          <div className="mt-0.5 text-[12px] text-[var(--color-fg-muted)]">
+            {services.length} service{services.length === 1 ? "" : "s"} · {counts.live} live
+            {counts.pending > 0 && ` · ${counts.pending} deploying`}
+            {counts.failed > 0 && ` · ${counts.failed} failed`}
+          </div>
+        </div>
+      </div>
+      <ChevronRight
+        size={14}
+        className="shrink-0 text-[var(--color-fg-dim)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--color-fg-muted)]"
+      />
+    </Link>
   );
 }
 
@@ -487,31 +658,34 @@ function StatusFilterBar({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {pills.map((p) => {
-        const active = value === p.value;
-        return (
-          <Button
-            key={p.value}
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => onChange(active && p.value !== "all" ? "all" : p.value)}
-            className={cn(
-              "h-7 rounded-full px-2.5 text-[12px] font-medium shadow-none",
-              active
-                ? "border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] text-[var(--color-fg)] shadow-[var(--shadow-xs)]"
-                : "border-transparent text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-row)] hover:text-[var(--color-fg)]",
-            )}
-          >
-            {p.color && (
-              <span className="h-[7px] w-[7px] rounded-full" style={{ background: p.color }} />
-            )}
-            {p.label}
-            <span className="tabular text-[11px] text-[var(--color-fg-dim)]">{p.n}</span>
-          </Button>
-        );
-      })}
+    <div className="deploy-tab-rail -mx-1 min-w-0 overflow-x-auto px-1">
+      <div className="flex w-max items-center gap-1.5 pb-0.5">
+        {pills.map((p) => {
+          const active = value === p.value;
+          return (
+            <Button
+              key={p.value}
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-pressed={active}
+              onClick={() => onChange(active && p.value !== "all" ? "all" : p.value)}
+              className={cn(
+                "h-7 shrink-0 rounded-full px-2.5 text-[12px] font-medium shadow-none",
+                active
+                  ? "border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] text-[var(--color-fg)] shadow-[var(--shadow-xs)]"
+                  : "border-transparent text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-row)] hover:text-[var(--color-fg)]",
+              )}
+            >
+              {p.color && (
+                <span className="h-[7px] w-[7px] rounded-full" style={{ background: p.color }} />
+              )}
+              {p.label}
+              <span className="tabular text-[11px] text-[var(--color-fg-dim)]">{p.n}</span>
+            </Button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -538,7 +712,7 @@ function MonitorRow({
     <Link
       to="/$wid/monitors/$mid"
       params={{ wid, mid: monitor.slug || monitor.id }}
-      className="block border-b border-[var(--color-border)] no-underline transition-colors last:border-b-0 hover:bg-[var(--color-bg-row)]"
+      className="group block border-b border-[var(--color-border)] no-underline transition-colors last:border-b-0 hover:bg-[var(--color-bg-row)]"
       style={{
         boxShadow:
           status === "down"
@@ -552,90 +726,147 @@ function MonitorRow({
         initial="rest"
         animate="rest"
         whileHover="hover"
-        className="flex items-center gap-4 px-4 py-3"
+        className="px-4 py-3"
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <span
-            className={cn("h-2 w-2 shrink-0 rounded-full", status === "up" && "pulse-dot")}
-            style={{
-              background: color,
-              boxShadow: `0 0 10px color-mix(in srgb, ${color} 60%, transparent)`,
-            }}
-          />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="truncate text-[13.5px] font-medium text-[var(--color-fg)]">
-                {monitor.name}
+        {/* Mobile: stacked card row */}
+        <div className="flex flex-col gap-2.5 md:hidden">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-2.5">
+              <span
+                className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", status === "up" && "pulse-dot")}
+                style={{
+                  background: color,
+                  boxShadow: `0 0 10px color-mix(in srgb, ${color} 60%, transparent)`,
+                }}
+              />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="truncate text-[14px] font-medium text-[var(--color-fg)]">
+                    {monitor.name}
+                  </span>
+                  {paused && (
+                    <span className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--color-bg-row)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
+                      {monitor.billing_paused_at ? "paused" : "off"}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-[11.5px] text-[var(--color-fg-dim)]">
+                  <KindIcon size={11} className="shrink-0" />
+                  <span className="mono truncate">{monitor.target}</span>
+                </div>
+              </div>
+            </div>
+            <span
+              className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
+              style={{
+                color,
+                background: `color-mix(in srgb, ${color} 10%, transparent)`,
+                borderColor: `color-mix(in srgb, ${color} 25%, transparent)`,
+              }}
+            >
+              {STATUS_LABEL[status]}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-3 pl-4">
+            <div className="flex items-baseline gap-1">
+              <span className="mono tabular text-[20px] font-medium leading-none text-[var(--color-fg)]">
+                {monitor.last_latency_ms != null ? monitor.last_latency_ms : "—"}
               </span>
-              {paused && (
-                <span className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--color-bg-row)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
-                  {monitor.billing_paused_at ? "paused" : "off"}
-                </span>
+              {monitor.last_latency_ms != null && (
+                <span className="text-[11px] text-[var(--color-fg-dim)]">ms</span>
               )}
             </div>
-            <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-[var(--color-fg-dim)]">
-              <KindIcon size={11} className="shrink-0" />
-              <span className="mono truncate">{monitor.target}</span>
-            </div>
+            <span className="tabular text-[11px] text-[var(--color-fg-dim)]">
+              {lastSeen(monitor.last_checked_at)}
+            </span>
           </div>
         </div>
 
-        {monitor.regions.length > 1 && (
-          <div className="hidden shrink-0 items-center gap-1 lg:flex" title="Per-region status">
-            {monitor.regions.slice(0, 5).map((r) => (
-              <span
-                key={r.id}
-                className="h-[6px] w-[6px] rounded-full"
-                style={{ background: regionColor(r.last_status) }}
-                title={`${r.name}: ${regionLabel(r.last_status)}`}
-              />
-            ))}
-            {monitor.regions.length > 5 && (
-              <span className="text-[10px] text-[var(--color-fg-dim)]">
-                +{monitor.regions.length - 5}
-              </span>
+        {/* Desktop: horizontal row */}
+        <div className="hidden items-center gap-4 md:flex">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <span
+              className={cn("h-2 w-2 shrink-0 rounded-full", status === "up" && "pulse-dot")}
+              style={{
+                background: color,
+                boxShadow: `0 0 10px color-mix(in srgb, ${color} 60%, transparent)`,
+              }}
+            />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="truncate text-[13.5px] font-medium text-[var(--color-fg)]">
+                  {monitor.name}
+                </span>
+                {paused && (
+                  <span className="shrink-0 rounded-[var(--radius-sm)] bg-[var(--color-bg-row)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
+                    {monitor.billing_paused_at ? "paused" : "off"}
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-[var(--color-fg-dim)]">
+                <KindIcon size={11} className="shrink-0" />
+                <span className="mono truncate">{monitor.target}</span>
+              </div>
+            </div>
+          </div>
+
+          {monitor.regions.length > 1 && (
+            <div className="hidden shrink-0 items-center gap-1 lg:flex" title="Per-region status">
+              {monitor.regions.slice(0, 5).map((r) => (
+                <span
+                  key={r.id}
+                  className="h-[6px] w-[6px] rounded-full"
+                  style={{ background: regionColor(r.last_status) }}
+                  title={`${r.name}: ${regionLabel(r.last_status)}`}
+                />
+              ))}
+              {monitor.regions.length > 5 && (
+                <span className="text-[10px] text-[var(--color-fg-dim)]">
+                  +{monitor.regions.length - 5}
+                </span>
+              )}
+            </div>
+          )}
+
+          {!compact && trends && (
+            <div className="hidden shrink-0 md:block">
+              <Sparkline checks={checks} status={status} />
+            </div>
+          )}
+
+          <span className="mono tabular w-[52px] shrink-0 text-right text-[13px] text-[var(--color-fg)]">
+            {monitor.last_latency_ms != null ? (
+              <>
+                {monitor.last_latency_ms}
+                <span className="text-[10px] text-[var(--color-fg-dim)]">ms</span>
+              </>
+            ) : (
+              <span className="text-[var(--color-fg-dim)]">—</span>
             )}
-          </div>
-        )}
+          </span>
 
-        {!compact && trends && (
-          <div className="hidden shrink-0 md:block">
-            <Sparkline checks={checks} status={status} />
-          </div>
-        )}
+          <span className="tabular hidden w-[64px] shrink-0 text-right text-[11.5px] text-[var(--color-fg-dim)] sm:block">
+            {lastSeen(monitor.last_checked_at)}
+          </span>
 
-        <span className="mono tabular w-[52px] shrink-0 text-right text-[13px] text-[var(--color-fg)]">
-          {monitor.last_latency_ms != null ? (
-            <>
-              {monitor.last_latency_ms}
-              <span className="text-[10px] text-[var(--color-fg-dim)]">ms</span>
-            </>
-          ) : (
-            <span className="text-[var(--color-fg-dim)]">—</span>
-          )}
-        </span>
+          <span
+            className={cn(
+              "shrink-0 text-right text-[10.5px] font-semibold uppercase tracking-[0.08em]",
+              compact ? "w-[72px]" : "hidden w-[84px] sm:block",
+            )}
+            style={{ color }}
+          >
+            {STATUS_LABEL[status]}
+          </span>
 
-        <span className="tabular hidden w-[64px] shrink-0 text-right text-[11.5px] text-[var(--color-fg-dim)] sm:block">
-          {lastSeen(monitor.last_checked_at)}
-        </span>
-
-        <span
-          className={cn(
-            "shrink-0 text-right text-[10.5px] font-semibold uppercase tracking-[0.08em]",
-            compact ? "w-[72px]" : "hidden w-[84px] sm:block",
-          )}
-          style={{ color }}
-        >
-          {STATUS_LABEL[status]}
-        </span>
-
-        <AnimatedIcon
-          icon={ChevronRight}
-          animation="slideX"
-          trigger="group"
-          size={14}
-          className="text-[var(--color-fg-dim)]"
-        />
+          <AnimatedIcon
+            icon={ChevronRight}
+            animation="slideX"
+            trigger="group"
+            size={14}
+            className="text-[var(--color-fg-dim)]"
+          />
+        </div>
       </motion.div>
     </Link>
   );

@@ -14,7 +14,11 @@ export const Route = createFileRoute("/_authed/$wid/admin")({
   beforeLoad: async ({ context, params }) => {
     const me = await context.queryClient.ensureQueryData(meQuery);
     if (!me.is_admin) {
-      throw redirect({ to: "/$wid", params: { wid: params.wid } });
+      throw redirect({
+        to: "/$wid",
+        params: { wid: params.wid },
+        search: { q: undefined, status: undefined },
+      });
     }
   },
   component: AdminLayout,

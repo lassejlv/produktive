@@ -21,6 +21,7 @@ import {
   RotateCcw,
   Save,
   ScrollText,
+  Search,
   Server,
   Settings,
   Square,
@@ -31,6 +32,11 @@ import {
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { ChartTooltip, Grid, Line, LineChart, XAxis } from "#/charts";
 import { Button } from "#/components/ui/button";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "#/components/ui/input-group";
 import { ScrollArea } from "#/components/ui/scroll-area";
 import { Skeleton } from "#/components/ui/skeleton";
 import { Dialog, DialogClose, DialogContent } from "../components/Dialog";
@@ -90,7 +96,51 @@ import type {
 } from "../lib/types";
 
 type DetailTab = "deployments" | "events" | "logs" | "metrics" | "domains" | "settings";
+export type DeployDetailTab = DetailTab;
 type MetricChartKind = "cpu" | "memory" | "requests";
+type DeployServiceFilter = "all" | "live" | "deploying" | "failed" | "stopped";
+
+type DeploymentsSearch = {
+  q?: string;
+  status?: DeployServiceFilter;
+};
+
+const EMPTY_DEPLOYMENTS_SEARCH: DeploymentsSearch = { q: undefined, status: undefined };
+
+const DEPLOY_SERVICE_FILTERS: DeployServiceFilter[] = [
+  "all",
+  "live",
+  "deploying",
+  "failed",
+  "stopped",
+];
+
+function parseDeployServiceFilter(value: unknown): DeployServiceFilter | undefined {
+  return typeof value === "string" && DEPLOY_SERVICE_FILTERS.includes(value as DeployServiceFilter)
+    ? (value as DeployServiceFilter)
+    : undefined;
+}
+
+function deployServiceFilterBucket(status: DeployStatus): DeployServiceFilter {
+  if (deployStatusActive(status)) return "live";
+  if (deployStatusPending(status)) return "deploying";
+  if (status === "failed") return "failed";
+  if (status === "stopped" || status === "rolled_back") return "stopped";
+  return "all";
+}
+
+function matchesDeploySearch(service: DeployService, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    service.name.toLowerCase().includes(q) ||
+    service.image.toLowerCase().includes(q) ||
+    service.region.toLowerCase().includes(q) ||
+    service.environment.toLowerCase().includes(q) ||
+    service.slug.toLowerCase().includes(q) ||
+    (service.url?.toLowerCase().includes(q) ?? false)
+  );
+}
 
 const RESOURCE_PRESETS: Array<{
   value: DeployResourcePreset;
@@ -212,6 +262,10 @@ export const Route = createFileRoute("/_authed/$wid/deployments")({
     title: "Deployments",
     description: "Private-preview Docker services with Fly-backed runtime, logs, and metrics.",
   },
+  validateSearch: (search: Record<string, unknown>): DeploymentsSearch => ({
+    q: typeof search.q === "string" && search.q.trim() ? search.q : undefined,
+    status: parseDeployServiceFilter(search.status),
+  }),
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(deployAccessQuery(params.wid)),
   component: DeploymentsIndexPage,
@@ -219,11 +273,22 @@ export const Route = createFileRoute("/_authed/$wid/deployments")({
 
 function DeploymentsIndexPage() {
   const { wid } = Route.useParams();
+  const search = Route.useSearch();
   const { serviceId } = useParams({ strict: false }) as { serviceId?: string };
-  return <DeploymentsRoute wid={wid} serviceId={serviceId} />;
+  return <DeploymentsRoute wid={wid} serviceId={serviceId} indexSearch={search} />;
 }
 
-export function DeploymentsRoute({ wid, serviceId }: { wid: string; serviceId?: string }) {
+export function DeploymentsRoute({
+  wid,
+  serviceId,
+  tab,
+  indexSearch,
+}: {
+  wid: string;
+  serviceId?: string;
+  tab?: DeployDetailTab;
+  indexSearch?: DeploymentsSearch;
+}) {
   if (!DEPLOYMENTS_ENABLED) {
     return (
       <EmptyState
@@ -234,15 +299,26 @@ export function DeploymentsRoute({ wid, serviceId }: { wid: string; serviceId?: 
     );
   }
 
-  return <DeploymentsContent wid={wid} selectedServiceId={serviceId ?? null} />;
+  return (
+    <DeploymentsContent
+      wid={wid}
+      selectedServiceId={serviceId ?? null}
+      detailTab={tab}
+      indexSearch={indexSearch}
+    />
+  );
 }
 
 function DeploymentsContent({
   wid,
   selectedServiceId,
+  detailTab,
+  indexSearch,
 }: {
   wid: string;
   selectedServiceId: string | null;
+  detailTab?: DeployDetailTab;
+  indexSearch?: DeploymentsSearch;
 }) {
   const navigate = useNavigate();
   const access = useDeployAccess(wid);
@@ -258,6 +334,37 @@ function DeploymentsContent({
     () => [...(services.data ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)),
     [services.data],
   );
+
+  const filterStatus = indexSearch?.status ?? "all";
+  const searchQuery = indexSearch?.q ?? "";
+
+  const filtered = useMemo(() => {
+    return sorted.filter((service) => {
+      const bucket = deployServiceFilterBucket(service.status);
+      const statusMatch = filterStatus === "all" || bucket === filterStatus;
+      return statusMatch && matchesDeploySearch(service, searchQuery);
+    });
+  }, [sorted, filterStatus, searchQuery]);
+
+  const setIndexSearch = (patch: Partial<DeploymentsSearch>) => {
+    void navigate({
+      to: "/$wid/deployments",
+      params: { wid },
+      search: {
+        q: "q" in patch ? patch.q : searchQuery || undefined,
+        status:
+          "status" in patch
+            ? patch.status === "all"
+              ? undefined
+              : patch.status
+            : filterStatus === "all"
+              ? undefined
+              : filterStatus,
+      },
+      replace: true,
+    });
+  };
+
   const selected = selectedServiceId
     ? (sorted.find((service) => service.id === selectedServiceId) ?? null)
     : null;
@@ -308,7 +415,7 @@ function DeploymentsContent({
             )
           ) : isDetailView ? (
             selected ? (
-              <ServiceDetailPage wid={wid} service={selected} />
+              <ServiceDetailPage wid={wid} service={selected} initialTab={detailTab} />
             ) : (
               <ServiceNotFound wid={wid} />
             )
@@ -331,11 +438,39 @@ function DeploymentsContent({
           ) : (
             <div className="space-y-5">
               <ServiceSummaryBar services={sorted} />
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {sorted.map((service) => (
-                  <ServiceCard key={service.id} wid={wid} service={service} />
-                ))}
-              </div>
+              <DeployServiceToolbar
+                services={sorted}
+                query={searchQuery}
+                status={filterStatus}
+                shown={filtered.length}
+                onQueryChange={(q) => setIndexSearch({ q: q || undefined })}
+                onStatusChange={(status) => setIndexSearch({ status })}
+              />
+              {filtered.length === 0 ? (
+                <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-8 text-center shadow-[var(--shadow-xs)]">
+                  <p className="text-[13px] font-medium text-[var(--color-fg)]">No matching services</p>
+                  <p className="mt-1 text-[12px] text-[var(--color-fg-muted)]">
+                    Try a different search or filter.
+                  </p>
+                  {(searchQuery || filterStatus !== "all") && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="mt-3"
+                      onClick={() => setIndexSearch({ q: undefined, status: "all" })}
+                    >
+                      Clear filters
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {filtered.map((service) => (
+                    <ServiceCard key={service.id} wid={wid} service={service} />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -460,6 +595,7 @@ function ServiceNotFound({ wid }: { wid: string }) {
       <Link
         to="/$wid/deployments"
         params={{ wid }}
+        search={EMPTY_DEPLOYMENTS_SEARCH}
         className="text-[13px] text-[var(--color-link)] no-underline hover:underline"
       >
         Back to deployments
@@ -501,6 +637,102 @@ function ServiceSummaryBar({ services }: { services: DeployService[] }) {
         accent={counts.failed > 0 ? "var(--color-err)" : undefined}
         sub="needs attention"
       />
+    </div>
+  );
+}
+
+function DeployServiceToolbar({
+  services,
+  query,
+  status,
+  shown,
+  onQueryChange,
+  onStatusChange,
+}: {
+  services: DeployService[];
+  query: string;
+  status: DeployServiceFilter;
+  shown: number;
+  onQueryChange: (query: string) => void;
+  onStatusChange: (status: DeployServiceFilter) => void;
+}) {
+  const counts = useMemo(() => {
+    const tallies = { all: services.length, live: 0, deploying: 0, failed: 0, stopped: 0 };
+    for (const service of services) {
+      const bucket = deployServiceFilterBucket(service.status);
+      if (bucket !== "all") tallies[bucket] += 1;
+    }
+    return tallies;
+  }, [services]);
+
+  const pills: Array<{ value: DeployServiceFilter; label: string; n: number; color?: string }> = [
+    { value: "all", label: "All", n: counts.all },
+    { value: "live", label: "Live", n: counts.live, color: "var(--color-ok)" },
+    { value: "deploying", label: "Deploying", n: counts.deploying, color: "var(--color-warn)" },
+    { value: "failed", label: "Failed", n: counts.failed, color: "var(--color-err)" },
+    { value: "stopped", label: "Stopped", n: counts.stopped },
+  ];
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <InputGroup className="h-9 max-w-md flex-1 rounded-[var(--radius-md)] border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)]">
+          <InputGroupAddon>
+            <Search size={14} className="text-[var(--color-fg-dim)]" />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="Search name, image, region…"
+            className="text-[13px]"
+          />
+          {query && (
+            <InputGroupAddon align="inline-end">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Clear search"
+                onClick={() => onQueryChange("")}
+              >
+                <X size={13} />
+              </Button>
+            </InputGroupAddon>
+          )}
+        </InputGroup>
+        <span className="shrink-0 text-[12px] text-[var(--color-fg-muted)] tabular">
+          {shown} of {services.length} shown
+        </span>
+      </div>
+      <div className="deploy-tab-rail -mx-1 overflow-x-auto px-1">
+        <div className="flex w-max items-center gap-1.5 pb-0.5">
+          {pills.map((pill) => {
+            const active = status === pill.value;
+            return (
+              <Button
+                key={pill.value}
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-pressed={active}
+                onClick={() => onStatusChange(active && pill.value !== "all" ? "all" : pill.value)}
+                className={cn(
+                  "h-7 shrink-0 rounded-full px-2.5 text-[12px] font-medium shadow-none",
+                  active
+                    ? "border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] text-[var(--color-fg)] shadow-[var(--shadow-xs)]"
+                    : "border-transparent text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-row)] hover:text-[var(--color-fg)]",
+                )}
+              >
+                {pill.color && (
+                  <span className="h-[7px] w-[7px] rounded-full" style={{ background: pill.color }} />
+                )}
+                {pill.label}
+                <span className="tabular text-[11px] text-[var(--color-fg-dim)]">{pill.n}</span>
+              </Button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -622,8 +854,25 @@ function DeployHealthStrip({ status }: { status: DeployStatus }) {
   );
 }
 
-function ServiceDetailPage({ wid, service }: { wid: string; service: DeployService }) {
-  const [tab, setTab] = useState<DetailTab>("deployments");
+function ServiceDetailPage({
+  wid,
+  service,
+  initialTab,
+}: {
+  wid: string;
+  service: DeployService;
+  initialTab?: DeployDetailTab;
+}) {
+  const navigate = useNavigate();
+  const tab = initialTab ?? "deployments";
+  const setTab = (next: DetailTab) => {
+    void navigate({
+      to: "/$wid/deployments/$serviceId",
+      params: { wid, serviceId: service.id },
+      search: next === "deployments" ? {} : { tab: next },
+      replace: true,
+    });
+  };
   const createDeployment = useCreateDeployment(wid);
   const rollback = useRollbackDeployment(wid);
   const stop = useStopDeployService(wid);
@@ -636,6 +885,7 @@ function ServiceDetailPage({ wid, service }: { wid: string; service: DeployServi
       <Link
         to="/$wid/deployments"
         params={{ wid }}
+        search={EMPTY_DEPLOYMENTS_SEARCH}
         className="mb-5 inline-flex items-center gap-1.5 text-[12px] text-[var(--color-fg-muted)] no-underline hover:text-[var(--color-fg)]"
       >
         <ArrowLeft size={12} /> All services
@@ -2193,6 +2443,7 @@ function CreateServiceDialog({
     resource_preset: DeployResourcePreset;
   }) => void;
 }) {
+  const [step, setStep] = useState<1 | 2>(1);
   const [name, setName] = useState("");
   const [image, setImage] = useState("");
   const [registryKind, setRegistryKind] = useState<DeployRegistryKind>("ghcr");
@@ -2205,8 +2456,19 @@ function CreateServiceDialog({
   const [envText, setEnvText] = useState("");
   const [secretText, setSecretText] = useState("");
 
+  useEffect(() => {
+    if (!open) setStep(1);
+  }, [open]);
+
+  const basicsValid = name.trim().length > 0 && image.trim().length > 0 && port >= 1 && port <= 65535;
+
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (step === 1) {
+      if (!basicsValid) return;
+      setStep(2);
+      return;
+    }
     try {
       onSubmit({
         name,
@@ -2230,136 +2492,183 @@ function CreateServiceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         title="New deployment service"
-        description="HTTP-only Docker services with private-preview compute limits."
+        description={
+          step === 1
+            ? "Step 1 of 2 — image and connectivity."
+            : "Step 2 of 2 — runtime, compute, and secrets."
+        }
         size="lg"
         footer={
           <>
-            <DialogClose asChild>
-              <Button type="button" variant="secondary" disabled={pending}>
-                Cancel
+            {step === 2 ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={pending}
+                onClick={() => setStep(1)}
+              >
+                Back
               </Button>
-            </DialogClose>
-            <Button type="submit" form="deploy-service-form" variant="default" disabled={pending}>
-              {pending && <Spinner className="size-3" />} Create service
+            ) : (
+              <DialogClose asChild>
+                <Button type="button" variant="secondary" disabled={pending}>
+                  Cancel
+                </Button>
+              </DialogClose>
+            )}
+            <Button
+              type="submit"
+              form="deploy-service-form"
+              variant="default"
+              disabled={pending || (step === 1 && !basicsValid)}
+            >
+              {pending && <Spinner className="size-3" />}
+              {step === 1 ? "Continue" : "Create service"}
             </Button>
           </>
         }
       >
+        <div className="mb-4 flex items-center gap-2">
+          {[1, 2].map((n) => (
+            <div
+              key={n}
+              className={cn(
+                "h-1 flex-1 rounded-full transition-colors",
+                n <= step ? "bg-[var(--color-accent)]" : "bg-[var(--color-border)]",
+              )}
+            />
+          ))}
+        </div>
         <form id="deploy-service-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name">
-            <input
-              className={cn(fieldControlClass, "h-9")}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </Field>
-          <Field label="Image">
-            <input
-              className={cn(fieldControlClass, "h-9")}
-              value={image}
-              onChange={(e) => setImage(e.target.value)}
-              placeholder="ghcr.io/acme/api:latest"
-              required
-            />
-          </Field>
-          <Field label="Registry">
-            <select
-              className={cn(fieldControlClass, "h-9")}
-              value={registryKind}
-              onChange={(e) => setRegistryKind(e.target.value as DeployRegistryKind)}
-            >
-              <option value="ghcr">GHCR</option>
-              <option value="docker_hub">Docker Hub</option>
-            </select>
-          </Field>
-          <Field label="Credential">
-            <select
-              className={cn(fieldControlClass, "h-9")}
-              value={credentialId}
-              onChange={(e) => setCredentialId(e.target.value)}
-            >
-              <option value="">No credential</option>
-              {credentials.map((credential) => (
-                <option key={credential.id} value={credential.id}>
-                  {credential.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Port">
-            <input
-              type="number"
-              min={1}
-              max={65535}
-              className={cn(fieldControlClass, "h-9")}
-              value={port}
-              onChange={(e) => setPort(Number(e.target.value))}
-              required
-            />
-          </Field>
-          <Field label="Region">
-            <input
-              className={cn(fieldControlClass, "h-9")}
-              value={region}
-              onChange={(e) => setRegion(e.target.value)}
-              required
-            />
-          </Field>
-          <Field label="Environment">
-            <input
-              className={cn(fieldControlClass, "h-9")}
-              value={environment}
-              onChange={(e) => setEnvironment(e.target.value)}
-              required
-            />
-          </Field>
-          <Field label="Health path">
-            <input
-              className={cn(fieldControlClass, "h-9")}
-              value={health}
-              onChange={(e) => setHealth(e.target.value)}
-              required
-            />
-          </Field>
-          <Field label="Compute">
-            <select
-              className={cn(fieldControlClass, "h-9")}
-              value={resourcePreset}
-              onChange={(e) => setResourcePreset(e.target.value as DeployResourcePreset)}
-            >
-              {RESOURCE_PRESETS.map((preset) => (
-                <option key={preset.value} value={preset.value}>
-                  {preset.label} · {preset.detail}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Env vars">
-            <textarea
-              className={cn(fieldControlClass, "min-h-24 resize-y py-2")}
-              value={envText}
-              onChange={(e) => setEnvText(e.target.value)}
-              placeholder={"LOG_LEVEL=info"}
-            />
-          </Field>
-          <Field label="Secrets">
-            <textarea
-              className={cn(fieldControlClass, "min-h-24 resize-y py-2")}
-              value={secretText}
-              onChange={(e) => setSecretText(e.target.value)}
-              placeholder={"DATABASE_URL=postgres://..."}
-            />
-          </Field>
+          {step === 1 ? (
+            <>
+              <Field label="Name">
+                <input
+                  className={cn(fieldControlClass, "h-9")}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="Image">
+                <input
+                  className={cn(fieldControlClass, "h-9")}
+                  value={image}
+                  onChange={(e) => setImage(e.target.value)}
+                  placeholder="ghcr.io/acme/api:latest"
+                  required
+                />
+              </Field>
+              <Field label="Registry">
+                <select
+                  className={cn(fieldControlClass, "h-9")}
+                  value={registryKind}
+                  onChange={(e) => setRegistryKind(e.target.value as DeployRegistryKind)}
+                >
+                  <option value="ghcr">GHCR</option>
+                  <option value="docker_hub">Docker Hub</option>
+                </select>
+              </Field>
+              <Field label="Credential">
+                <select
+                  className={cn(fieldControlClass, "h-9")}
+                  value={credentialId}
+                  onChange={(e) => setCredentialId(e.target.value)}
+                >
+                  <option value="">No credential</option>
+                  {credentials.map((credential) => (
+                    <option key={credential.id} value={credential.id}>
+                      {credential.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Port">
+                <input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  className={cn(fieldControlClass, "h-9")}
+                  value={port}
+                  onChange={(e) => setPort(Number(e.target.value))}
+                  required
+                />
+              </Field>
+              <Field label="Health path">
+                <input
+                  className={cn(fieldControlClass, "h-9")}
+                  value={health}
+                  onChange={(e) => setHealth(e.target.value)}
+                  required
+                />
+              </Field>
+            </>
+          ) : (
+            <>
+              <Field label="Region">
+                <input
+                  className={cn(fieldControlClass, "h-9")}
+                  value={region}
+                  onChange={(e) => setRegion(e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="Environment">
+                <input
+                  className={cn(fieldControlClass, "h-9")}
+                  value={environment}
+                  onChange={(e) => setEnvironment(e.target.value)}
+                  required
+                />
+              </Field>
+              <Field label="Compute" className="sm:col-span-2">
+                <select
+                  className={cn(fieldControlClass, "h-9")}
+                  value={resourcePreset}
+                  onChange={(e) => setResourcePreset(e.target.value as DeployResourcePreset)}
+                >
+                  {RESOURCE_PRESETS.map((preset) => (
+                    <option key={preset.value} value={preset.value}>
+                      {preset.label} · {preset.detail}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Env vars">
+                <textarea
+                  className={cn(fieldControlClass, "min-h-28 resize-y py-2")}
+                  value={envText}
+                  onChange={(e) => setEnvText(e.target.value)}
+                  placeholder={"LOG_LEVEL=info"}
+                />
+              </Field>
+              <Field label="Secrets">
+                <textarea
+                  className={cn(fieldControlClass, "min-h-28 resize-y py-2")}
+                  value={secretText}
+                  onChange={(e) => setSecretText(e.target.value)}
+                  placeholder={"DATABASE_URL=postgres://..."}
+                />
+              </Field>
+            </>
+          )}
         </form>
       </DialogContent>
     </Dialog>
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <label className="flex flex-col gap-1.5">
+    <label className={cn("flex flex-col gap-1.5", className)}>
       <span className="text-[12px] font-medium text-[var(--color-fg-muted)]">{label}</span>
       {children}
     </label>

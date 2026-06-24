@@ -201,7 +201,11 @@ function PlanCard({
           if (cta.to === "/$wid/settings/billing" && cta.params) {
             nav({ to: cta.to, params: cta.params, search: { checkout: undefined } });
           } else if (cta.params) {
-            nav({ to: cta.to, params: cta.params });
+            nav({
+              to: cta.to,
+              params: cta.params,
+              search: cta.to === "/$wid" ? { q: undefined, status: undefined } : undefined,
+            });
           } else {
             nav({ to: cta.to });
           }
