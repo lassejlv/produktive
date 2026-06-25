@@ -37,7 +37,7 @@ const sandboxesRoute = getRouteApi("/_authed/$wid/deployments/sandboxes");
 export const Route = createFileRoute("/_authed/$wid/deployments/sandboxes")({
   staticData: {
     title: "Sandboxes",
-    description: "Persistent Sprites.dev environments for agents and untrusted code.",
+    description: "Persistent sandbox environments for agents and untrusted code.",
     parent: { label: "Deployments", to: "/$wid/deployments" },
   },
   validateSearch: parseSandboxesSearch,
@@ -54,7 +54,7 @@ function DeploySandboxesPage() {
       <EmptyState
         icon={Box}
         title="Sandboxes not available"
-        description="Sprites sandboxes are not enabled in this build."
+        description="Sandboxes are not enabled in this build."
       />
     );
   }
@@ -114,7 +114,7 @@ function DeploySandboxesContent({ wid }: { wid: string }) {
               Sandboxes
             </h1>
             <p className="mt-1 text-[13px] text-[var(--color-fg-muted)]">
-              Stateful Sprites.dev VMs with persistent filesystems.
+              Stateful VMs with persistent filesystems.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -177,7 +177,7 @@ function DeploySandboxesContent({ wid }: { wid: string }) {
             description={
               query
                 ? "Try a different search term."
-                : "Create a sandbox to run commands in an isolated Sprites.dev environment."
+                : "Create a sandbox to run commands in an isolated environment."
             }
             action={
               !query ? (

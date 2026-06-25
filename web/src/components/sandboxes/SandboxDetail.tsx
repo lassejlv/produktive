@@ -18,6 +18,7 @@ import {
 } from "#/lib/queries";
 import {
   DEFAULT_SANDBOX_DETAIL_TAB,
+  SANDBOX_URL_AUTH_OPTIONS,
   SANDBOX_STATUS_COLOR,
   SANDBOX_STATUS_LABEL,
   sandboxStatusActive,
@@ -411,19 +412,19 @@ function SettingsPanel({
         <div>
           <p className="text-[12px] text-[var(--color-fg-muted)]">URL access</p>
           <div className="mt-1.5 flex gap-2">
-            {(["sprite", "public"] as const).map((value) => (
+            {SANDBOX_URL_AUTH_OPTIONS.map(({ value, label }) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => setUrlAuth(value)}
                 className={cn(
-                  "rounded-[var(--radius-sm)] border px-2.5 py-1 text-[12px] capitalize",
+                  "rounded-[var(--radius-sm)] border px-2.5 py-1 text-[12px]",
                   urlAuth === value
                     ? "border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] text-[var(--color-accent)]"
                     : "border-[var(--color-border)] text-[var(--color-fg-muted)]",
                 )}
               >
-                {value}
+                {label}
               </button>
             ))}
           </div>
@@ -436,7 +437,7 @@ function SettingsPanel({
       <section className="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-err)_35%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-err)_6%,transparent)] p-4">
         <h3 className="text-[13px] font-medium text-[var(--color-fg)]">Delete sandbox</h3>
         <p className="mt-1 text-[12px] leading-6 text-[var(--color-fg-muted)]">
-          Permanently destroys the Sprites environment and its persistent filesystem.
+          Permanently destroys the sandbox and its persistent filesystem.
         </p>
         <Button
           type="button"

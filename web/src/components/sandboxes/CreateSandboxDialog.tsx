@@ -4,6 +4,7 @@ import { Input } from "#/components/ui/input";
 import { Dialog, DialogClose, DialogContent } from "#/components/Dialog";
 import { Spinner } from "#/components/ui/spinner";
 import { cn } from "#/lib/cn";
+import { SANDBOX_URL_AUTH_OPTIONS } from "#/lib/sandboxes";
 import type { DeployRegion } from "#/lib/types";
 import { fieldControlClass } from "#/components/deployments/deploy-shared";
 
@@ -69,7 +70,7 @@ export function CreateSandboxDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title="Create sandbox" description="Provision a persistent Sprites.dev environment.">
+      <DialogContent title="Create sandbox" description="Provision a persistent sandbox environment.">
         <form
           className="space-y-4"
           onSubmit={handleSubmit}
@@ -165,19 +166,19 @@ export function CreateSandboxDialog({
           <div>
             <p className="text-[12px] text-[var(--color-fg-muted)]">URL access</p>
             <div className="mt-1.5 flex gap-2">
-              {(["sprite", "public"] as const).map((value) => (
+              {SANDBOX_URL_AUTH_OPTIONS.map(({ value, label }) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => setUrlAuth(value)}
                   className={cn(
-                    "rounded-[var(--radius-sm)] border px-2.5 py-1 text-[12px] capitalize",
+                    "rounded-[var(--radius-sm)] border px-2.5 py-1 text-[12px]",
                     urlAuth === value
                       ? "border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] text-[var(--color-accent)]"
                       : "border-[var(--color-border)] text-[var(--color-fg-muted)]",
                   )}
                 >
-                  {value}
+                  {label}
                 </button>
               ))}
             </div>

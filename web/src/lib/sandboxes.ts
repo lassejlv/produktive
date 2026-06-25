@@ -1,3 +1,5 @@
+import type { SandboxUrlAuth } from "#/lib/types";
+
 export type SandboxDetailTab = "overview" | "exec" | "checkpoints" | "settings";
 
 export const DEFAULT_SANDBOX_DETAIL_TAB: SandboxDetailTab = "overview";
@@ -58,4 +60,16 @@ export const SANDBOX_STATUS_COLOR: Record<string, string> = {
 
 export function sandboxStatusActive(status: string): boolean {
   return status === "active" || status === "warm";
+}
+
+export const SANDBOX_URL_AUTH_OPTIONS: ReadonlyArray<{
+  value: SandboxUrlAuth;
+  label: string;
+}> = [
+  { value: "sprite", label: "Authenticated" },
+  { value: "public", label: "Public" },
+];
+
+export function sandboxUrlAuthLabel(value: SandboxUrlAuth | string): string {
+  return SANDBOX_URL_AUTH_OPTIONS.find((option) => option.value === value)?.label ?? value;
 }
