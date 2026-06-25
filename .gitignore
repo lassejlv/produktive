@@ -10,3 +10,4 @@ docs/
 .specific
 specific.local
 opencode.json
+.env.prod
