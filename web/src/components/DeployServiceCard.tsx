@@ -76,16 +76,15 @@ function MetaChip({ icon: Icon, label }: { icon?: typeof MapPin; label: string }
   );
 }
 
+export { MetaChip };
+
 interface Props {
   service: DeployService;
   /** Rendered as a draggable node on the canvas (fixed width, propagation guards). */
   canvas?: boolean;
 }
 
-export const DeployServiceCard = memo(function DeployServiceCard({
-  service,
-  canvas,
-}: Props) {
+export const DeployServiceCard = memo(function DeployServiceCard({ service, canvas }: Props) {
   const { wid } = useParams({ from: "/_authed/$wid" });
   const { data: regions } = useDeployRegions(wid);
   const color = DEPLOY_STATUS_COLOR[service.status];
@@ -149,10 +148,7 @@ export const DeployServiceCard = memo(function DeployServiceCard({
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-1.5">
-            <MetaChip
-              icon={MapPin}
-              label={formatDeployRegion(service.region, regions, "short")}
-            />
+            <MetaChip icon={MapPin} label={formatDeployRegion(service.region, regions, "short")} />
             <MetaChip label={service.environment} />
             <MetaChip label={`:${service.internal_port}`} />
           </div>
@@ -198,5 +194,73 @@ export function DeployCanvasHint({ children }: { children: ReactNode }) {
     <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 hidden text-center text-[11px] text-[var(--color-canvas-dim)] md:block">
       {children}
     </div>
+  );
+}
+
+export function DeployServiceRow({ service }: { service: DeployService }) {
+  const { wid } = useParams({ from: "/_authed/$wid" });
+  const { data: regions } = useDeployRegions(wid);
+  const color = DEPLOY_STATUS_COLOR[service.status];
+  const active = deployStatusActive(service.status);
+  const pending = deployStatusPending(service.status);
+
+  return (
+    <Link
+      to="/$wid/deployments"
+      params={{ wid }}
+      search={{ service: service.id }}
+      className={cn(
+        "group flex items-center gap-3 rounded-[var(--radius-md)] no-underline",
+        "border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2.5",
+        "transition-colors hover:border-[var(--color-border-hi)] hover:bg-[var(--color-bg-elev)]",
+      )}
+      style={{ borderLeft: `3px solid ${color}` }}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <span
+          className={cn(
+            "inline-block h-2 w-2 shrink-0 rounded-full",
+            active && "pulse-dot",
+            pending && "animate-pulse",
+          )}
+          style={{
+            background: color,
+            boxShadow: active ? `0 0 8px color-mix(in srgb, ${color} 50%, transparent)` : undefined,
+          }}
+        />
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-[13px] font-medium tracking-tight text-[var(--color-fg)]">
+            {service.name}
+          </span>
+          <span className="mono hidden truncate text-[11px] text-[var(--color-fg-dim)] sm:block">
+            {service.image}
+          </span>
+        </div>
+      </div>
+
+      <div className="hidden shrink-0 items-center gap-1.5 md:flex">
+        <MetaChip icon={MapPin} label={formatDeployRegion(service.region, regions, "short")} />
+        <MetaChip label={service.environment} />
+        <MetaChip label={`:${service.internal_port}`} />
+      </div>
+
+      <div className="hidden w-[88px] shrink-0 text-right lg:block">
+        <div className="text-[10px] uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
+          compute
+        </div>
+        <div className="mt-0.5 text-[12px] font-medium text-[var(--color-fg)]">
+          {resourcePresetLabel(service.resource_preset)}
+        </div>
+      </div>
+
+      <div className="hidden w-[110px] shrink-0 text-right sm:block">
+        <div className="text-[10px] uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
+          updated
+        </div>
+        <div className="mono mt-0.5 text-[11px] text-[var(--color-fg-muted)]">
+          {service.url ? service.url.replace(/^https?:\/\//, "") : lastSeen(service.updated_at)}
+        </div>
+      </div>
+    </Link>
   );
 }

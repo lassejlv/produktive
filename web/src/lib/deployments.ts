@@ -3,6 +3,8 @@ import { deployStatusActive, deployStatusPending } from "./status";
 
 export type DeployServiceFilter = "all" | "live" | "deploying" | "failed" | "stopped";
 
+export type DeployView = "list" | "canvas";
+
 export type DeployDetailTab =
   | "deployments"
   | "events"
@@ -25,6 +27,7 @@ export type DeploymentsSearch = {
   status?: DeployServiceFilter;
   service?: string;
   tab?: DeployDetailTab;
+  view?: DeployView;
 };
 
 export const EMPTY_DEPLOYMENTS_SEARCH: DeploymentsSearch = {
@@ -32,6 +35,7 @@ export const EMPTY_DEPLOYMENTS_SEARCH: DeploymentsSearch = {
   status: undefined,
   service: undefined,
   tab: undefined,
+  view: undefined,
 };
 
 export function parseDeployDetailTab(value: unknown): DeployDetailTab | undefined {
@@ -40,12 +44,18 @@ export function parseDeployDetailTab(value: unknown): DeployDetailTab | undefine
     : undefined;
 }
 
+export function parseDeployView(value: unknown): DeployView | undefined {
+  return value === "list" || value === "canvas" ? value : undefined;
+}
+
 export function parseDeploymentsSearch(search: Record<string, unknown>): DeploymentsSearch {
   return {
     q: typeof search.q === "string" && search.q.trim() ? search.q : undefined,
     status: parseDeployServiceFilter(search.status),
-    service: typeof search.service === "string" && search.service.trim() ? search.service : undefined,
+    service:
+      typeof search.service === "string" && search.service.trim() ? search.service : undefined,
     tab: parseDeployDetailTab(search.tab),
+    view: parseDeployView(search.view),
   };
 }
 
@@ -55,6 +65,7 @@ export function deploymentsSearchWithoutService(search: DeploymentsSearch): Depl
     status: search.status,
     service: undefined,
     tab: undefined,
+    view: search.view,
   };
 }
 
