@@ -147,6 +147,8 @@ pub struct DeployServiceView {
     pub resource_preset: String,
     pub url: Option<String>,
     pub status: String,
+    pub canvas_x: i32,
+    pub canvas_y: i32,
     pub disabled_at: Option<DateTime<FixedOffset>>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
@@ -274,6 +276,10 @@ pub struct CreateServiceBody {
 pub struct UpdateServiceSettingsBody {
     #[serde(default)]
     pub resource_preset: Option<String>,
+    #[serde(default)]
+    pub canvas_x: Option<i32>,
+    #[serde(default)]
+    pub canvas_y: Option<i32>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -653,43 +659,64 @@ pub async fn update_service_settings(
     Path(ServicePath { service_id, .. }): Path<ServicePath>,
     Json(body): Json<UpdateServiceSettingsBody>,
 ) -> ApiResult<Json<DeployServiceView>> {
-    m.require_owner()?;
     ensure_service(&state, m.workspace.id, service_id).await?;
-    let Some(resource_preset) = body.resource_preset.as_deref() else {
-        return load_service(&state, m.workspace.id, service_id)
-            .await
-            .map(Json);
-    };
-    let resource_preset = ResourcePreset::parse(resource_preset).map_err(deploy_error)?;
-    state
-        .db
-        .execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"
-            UPDATE deploy_services
-            SET resource_preset = $3, updated_at = now()
-            WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
-            "#,
-            [
-                m.workspace.id.into(),
-                service_id.into(),
-                resource_preset.as_str().into(),
-            ],
-        ))
+
+    if let Some(resource_preset) = body.resource_preset.as_deref() {
+        m.require_owner()?;
+        let resource_preset = ResourcePreset::parse(resource_preset).map_err(deploy_error)?;
+        state
+            .db
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"
+                UPDATE deploy_services
+                SET resource_preset = $3, updated_at = now()
+                WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+                "#,
+                [
+                    m.workspace.id.into(),
+                    service_id.into(),
+                    resource_preset.as_str().into(),
+                ],
+            ))
+            .await?;
+        insert_event(
+            &state,
+            m.workspace.id,
+            service_id,
+            None,
+            "info",
+            "compute size updated",
+            json!({
+                "resource_preset": resource_preset.as_str(),
+                "applies_on": "next_deployment"
+            }),
+        )
         .await?;
-    insert_event(
-        &state,
-        m.workspace.id,
-        service_id,
-        None,
-        "info",
-        "compute size updated",
-        json!({
-            "resource_preset": resource_preset.as_str(),
-            "applies_on": "next_deployment"
-        }),
-    )
-    .await?;
+    }
+
+    if body.canvas_x.is_some() || body.canvas_y.is_some() {
+        state
+            .db
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"
+                UPDATE deploy_services
+                SET canvas_x = COALESCE($3, canvas_x),
+                    canvas_y = COALESCE($4, canvas_y),
+                    updated_at = now()
+                WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+                "#,
+                [
+                    m.workspace.id.into(),
+                    service_id.into(),
+                    body.canvas_x.into(),
+                    body.canvas_y.into(),
+                ],
+            ))
+            .await?;
+    }
+
     load_service(&state, m.workspace.id, service_id)
         .await
         .map(Json)
@@ -1705,6 +1732,7 @@ async fn service_rows(
                     WHEN 9 THEN 'stopped'
                     ELSE 'unknown'
                END AS status,
+               canvas_x, canvas_y,
                disabled_at, created_at, updated_at
         FROM deploy_services
         WHERE workspace_id = $1

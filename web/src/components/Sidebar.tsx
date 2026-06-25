@@ -6,6 +6,7 @@ import {
   Check,
   FolderTree,
   Globe,
+  HardDrive,
   LayoutDashboard,
   LogOut,
   Rocket,
@@ -45,6 +46,8 @@ interface NavItem {
   anim?: IconGesture;
   /** Match only the exact path (e.g. the workspace index), not descendants. */
   exact?: boolean;
+  /** When matched by prefix, skip activation for these path suffixes (e.g. `/volumes`). */
+  excludeActiveWhen?: string[];
 }
 
 const UPTIME: NavItem[] = [
@@ -70,6 +73,13 @@ const DEPLOYMENTS: NavItem[] = [
     to: "/$wid/deployments",
     label: "Services",
     icon: Rocket,
+    anim: "pop",
+    excludeActiveWhen: ["/volumes"],
+  },
+  {
+    to: "/$wid/deployments/volumes",
+    label: "Volumes",
+    icon: HardDrive,
     anim: "pop",
   },
 ];
@@ -357,6 +367,14 @@ function isActive(
   return candidates.some((wid) => {
     const resolved = item.to.replace("$wid", wid);
     if (item.exact) return pathname === resolved || pathname === resolved + "/";
-    return pathname === resolved || pathname.startsWith(resolved + "/");
+    const prefixMatch = pathname.startsWith(resolved + "/");
+    if (pathname !== resolved && !prefixMatch) return false;
+    if (prefixMatch && item.excludeActiveWhen?.length) {
+      const suffix = pathname.slice(resolved.length);
+      if (item.excludeActiveWhen.some((part) => suffix === part || suffix.startsWith(`${part}/`))) {
+        return false;
+      }
+    }
+    return true;
   });
 }

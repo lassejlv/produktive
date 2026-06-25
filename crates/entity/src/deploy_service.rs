@@ -24,6 +24,8 @@ pub struct Model {
     pub resource_preset: String,
     pub url: Option<String>,
     pub status: i16,
+    pub canvas_x: i32,
+    pub canvas_y: i32,
     pub disabled_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub created_by: Option<Uuid>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,

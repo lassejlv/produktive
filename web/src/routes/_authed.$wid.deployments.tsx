@@ -1,9 +1,8 @@
-import { createFileRoute, Link, useNavigate, useParams } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
 import {
   Activity,
   ArrowLeft,
   CheckCircle2,
-  ChevronRight,
   Clock,
   Copy,
   Cpu,
@@ -11,7 +10,6 @@ import {
   ExternalLink,
   Globe,
   HardDrive,
-  KeyRound,
   Lock,
   MapPin,
   MemoryStick,
@@ -21,7 +19,6 @@ import {
   RotateCcw,
   Save,
   ScrollText,
-  Search,
   Server,
   Settings,
   Square,
@@ -32,21 +29,16 @@ import {
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { ChartTooltip, Grid, Line, LineChart, XAxis } from "#/charts";
 import { Button } from "#/components/ui/button";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "#/components/ui/input-group";
 import { ScrollArea } from "#/components/ui/scroll-area";
 import { Skeleton } from "#/components/ui/skeleton";
 import { Dialog, DialogClose, DialogContent } from "../components/Dialog";
 import { EmptyState } from "../components/EmptyState";
-import { PageActions } from "../components/PageLayout";
+import { resourcePresetLabel } from "../components/DeployServiceCard";
 import { Segmented } from "../components/Segmented";
-import { StatTile } from "../components/StatTile";
 import { Spinner } from "#/components/ui/spinner";
 import { cn } from "#/lib/cn";
 import { DEPLOYMENTS_ENABLED } from "#/lib/features";
+import { EMPTY_DEPLOYMENTS_SEARCH } from "#/lib/deployments";
 import {
   DEPLOY_STATUS_COLOR,
   DEPLOY_STATUS_LABEL,
@@ -57,16 +49,12 @@ import {
 } from "#/lib/status";
 import { toast } from "#/lib/toast";
 import {
-  deployAccessQuery,
-  useCreateDeployCredential,
   useCreateDeployServiceVolume,
   useCreateDeployServiceDomain,
-  useCreateDeployService,
   useCreateDeployment,
   useDeleteDeployService,
   useDeleteDeployServiceVolume,
   useDeployAccess,
-  useDeployCredentials,
   useDeployEvents,
   useDeployLogs,
   useDeployMetrics,
@@ -98,49 +86,6 @@ import type {
 type DetailTab = "deployments" | "events" | "logs" | "metrics" | "domains" | "settings";
 export type DeployDetailTab = DetailTab;
 type MetricChartKind = "cpu" | "memory" | "requests";
-type DeployServiceFilter = "all" | "live" | "deploying" | "failed" | "stopped";
-
-type DeploymentsSearch = {
-  q?: string;
-  status?: DeployServiceFilter;
-};
-
-const EMPTY_DEPLOYMENTS_SEARCH: DeploymentsSearch = { q: undefined, status: undefined };
-
-const DEPLOY_SERVICE_FILTERS: DeployServiceFilter[] = [
-  "all",
-  "live",
-  "deploying",
-  "failed",
-  "stopped",
-];
-
-function parseDeployServiceFilter(value: unknown): DeployServiceFilter | undefined {
-  return typeof value === "string" && DEPLOY_SERVICE_FILTERS.includes(value as DeployServiceFilter)
-    ? (value as DeployServiceFilter)
-    : undefined;
-}
-
-function deployServiceFilterBucket(status: DeployStatus): DeployServiceFilter {
-  if (deployStatusActive(status)) return "live";
-  if (deployStatusPending(status)) return "deploying";
-  if (status === "failed") return "failed";
-  if (status === "stopped" || status === "rolled_back") return "stopped";
-  return "all";
-}
-
-function matchesDeploySearch(service: DeployService, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return (
-    service.name.toLowerCase().includes(q) ||
-    service.image.toLowerCase().includes(q) ||
-    service.region.toLowerCase().includes(q) ||
-    service.environment.toLowerCase().includes(q) ||
-    service.slug.toLowerCase().includes(q) ||
-    (service.url?.toLowerCase().includes(q) ?? false)
-  );
-}
 
 const RESOURCE_PRESETS: Array<{
   value: DeployResourcePreset;
@@ -154,18 +99,6 @@ const RESOURCE_PRESETS: Array<{
 
 const fieldControlClass =
   "w-full rounded-[var(--radius-md)] border border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] px-3 text-[13px] text-[var(--color-fg)] shadow-[var(--shadow-xs)] outline-none transition-[border-color,box-shadow] focus:border-[var(--color-accent)] focus:shadow-[var(--ring-accent)]";
-
-/** Status-tinted elevation for service surfaces — echoes the monitor-card glow language. */
-function surfaceShadow(status: DeployStatus): string {
-  const color = DEPLOY_STATUS_COLOR[status];
-  if (status === "failed") {
-    return `var(--shadow-md), 0 0 0 1px color-mix(in srgb, ${color} 16%, transparent), 0 16px 38px -18px color-mix(in srgb, ${color} 34%, transparent)`;
-  }
-  if (deployStatusActive(status)) {
-    return `var(--shadow-sm), 0 0 0 1px color-mix(in srgb, ${color} 13%, transparent)`;
-  }
-  return "var(--shadow-sm)";
-}
 
 /** A live "ticking" indicator used in panel headers backed by polling queries. */
 function LiveDot({ label = "Live", color = "var(--color-ok)" }: { label?: string; color?: string }) {
@@ -258,36 +191,17 @@ function CopyChip({
 }
 
 export const Route = createFileRoute("/_authed/$wid/deployments")({
-  staticData: {
-    title: "Deployments",
-    description: "Private-preview Docker services with Fly-backed runtime, logs, and metrics.",
-  },
-  validateSearch: (search: Record<string, unknown>): DeploymentsSearch => ({
-    q: typeof search.q === "string" && search.q.trim() ? search.q : undefined,
-    status: parseDeployServiceFilter(search.status),
-  }),
-  loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(deployAccessQuery(params.wid)),
-  component: DeploymentsIndexPage,
+  component: () => <Outlet />,
 });
-
-function DeploymentsIndexPage() {
-  const { wid } = Route.useParams();
-  const search = Route.useSearch();
-  const { serviceId } = useParams({ strict: false }) as { serviceId?: string };
-  return <DeploymentsRoute wid={wid} serviceId={serviceId} indexSearch={search} />;
-}
 
 export function DeploymentsRoute({
   wid,
   serviceId,
   tab,
-  indexSearch,
 }: {
   wid: string;
-  serviceId?: string;
+  serviceId: string;
   tab?: DeployDetailTab;
-  indexSearch?: DeploymentsSearch;
 }) {
   if (!DEPLOYMENTS_ENABLED) {
     return (
@@ -300,12 +214,7 @@ export function DeploymentsRoute({
   }
 
   return (
-    <DeploymentsContent
-      wid={wid}
-      selectedServiceId={serviceId ?? null}
-      detailTab={tab}
-      indexSearch={indexSearch}
-    />
+    <DeploymentsContent wid={wid} selectedServiceId={serviceId} detailTab={tab} />
   );
 }
 
@@ -313,93 +222,23 @@ function DeploymentsContent({
   wid,
   selectedServiceId,
   detailTab,
-  indexSearch,
 }: {
   wid: string;
-  selectedServiceId: string | null;
+  selectedServiceId: string;
   detailTab?: DeployDetailTab;
-  indexSearch?: DeploymentsSearch;
 }) {
-  const navigate = useNavigate();
   const access = useDeployAccess(wid);
   const approved = access.data?.status === "approved";
   const services = useDeployServices(wid, approved);
-  const credentials = useDeployCredentials(wid, approved);
-  const createService = useCreateDeployService(wid);
-  const createCredential = useCreateDeployCredential(wid);
-  const [serviceOpen, setServiceOpen] = useState(false);
-  const [credentialOpen, setCredentialOpen] = useState(false);
 
-  const sorted = useMemo(
-    () => [...(services.data ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)),
-    [services.data],
+  const selected = useMemo(
+    () => (services.data ?? []).find((service) => service.id === selectedServiceId) ?? null,
+    [services.data, selectedServiceId],
   );
-
-  const filterStatus = indexSearch?.status ?? "all";
-  const searchQuery = indexSearch?.q ?? "";
-
-  const filtered = useMemo(() => {
-    return sorted.filter((service) => {
-      const bucket = deployServiceFilterBucket(service.status);
-      const statusMatch = filterStatus === "all" || bucket === filterStatus;
-      return statusMatch && matchesDeploySearch(service, searchQuery);
-    });
-  }, [sorted, filterStatus, searchQuery]);
-
-  const setIndexSearch = (patch: Partial<DeploymentsSearch>) => {
-    void navigate({
-      to: "/$wid/deployments",
-      params: { wid },
-      search: {
-        q: "q" in patch ? patch.q : searchQuery || undefined,
-        status:
-          "status" in patch
-            ? patch.status === "all"
-              ? undefined
-              : patch.status
-            : filterStatus === "all"
-              ? undefined
-              : filterStatus,
-      },
-      replace: true,
-    });
-  };
-
-  const selected = selectedServiceId
-    ? (sorted.find((service) => service.id === selectedServiceId) ?? null)
-    : null;
-  const isDetailView = selectedServiceId != null;
 
   return (
     <>
-      {!isDetailView && (
-        <PageActions>
-          <div className="flex flex-wrap items-center gap-2">
-            {approved && (
-              <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setCredentialOpen(true)}
-                >
-                  <KeyRound size={14} /> Registry credential
-                </Button>
-                <Button
-                  type="button"
-                  variant="default"
-                  size="sm"
-                  onClick={() => setServiceOpen(true)}
-                >
-                  <Plus size={14} /> New service
-                </Button>
-              </>
-            )}
-          </div>
-        </PageActions>
-      )}
-
-      <div className={cn("relative", isDetailView && "fade-in mx-auto max-w-5xl px-4 py-6 pb-24 sm:px-6 sm:py-7 sm:pb-7 lg:px-8")}>
+      <div className="fade-in relative mx-auto max-w-5xl px-4 py-6 pb-24 sm:px-6 sm:py-7 sm:pb-7 lg:px-8">
         <div
           className={cn(
             "transition-opacity",
@@ -408,70 +247,11 @@ function DeploymentsContent({
           aria-hidden={!approved}
         >
           {!approved || services.isLoading ? (
-            isDetailView ? (
-              <ServiceDetailSkeleton />
-            ) : (
-              <ServiceGridSkeleton />
-            )
-          ) : isDetailView ? (
-            selected ? (
-              <ServiceDetailPage wid={wid} service={selected} initialTab={detailTab} />
-            ) : (
-              <ServiceNotFound wid={wid} />
-            )
-          ) : sorted.length === 0 ? (
-            <EmptyState
-              icon={Rocket}
-              title="No deployment services"
-              description="Create an HTTP service from a Docker image to start deploying."
-              action={
-                <Button
-                  type="button"
-                  variant="default"
-                  size="sm"
-                  onClick={() => setServiceOpen(true)}
-                >
-                  <Plus size={14} /> New service
-                </Button>
-              }
-            />
+            <ServiceDetailSkeleton />
+          ) : selected ? (
+            <ServiceDetailPage wid={wid} service={selected} initialTab={detailTab} />
           ) : (
-            <div className="space-y-5">
-              <ServiceSummaryBar services={sorted} />
-              <DeployServiceToolbar
-                services={sorted}
-                query={searchQuery}
-                status={filterStatus}
-                shown={filtered.length}
-                onQueryChange={(q) => setIndexSearch({ q: q || undefined })}
-                onStatusChange={(status) => setIndexSearch({ status })}
-              />
-              {filtered.length === 0 ? (
-                <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-8 text-center shadow-[var(--shadow-xs)]">
-                  <p className="text-[13px] font-medium text-[var(--color-fg)]">No matching services</p>
-                  <p className="mt-1 text-[12px] text-[var(--color-fg-muted)]">
-                    Try a different search or filter.
-                  </p>
-                  {(searchQuery || filterStatus !== "all") && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="mt-3"
-                      onClick={() => setIndexSearch({ q: undefined, status: "all" })}
-                    >
-                      Clear filters
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {filtered.map((service) => (
-                    <ServiceCard key={service.id} wid={wid} service={service} />
-                  ))}
-                </div>
-              )}
-            </div>
+            <ServiceNotFound wid={wid} />
           )}
         </div>
 
@@ -479,52 +259,11 @@ function DeploymentsContent({
           <RequestAccessOverlay wid={wid} status={access.data.status} />
         )}
       </div>
-
-      <CreateCredentialDialog
-        open={credentialOpen}
-        pending={createCredential.isPending}
-        onOpenChange={(open) => {
-          if (!open && createCredential.isPending) return;
-          setCredentialOpen(open);
-        }}
-        onSubmit={(body) =>
-          createCredential.mutate(body, {
-            onSuccess: () => {
-              toast.success("Registry credential saved");
-              setCredentialOpen(false);
-            },
-            onError: (err) => toast.error((err as Error).message),
-          })
-        }
-      />
-
-      <CreateServiceDialog
-        open={serviceOpen}
-        credentials={credentials.data ?? []}
-        pending={createService.isPending}
-        onOpenChange={(open) => {
-          if (!open && createService.isPending) return;
-          setServiceOpen(open);
-        }}
-        onSubmit={(body) =>
-          createService.mutate(body, {
-            onSuccess: (service) => {
-              toast.success("Service created");
-              setServiceOpen(false);
-              void navigate({
-                to: "/$wid/deployments/$serviceId",
-                params: { wid, serviceId: service.id },
-              });
-            },
-            onError: (err) => toast.error((err as Error).message),
-          })
-        }
-      />
     </>
   );
 }
 
-function RequestAccessOverlay({ wid, status }: { wid: string; status: DeployAccessStatus }) {
+export function RequestAccessOverlay({ wid, status }: { wid: string; status: DeployAccessStatus }) {
   const request = useRequestDeployAccess(wid);
   const pending = status === "pending";
   const denied = status === "denied";
@@ -600,256 +339,6 @@ function ServiceNotFound({ wid }: { wid: string }) {
       >
         Back to deployments
       </Link>
-    </div>
-  );
-}
-
-function ServiceSummaryBar({ services }: { services: DeployService[] }) {
-  const counts = services.reduce(
-    (acc, service) => {
-      if (deployStatusActive(service.status)) acc.live += 1;
-      else if (deployStatusPending(service.status)) acc.pending += 1;
-      else if (service.status === "failed") acc.failed += 1;
-      else acc.other += 1;
-      return acc;
-    },
-    { live: 0, pending: 0, failed: 0, other: 0 },
-  );
-
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <StatTile label="Services" value={services.length} sub="in workspace" />
-      <StatTile
-        label="Live"
-        value={counts.live}
-        accent={counts.live > 0 ? "var(--color-ok)" : undefined}
-        sub="healthy or running"
-      />
-      <StatTile
-        label="Deploying"
-        value={counts.pending}
-        accent={counts.pending > 0 ? "var(--color-warn)" : undefined}
-        sub="in progress"
-      />
-      <StatTile
-        label="Failed"
-        value={counts.failed}
-        accent={counts.failed > 0 ? "var(--color-err)" : undefined}
-        sub="needs attention"
-      />
-    </div>
-  );
-}
-
-function DeployServiceToolbar({
-  services,
-  query,
-  status,
-  shown,
-  onQueryChange,
-  onStatusChange,
-}: {
-  services: DeployService[];
-  query: string;
-  status: DeployServiceFilter;
-  shown: number;
-  onQueryChange: (query: string) => void;
-  onStatusChange: (status: DeployServiceFilter) => void;
-}) {
-  const counts = useMemo(() => {
-    const tallies = { all: services.length, live: 0, deploying: 0, failed: 0, stopped: 0 };
-    for (const service of services) {
-      const bucket = deployServiceFilterBucket(service.status);
-      if (bucket !== "all") tallies[bucket] += 1;
-    }
-    return tallies;
-  }, [services]);
-
-  const pills: Array<{ value: DeployServiceFilter; label: string; n: number; color?: string }> = [
-    { value: "all", label: "All", n: counts.all },
-    { value: "live", label: "Live", n: counts.live, color: "var(--color-ok)" },
-    { value: "deploying", label: "Deploying", n: counts.deploying, color: "var(--color-warn)" },
-    { value: "failed", label: "Failed", n: counts.failed, color: "var(--color-err)" },
-    { value: "stopped", label: "Stopped", n: counts.stopped },
-  ];
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <InputGroup className="h-9 max-w-md flex-1 rounded-[var(--radius-md)] border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] shadow-[var(--shadow-xs)]">
-          <InputGroupAddon>
-            <Search size={14} className="text-[var(--color-fg-dim)]" />
-          </InputGroupAddon>
-          <InputGroupInput
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="Search name, image, region…"
-            className="text-[13px]"
-          />
-          {query && (
-            <InputGroupAddon align="inline-end">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Clear search"
-                onClick={() => onQueryChange("")}
-              >
-                <X size={13} />
-              </Button>
-            </InputGroupAddon>
-          )}
-        </InputGroup>
-        <span className="shrink-0 text-[12px] text-[var(--color-fg-muted)] tabular">
-          {shown} of {services.length} shown
-        </span>
-      </div>
-      <div className="deploy-tab-rail -mx-1 overflow-x-auto px-1">
-        <div className="flex w-max items-center gap-1.5 pb-0.5">
-          {pills.map((pill) => {
-            const active = status === pill.value;
-            return (
-              <Button
-                key={pill.value}
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-pressed={active}
-                onClick={() => onStatusChange(active && pill.value !== "all" ? "all" : pill.value)}
-                className={cn(
-                  "h-7 shrink-0 rounded-full px-2.5 text-[12px] font-medium shadow-none",
-                  active
-                    ? "border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] text-[var(--color-fg)] shadow-[var(--shadow-xs)]"
-                    : "border-transparent text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-row)] hover:text-[var(--color-fg)]",
-                )}
-              >
-                {pill.color && (
-                  <span className="h-[7px] w-[7px] rounded-full" style={{ background: pill.color }} />
-                )}
-                {pill.label}
-                <span className="tabular text-[11px] text-[var(--color-fg-dim)]">{pill.n}</span>
-              </Button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ServiceCard({ wid, service }: { wid: string; service: DeployService }) {
-  const color = DEPLOY_STATUS_COLOR[service.status];
-  const active = deployStatusActive(service.status);
-  const pending = deployStatusPending(service.status);
-  const glow = DEPLOY_GLOW_CLASS[service.status];
-
-  return (
-    <Link
-      to="/$wid/deployments/$serviceId"
-      params={{ wid, serviceId: service.id }}
-      className={cn(
-        "deploy-card group relative flex flex-col overflow-hidden rounded-[var(--radius-lg)]",
-        "border border-[var(--color-border)] bg-[var(--color-bg-elev)] no-underline",
-        glow,
-      )}
-      style={{ boxShadow: surfaceShadow(service.status) }}
-    >
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span
-            className={cn(
-              "inline-block h-2 w-2 shrink-0 rounded-full",
-              active && "pulse-dot",
-              pending && "animate-pulse",
-            )}
-            style={{
-              background: color,
-              boxShadow: active
-                ? `0 0 10px color-mix(in srgb, ${color} 55%, transparent)`
-                : undefined,
-            }}
-          />
-          <h2 className="truncate text-[13px] font-medium tracking-tight text-[var(--color-fg)] group-hover:text-[var(--color-link)]">
-            {service.name}
-          </h2>
-        </div>
-        <ChevronRight
-          size={14}
-          className="shrink-0 text-[var(--color-fg-dim)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--color-fg-muted)]"
-        />
-      </div>
-
-      <div className="flex flex-1 flex-col px-4 py-3.5">
-        <div className="flex items-end justify-between gap-3">
-          <div className="min-w-0">
-            <div
-              className="text-[10px] font-semibold uppercase tracking-[0.08em]"
-              style={{ color }}
-            >
-              {DEPLOY_STATUS_LABEL[service.status]}
-            </div>
-            <div className="mono mt-1.5 truncate text-[12px] text-[var(--color-fg-muted)]">
-              {service.image}
-            </div>
-          </div>
-          <div className="shrink-0 text-right">
-            <div className="text-[10px] uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
-              compute
-            </div>
-            <div className="mt-1.5 text-[12px] font-medium text-[var(--color-fg)]">
-              {resourcePresetLabel(service.resource_preset)}
-            </div>
-          </div>
-        </div>
-
-        <DeployHealthStrip status={service.status} />
-
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap gap-1.5">
-            <MetaChip icon={MapPin} label={service.region} />
-            <MetaChip label={service.environment} />
-            <MetaChip label={`:${service.internal_port}`} />
-          </div>
-          <span className="mono shrink-0 text-[10px] text-[var(--color-fg-dim)]">
-            {service.url
-              ? service.url.replace(/^https?:\/\//, "")
-              : lastSeen(service.updated_at)}
-          </span>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function DeployHealthStrip({ status }: { status: DeployStatus }) {
-  const ticks = 24;
-  const items = Array.from({ length: ticks }, (_, i) => {
-    if (i !== ticks - 1) return "idle";
-    if (deployStatusActive(status)) return "live";
-    if (deployStatusPending(status)) return "pending";
-    if (status === "failed") return "failed";
-    return "idle";
-  });
-
-  return (
-    <div className="mt-3.5 flex h-2 items-center gap-[2px]">
-      {items.map((kind, i) => (
-        <span
-          key={i}
-          className="h-full flex-1 rounded-[2px]"
-          style={{
-            background:
-              kind === "live"
-                ? "var(--color-ok)"
-                : kind === "pending"
-                  ? "var(--color-warn)"
-                  : kind === "failed"
-                    ? "var(--color-err)"
-                    : "var(--color-border-hi)",
-            opacity: kind === "idle" ? 0.45 : 0.92,
-          }}
-        />
-      ))}
     </div>
   );
 }
@@ -1491,13 +980,6 @@ function normalizeResourcePreset(value: string): DeployResourcePreset {
   return RESOURCE_PRESETS.some((preset) => preset.value === value)
     ? (value as DeployResourcePreset)
     : "preview_small";
-}
-
-function resourcePresetLabel(value: string): string {
-  return (
-    RESOURCE_PRESETS.find((preset) => preset.value === value)?.label ??
-    value.replace(/^preview_/, "")
-  );
 }
 
 function resourcePresetDetail(value: string): string {
@@ -2312,22 +1794,7 @@ function logFullTime(iso: string): string {
   return date.toLocaleString();
 }
 
-function MetaChip({
-  icon: Icon,
-  label,
-}: {
-  icon?: React.ComponentType<{ size?: number; className?: string }>;
-  label: string;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] text-[var(--color-fg-dim)]">
-      {Icon && <Icon size={10} />}
-      {label}
-    </span>
-  );
-}
-
-function CreateCredentialDialog({
+export function CreateCredentialDialog({
   open,
   pending,
   onOpenChange,
@@ -2418,7 +1885,7 @@ function CreateCredentialDialog({
   );
 }
 
-function CreateServiceDialog({
+export function CreateServiceDialog({
   open,
   credentials,
   pending,
@@ -2688,38 +2155,6 @@ function StatusBadge({ status }: { status: DeployStatus }) {
     >
       {DEPLOY_STATUS_LABEL[status]}
     </span>
-  );
-}
-
-function ServiceGridSkeleton() {
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <Skeleton key={index} className="h-20 rounded-[var(--radius-lg)]" />
-        ))}
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div
-            key={index}
-            className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]"
-          >
-            <div className="border-b border-[var(--color-border)] px-4 py-3">
-              <Skeleton className="h-4 w-36" />
-            </div>
-            <div className="space-y-3 px-4 py-3.5">
-              <Skeleton className="h-3 w-48" />
-              <Skeleton className="h-2 w-full" />
-              <div className="flex gap-2">
-                <Skeleton className="h-5 w-12 rounded-full" />
-                <Skeleton className="h-5 w-16 rounded-full" />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 

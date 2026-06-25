@@ -35,6 +35,7 @@ import { Route as AuthedWidAdminRouteImport } from './routes/_authed.$wid.admin'
 import { Route as AuthedWidSettingsIndexRouteImport } from './routes/_authed.$wid.settings.index'
 import { Route as AuthedWidMonitorsIndexRouteImport } from './routes/_authed.$wid.monitors.index'
 import { Route as AuthedWidLogsIndexRouteImport } from './routes/_authed.$wid.logs.index'
+import { Route as AuthedWidDeploymentsIndexRouteImport } from './routes/_authed.$wid.deployments.index'
 import { Route as AuthedWidAdminIndexRouteImport } from './routes/_authed.$wid.admin.index'
 import { Route as SSlugIncidentsIdRouteImport } from './routes/s_.$slug.incidents.$id'
 import { Route as AuthedWidSettingsWorkersRouteImport } from './routes/_authed.$wid.settings.workers'
@@ -48,6 +49,7 @@ import { Route as AuthedWidMonitorsNewRouteImport } from './routes/_authed.$wid.
 import { Route as AuthedWidMonitorsMidRouteImport } from './routes/_authed.$wid.monitors.$mid'
 import { Route as AuthedWidLogsProjectRouteImport } from './routes/_authed.$wid.logs.$project'
 import { Route as AuthedWidIncidentsIdRouteImport } from './routes/_authed.$wid.incidents.$id'
+import { Route as AuthedWidDeploymentsVolumesRouteImport } from './routes/_authed.$wid.deployments.volumes'
 import { Route as AuthedWidDeploymentsServiceIdRouteImport } from './routes/_authed.$wid.deployments.$serviceId'
 import { Route as AuthedWidAdminWorkersRouteImport } from './routes/_authed.$wid.admin.workers'
 import { Route as AuthedWidAdminUsageRouteImport } from './routes/_authed.$wid.admin.usage'
@@ -185,6 +187,12 @@ const AuthedWidLogsIndexRoute = AuthedWidLogsIndexRouteImport.update({
   path: '/logs/',
   getParentRoute: () => AuthedWidRoute,
 } as any)
+const AuthedWidDeploymentsIndexRoute =
+  AuthedWidDeploymentsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthedWidDeploymentsRoute,
+  } as any)
 const AuthedWidAdminIndexRoute = AuthedWidAdminIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -256,6 +264,12 @@ const AuthedWidIncidentsIdRoute = AuthedWidIncidentsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => AuthedWidIncidentsRoute,
 } as any)
+const AuthedWidDeploymentsVolumesRoute =
+  AuthedWidDeploymentsVolumesRouteImport.update({
+    id: '/volumes',
+    path: '/volumes',
+    getParentRoute: () => AuthedWidDeploymentsRoute,
+  } as any)
 const AuthedWidDeploymentsServiceIdRoute =
   AuthedWidDeploymentsServiceIdRouteImport.update({
     id: '/$serviceId',
@@ -326,6 +340,7 @@ export interface FileRoutesByFullPath {
   '/$wid/admin/usage': typeof AuthedWidAdminUsageRoute
   '/$wid/admin/workers': typeof AuthedWidAdminWorkersRoute
   '/$wid/deployments/$serviceId': typeof AuthedWidDeploymentsServiceIdRoute
+  '/$wid/deployments/volumes': typeof AuthedWidDeploymentsVolumesRoute
   '/$wid/incidents/$id': typeof AuthedWidIncidentsIdRoute
   '/$wid/logs/$project': typeof AuthedWidLogsProjectRoute
   '/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
@@ -339,6 +354,7 @@ export interface FileRoutesByFullPath {
   '/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
   '/s/$slug/incidents/$id': typeof SSlugIncidentsIdRoute
   '/$wid/admin/': typeof AuthedWidAdminIndexRoute
+  '/$wid/deployments/': typeof AuthedWidDeploymentsIndexRoute
   '/$wid/logs/': typeof AuthedWidLogsIndexRoute
   '/$wid/monitors/': typeof AuthedWidMonitorsIndexRoute
   '/$wid/settings/': typeof AuthedWidSettingsIndexRoute
@@ -355,7 +371,6 @@ export interface FileRoutesByTo {
   '/incidents/$id': typeof IncidentsIdRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$doc': typeof LegalDocRoute
-  '/$wid/deployments': typeof AuthedWidDeploymentsRouteWithChildren
   '/$wid/incidents': typeof AuthedWidIncidentsRouteWithChildren
   '/$wid/members': typeof AuthedWidMembersRoute
   '/$wid/status': typeof AuthedWidStatusRoute
@@ -369,6 +384,7 @@ export interface FileRoutesByTo {
   '/$wid/admin/usage': typeof AuthedWidAdminUsageRoute
   '/$wid/admin/workers': typeof AuthedWidAdminWorkersRoute
   '/$wid/deployments/$serviceId': typeof AuthedWidDeploymentsServiceIdRoute
+  '/$wid/deployments/volumes': typeof AuthedWidDeploymentsVolumesRoute
   '/$wid/incidents/$id': typeof AuthedWidIncidentsIdRoute
   '/$wid/logs/$project': typeof AuthedWidLogsProjectRoute
   '/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
@@ -382,6 +398,7 @@ export interface FileRoutesByTo {
   '/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
   '/s/$slug/incidents/$id': typeof SSlugIncidentsIdRoute
   '/$wid/admin': typeof AuthedWidAdminIndexRoute
+  '/$wid/deployments': typeof AuthedWidDeploymentsIndexRoute
   '/$wid/logs': typeof AuthedWidLogsIndexRoute
   '/$wid/monitors': typeof AuthedWidMonitorsIndexRoute
   '/$wid/settings': typeof AuthedWidSettingsIndexRoute
@@ -418,6 +435,7 @@ export interface FileRoutesById {
   '/_authed/$wid/admin/usage': typeof AuthedWidAdminUsageRoute
   '/_authed/$wid/admin/workers': typeof AuthedWidAdminWorkersRoute
   '/_authed/$wid/deployments/$serviceId': typeof AuthedWidDeploymentsServiceIdRoute
+  '/_authed/$wid/deployments/volumes': typeof AuthedWidDeploymentsVolumesRoute
   '/_authed/$wid/incidents/$id': typeof AuthedWidIncidentsIdRoute
   '/_authed/$wid/logs/$project': typeof AuthedWidLogsProjectRoute
   '/_authed/$wid/monitors/$mid': typeof AuthedWidMonitorsMidRoute
@@ -431,6 +449,7 @@ export interface FileRoutesById {
   '/_authed/$wid/settings/workers': typeof AuthedWidSettingsWorkersRoute
   '/s_/$slug/incidents/$id': typeof SSlugIncidentsIdRoute
   '/_authed/$wid/admin/': typeof AuthedWidAdminIndexRoute
+  '/_authed/$wid/deployments/': typeof AuthedWidDeploymentsIndexRoute
   '/_authed/$wid/logs/': typeof AuthedWidLogsIndexRoute
   '/_authed/$wid/monitors/': typeof AuthedWidMonitorsIndexRoute
   '/_authed/$wid/settings/': typeof AuthedWidSettingsIndexRoute
@@ -467,6 +486,7 @@ export interface FileRouteTypes {
     | '/$wid/admin/usage'
     | '/$wid/admin/workers'
     | '/$wid/deployments/$serviceId'
+    | '/$wid/deployments/volumes'
     | '/$wid/incidents/$id'
     | '/$wid/logs/$project'
     | '/$wid/monitors/$mid'
@@ -480,6 +500,7 @@ export interface FileRouteTypes {
     | '/$wid/settings/workers'
     | '/s/$slug/incidents/$id'
     | '/$wid/admin/'
+    | '/$wid/deployments/'
     | '/$wid/logs/'
     | '/$wid/monitors/'
     | '/$wid/settings/'
@@ -496,7 +517,6 @@ export interface FileRouteTypes {
     | '/incidents/$id'
     | '/invite/$token'
     | '/legal/$doc'
-    | '/$wid/deployments'
     | '/$wid/incidents'
     | '/$wid/members'
     | '/$wid/status'
@@ -510,6 +530,7 @@ export interface FileRouteTypes {
     | '/$wid/admin/usage'
     | '/$wid/admin/workers'
     | '/$wid/deployments/$serviceId'
+    | '/$wid/deployments/volumes'
     | '/$wid/incidents/$id'
     | '/$wid/logs/$project'
     | '/$wid/monitors/$mid'
@@ -523,6 +544,7 @@ export interface FileRouteTypes {
     | '/$wid/settings/workers'
     | '/s/$slug/incidents/$id'
     | '/$wid/admin'
+    | '/$wid/deployments'
     | '/$wid/logs'
     | '/$wid/monitors'
     | '/$wid/settings'
@@ -558,6 +580,7 @@ export interface FileRouteTypes {
     | '/_authed/$wid/admin/usage'
     | '/_authed/$wid/admin/workers'
     | '/_authed/$wid/deployments/$serviceId'
+    | '/_authed/$wid/deployments/volumes'
     | '/_authed/$wid/incidents/$id'
     | '/_authed/$wid/logs/$project'
     | '/_authed/$wid/monitors/$mid'
@@ -571,6 +594,7 @@ export interface FileRouteTypes {
     | '/_authed/$wid/settings/workers'
     | '/s_/$slug/incidents/$id'
     | '/_authed/$wid/admin/'
+    | '/_authed/$wid/deployments/'
     | '/_authed/$wid/logs/'
     | '/_authed/$wid/monitors/'
     | '/_authed/$wid/settings/'
@@ -775,6 +799,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedWidLogsIndexRouteImport
       parentRoute: typeof AuthedWidRoute
     }
+    '/_authed/$wid/deployments/': {
+      id: '/_authed/$wid/deployments/'
+      path: '/'
+      fullPath: '/$wid/deployments/'
+      preLoaderRoute: typeof AuthedWidDeploymentsIndexRouteImport
+      parentRoute: typeof AuthedWidDeploymentsRoute
+    }
     '/_authed/$wid/admin/': {
       id: '/_authed/$wid/admin/'
       path: '/'
@@ -866,6 +897,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedWidIncidentsIdRouteImport
       parentRoute: typeof AuthedWidIncidentsRoute
     }
+    '/_authed/$wid/deployments/volumes': {
+      id: '/_authed/$wid/deployments/volumes'
+      path: '/volumes'
+      fullPath: '/$wid/deployments/volumes'
+      preLoaderRoute: typeof AuthedWidDeploymentsVolumesRouteImport
+      parentRoute: typeof AuthedWidDeploymentsRoute
+    }
     '/_authed/$wid/deployments/$serviceId': {
       id: '/_authed/$wid/deployments/$serviceId'
       path: '/$serviceId'
@@ -944,10 +982,14 @@ const AuthedWidAdminRouteWithChildren = AuthedWidAdminRoute._addFileChildren(
 
 interface AuthedWidDeploymentsRouteChildren {
   AuthedWidDeploymentsServiceIdRoute: typeof AuthedWidDeploymentsServiceIdRoute
+  AuthedWidDeploymentsVolumesRoute: typeof AuthedWidDeploymentsVolumesRoute
+  AuthedWidDeploymentsIndexRoute: typeof AuthedWidDeploymentsIndexRoute
 }
 
 const AuthedWidDeploymentsRouteChildren: AuthedWidDeploymentsRouteChildren = {
   AuthedWidDeploymentsServiceIdRoute: AuthedWidDeploymentsServiceIdRoute,
+  AuthedWidDeploymentsVolumesRoute: AuthedWidDeploymentsVolumesRoute,
+  AuthedWidDeploymentsIndexRoute: AuthedWidDeploymentsIndexRoute,
 }
 
 const AuthedWidDeploymentsRouteWithChildren =

@@ -1,4 +1,10 @@
-import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  QueryClient,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { api, auth } from "./api";
 import type {
   BillingAction,
@@ -555,16 +561,24 @@ export function useUpdateDeployService(wid: string) {
     mutationFn: ({
       serviceId,
       resource_preset,
+      canvas_x,
+      canvas_y,
     }: {
       serviceId: string;
-      resource_preset: DeployResourcePreset;
+      resource_preset?: DeployResourcePreset;
+      canvas_x?: number;
+      canvas_y?: number;
     }) =>
       api.patch<DeployService>(`/workspaces/${wid}/deployments/services/${serviceId}`, {
         resource_preset,
+        canvas_x,
+        canvas_y,
       }),
-    onSuccess: (_service, input) => {
-      qc.invalidateQueries({ queryKey: ["deployments", wid, "services"] });
-      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "events"] });
+    onSuccess: (service) => {
+      qc.setQueryData<DeployService[]>(["deployments", wid, "services"], (old) =>
+        old?.map((item) => (item.id === service.id ? service : item)),
+      );
+      qc.invalidateQueries({ queryKey: ["deployments", wid, service.id, "events"] });
     },
   });
 }
@@ -635,6 +649,30 @@ export const deployServiceVolumesQuery = (wid: string, serviceId: string) => ({
 
 export function useDeployServiceVolumes(wid: string, serviceId: string | null) {
   return useQuery({ ...deployServiceVolumesQuery(wid, serviceId ?? ""), enabled: !!serviceId });
+}
+
+export type DeployVolumeWithService = {
+  volume: DeployServiceVolume;
+  serviceId: string;
+};
+
+export function useDeployAllVolumes(wid: string, serviceIds: string[], enabled = true) {
+  return useQueries({
+    queries: serviceIds.map((serviceId) => ({
+      ...deployServiceVolumesQuery(wid, serviceId),
+      enabled: enabled && serviceIds.length > 0,
+    })),
+    combine: (results) => ({
+      data: results.flatMap((result, index) =>
+        (result.data ?? []).map((volume) => ({
+          volume,
+          serviceId: serviceIds[index]!,
+        })),
+      ),
+      isLoading: enabled && serviceIds.length > 0 && results.some((result) => result.isLoading),
+      isError: results.some((result) => result.isError),
+    }),
+  });
 }
 
 export function useCreateDeployServiceVolume(wid: string) {

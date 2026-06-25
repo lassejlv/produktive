@@ -342,6 +342,8 @@ export interface DeployService {
   url: string | null;
   status: DeployStatus;
   disabled_at: Iso | null;
+  canvas_x: number;
+  canvas_y: number;
   created_at: Iso;
   updated_at: Iso;
 }
