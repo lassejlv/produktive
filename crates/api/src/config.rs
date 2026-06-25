@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Context, Result};
-use chrono::{DateTime, FixedOffset};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -78,11 +77,6 @@ pub struct Config {
     pub fly_api_token: Option<String>,
     /// Fly Machines API base URL (defaults to https://api.machines.dev).
     pub fly_api_hostname: String,
-    /// When set, workspaces on a non-free plan whose billing period started
-    /// before this instant are blocked from deployments — used to fence off
-    /// subscribers still on an older version of the usage-based plan after its
-    /// prices/meters changed. Unset = no gating.
-    pub deploy_metering_live_since: Option<DateTime<FixedOffset>>,
 }
 
 impl Config {
@@ -320,15 +314,6 @@ impl Config {
             .trim()
             .trim_end_matches('/')
             .to_owned();
-        let deploy_metering_live_since = std::env::var("DEPLOY_METERING_LIVE_SINCE")
-            .ok()
-            .map(|v| v.trim().to_owned())
-            .filter(|v| !v.is_empty())
-            .map(|v| {
-                DateTime::parse_from_rfc3339(&v)
-                    .context("DEPLOY_METERING_LIVE_SINCE must be an RFC3339 timestamp")
-            })
-            .transpose()?;
         Ok(Self {
             database_url,
             database_pooled_url,
@@ -377,7 +362,6 @@ impl Config {
             deploy_max_active_deployments_per_workspace,
             fly_api_token,
             fly_api_hostname,
-            deploy_metering_live_since,
         })
     }
 

@@ -167,13 +167,15 @@ pub async fn require_monitor_interval(
     Ok(())
 }
 
-/// Block deployments for subscribers still on a pre-metering version of the
-/// usage-based plan. When `config.deploy_metering_live_since` is set, any
-/// non-free customer whose current billing period started before that instant
-/// is rejected — the plan's prices/meters changed and their subscription
-/// predates it. Free-tier workspaces and customers whose period began at or after
-/// the cutoff pass. Fails open (allows) if billing is disabled or unreachable,
-/// matching the rest of the billing gates.
+/// Block deployments for subscribers grandfathered onto a pre-metering version
+/// of the usage-based plan. Polar doesn't reprice existing subscriptions when a
+/// metered price is added to a product — those customers keep their original
+/// pricing and, crucially, the new meters are *not* tracked against them. So the
+/// reliable signal is: a non-free customer whose `active_meters` is missing the
+/// deploy resource meters is on the old pricing and isn't being billed for
+/// deployments. Free-tier workspaces pass. Fails open (allows) if billing is
+/// disabled, the catalog lacks the deploy meters, or the customer state can't be
+/// loaded — matching the rest of the billing gates.
 pub async fn require_deploy_metering_current(
     state: &AppState,
     workspace_id: Uuid,
@@ -181,9 +183,16 @@ pub async fn require_deploy_metering_current(
     let Some(billing) = state.billing.as_ref() else {
         return Ok(());
     };
-    let Some(cutoff) = state.config.deploy_metering_live_since else {
-        return Ok(()); // no cutoff configured → no gating
-    };
+
+    // The deploy meter ids this catalog knows about. If the catalog doesn't
+    // carry them (billing not fully provisioned), there's nothing to gate on.
+    let deploy_meter_ids: Vec<String> = crate::billing::DEPLOY_METERED_FEATURES
+        .iter()
+        .filter_map(|feature| billing.catalog.meter_id(feature).map(str::to_owned))
+        .collect();
+    if deploy_meter_ids.is_empty() {
+        return Ok(());
+    }
 
     let cstate = match customer_state_for_billing(state, workspace_id).await {
         Ok(state) => state,
@@ -201,29 +210,32 @@ pub async fn require_deploy_metering_current(
     if tier == "free" {
         return Ok(());
     }
-
-    let Some(sub) = cstate.active_subscription() else {
+    if cstate.active_subscription().is_none() {
         return Ok(());
-    };
-    let Some(period_start) = parse_timestamp(sub.current_period_start.as_deref()) else {
-        // No period boundary on file — can't prove the subscription is old, so
-        // don't block.
-        return Ok(());
-    };
+    }
 
-    if subscription_predates_cutoff(period_start, cutoff.with_timezone(&Utc)) {
+    // A subscription on the current pricing has the deploy meters tracked
+    // against it. A grandfathered subscription does not.
+    if !subscription_has_deploy_meters(&cstate, &deploy_meter_ids) {
         return Err(ApiError::payment_required(
             "deployments require the current usage-based plan. Your subscription \
-             started before the plan was updated — please update your plan to continue.",
+             is on an older version of the plan that doesn't include deployment \
+             metering — please update your plan to continue.",
         ));
     }
     Ok(())
 }
 
-/// Pure decision: true when the subscription's period started strictly before
-/// the metering cutoff (i.e. it's on the pre-update version of the plan).
-pub fn subscription_predates_cutoff(period_start: DateTime<Utc>, cutoff: DateTime<Utc>) -> bool {
-    period_start < cutoff
+/// Pure decision: true when the customer's active meters include at least one
+/// of the deploy resource meters (i.e. the subscription is on current pricing).
+pub fn subscription_has_deploy_meters(
+    cstate: &polar::CustomerState,
+    deploy_meter_ids: &[String],
+) -> bool {
+    cstate
+        .active_meters
+        .iter()
+        .any(|m| deploy_meter_ids.iter().any(|id| id == &m.meter_id))
 }
 
 pub async fn workspace_has_paid_plan(state: &AppState, workspace_id: Uuid) -> ApiResult<bool> {
@@ -774,13 +786,36 @@ mod tests {
     }
 
     #[test]
-    fn subscription_predates_cutoff_blocks_old_period() {
-        let cutoff = period_end(1_000_000);
-        // Started before the cutoff → blocked.
-        assert!(subscription_predates_cutoff(period_end(999_999), cutoff));
-        // Started exactly at the cutoff → allowed (not strictly before).
-        assert!(!subscription_predates_cutoff(cutoff, cutoff));
-        // Started after the cutoff → allowed.
-        assert!(!subscription_predates_cutoff(period_end(1_000_001), cutoff));
+    fn subscription_has_deploy_meters_detects_grandfathered_sub() {
+        let deploy_meters = vec!["mtr_memory".to_owned(), "mtr_cpu".to_owned(), "mtr_volume".to_owned()];
+
+        // Current pricing: the deploy meters are tracked against the customer.
+        let current: CustomerState = serde_json::from_value(serde_json::json!({
+            "id": "cus_1", "active_subscriptions": [], "granted_benefits": [],
+            "active_meters": [
+                { "meter_id": "mtr_memory", "consumed_units": 1.0 },
+                { "meter_id": "mtr_events",  "consumed_units": 100.0 }
+            ]
+        }))
+        .unwrap();
+        assert!(subscription_has_deploy_meters(&current, &deploy_meters));
+
+        // Grandfathered: the subscription predates the metered prices, so the
+        // deploy meters are absent — only the legacy events meter is tracked.
+        let grandfathered: CustomerState = serde_json::from_value(serde_json::json!({
+            "id": "cus_2", "active_subscriptions": [], "granted_benefits": [],
+            "active_meters": [
+                { "meter_id": "mtr_events", "consumed_units": 100.0 }
+            ]
+        }))
+        .unwrap();
+        assert!(!subscription_has_deploy_meters(&grandfathered, &deploy_meters));
+
+        // No meters at all (e.g. a fresh sub with no usage yet) → not current.
+        let empty: CustomerState = serde_json::from_value(serde_json::json!({
+            "id": "cus_3", "active_subscriptions": [], "granted_benefits": [], "active_meters": []
+        }))
+        .unwrap();
+        assert!(!subscription_has_deploy_meters(&empty, &deploy_meters));
     }
 }
