@@ -26,8 +26,6 @@ pub struct Config {
     pub cors_allowed_origins: Vec<String>,
     pub session_cleanup_tick_seconds: u64,
     pub custom_domain_cname_target: String,
-    pub custom_domain_proxy_ipv4: Option<String>,
-    pub custom_domain_proxy_ipv6: Option<String>,
     /// Cloudflare for SaaS (custom hostnames). All optional — when `cf_api_token`
     /// or `cf_zone_id` is absent the Cloudflare client is disabled and custom
     /// domains fall back to DNS-verification-only (the pre-Cloudflare path).
@@ -169,14 +167,6 @@ impl Config {
             .trim()
             .trim_end_matches('.')
             .to_lowercase();
-        let custom_domain_proxy_ipv4 = std::env::var("CUSTOM_DOMAIN_PROXY_IPV4")
-            .ok()
-            .map(|v| v.trim().to_owned())
-            .filter(|v| !v.is_empty());
-        let custom_domain_proxy_ipv6 = std::env::var("CUSTOM_DOMAIN_PROXY_IPV6")
-            .ok()
-            .map(|v| v.trim().to_owned())
-            .filter(|v| !v.is_empty());
         let cf_api_token = std::env::var("CF_API_TOKEN")
             .ok()
             .map(|v| v.trim().to_owned())
@@ -318,8 +308,6 @@ impl Config {
             cors_allowed_origins,
             session_cleanup_tick_seconds,
             custom_domain_cname_target,
-            custom_domain_proxy_ipv4,
-            custom_domain_proxy_ipv6,
             cf_api_token,
             cf_zone_id,
             cf_base_url,

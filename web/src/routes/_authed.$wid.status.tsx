@@ -676,7 +676,7 @@ function SslStatusPill({ active, status }: { active: boolean; status: string | n
   );
 }
 
-type DnsRecordKind = "txt" | "cname" | "acme" | "a" | "aaaa";
+type DnsRecordKind = "txt" | "cname" | "acme";
 
 type DnsRecord = {
   kind: DnsRecordKind;
@@ -709,8 +709,8 @@ function dnsRecords(domain: CustomDomain): DnsRecord[] {
     ];
   }
 
-  // Legacy self-hosted flow: TXT verification + CNAME, with optional A/AAAA.
-  const records: DnsRecord[] = [
+  // Legacy self-hosted flow: TXT verification + CNAME.
+  return [
     {
       kind: "txt",
       label: "TXT",
@@ -726,25 +726,6 @@ function dnsRecords(domain: CustomDomain): DnsRecord[] {
       value: domain.cname_target,
     },
   ];
-  if (domain.proxy_ipv4) {
-    records.push({
-      kind: "a",
-      label: "A",
-      type: "A",
-      name: domain.hostname,
-      value: domain.proxy_ipv4,
-    });
-  }
-  if (domain.proxy_ipv6) {
-    records.push({
-      kind: "aaaa",
-      label: "AAAA",
-      type: "AAAA",
-      name: domain.hostname,
-      value: domain.proxy_ipv6,
-    });
-  }
-  return records;
 }
 
 function DnsRecordView({ record }: { record: DnsRecord }) {

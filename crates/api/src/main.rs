@@ -86,10 +86,6 @@ async fn main() -> Result<()> {
         .nest("/workspaces", http::workspaces::top_routes())
         .nest("/workspaces/{wid}", ws_scoped)
         .nest("/invites", http::invites::lookup_routes())
-        .nest(
-            "/public/custom-domains",
-            http::custom_domains::public_routes(),
-        )
         .nest("/public", http::public_status::routes())
         .nest("/pricing", http::pricing::routes())
         .nest("/logs", http::logs::ingest_routes())

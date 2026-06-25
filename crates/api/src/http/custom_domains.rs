@@ -1,16 +1,13 @@
 use axum::{
-    extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    extract::{Path, State},
+    http::HeaderMap,
     routing::{delete, get, post},
     Extension, Json, Router,
 };
 use chrono::Utc;
 use entity::{custom_domain, workspace_member::WorkspaceRole};
 use rand::RngCore;
-use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseBackend, EntityTrait, FromQueryResult,
-    QueryFilter, Statement,
-};
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -29,10 +26,6 @@ pub fn routes() -> Router<AppState> {
         .route("/{id}/verify", post(verify))
 }
 
-pub fn public_routes() -> Router<AppState> {
-    Router::new().route("/authorize", get(authorize))
-}
-
 #[derive(Serialize, ToSchema)]
 pub struct CustomDomainView {
     pub id: Uuid,
@@ -43,8 +36,6 @@ pub struct CustomDomainView {
     pub verified_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub ssl_status: Option<String>,
     pub cname_target: String,
-    pub proxy_ipv4: Option<String>,
-    pub proxy_ipv6: Option<String>,
     /// `_acme-challenge.<host>` CNAME target for auto-renewing TXT DCV delegation.
     /// `None` when the zone DCV-delegation UUID isn't configured.
     pub dcv_delegation_target: Option<String>,
@@ -68,8 +59,6 @@ impl CustomDomainView {
             verified_at: row.verified_at,
             ssl_status: row.ssl_status,
             cname_target: state.config.custom_domain_cname_target.clone(),
-            proxy_ipv4: state.config.custom_domain_proxy_ipv4.clone(),
-            proxy_ipv6: state.config.custom_domain_proxy_ipv6.clone(),
             dcv_delegation_target,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -80,17 +69,6 @@ impl CustomDomainView {
 #[derive(Deserialize, ToSchema)]
 pub struct CreateCustomDomainBody {
     pub hostname: String,
-}
-
-#[derive(Deserialize, ToSchema)]
-pub struct AuthorizeCustomDomainQuery {
-    pub domain: String,
-}
-
-#[derive(FromQueryResult)]
-struct AuthorizeRow {
-    status_page_enabled: bool,
-    domain_verified: bool,
 }
 
 #[utoipa::path(
@@ -307,45 +285,6 @@ pub async fn remove(
     Ok(Json(crate::http::workspaces::OkResponse { ok: true }))
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/public/custom-domains/authorize",
-    params(("domain" = String, Query, description = "custom domain requested by Caddy")),
-    responses(
-        (status = 200, description = "Domain is authorized for on-demand TLS"),
-        (status = 404, description = "Domain is not authorized"),
-    ),
-    tag = "public"
-)]
-pub async fn authorize(
-    State(state): State<AppState>,
-    Query(query): Query<AuthorizeCustomDomainQuery>,
-) -> ApiResult<StatusCode> {
-    let domain = normalize_domain(&query.domain)
-        .ok_or_else(|| ApiError::not_found("custom domain not found"))?;
-    let row = AuthorizeRow::find_by_statement(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"
-        SELECT
-          w.status_page_enabled,
-          cd.verified_at IS NOT NULL AS domain_verified
-        FROM custom_domains cd
-        JOIN workspaces w ON w.id = cd.workspace_id
-        WHERE cd.hostname = $1
-        LIMIT 1
-        "#,
-        [domain.into()],
-    ))
-    .one(&state.db)
-    .await?;
-
-    if caddy_authorized(row.as_ref()) {
-        Ok(StatusCode::OK)
-    } else {
-        Err(ApiError::not_found("custom domain not found"))
-    }
-}
-
 fn require_owner(role: WorkspaceRole) -> ApiResult<()> {
     match role {
         WorkspaceRole::Owner => Ok(()),
@@ -401,10 +340,6 @@ pub(super) fn normalize_domain(input: &str) -> Option<String> {
         return None;
     }
     Some(s)
-}
-
-fn caddy_authorized(row: Option<&AuthorizeRow>) -> bool {
-    row.is_some_and(|r| r.status_page_enabled && r.domain_verified)
 }
 
 fn map_unique_err(e: sea_orm::DbErr) -> ApiError {
@@ -502,23 +437,6 @@ mod tests {
         ] {
             assert_eq!(normalize_domain(input), None, "{input}");
         }
-    }
-
-    #[test]
-    fn caddy_authorization_requires_enabled_workspace() {
-        assert!(caddy_authorized(Some(&AuthorizeRow {
-            status_page_enabled: true,
-            domain_verified: true,
-        })));
-        assert!(!caddy_authorized(Some(&AuthorizeRow {
-            status_page_enabled: false,
-            domain_verified: true,
-        })));
-        assert!(!caddy_authorized(Some(&AuthorizeRow {
-            status_page_enabled: true,
-            domain_verified: false,
-        })));
-        assert!(!caddy_authorized(None));
     }
 
     #[test]
