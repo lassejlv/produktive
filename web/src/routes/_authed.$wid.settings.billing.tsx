@@ -16,6 +16,7 @@ import {
   nextResetText,
   planChangeKind,
   usageNumbers,
+  featureNoun,
   type BillingAction,
   type BillingPlanSummary,
 } from "../lib/billing";
@@ -105,6 +106,13 @@ function BillingPage() {
   const monitors = usageNumbers(billing.balances.monitors);
   const members = usageNumbers(billing.balances.members);
   const events = usageNumbers(billing.balances.events);
+  const deployMemory = usageNumbers(billing.balances.deploy_memory);
+  const deployCpu = usageNumbers(billing.balances.deploy_cpu);
+  const deployVolume = usageNumbers(billing.balances.deploy_volume);
+  const hasDeployUsage =
+    !!billing.balances.deploy_memory ||
+    !!billing.balances.deploy_cpu ||
+    !!billing.balances.deploy_volume;
   const actionPending =
     cancelSubscription.isPending || renewSubscription.isPending || cancelDowngrade.isPending;
 
@@ -129,6 +137,15 @@ function BillingPage() {
         </div>
 
         <UsageCard monitors={monitors} members={members} events={events} eventsSub="Unlimited" />
+
+        {hasDeployUsage && (
+          <DeployUsageCard
+            memory={deployMemory}
+            cpu={deployCpu}
+            volume={deployVolume}
+            resetText="Current period"
+          />
+        )}
 
         <CurrentPlanCard
           planId={currentPlanId}
@@ -199,6 +216,15 @@ function BillingPage() {
           events={events}
           eventsSub={nextResetText(billing.balances.events)}
         />
+
+        {hasDeployUsage && (
+          <DeployUsageCard
+            memory={deployMemory}
+            cpu={deployCpu}
+            volume={deployVolume}
+            resetText={nextResetText(billing.balances.deploy_memory)}
+          />
+        )}
 
         <CurrentPlanCard
           planId={currentPlanId}
@@ -319,14 +345,56 @@ function UsageCard({
   );
 }
 
+function DeployUsageCard({
+  memory,
+  cpu,
+  volume,
+  resetText,
+}: {
+  memory: ReturnType<typeof usageNumbers>;
+  cpu: ReturnType<typeof usageNumbers>;
+  volume: ReturnType<typeof usageNumbers>;
+  resetText: string;
+}) {
+  return (
+    <section>
+      <h3 className="mb-3 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
+        Deployments usage
+      </h3>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <UsageTile
+          label="Memory"
+          usage={memory}
+          noun={featureNoun("deploy_memory") ?? undefined}
+          sub={resetText}
+        />
+        <UsageTile
+          label="CPU"
+          usage={cpu}
+          noun={featureNoun("deploy_cpu") ?? undefined}
+          sub={resetText}
+        />
+        <UsageTile
+          label="Volumes"
+          usage={volume}
+          noun={featureNoun("deploy_volume") ?? undefined}
+          sub={resetText}
+        />
+      </div>
+    </section>
+  );
+}
+
 function UsageTile({
   label,
   usage,
   sub,
+  noun,
 }: {
   label: string;
   usage: ReturnType<typeof usageNumbers>;
   sub?: string;
+  noun?: string;
 }) {
   const showBar = usage.percent != null && usage.primaryText !== "Unlimited";
   const width = Math.min(100, Math.max(0, usage.percent ?? 0));
@@ -349,7 +417,10 @@ function UsageTile({
             {sub && <span>{sub}</span>}
           </div>
         ) : (
-          sub
+          <span>
+            {noun && <span className="text-[var(--color-fg-dim)]">{noun} · </span>}
+            {sub ?? usage.remainingText}
+          </span>
         )
       }
       accent={showBar ? barColor : undefined}

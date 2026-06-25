@@ -219,6 +219,16 @@ export function usageNumbers(balance: BillingBalanceSummary | null | undefined):
   const remaining = balance.remaining ?? null;
   const percent = used != null && granted != null && granted > 0 ? (used / granted) * 100 : null;
 
+  // Pure-overage meters (deploy resource meters) have no included allowance:
+  // show the usage consumed this period alone, with the reset date as the sub.
+  if (granted == null) {
+    return {
+      primaryText: used != null ? formatUsageNumber(used) : "—",
+      remainingText: "Metered this period",
+      percent: null,
+    };
+  }
+
   return {
     primaryText:
       used != null && granted != null
@@ -232,6 +242,20 @@ export function usageNumbers(balance: BillingBalanceSummary | null | undefined):
         : "Usage available after first report",
     percent,
   };
+}
+
+/** Unit noun for a metered feature, used in usage tile labels/sub-text. */
+export function featureNoun(featureId: string): string | null {
+  switch (featureId) {
+    case "deploy_memory":
+      return "GB-hours";
+    case "deploy_cpu":
+      return "vCPU-hours";
+    case "deploy_volume":
+      return "GB-hours";
+    default:
+      return null;
+  }
 }
 
 export function nextResetText(balance: BillingBalanceSummary | null | undefined): string {
@@ -356,9 +380,7 @@ export function buildMonitorCreateCostEstimate(input: {
         : "ok";
 
   const multiRegionBlocked =
-    billingEnabled &&
-    regionCount > 1 &&
-    !planIncludesFeature(currentPlan, "multi_region");
+    billingEnabled && regionCount > 1 && !planIncludesFeature(currentPlan, "multi_region");
 
   let monitorNote: string | null = null;
   if (!billingEnabled) {
@@ -406,20 +428,14 @@ export function buildMonitorCreateCostEstimate(input: {
     events: {
       label: "Events (est.)",
       currentText: formatMeterValue(currentEvents, eventsUnlimited),
-      projectedText:
-        intervalSeconds != null
-          ? `+${formatUsageNumber(monthlyEventUnits)}`
-          : "—",
+      projectedText: intervalSeconds != null ? `+${formatUsageNumber(monthlyEventUnits)}` : "—",
       deltaText: intervalSeconds != null ? "per month" : null,
       limitText:
         eventsUnlimited || eventLimit == null
           ? null
           : `${formatUsageNumber(eventLimit)} this period`,
       usagePercent:
-        eventsUnlimited ||
-        eventLimit == null ||
-        currentEvents == null ||
-        intervalSeconds == null
+        eventsUnlimited || eventLimit == null || currentEvents == null || intervalSeconds == null
           ? null
           : Math.min(100, ((currentEvents + monthlyEventUnits) / eventLimit) * 100),
       status: eventStatus,
