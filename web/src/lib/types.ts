@@ -375,6 +375,56 @@ export interface Deployment {
   updated_at: Iso;
 }
 
+export type SandboxStatus = "cold" | "warm" | "active" | "stopped" | "unknown";
+export type SandboxUrlAuth = "sprite" | "public";
+
+export interface DeploySandbox {
+  id: Uuid;
+  workspace_id: Uuid;
+  slug: string;
+  name: string;
+  provider_name: string;
+  region: string;
+  cpus: number;
+  ram_mb: number;
+  storage_gb: number;
+  url: string | null;
+  status: SandboxStatus | string;
+  url_auth: SandboxUrlAuth | string;
+  created_at: Iso;
+  updated_at: Iso;
+}
+
+export interface SandboxCheckpoint {
+  id: string;
+  comment: string | null;
+  created_at: Iso | null;
+  source_id: string | null;
+}
+
+export interface SandboxExecResult {
+  exit_code: number;
+  stdout: string;
+  stderr: string;
+  truncated: boolean;
+}
+
+export interface SandboxApiToken {
+  id: Uuid;
+  workspace_id: Uuid;
+  name: string;
+  token_prefix: string;
+  last_used_at: Iso | null;
+  expires_at: Iso | null;
+  revoked_at: Iso | null;
+  created_at: Iso;
+}
+
+export interface CreatedSandboxApiToken {
+  token: string;
+  token_view: SandboxApiToken;
+}
+
 export interface DeployServiceDomain {
   id: Uuid;
   workspace_id: Uuid;

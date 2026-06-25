@@ -32,9 +32,12 @@ import type {
   DeployRegion,
   DeployRegistryKind,
   DeployResourcePreset,
+  DeploySandbox,
   DeployService,
   DeployServiceDomain,
   DeployServiceVolume,
+  CreatedSandboxApiToken,
+  SandboxApiToken,
   IncidentUpdateStatus,
   CustomDomain,
   Incident,
@@ -52,6 +55,8 @@ import type {
   OkResponse,
   PublicStatus,
   Region,
+  SandboxCheckpoint,
+  SandboxExecResult,
   Stats,
   User,
   Workspace,
@@ -845,6 +850,194 @@ export const deployMetricsQuery = (wid: string, serviceId: string) => ({
 
 export function useDeployMetrics(wid: string, serviceId: string | null) {
   return useQuery({ ...deployMetricsQuery(wid, serviceId ?? ""), enabled: !!serviceId });
+}
+
+export const deploySandboxesQuery = (wid: string) => ({
+  queryKey: ["deployments", wid, "sandboxes"] as const,
+  queryFn: () => api.get<DeploySandbox[]>(`/workspaces/${wid}/deployments/sandboxes`),
+  refetchInterval: 15_000,
+});
+
+export function useDeploySandboxes(wid: string, enabled = true) {
+  return useQuery({ ...deploySandboxesQuery(wid), enabled });
+}
+
+export const deploySandboxQuery = (wid: string, sandboxId: string) => ({
+  queryKey: ["deployments", wid, "sandboxes", sandboxId] as const,
+  queryFn: () =>
+    api.get<DeploySandbox>(`/workspaces/${wid}/deployments/sandboxes/${sandboxId}`),
+  refetchInterval: 10_000,
+});
+
+export function useDeploySandbox(wid: string, sandboxId: string | null, enabled = true) {
+  return useQuery({
+    ...deploySandboxQuery(wid, sandboxId ?? ""),
+    enabled: enabled && !!sandboxId,
+  });
+}
+
+export function useCreateDeploySandbox(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      name: string;
+      slug?: string;
+      region?: string;
+      cpus?: number;
+      ram_mb?: number;
+      storage_gb?: number;
+      url_auth?: "sprite" | "public";
+    }) => api.post<DeploySandbox>(`/workspaces/${wid}/deployments/sandboxes`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["deployments", wid, "sandboxes"] }),
+  });
+}
+
+export function useUpdateDeploySandbox(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sandboxId,
+      name,
+      url_auth,
+    }: {
+      sandboxId: string;
+      name?: string;
+      url_auth?: "sprite" | "public";
+    }) =>
+      api.patch<DeploySandbox>(`/workspaces/${wid}/deployments/sandboxes/${sandboxId}`, {
+        name,
+        url_auth,
+      }),
+    onSuccess: (sandbox) => {
+      qc.setQueryData<DeploySandbox[]>(["deployments", wid, "sandboxes"], (old) =>
+        old?.map((item) => (item.id === sandbox.id ? sandbox : item)),
+      );
+      qc.setQueryData(["deployments", wid, "sandboxes", sandbox.id], sandbox);
+    },
+  });
+}
+
+export function useDeleteDeploySandbox(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sandboxId: string) =>
+      api.del<OkResponse>(`/workspaces/${wid}/deployments/sandboxes/${sandboxId}`),
+    onSuccess: (_response, sandboxId) => {
+      qc.setQueryData<DeploySandbox[]>(["deployments", wid, "sandboxes"], (old) =>
+        old?.filter((item) => item.id !== sandboxId),
+      );
+      qc.removeQueries({ queryKey: ["deployments", wid, "sandboxes", sandboxId] });
+    },
+  });
+}
+
+export function useExecDeploySandbox(wid: string) {
+  return useMutation({
+    mutationFn: ({
+      sandboxId,
+      command,
+      args,
+      cwd,
+    }: {
+      sandboxId: string;
+      command: string;
+      args?: string[];
+      cwd?: string;
+    }) =>
+      api.post<SandboxExecResult>(
+        `/workspaces/${wid}/deployments/sandboxes/${sandboxId}/exec`,
+        { command, args: args ?? [], cwd },
+      ),
+  });
+}
+
+export const deploySandboxCheckpointsQuery = (wid: string, sandboxId: string) => ({
+  queryKey: ["deployments", wid, "sandboxes", sandboxId, "checkpoints"] as const,
+  queryFn: () =>
+    api.get<SandboxCheckpoint[]>(
+      `/workspaces/${wid}/deployments/sandboxes/${sandboxId}/checkpoints`,
+    ),
+});
+
+export function useDeploySandboxCheckpoints(wid: string, sandboxId: string | null) {
+  return useQuery({
+    ...deploySandboxCheckpointsQuery(wid, sandboxId ?? ""),
+    enabled: !!sandboxId,
+  });
+}
+
+export function useCreateDeploySandboxCheckpoint(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sandboxId, comment }: { sandboxId: string; comment?: string }) =>
+      api.post<SandboxCheckpoint>(
+        `/workspaces/${wid}/deployments/sandboxes/${sandboxId}/checkpoints`,
+        { comment },
+      ),
+    onSuccess: (_checkpoint, input) => {
+      qc.invalidateQueries({
+        queryKey: ["deployments", wid, "sandboxes", input.sandboxId, "checkpoints"],
+      });
+    },
+  });
+}
+
+export function useRestoreDeploySandboxCheckpoint(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sandboxId, checkpointId }: { sandboxId: string; checkpointId: string }) =>
+      api.post<OkResponse>(
+        `/workspaces/${wid}/deployments/sandboxes/${sandboxId}/checkpoints/${checkpointId}/restore`,
+      ),
+    onSuccess: (_response, input) => {
+      qc.invalidateQueries({ queryKey: ["deployments", wid, "sandboxes", input.sandboxId] });
+      qc.invalidateQueries({
+        queryKey: ["deployments", wid, "sandboxes", input.sandboxId, "checkpoints"],
+      });
+    },
+  });
+}
+
+export function useDeleteDeploySandboxCheckpoint(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sandboxId, checkpointId }: { sandboxId: string; checkpointId: string }) =>
+      api.del<OkResponse>(
+        `/workspaces/${wid}/deployments/sandboxes/${sandboxId}/checkpoints/${checkpointId}`,
+      ),
+    onSuccess: (_response, input) => {
+      qc.invalidateQueries({
+        queryKey: ["deployments", wid, "sandboxes", input.sandboxId, "checkpoints"],
+      });
+    },
+  });
+}
+
+export const sandboxApiTokensQuery = (wid: string) => ({
+  queryKey: ["deployments", wid, "sandboxes", "tokens"] as const,
+  queryFn: () => api.get<SandboxApiToken[]>(`/workspaces/${wid}/deployments/sandboxes/tokens`),
+});
+
+export function useSandboxApiTokens(wid: string, enabled = true) {
+  return useQuery({ ...sandboxApiTokensQuery(wid), enabled });
+}
+
+export function useCreateSandboxApiToken(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { name: string; expires_at?: string | null }) =>
+      api.post<CreatedSandboxApiToken>(`/workspaces/${wid}/deployments/sandboxes/tokens`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["deployments", wid, "sandboxes", "tokens"] }),
+  });
+}
+
+export function useRevokeSandboxApiToken(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (tokenId: string) =>
+      api.del<OkResponse>(`/workspaces/${wid}/deployments/sandboxes/tokens/${tokenId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["deployments", wid, "sandboxes", "tokens"] }),
+  });
 }
 
 export const logProjectsQuery = (wid: string) => ({

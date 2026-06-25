@@ -35,6 +35,8 @@ mod m20260625_000032_add_cloudflare_custom_hostname;
 mod m20260625_000033_add_deploy_service_canvas;
 mod m20260625_000034_add_deploy_usage_marker;
 mod m20260625_000035_add_volume_provisioned_at;
+mod m20260626_000036_create_deploy_sandboxes;
+mod m20260626_000037_create_deploy_sandbox_api_tokens;
 
 pub struct Migrator;
 
@@ -77,6 +79,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260625_000033_add_deploy_service_canvas::Migration),
             Box::new(m20260625_000034_add_deploy_usage_marker::Migration),
             Box::new(m20260625_000035_add_volume_provisioned_at::Migration),
+            Box::new(m20260626_000036_create_deploy_sandboxes::Migration),
+            Box::new(m20260626_000037_create_deploy_sandbox_api_tokens::Migration),
         ]
     }
 }

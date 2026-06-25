@@ -17,6 +17,7 @@ fly = { path = "../fly" }
 polar = { path = "../polar" }
 produktive-cloudflare = { path = "../cloudflare" }
 email = { path = "../email" }
+sprites.workspace = true
 
 axum.workspace = true
 tokio.workspace = true

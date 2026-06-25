@@ -90,6 +90,7 @@ async fn main() -> Result<()> {
         .nest("/public", http::public_status::routes())
         .nest("/pricing", http::pricing::routes())
         .nest("/logs", http::logs::ingest_routes())
+        .nest("/v1/sandboxes", http::public_sandboxes::routes(state.clone()))
         .nest("/webhooks", http::webhooks::routes())
         .nest("/internal/workers", http::internal_workers::routes());
 

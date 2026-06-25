@@ -74,6 +74,28 @@ use crate::state::AppState;
         crate::http::deployments::list_logs,
         crate::http::deployments::list_metrics,
         crate::http::deployments::list_regions,
+        crate::http::sandboxes::list_sandboxes,
+        crate::http::sandboxes::create_sandbox,
+        crate::http::sandboxes::get_sandbox,
+        crate::http::sandboxes::update_sandbox,
+        crate::http::sandboxes::delete_sandbox,
+        crate::http::sandboxes::exec_sandbox,
+        crate::http::sandboxes::list_checkpoints,
+        crate::http::sandboxes::create_checkpoint,
+        crate::http::sandboxes::restore_checkpoint,
+        crate::http::sandboxes::delete_checkpoint,
+        crate::http::public_sandboxes::list_sandboxes,
+        crate::http::public_sandboxes::create_sandbox,
+        crate::http::public_sandboxes::get_sandbox,
+        crate::http::public_sandboxes::destroy_sandbox,
+        crate::http::public_sandboxes::exec_sandbox,
+        crate::http::public_sandboxes::list_checkpoints,
+        crate::http::public_sandboxes::create_checkpoint,
+        crate::http::public_sandboxes::restore_checkpoint,
+        crate::http::public_sandboxes::delete_checkpoint,
+        crate::http::sandboxes::list_api_tokens,
+        crate::http::sandboxes::create_api_token,
+        crate::http::sandboxes::revoke_api_token,
         crate::http::billing::summary,
         crate::http::billing::get_customer,
         crate::http::billing::list_plans,
@@ -155,6 +177,22 @@ use crate::state::AppState;
         crate::http::deployments::UpdateServiceVolumeBody,
         crate::http::deployments::CreateDeploymentBody,
         crate::http::deployments::CreateServiceDomainBody,
+        crate::http::sandbox_service::DeploySandboxView,
+        crate::http::sandboxes::CreateSandboxBody,
+        crate::http::sandboxes::UpdateSandboxBody,
+        crate::http::sandboxes::ExecSandboxBody,
+        crate::http::sandboxes::ExecSandboxView,
+        crate::http::sandbox_service::SandboxCheckpointView,
+        crate::http::sandboxes::CreateCheckpointBody,
+        crate::http::sandboxes::CreateSandboxApiTokenBody,
+        crate::http::sandbox_service::SandboxApiTokenView,
+        crate::http::sandbox_service::CreatedSandboxApiToken,
+        crate::http::public_sandboxes::PublicSandbox,
+        crate::http::public_sandboxes::PublicCreateSandboxBody,
+        crate::http::public_sandboxes::PublicExecBody,
+        crate::http::public_sandboxes::PublicExecResult,
+        crate::http::public_sandboxes::PublicCheckpoint,
+        crate::http::public_sandboxes::PublicCreateCheckpointBody,
         deploy::DeployRegion,
         crate::http::billing::BillingSummary,
         crate::http::billing::BillingPlanSummary,
@@ -226,6 +264,7 @@ use crate::state::AppState;
         (name = "notifications", description = "Notification history and channels"),
         (name = "custom domains", description = "Cloudflare-backed custom status domains"),
         (name = "deployments", description = "Private-preview Docker deployments"),
+        (name = "sandboxes", description = "Public sandbox API (Railway-style)"),
         (name = "billing", description = "Polar billing proxy"),
         (name = "pricing", description = "Public pricing metadata"),
         (name = "regions", description = "Probe regions"),
@@ -252,6 +291,18 @@ impl Modify for SecurityAddon {
                 HttpBuilder::new()
                     .scheme(HttpAuthScheme::Bearer)
                     .bearer_format("JWT")
+                    .build(),
+            ),
+        );
+        components.add_security_scheme(
+            "sandboxApiToken",
+            SecurityScheme::Http(
+                HttpBuilder::new()
+                    .scheme(HttpAuthScheme::Bearer)
+                    .bearer_format("prd_sbx_…")
+                    .description(Some(
+                        "Workspace sandbox API token. Also accepted via X-Produktive-Sandbox-Token header.",
+                    ))
                     .build(),
             ),
         );

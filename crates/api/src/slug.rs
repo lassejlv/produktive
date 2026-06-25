@@ -107,10 +107,27 @@ where
     .await
 }
 
+pub async fn unique_deploy_sandbox_slug<C>(
+    db: &C,
+    workspace_id: uuid::Uuid,
+    name: &str,
+) -> Result<String, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    unique_slug(
+        db,
+        slugify(name, "sandbox"),
+        WorkspaceSlugScope::DeploySandbox(workspace_id),
+    )
+    .await
+}
+
 enum WorkspaceSlugScope {
     Global,
     Workspace(uuid::Uuid),
     DeployService(uuid::Uuid),
+    DeploySandbox(uuid::Uuid),
 }
 
 async fn unique_slug<C>(
@@ -152,6 +169,11 @@ where
         WorkspaceSlugScope::DeployService(workspace_id) => Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT EXISTS(SELECT 1 FROM deploy_services WHERE workspace_id = $1 AND slug = $2)",
+            [(*workspace_id).into(), slug.into()],
+        ),
+        WorkspaceSlugScope::DeploySandbox(workspace_id) => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT EXISTS(SELECT 1 FROM deploy_sandboxes WHERE workspace_id = $1 AND slug = $2 AND deleted_at IS NULL)",
             [(*workspace_id).into(), slug.into()],
         ),
     };

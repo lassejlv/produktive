@@ -81,6 +81,7 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .route("/services/{service_id}/logs", get(list_logs))
         .route("/services/{service_id}/metrics", get(list_metrics))
         .route("/regions", get(list_regions))
+        .merge(super::sandboxes::routes())
         .route_layer(from_fn_with_state(state, deploy_access_guard));
 
     Router::new()

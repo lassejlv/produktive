@@ -77,6 +77,18 @@ pub struct Config {
     pub fly_api_token: Option<String>,
     /// Fly Machines API base URL (defaults to https://api.machines.dev).
     pub fly_api_hostname: String,
+    /// Enables Sprites.dev sandbox routes under deployments.
+    pub sandboxes_enabled: bool,
+    /// Server-side Sprites API token. When unset, may be derived from FLY_API_TOKEN.
+    pub sprites_token: Option<String>,
+    /// Sprites org slug used when exchanging a Fly token for a Sprites token.
+    pub sprites_org: Option<String>,
+    /// Sprites API base URL (defaults to https://api.sprites.dev).
+    pub sprites_api_url: String,
+    /// Prefix for multi-tenant Sprites names (defaults to FLY_APP_NAME_PREFIX).
+    pub sprite_name_prefix: String,
+    /// Maximum sandboxes per workspace.
+    pub sandbox_max_per_workspace: i64,
 }
 
 impl Config {
@@ -314,6 +326,39 @@ impl Config {
             .trim()
             .trim_end_matches('/')
             .to_owned();
+        let sandboxes_enabled = std::env::var("SANDBOXES_ENABLED")
+            .unwrap_or_else(|_| "false".into())
+            .parse()
+            .context("SANDBOXES_ENABLED must be bool")?;
+        let sprites_token = std::env::var("SPRITES_TOKEN")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let sprites_org = std::env::var("SPRITES_ORG")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let sprites_api_url = std::env::var("SPRITES_API_URL")
+            .unwrap_or_else(|_| "https://api.sprites.dev".into())
+            .trim()
+            .trim_end_matches('/')
+            .to_owned();
+        let sprite_name_prefix = std::env::var("SPRITE_NAME_PREFIX")
+            .or_else(|_| std::env::var("FLY_APP_NAME_PREFIX"))
+            .unwrap_or_else(|_| "prd".into())
+            .trim()
+            .trim_matches('-')
+            .to_owned();
+        if sprite_name_prefix.is_empty() {
+            return Err(anyhow!("SPRITE_NAME_PREFIX must not be empty"));
+        }
+        let sandbox_max_per_workspace = std::env::var("SANDBOX_MAX_PER_WORKSPACE")
+            .unwrap_or_else(|_| "10".into())
+            .parse()
+            .context("SANDBOX_MAX_PER_WORKSPACE must be i64")?;
+        if sandbox_max_per_workspace < 1 {
+            return Err(anyhow!("SANDBOX_MAX_PER_WORKSPACE must be at least 1"));
+        }
         Ok(Self {
             database_url,
             database_pooled_url,
@@ -362,6 +407,12 @@ impl Config {
             deploy_max_active_deployments_per_workspace,
             fly_api_token,
             fly_api_hostname,
+            sandboxes_enabled,
+            sprites_token,
+            sprites_org,
+            sprites_api_url,
+            sprite_name_prefix,
+            sandbox_max_per_workspace,
         })
     }
 

@@ -9,6 +9,7 @@ use tokio::sync::Semaphore;
 use email::EmailClient;
 use polar::Polar;
 use produktive_cloudflare::Cloudflare;
+use sprites::SpritesClient;
 
 use crate::{
     billing::Billing, config::Config, logstore::LokiLogs, status_summary_cache::StatusSummaryCache,
@@ -39,6 +40,9 @@ pub struct AppState {
     /// Loki-backed log storage. `None` disables every log-storage handler
     /// (they return a 503), keeping the no-logs deployment path working.
     pub loki: Option<Arc<LokiLogs>>,
+    /// Sprites.dev client for sandbox VMs. `None` when sandboxes are disabled
+    /// or no token is configured.
+    pub sprites: Option<Arc<SpritesClient>>,
 }
 
 impl AppState {
@@ -77,6 +81,7 @@ impl AppState {
             }
         }
         let loki = build_loki(&config, http.clone());
+        let sprites = build_sprites(&config).await;
         Ok(Self {
             db,
             config,
@@ -88,6 +93,7 @@ impl AppState {
             cloudflare,
             status_summary_cache: StatusSummaryCache::default(),
             loki,
+            sprites,
         })
     }
 }
@@ -171,9 +177,6 @@ async fn build_billing(config: &Config) -> Option<Billing> {
     }
 }
 
-/// Build the Cloudflare for SaaS client used to manage custom hostnames. Optional:
-/// disabled when `CF_API_TOKEN` or `CF_ZONE_ID` is unset, so the app boots (and
-/// custom domains degrade to DNS-verification-only) without Cloudflare configured.
 fn build_cloudflare(config: &Config) -> Option<Cloudflare> {
     let (Some(token), Some(zone)) = (config.cf_api_token.as_ref(), config.cf_zone_id.as_ref())
     else {
@@ -194,4 +197,48 @@ fn build_cloudflare(config: &Config) -> Option<Cloudflare> {
             None
         }
     }
+}
+
+/// Build the Sprites.dev client for sandbox VMs. Optional: disabled when
+/// `SANDBOXES_ENABLED` is false or no token can be resolved.
+async fn build_sprites(config: &Config) -> Option<Arc<SpritesClient>> {
+    if !config.sandboxes_enabled {
+        tracing::warn!("SANDBOXES_ENABLED=false; sandboxes are disabled");
+        return None;
+    }
+
+    let token = if let Some(token) = config.sprites_token.clone() {
+        token
+    } else if let (Some(fly_token), Some(org)) =
+        (config.fly_api_token.as_ref(), config.sprites_org.as_ref())
+    {
+        match SpritesClient::create_token_with_url(
+            fly_token,
+            org,
+            None,
+            &config.sprites_api_url,
+        )
+        .await
+        {
+            Ok(token) => token,
+            Err(e) => {
+                tracing::error!(error = %e, "failed to exchange Fly token for Sprites token; sandboxes disabled");
+                return None;
+            }
+        }
+    } else {
+        tracing::warn!(
+            "SPRITES_TOKEN not set and FLY_API_TOKEN/SPRITES_ORG unavailable; sandboxes disabled"
+        );
+        return None;
+    };
+
+    let client = if config.sprites_api_url == "https://api.sprites.dev" {
+        SpritesClient::new(token)
+    } else {
+        SpritesClient::with_base_url(token, &config.sprites_api_url)
+    };
+
+    tracing::info!("Sprites sandboxes initialized");
+    Some(Arc::new(client))
 }

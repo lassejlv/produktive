@@ -2,6 +2,7 @@ import { Link, useLocation, useParams } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Activity,
+  Box,
   ChevronsUpDown,
   Check,
   FolderTree,
@@ -34,7 +35,7 @@ import {
 } from "./ui/sidebar";
 import { cn } from "#/lib/cn";
 import { BRAND_NAME } from "#/lib/brand";
-import { DEPLOYMENTS_ENABLED, LOGS_ENABLED } from "#/lib/features";
+import { DEPLOYMENTS_ENABLED, LOGS_ENABLED, SANDBOXES_ENABLED } from "#/lib/features";
 import { auth } from "../lib/api";
 import { useMe, useWorkspaces } from "../lib/queries";
 
@@ -74,8 +75,18 @@ const DEPLOYMENTS: NavItem[] = [
     label: "Services",
     icon: Rocket,
     anim: "pop",
-    excludeActiveWhen: ["/volumes"],
+    excludeActiveWhen: ["/volumes", "/sandboxes"],
   },
+  ...(SANDBOXES_ENABLED
+    ? [
+        {
+          to: "/$wid/deployments/sandboxes",
+          label: "Sandboxes",
+          icon: Box,
+          anim: "pop" as const,
+        },
+      ]
+    : []),
   {
     to: "/$wid/deployments/volumes",
     label: "Volumes",
