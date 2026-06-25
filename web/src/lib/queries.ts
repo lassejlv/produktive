@@ -594,6 +594,20 @@ export function useUpdateDeployService(wid: string) {
   });
 }
 
+export function useSetServiceEnv(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ serviceId, env }: { serviceId: string; env: Record<string, string> }) =>
+      api.post<DeployService>(`/workspaces/${wid}/deployments/services/${serviceId}/env`, { env }),
+    onSuccess: (service) => {
+      qc.setQueryData<DeployService[]>(["deployments", wid, "services"], (old) =>
+        old?.map((item) => (item.id === service.id ? service : item)),
+      );
+      qc.invalidateQueries({ queryKey: ["deployments", wid, service.id, "events"] });
+    },
+  });
+}
+
 export function useDeleteDeployService(wid: string) {
   const qc = useQueryClient();
   return useMutation({

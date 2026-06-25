@@ -49,6 +49,7 @@ import {
   useDeployServiceVolumes,
   useDeployments,
   useDeleteDeployServiceDomain,
+  useSetServiceEnv,
   useUpdateDeployService,
   useUpdateDeployServiceVolume,
   useVerifyDeployServiceDomain,
@@ -71,6 +72,7 @@ import {
   StatusBadge,
   fieldControlClass,
   normalizeResourcePreset,
+  parseKeyValues,
   resourcePresetDetail,
 } from "./deploy-shared";
 
@@ -718,6 +720,8 @@ export function SettingsPanel({
         </label>
       </section>
 
+      <EnvSection wid={wid} service={service} />
+
       <section className="border-t border-[var(--color-border)] pt-4">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[12px] text-[var(--color-fg-muted)]">Delete this service</p>
@@ -734,6 +738,117 @@ export function SettingsPanel({
         </div>
       </section>
     </div>
+  );
+}
+
+function EnvSection({ wid, service }: { wid: string; service: DeployService }) {
+  const setEnv = useSetServiceEnv(wid);
+  const entries = Object.entries(service.env ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  const [draft, setDraft] = useState("");
+  const [editing, setEditing] = useState(false);
+
+  // Populate the textarea when entering edit mode from the current env map.
+  useEffect(() => {
+    if (editing) {
+      setDraft(entries.map(([k, v]) => `${k}=${v}`).join("\n"));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
+
+  function save(event: FormEvent) {
+    event.preventDefault();
+    let parsed: Record<string, string>;
+    try {
+      parsed = parseKeyValues(draft);
+    } catch (err) {
+      toast.error((err as Error).message);
+      return;
+    }
+    setEnv.mutate(
+      { serviceId: service.id, env: parsed },
+      {
+        onSuccess: () => {
+          toast.success("Environment variables updated");
+          setEditing(false);
+        },
+        onError: (err) => toast.error((err as Error).message),
+      },
+    );
+  }
+
+  return (
+    <section className="border-t border-[var(--color-border)] pt-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Terminal size={14} className="text-[var(--color-fg-muted)]" />
+          <h2 className="text-[13px] font-medium text-[var(--color-fg)]">Environment variables</h2>
+        </div>
+        {!editing && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setEditing(true)}
+            disabled={setEnv.isPending}
+          >
+            Edit
+          </Button>
+        )}
+      </div>
+
+      {editing ? (
+        <form onSubmit={save} className="space-y-2">
+          <textarea
+            className={cn(fieldControlClass, "mono h-40 resize-y py-2 leading-5")}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder={"KEY=value\nPORT=3000\nLOG_LEVEL=info"}
+            spellCheck={false}
+            autoCapitalize="none"
+            autoCorrect="off"
+          />
+          <p className="text-[11px] text-[var(--color-fg-dim)]">
+            One KEY=value per line. Saving replaces all environment variables. Use the Secrets
+            endpoint for sensitive values — env vars are stored in plaintext.
+          </p>
+          <div className="flex items-center gap-1.5">
+            <Button type="submit" variant="default" size="sm" disabled={setEnv.isPending}>
+              {setEnv.isPending && <Spinner className="size-3" />}
+              <Save size={13} /> Save
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setEditing(false)}
+              disabled={setEnv.isPending}
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      ) : entries.length ? (
+        <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
+          {entries.map(([key, value]) => (
+            <div
+              key={key}
+              className="grid grid-cols-1 gap-1 border-b border-[var(--color-border)] px-3 py-2 last:border-b-0 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] sm:gap-2"
+            >
+              <span className="mono truncate text-[11px] font-medium text-[var(--color-fg)]">
+                {key}
+              </span>
+              <span className="mono min-w-0 truncate text-[11px] text-[var(--color-fg-muted)]">
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-sunken)] px-3 py-2 text-[12px] text-[var(--color-fg-muted)]">
+          No environment variables set.
+        </p>
+      )}
+    </section>
   );
 }
 

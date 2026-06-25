@@ -50,6 +50,7 @@ pub fn routes(state: AppState) -> Router<AppState> {
                 .delete(delete_service),
         )
         .route("/services/{service_id}/secrets", post(set_service_secrets))
+        .route("/services/{service_id}/env", post(set_service_env))
         .route(
             "/services/{service_id}/volumes",
             get(list_service_volumes).post(create_service_volume),
@@ -296,6 +297,11 @@ pub struct UpdateServiceSettingsBody {
 #[derive(Deserialize, ToSchema)]
 pub struct SetServiceSecretsBody {
     pub secrets: BTreeMap<String, String>,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct SetServiceEnvBody {
+    pub env: BTreeMap<String, String>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -924,6 +930,60 @@ pub async fn set_service_secrets(
 }
 
 #[utoipa::path(
+    post,
+    path = "/api/workspaces/{wid}/deployments/services/{service_id}/env",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("service_id" = Uuid, Path, description = "deployment service id"),
+    ),
+    request_body = SetServiceEnvBody,
+    responses((status = 200, body = DeployServiceView)),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn set_service_env(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
+    Json(body): Json<SetServiceEnvBody>,
+) -> ApiResult<Json<DeployServiceView>> {
+    m.require_owner()?;
+    ensure_service(&state, m.workspace.id, service_id).await?;
+    for name in body.env.keys() {
+        validate_env_name(name).map_err(deploy_error)?;
+    }
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_services
+            SET env = $3, updated_at = now()
+            WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+            "#,
+            [
+                m.workspace.id.into(),
+                service_id.into(),
+                json!(body.env).into(),
+            ],
+        ))
+        .await?;
+    insert_event(
+        &state,
+        m.workspace.id,
+        service_id,
+        None,
+        "info",
+        "service env updated",
+        json!({ "count": body.env.len() }),
+    )
+    .await?;
+    load_service(&state, m.workspace.id, service_id)
+        .await
+        .map(Json)
+}
+
+#[utoipa::path(
     get,
     path = "/api/workspaces/{wid}/deployments/services/{service_id}/volumes",
     params(
@@ -1220,6 +1280,17 @@ pub async fn create_deployment(
         "deployment queued",
     )
     .await?;
+    clear_service_logs(&state, m.workspace.id, service_id).await?;
+    insert_event(
+        &state,
+        m.workspace.id,
+        service_id,
+        Some(deployment.id),
+        "info",
+        "logs cleared for new deployment",
+        json!({}),
+    )
+    .await?;
     mark_service_queued_for_deployment(&state, m.workspace.id, service_id, was_stopped).await?;
     Ok(Json(deployment))
 }
@@ -1293,6 +1364,17 @@ pub async fn rollback_service(
         previous.image,
         previous.image_digest,
         "rollback queued",
+    )
+    .await?;
+    clear_service_logs(&state, m.workspace.id, service_id).await?;
+    insert_event(
+        &state,
+        m.workspace.id,
+        service_id,
+        Some(deployment.id),
+        "info",
+        "logs cleared for rollback",
+        json!({}),
     )
     .await?;
     mark_service_queued_for_deployment(&state, m.workspace.id, service_id, was_stopped).await?;
@@ -1926,6 +2008,25 @@ async fn deployment_rows(
     .all(&state.db)
     .await?;
     Ok(rows)
+}
+
+/// Wipes stored runtime log lines for a service. Called when a new deployment
+/// is queued so each release starts with a clean log timeline rather than
+/// carrying the previous release's stdout/stderr.
+async fn clear_service_logs(
+    state: &AppState,
+    workspace_id: Uuid,
+    service_id: Uuid,
+) -> ApiResult<()> {
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "DELETE FROM deploy_log_lines WHERE workspace_id = $1 AND service_id = $2",
+            [workspace_id.into(), service_id.into()],
+        ))
+        .await?;
+    Ok(())
 }
 
 async fn insert_deployment(
