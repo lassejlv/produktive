@@ -6,21 +6,23 @@ export type DeployServiceFilter = "all" | "live" | "deploying" | "failed" | "sto
 export type DeployView = "list" | "canvas";
 
 export type DeployDetailTab =
+  | "overview"
   | "deployments"
-  | "events"
   | "logs"
   | "metrics"
-  | "domains"
+  | "configuration"
   | "settings";
 
 export const DEPLOY_DETAIL_TABS: DeployDetailTab[] = [
+  "overview",
   "deployments",
-  "events",
   "logs",
   "metrics",
-  "domains",
+  "configuration",
   "settings",
 ];
+
+export const DEFAULT_DEPLOY_DETAIL_TAB: DeployDetailTab = "overview";
 
 export type DeploymentsSearch = {
   q?: string;
@@ -77,7 +79,7 @@ export function openServiceSearch(
   return {
     ...search,
     service: serviceId,
-    tab: tab && tab !== "deployments" ? tab : undefined,
+    tab: tab && tab !== DEFAULT_DEPLOY_DETAIL_TAB ? tab : undefined,
   };
 }
 

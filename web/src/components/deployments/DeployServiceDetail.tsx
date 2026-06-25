@@ -1,9 +1,10 @@
 import {
   Activity,
   ExternalLink,
+  Gauge,
   Globe,
+  LayoutGrid,
   Rocket,
-  ScrollText,
   Settings,
   Terminal,
 } from "lucide-react";
@@ -11,23 +12,27 @@ import { useParams } from "@tanstack/react-router";
 import { resourcePresetLabel } from "#/components/DeployServiceCard";
 import { Segmented } from "#/components/Segmented";
 import { cn } from "#/lib/cn";
-import type { DeployDetailTab } from "#/lib/deployments";
 import { formatDeployRegion } from "#/lib/deploy-regions";
-import { useDeployRegions } from "#/lib/queries";
-import { DEPLOY_STATUS_COLOR, DEPLOY_STATUS_LABEL, deployStatusActive } from "#/lib/status";
 import {
   useCreateDeployment,
+  useDeployRegions,
   useRollbackDeployment,
   useStopDeployService,
 } from "#/lib/queries";
+import {
+  DEPLOY_STATUS_COLOR,
+  DEPLOY_STATUS_LABEL,
+  deployStatusActive,
+} from "#/lib/status";
+import type { DeployDetailTab } from "#/lib/deployments";
 import type { DeployService } from "#/lib/types";
 import { ServiceActionButtons } from "./deploy-shared";
 import {
+  ConfigurationPanel,
   DeploymentsPanel,
-  DomainsPanel,
-  EventsPanel,
   LogsPanel,
   MetricsPanel,
+  OverviewPanel,
   SettingsPanel,
 } from "./DeployServicePanels";
 
@@ -136,11 +141,11 @@ export function DeployServiceDetail({
             onChange={onTabChange}
             size="sm"
             options={[
+              { value: "overview", label: "Overview", icon: LayoutGrid },
               { value: "deployments", label: "Deploys", icon: Rocket },
-              { value: "events", label: "Events", icon: ScrollText },
               { value: "logs", label: "Logs", icon: Terminal },
               { value: "metrics", label: "Metrics", icon: Activity },
-              { value: "domains", label: "Domains", icon: Globe },
+              { value: "configuration", label: "Config", icon: Gauge },
               { value: "settings", label: "Settings", icon: Settings },
             ]}
           />
@@ -148,11 +153,17 @@ export function DeployServiceDetail({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {tab === "overview" && (
+          <OverviewPanel
+            wid={wid}
+            service={service}
+            onTabChange={onTabChange}
+          />
+        )}
         {tab === "deployments" && <DeploymentsPanel wid={wid} service={service} />}
-        {tab === "events" && <EventsPanel wid={wid} service={service} />}
         {tab === "logs" && <LogsPanel wid={wid} service={service} />}
         {tab === "metrics" && <MetricsPanel wid={wid} service={service} />}
-        {tab === "domains" && <DomainsPanel wid={wid} service={service} />}
+        {tab === "configuration" && <ConfigurationPanel wid={wid} service={service} />}
         {tab === "settings" && (
           <SettingsPanel wid={wid} service={service} onDeleted={onDeleted} />
         )}

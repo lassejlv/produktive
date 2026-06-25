@@ -11,6 +11,7 @@ import {
   deployStatusActive,
   deployStatusPending,
   lastSeen,
+  shortDigest,
 } from "#/lib/status";
 import type { DeployService, DeployStatus } from "../lib/types";
 
@@ -35,34 +36,31 @@ export function resourcePresetLabel(value: string): string {
 }
 
 function DeployHealthStrip({ status }: { status: DeployStatus }) {
-  const ticks = 24;
-  const items = Array.from({ length: ticks }, (_, i) => {
-    if (i !== ticks - 1) return "idle";
-    if (deployStatusActive(status)) return "live";
-    if (deployStatusPending(status)) return "pending";
-    if (status === "failed") return "failed";
-    return "idle";
-  });
+  // Honest single-status summary: the prior 24-tick "sparkline" was fake —
+  // 23 ticks were always idle and only the last reflected current status. We
+  // don't have a real recent-health sample series yet, so don't pretend.
+  let kind: "live" | "pending" | "failed" | "idle";
+  if (deployStatusActive(status)) kind = "live";
+  else if (deployStatusPending(status)) kind = "pending";
+  else if (status === "failed") kind = "failed";
+  else kind = "idle";
+
+  const bg =
+    kind === "live"
+      ? "var(--color-ok)"
+      : kind === "pending"
+        ? "var(--color-warn)"
+        : kind === "failed"
+          ? "var(--color-err)"
+          : "var(--color-border-hi)";
 
   return (
-    <div className="mt-3.5 flex h-2 items-center gap-[2px]">
-      {items.map((kind, i) => (
-        <span
-          key={i}
-          className="h-full flex-1 rounded-[2px]"
-          style={{
-            background:
-              kind === "live"
-                ? "var(--color-ok)"
-                : kind === "pending"
-                  ? "var(--color-warn)"
-                  : kind === "failed"
-                    ? "var(--color-err)"
-                    : "var(--color-border-hi)",
-            opacity: kind === "idle" ? 0.45 : 0.92,
-          }}
-        />
-      ))}
+    <div className="mt-3.5 flex h-2 items-center gap-1.5">
+      <span
+        className="h-2 w-2 shrink-0 rounded-full"
+        style={{ background: bg, opacity: kind === "idle" ? 0.55 : 0.92 }}
+      />
+      <span className="h-[2px] flex-1 rounded-full bg-[var(--color-border-hi)] opacity-55" />
     </div>
   );
 }
@@ -151,9 +149,14 @@ export const DeployServiceCard = memo(function DeployServiceCard({ service, canv
             <MetaChip icon={MapPin} label={formatDeployRegion(service.region, regions, "short")} />
             <MetaChip label={service.environment} />
             <MetaChip label={`:${service.internal_port}`} />
+            {shortDigest(service.last_deploy_image_digest) && (
+              <MetaChip label={shortDigest(service.last_deploy_image_digest) as string} />
+            )}
           </div>
           <span className="mono shrink-0 text-[10px] text-[var(--color-fg-dim)]">
-            {service.url ? service.url.replace(/^https?:\/\//, "") : lastSeen(service.updated_at)}
+            {service.last_deploy_at
+              ? `deployed ${lastSeen(service.last_deploy_at)}`
+              : (service.url ? service.url.replace(/^https?:\/\//, "") : lastSeen(service.updated_at))}
           </span>
         </div>
       </div>
@@ -242,23 +245,19 @@ export function DeployServiceRow({ service }: { service: DeployService }) {
         <MetaChip icon={MapPin} label={formatDeployRegion(service.region, regions, "short")} />
         <MetaChip label={service.environment} />
         <MetaChip label={`:${service.internal_port}`} />
-      </div>
-
-      <div className="hidden w-[88px] shrink-0 text-right lg:block">
-        <div className="text-[10px] uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
-          compute
-        </div>
-        <div className="mt-0.5 text-[12px] font-medium text-[var(--color-fg)]">
-          {resourcePresetLabel(service.resource_preset)}
-        </div>
+        {shortDigest(service.last_deploy_image_digest) && (
+          <MetaChip label={shortDigest(service.last_deploy_image_digest) as string} />
+        )}
       </div>
 
       <div className="hidden w-[110px] shrink-0 text-right sm:block">
         <div className="text-[10px] uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
-          updated
+          last deploy
         </div>
         <div className="mono mt-0.5 text-[11px] text-[var(--color-fg-muted)]">
-          {service.url ? service.url.replace(/^https?:\/\//, "") : lastSeen(service.updated_at)}
+          {service.last_deploy_at
+            ? lastSeen(service.last_deploy_at)
+            : (service.url ? service.url.replace(/^https?:\/\//, "") : lastSeen(service.updated_at))}
         </div>
       </div>
     </Link>

@@ -352,6 +352,8 @@ export interface DeployService {
   canvas_y: number;
   created_at: Iso;
   updated_at: Iso;
+  last_deploy_at: Iso | null;
+  last_deploy_image_digest: string | null;
 }
 
 export interface Deployment {

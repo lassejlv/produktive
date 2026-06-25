@@ -5,8 +5,10 @@ import {
   Copy,
   Cpu,
   Download,
+  Gauge,
   Globe,
   HardDrive,
+  LayoutGrid,
   MemoryStick,
   Network,
   Plus,
@@ -27,10 +29,13 @@ import { Segmented } from "#/components/Segmented";
 import { cn } from "#/lib/cn";
 import {
   DEPLOY_STATUS_COLOR,
+  DEPLOY_STATUS_LABEL,
   deployStatusActive,
   deployStatusPending,
   lastSeen,
+  shortDigest,
 } from "#/lib/status";
+import type { DeployDetailTab } from "#/lib/deployments";
 import { toast } from "#/lib/toast";
 import {
   useCreateDeployServiceVolume,
@@ -58,6 +63,7 @@ import type {
 } from "#/lib/types";
 import {
   CopyChip,
+  DetailStat,
   PanelCard,
   PanelEmpty,
   PanelLoading,
@@ -65,6 +71,7 @@ import {
   StatusBadge,
   fieldControlClass,
   normalizeResourcePreset,
+  resourcePresetDetail,
 } from "./deploy-shared";
 
 type MetricChartKind = "cpu" | "memory" | "requests";
@@ -123,7 +130,10 @@ function DeploymentRow({ deployment }: { deployment: Deployment }) {
           </div>
           {deployment.image_digest && (
             <div className="mt-1 pl-3.5">
-              <CopyChip value={deployment.image_digest} label={`${deployment.image_digest.slice(0, 24)}…`} />
+              <CopyChip
+                value={deployment.image_digest}
+                label={`${deployment.image_digest.slice(0, 24)}…`}
+              />
             </div>
           )}
           <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 pl-3.5 text-[11px] text-[var(--color-fg-muted)]">
@@ -139,10 +149,200 @@ function DeploymentRow({ deployment }: { deployment: Deployment }) {
       </div>
       {deployment.failure_message && (
         <div className="border-t border-[color-mix(in_srgb,var(--color-err)_20%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-err)_6%,transparent)] px-4 py-2.5">
-          <p className="text-[12px] leading-5 text-[var(--color-err)]">{deployment.failure_message}</p>
+          <p className="text-[12px] leading-5 text-[var(--color-err)]">
+            {deployment.failure_message}
+          </p>
         </div>
       )}
     </div>
+  );
+}
+
+export function OverviewPanel({
+  wid,
+  service,
+  onTabChange,
+}: {
+  wid: string;
+  service: DeployService;
+  onTabChange: (tab: DeployDetailTab) => void;
+}) {
+  const deployments = useDeployments(wid, service.id);
+  const events = useDeployEvents(wid, service.id);
+  const latest = deployments.data?.[0] ?? null;
+  const digest = shortDigest(latest?.image_digest ?? service.last_deploy_image_digest);
+
+  const recentEvents = (events.data ?? []).slice(0, 4);
+  const statusColor = DEPLOY_STATUS_COLOR[service.status];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <DetailStat
+          label="Status"
+          value={DEPLOY_STATUS_LABEL[service.status]}
+          sub={deployStatusActive(service.status) ? "healthy" : undefined}
+          icon={LayoutGrid}
+        />
+        <DetailStat
+          label="Last deploy"
+          value={service.last_deploy_at ? lastSeen(service.last_deploy_at) : "never"}
+          sub={latest ? `deploy ${latest.status}` : undefined}
+          icon={Rocket}
+        />
+        <DetailStat
+          label="Compute"
+          value={resourcePresetDetail(service.resource_preset)}
+          sub={service.environment}
+          icon={Gauge}
+        />
+        <DetailStat
+          label="Image digest"
+          value={digest ?? "—"}
+          sub={service.internal_port ? `:${service.internal_port}` : undefined}
+          icon={ScrollText}
+          mono
+        />
+      </div>
+
+      <PanelCard
+        title="Latest deployment"
+        icon={Rocket}
+        count={deployments.data ? `${deployments.data.length} total` : undefined}
+      >
+        {deployments.isLoading ? (
+          <PanelLoading label="Loading deployments…" />
+        ) : latest ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="mono truncate text-[12px] font-medium text-[var(--color-fg)]">
+                  {latest.image}
+                </div>
+                {latest.image_digest && (
+                  <div className="mt-1.5">
+                    <CopyChip
+                      value={latest.image_digest}
+                      label={digest ?? latest.image_digest.slice(0, 24)}
+                    />
+                  </div>
+                )}
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[var(--color-fg-muted)]">
+                  <span className="inline-flex items-center gap-1">
+                    <Clock size={10} className="text-[var(--color-fg-dim)]" />
+                    queued {lastSeen(latest.created_at)}
+                  </span>
+                  {latest.finished_at && <span>finished {lastSeen(latest.finished_at)}</span>}
+                </div>
+              </div>
+              <StatusBadge status={latest.status} />
+            </div>
+            {latest.failure_message && (
+              <p className="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-err)_20%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-err)_6%,transparent)] px-3 py-2 text-[12px] leading-5 text-[var(--color-err)]">
+                {latest.failure_message}
+              </p>
+            )}
+          </div>
+        ) : (
+          <PanelEmpty
+            icon={Rocket}
+            label="No deployments yet"
+            hint="Deploy pushes the current image and starts a new release."
+          />
+        )}
+      </PanelCard>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <QuickLink
+          icon={Rocket}
+          label="Deploys"
+          hint={deployments.data?.length ? `${deployments.data.length} releases` : "view history"}
+          onClick={() => onTabChange("deployments")}
+        />
+        <QuickLink
+          icon={Terminal}
+          label="Logs"
+          hint="runtime + lifecycle"
+          onClick={() => onTabChange("logs")}
+        />
+        <QuickLink
+          icon={Activity}
+          label="Metrics"
+          hint="CPU · memory · requests"
+          onClick={() => onTabChange("metrics")}
+        />
+      </div>
+
+      <PanelCard
+        title="Recent activity"
+        icon={ScrollText}
+        count={events.data ? `${events.data.length} events` : undefined}
+      >
+        {events.isLoading ? (
+          <PanelLoading label="Loading events…" />
+        ) : recentEvents.length ? (
+          <ul className="space-y-1.5">
+            {recentEvents.map((event) => (
+              <li key={event.id} className="flex items-baseline gap-2 text-[12px]">
+                <span className="tabular shrink-0 text-[10px] text-[var(--color-fg-dim)]">
+                  {lastSeen(event.created_at)}
+                </span>
+                <span
+                  className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.04em]"
+                  style={{ color: levelColor(event.level) }}
+                >
+                  {event.level}
+                </span>
+                <span className="min-w-0 truncate text-[var(--color-fg-muted)]">
+                  {event.message}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="py-2 text-[12px] text-[var(--color-fg-muted)]">No lifecycle events yet.</p>
+        )}
+      </PanelCard>
+
+      {service.status === "failed" && (
+        <div
+          className="rounded-[var(--radius-md)] border px-3 py-2.5 text-[12px] text-[var(--color-err)]"
+          style={{
+            borderColor: `color-mix(in srgb, ${statusColor} 25%, transparent)`,
+            background: `color-mix(in srgb, ${statusColor} 6%, transparent)`,
+          }}
+        >
+          This service is currently failing. Check Logs for runtime errors or Deploys for the
+          failure message.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuickLink({
+  icon: Icon,
+  label,
+  hint,
+  onClick,
+}: {
+  icon: typeof Rocket;
+  label: string;
+  hint: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex items-center gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2.5 text-left transition-colors hover:border-[var(--color-border-hi)] hover:bg-[var(--color-bg-elev)]"
+    >
+      <Icon size={16} className="shrink-0 text-[var(--color-fg-muted)]" />
+      <div className="min-w-0 flex-1">
+        <div className="text-[12px] font-medium text-[var(--color-fg)]">{label}</div>
+        <div className="truncate text-[10px] text-[var(--color-fg-dim)]">{hint}</div>
+      </div>
+    </button>
   );
 }
 
@@ -170,27 +370,47 @@ export function EventsPanel({ wid, service }: { wid: string; service: DeployServ
 
 export function LogsPanel({ wid, service }: { wid: string; service: DeployService }) {
   const logs = useDeployLogs(wid, service.id);
-  if (logs.isLoading) return <PanelLoading label="Loading logs…" />;
-  if (!logs.data?.length) {
-    return (
-      <PanelEmpty
-        icon={Terminal}
-        label="No logs ingested yet"
-        hint="Runtime logs from the service will stream here."
-      />
-    );
-  }
+  const events = useDeployEvents(wid, service.id);
+
+  const runtimeLines = (logs.data ?? []).map((line, index) => ({
+    id: `${line.timestamp}-${index}`,
+    level: line.level,
+    message: line.message,
+    timestamp: line.timestamp,
+  }));
+  const eventLines = (events.data ?? []).map((event) => ({
+    id: event.id,
+    level: event.level,
+    message: event.message,
+    timestamp: event.created_at,
+  }));
+
   return (
-    <LogConsole
-      title="Runtime logs"
-      icon={Terminal}
-      lines={logs.data.map((line, index) => ({
-        id: `${line.timestamp}-${index}`,
-        level: line.level,
-        message: line.message,
-        timestamp: line.timestamp,
-      }))}
-    />
+    <div className="space-y-3">
+      {logs.isLoading ? (
+        <PanelLoading label="Loading logs…" />
+      ) : runtimeLines.length ? (
+        <LogConsole title="Runtime logs" icon={Terminal} lines={runtimeLines} />
+      ) : (
+        <PanelEmpty
+          icon={Terminal}
+          label="No logs ingested yet"
+          hint="Runtime logs from the service will stream here."
+        />
+      )}
+
+      {events.isLoading ? (
+        <PanelLoading label="Loading events…" />
+      ) : eventLines.length ? (
+        <LogConsole title="Lifecycle events" icon={ScrollText} lines={eventLines} />
+      ) : (
+        <PanelEmpty
+          icon={ScrollText}
+          label="No lifecycle events"
+          hint="Deploys, stops, and rollbacks are recorded here."
+        />
+      )}
+    </div>
   );
 }
 
@@ -374,9 +594,7 @@ function MetricsLineChart({
               color: "var(--chart-line-primary)",
               label: metricChartLabel(metric),
               value:
-                typeof row.raw === "number"
-                  ? formatMetricChartValue(row.raw, metric)
-                  : "No sample",
+                typeof row.raw === "number" ? formatMetricChartValue(row.raw, metric) : "No sample",
             },
           ];
         }}
@@ -438,46 +656,26 @@ function metricStats(points: DeployMetricPoint[], metric: MetricChartKind): Metr
   }
   const latest = points.length ? metricChartValue(points[points.length - 1], metric) : null;
   const peak = values.length ? Math.max(...values) : null;
-  const avg = values.length
-    ? values.reduce((sum, value) => sum + value, 0) / values.length
-    : null;
+  const avg = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
   return { latest, peak, avg, samples: points.length };
 }
 
-export function SettingsPanel({ wid, service, onDeleted }: { wid: string; service: DeployService; onDeleted?: () => void }) {
+export function SettingsPanel({
+  wid,
+  service,
+  onDeleted,
+}: {
+  wid: string;
+  service: DeployService;
+  onDeleted?: () => void;
+}) {
   const updateService = useUpdateDeployService(wid);
   const deleteService = useDeleteDeployService(wid);
-  const volumes = useDeployServiceVolumes(wid, service.id);
-  const createVolume = useCreateDeployServiceVolume(wid);
-  const updateVolume = useUpdateDeployServiceVolume(wid);
-  const deleteVolume = useDeleteDeployServiceVolume(wid);
-  const [volumeName, setVolumeName] = useState("");
-  const [mountPath, setMountPath] = useState("/data");
-  const [sizeGb, setSizeGb] = useState(1);
-
-  function submitVolume(event: FormEvent) {
-    event.preventDefault();
-    createVolume.mutate(
-      {
-        serviceId: service.id,
-        name: volumeName,
-        mount_path: mountPath,
-        size_gb: sizeGb,
-      },
-      {
-        onSuccess: () => {
-          toast.success("Volume attached");
-          setVolumeName("");
-          setMountPath("/data");
-          setSizeGb(1);
-        },
-        onError: (err) => toast.error((err as Error).message),
-      },
-    );
-  }
 
   function removeService() {
-    if (!window.confirm(`Delete ${service.name}? This stops deployments and queues provider cleanup.`)) {
+    if (
+      !window.confirm(`Delete ${service.name}? This stops deployments and queues provider cleanup.`)
+    ) {
       return;
     }
     deleteService.mutate(service.id, {
@@ -521,90 +719,6 @@ export function SettingsPanel({ wid, service, onDeleted }: { wid: string; servic
       </section>
 
       <section className="border-t border-[var(--color-border)] pt-4">
-        <div className="mb-3 flex items-center gap-2">
-          <HardDrive size={14} className="text-[var(--color-fg-muted)]" />
-          <h2 className="text-[13px] font-medium text-[var(--color-fg)]">Volumes</h2>
-        </div>
-        <form onSubmit={submitVolume} className="grid gap-2 sm:grid-cols-[1fr_1fr_120px_auto]">
-          <input
-            className={cn(fieldControlClass, "h-9")}
-            value={volumeName}
-            onChange={(event) => setVolumeName(event.target.value)}
-            placeholder="data"
-            autoCapitalize="none"
-            autoCorrect="off"
-            required
-          />
-          <input
-            className={cn(fieldControlClass, "h-9")}
-            value={mountPath}
-            onChange={(event) => setMountPath(event.target.value)}
-            placeholder="/data"
-            autoCapitalize="none"
-            autoCorrect="off"
-            required
-          />
-          <input
-            type="number"
-            min={1}
-            max={50}
-            className={cn(fieldControlClass, "h-9")}
-            value={sizeGb}
-            onChange={(event) => setSizeGb(Number(event.target.value))}
-            required
-          />
-          <Button
-            type="submit"
-            variant="default"
-            size="sm"
-            disabled={createVolume.isPending || !volumeName.trim() || !mountPath.trim()}
-          >
-            {createVolume.isPending && <Spinner className="size-3" />}
-            <Plus size={13} /> Attach
-          </Button>
-        </form>
-
-        <div className="mt-3 space-y-2">
-          {volumes.isLoading ? (
-            <PanelLoading label="Loading volumes…" />
-          ) : !volumes.data?.length ? (
-            <PanelEmpty
-              icon={HardDrive}
-              label="No volumes attached"
-              hint="Attach a volume, then deploy to mount it on the next machine."
-            />
-          ) : (
-            volumes.data.map((volume) => (
-              <VolumeRow
-                key={volume.id}
-                volume={volume}
-                updating={updateVolume.isPending}
-                deleting={deleteVolume.isPending}
-                onUpdate={(volumeId, mountPath) =>
-                  updateVolume.mutate(
-                    { serviceId: service.id, volumeId, mount_path: mountPath },
-                    {
-                      onSuccess: () => toast.success("Volume mount path updated"),
-                      onError: (err) => toast.error((err as Error).message),
-                    },
-                  )
-                }
-                onDelete={(volumeId) =>
-                  deleteVolume.mutate(
-                    { serviceId: service.id, volumeId },
-                    {
-                      onSuccess: () => toast.success("Volume removal queued"),
-                      onError: (err) => toast.error((err as Error).message),
-                    },
-                  )
-                }
-              />
-            ))
-          )}
-        </div>
-      </section>
-
-      <section className="border-t border-[var(--color-border)] pt-4">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[12px] text-[var(--color-fg-muted)]">Delete this service</p>
           <Button
@@ -620,6 +734,138 @@ export function SettingsPanel({ wid, service, onDeleted }: { wid: string; servic
         </div>
       </section>
     </div>
+  );
+}
+
+export function ConfigurationPanel({ wid, service }: { wid: string; service: DeployService }) {
+  return (
+    <div className="space-y-6">
+      <VolumesSection wid={wid} service={service} />
+      <section className="border-t border-[var(--color-border)] pt-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Globe size={14} className="text-[var(--color-fg-muted)]" />
+          <h2 className="text-[13px] font-medium text-[var(--color-fg)]">Domains</h2>
+        </div>
+        <DomainsPanel wid={wid} service={service} />
+      </section>
+    </div>
+  );
+}
+
+function VolumesSection({ wid, service }: { wid: string; service: DeployService }) {
+  const volumes = useDeployServiceVolumes(wid, service.id);
+  const createVolume = useCreateDeployServiceVolume(wid);
+  const updateVolume = useUpdateDeployServiceVolume(wid);
+  const deleteVolume = useDeleteDeployServiceVolume(wid);
+  const [volumeName, setVolumeName] = useState("");
+  const [mountPath, setMountPath] = useState("/data");
+  const [sizeGb, setSizeGb] = useState(1);
+
+  function submitVolume(event: FormEvent) {
+    event.preventDefault();
+    createVolume.mutate(
+      {
+        serviceId: service.id,
+        name: volumeName,
+        mount_path: mountPath,
+        size_gb: sizeGb,
+      },
+      {
+        onSuccess: () => {
+          toast.success("Volume attached");
+          setVolumeName("");
+          setMountPath("/data");
+          setSizeGb(1);
+        },
+        onError: (err) => toast.error((err as Error).message),
+      },
+    );
+  }
+
+  return (
+    <section>
+      <div className="mb-3 flex items-center gap-2">
+        <HardDrive size={14} className="text-[var(--color-fg-muted)]" />
+        <h2 className="text-[13px] font-medium text-[var(--color-fg)]">Volumes</h2>
+      </div>
+      <form onSubmit={submitVolume} className="grid gap-2 sm:grid-cols-[1fr_1fr_120px_auto]">
+        <input
+          className={cn(fieldControlClass, "h-9")}
+          value={volumeName}
+          onChange={(event) => setVolumeName(event.target.value)}
+          placeholder="data"
+          autoCapitalize="none"
+          autoCorrect="off"
+          required
+        />
+        <input
+          className={cn(fieldControlClass, "h-9")}
+          value={mountPath}
+          onChange={(event) => setMountPath(event.target.value)}
+          placeholder="/data"
+          autoCapitalize="none"
+          autoCorrect="off"
+          required
+        />
+        <input
+          type="number"
+          min={1}
+          max={50}
+          className={cn(fieldControlClass, "h-9")}
+          value={sizeGb}
+          onChange={(event) => setSizeGb(Number(event.target.value))}
+          required
+        />
+        <Button
+          type="submit"
+          variant="default"
+          size="sm"
+          disabled={createVolume.isPending || !volumeName.trim() || !mountPath.trim()}
+        >
+          {createVolume.isPending && <Spinner className="size-3" />}
+          <Plus size={13} /> Attach
+        </Button>
+      </form>
+
+      <div className="mt-3 space-y-2">
+        {volumes.isLoading ? (
+          <PanelLoading label="Loading volumes…" />
+        ) : !volumes.data?.length ? (
+          <PanelEmpty
+            icon={HardDrive}
+            label="No volumes attached"
+            hint="Attach a volume, then deploy to mount it on the next machine."
+          />
+        ) : (
+          volumes.data.map((volume) => (
+            <VolumeRow
+              key={volume.id}
+              volume={volume}
+              updating={updateVolume.isPending}
+              deleting={deleteVolume.isPending}
+              onUpdate={(volumeId, nextMountPath) =>
+                updateVolume.mutate(
+                  { serviceId: service.id, volumeId, mount_path: nextMountPath },
+                  {
+                    onSuccess: () => toast.success("Volume mount path updated"),
+                    onError: (err) => toast.error((err as Error).message),
+                  },
+                )
+              }
+              onDelete={(volumeId) =>
+                deleteVolume.mutate(
+                  { serviceId: service.id, volumeId },
+                  {
+                    onSuccess: () => toast.success("Volume removal queued"),
+                    onError: (err) => toast.error((err as Error).message),
+                  },
+                )
+              }
+            />
+          ))
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -846,9 +1092,7 @@ function DomainRow({
   const active = domain.status === "active" || Boolean(domain.verified_at);
   const errors = validationErrors(domain.validation_errors);
   const errorTone =
-    domain.status === "failed"
-      ? "text-[var(--color-err)]"
-      : "text-[var(--color-warn)]";
+    domain.status === "failed" ? "text-[var(--color-err)]" : "text-[var(--color-warn)]";
 
   return (
     <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] p-3 sm:p-4">
@@ -1242,4 +1486,3 @@ function logFullTime(iso: string): string {
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleString();
 }
-

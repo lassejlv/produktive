@@ -157,6 +157,12 @@ pub struct DeployServiceView {
     pub disabled_at: Option<DateTime<FixedOffset>>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
+    /// When the most recent deployment was created; null if the service has
+    /// never been deployed. Distinct from `updated_at`, which is bumped by
+    /// canvas drags and resource edits and is therefore not a deploy signal.
+    pub last_deploy_at: Option<DateTime<FixedOffset>>,
+    /// Image digest of the most recent deployment, when known.
+    pub last_deploy_image_digest: Option<String>,
 }
 
 #[derive(Serialize, FromQueryResult, ToSchema, Clone)]
@@ -1749,10 +1755,10 @@ async fn service_rows(
     let rows = DeployServiceView::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
-        SELECT id, workspace_id, registry_credential_id, provider, provider_service_id,
-               provider_metadata, slug, name, image, registry_kind, internal_port, env,
-               environment, health_check_path, region, resource_preset, url,
-               CASE status
+        SELECT s.id, s.workspace_id, s.registry_credential_id, s.provider, s.provider_service_id,
+               s.provider_metadata, s.slug, s.name, s.image, s.registry_kind, s.internal_port, s.env,
+               s.environment, s.health_check_path, s.region, s.resource_preset, s.url,
+               CASE s.status
                     WHEN 0 THEN 'queued'
                     WHEN 1 THEN 'provisioning'
                     WHEN 2 THEN 'pulling'
@@ -1765,13 +1771,22 @@ async fn service_rows(
                     WHEN 9 THEN 'stopped'
                     ELSE 'unknown'
                END AS status,
-               canvas_x, canvas_y,
-               disabled_at, created_at, updated_at
-        FROM deploy_services
-        WHERE workspace_id = $1
-          AND deleted_at IS NULL
-          AND ($2 IS NULL OR id = $2)
-        ORDER BY created_at DESC
+               s.canvas_x, s.canvas_y,
+               s.disabled_at, s.created_at, s.updated_at,
+               ld.created_at AS last_deploy_at,
+               ld.image_digest AS last_deploy_image_digest
+        FROM deploy_services s
+        LEFT JOIN LATERAL (
+            SELECT d.created_at, d.image_digest
+            FROM deployments d
+            WHERE d.workspace_id = s.workspace_id AND d.service_id = s.id
+            ORDER BY d.created_at DESC
+            LIMIT 1
+        ) ld ON true
+        WHERE s.workspace_id = $1
+          AND s.deleted_at IS NULL
+          AND ($2 IS NULL OR s.id = $2)
+        ORDER BY s.created_at DESC
         "#,
         [workspace_id.into(), service_id.into()],
     ))

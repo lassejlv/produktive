@@ -88,3 +88,15 @@ export function lastSeen(iso: string | null): string {
   if (h < 24) return `${h}h ago`;
   return `${Math.round(h / 24)}d ago`;
 }
+
+/**
+ * Short, display-friendly image digest. Pulls the leading 12 chars of a
+ * `sha256:…` digest (the same width `docker` shows); returns null when there's
+ * nothing to abbreviate.
+ */
+export function shortDigest(digest: string | null): string | null {
+  if (!digest) return null;
+  const stripped = digest.startsWith("sha256:") ? digest.slice(7) : digest;
+  if (!stripped) return null;
+  return stripped.slice(0, 12);
+}

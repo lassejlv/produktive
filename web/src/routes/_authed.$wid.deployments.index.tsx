@@ -21,6 +21,7 @@ import {
   type DeployServiceFilter,
   type DeployView,
   type DeploymentsSearch,
+  DEFAULT_DEPLOY_DETAIL_TAB,
   deployServiceFilterBucket,
   deploymentsSearchWithoutService,
   matchesDeploySearch,
@@ -105,7 +106,7 @@ function Canvas() {
 
   const filter = search.status ?? "all";
   const query = search.q ?? "";
-  const selectedTab = search.tab ?? "deployments";
+  const selectedTab = search.tab ?? DEFAULT_DEPLOY_DETAIL_TAB;
   const view: DeployView = search.view ?? "list";
 
   const selectedService = useMemo(
@@ -141,7 +142,7 @@ function Canvas() {
         params: { wid },
         search: (prev) => ({
           ...prev,
-          tab: tab === "deployments" ? undefined : tab,
+          tab: tab === DEFAULT_DEPLOY_DETAIL_TAB ? undefined : tab,
         }),
         replace: true,
       });
@@ -420,8 +421,7 @@ function DeployServiceList({ services }: { services: DeployService[] }) {
           <div className="hidden shrink-0 md:flex md:gap-1.5">
             <span className="w-[42px] text-left">Region</span>
           </div>
-          <span className="hidden w-[88px] shrink-0 text-right lg:block">Compute</span>
-          <span className="hidden w-[110px] shrink-0 text-right sm:block">Updated</span>
+          <span className="hidden w-[110px] shrink-0 text-right sm:block">Last deploy</span>
         </div>
         <div className="space-y-1.5">
           {services.map((service, index) => (
