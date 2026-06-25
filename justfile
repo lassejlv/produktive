@@ -52,11 +52,6 @@ web-typecheck:
 web-gen-api:
     cd web && bun run gen:api
 
-# --- Caddy custom-domain proxy ---
-
-caddy-config:
-    cd deploy/caddy && docker compose config
-
 # --- combined ---
 
 # Run api (:3000) and web (:5173) together. Ctrl-C kills both.

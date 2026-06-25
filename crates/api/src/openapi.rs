@@ -222,7 +222,7 @@ use crate::state::AppState;
         (name = "members",    description = "Workspace membership"),
         (name = "incidents",  description = "Private incident history"),
         (name = "notifications", description = "Notification history and channels"),
-        (name = "custom domains", description = "Caddy-backed custom status domains"),
+        (name = "custom domains", description = "Cloudflare-backed custom status domains"),
         (name = "deployments", description = "Private-preview Docker deployments"),
         (name = "billing", description = "Polar billing proxy"),
         (name = "pricing", description = "Public pricing metadata"),

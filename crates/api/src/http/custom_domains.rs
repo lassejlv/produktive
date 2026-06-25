@@ -147,7 +147,7 @@ pub async fn create(
         .ok_or_else(|| ApiError::bad_request("hostname must be a valid domain"))?;
     if hostname == state.config.custom_domain_cname_target {
         return Err(ApiError::bad_request(
-            "custom domain cannot be the Caddy proxy target",
+            "custom domain cannot be the proxy CNAME target",
         ));
     }
 

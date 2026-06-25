@@ -35,7 +35,7 @@ Tests (Rust tests live next to the code they cover):
 - `crates/dsl` — the monitor DSL: `lex` → `parse` (→ `ast`) → `validate` → `project` (params/headers) / `eval` (rules). `print` re-serializes; `diagnostic` carries errors. No dependency on the API — a pure pipeline.
 - `crates/polar` — standalone typed client for the [Polar](https://polar.sh) billing API (customers, customer state, event ingestion, checkouts, customer sessions, subscriptions, catalog).
 - `web/src` — Vite + React 19 + TanStack Router (file-based) + TanStack Query + Tailwind v4.
-- `deploy/caddy` — Caddy reverse proxy for custom status-page domains (`just caddy-config` validates).
+- `deploy/cloudflare-worker` — Cloudflare Worker (Workers-as-origin) fronting custom status-page domains via Cloudflare for SaaS; rewrites `Host` to the app origin and passes the real hostname in `X-Forwarded-Host`.
 
 ## Backend architecture
 
