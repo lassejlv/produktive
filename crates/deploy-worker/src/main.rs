@@ -1110,6 +1110,7 @@ async fn sync_provider_volumes(
                 size_gb = $8,
                 status = 'created',
                 provider_metadata = $9,
+                provisioned_at = COALESCE(provisioned_at, now()),
                 updated_at = now()
             WHERE workspace_id = $1
               AND service_id = $2

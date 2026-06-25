@@ -86,19 +86,25 @@ pub fn windowed_hours(
 }
 
 /// Volume GB-hours occupied during `[window_start, window_end)`, clipped to the
-/// window. `created_at` opens; `deleted_at` (or `window_end` if still alive)
-/// closes.
+/// window. `provisioned_at` opens the interval — the moment the volume was
+/// actually allocated on the provider, not row-insert time — so a queued or
+/// never-provisioned volume (`provisioned_at` None) bills nothing, mirroring how
+/// [`windowed_hours`] gates on a deployment's `started_at`. `deleted_at` (or
+/// `window_end` if still alive) closes.
 pub fn windowed_volume_hours(
-    created_at: DateTime<Utc>,
+    provisioned_at: Option<DateTime<Utc>>,
     deleted_at: Option<DateTime<Utc>>,
     window_start: DateTime<Utc>,
     window_end: DateTime<Utc>,
 ) -> f64 {
+    let Some(start) = provisioned_at else {
+        return 0.0; // queued / never provisioned on the provider
+    };
     let end = deleted_at.unwrap_or(window_end);
-    if end <= created_at {
+    if end <= start {
         return 0.0;
     }
-    let clipped_start = created_at.max(window_start);
+    let clipped_start = start.max(window_start);
     let clipped_end = end.min(window_end);
     if clipped_end <= clipped_start {
         return 0.0;
@@ -175,15 +181,16 @@ pub async fn compute_volume_gb_hours(
         DatabaseBackend::Postgres,
         r#"
         SELECT
-            v.size_gb    AS size_gb,
-            v.created_at AS created_at,
-            v.deleted_at AS deleted_at
+            v.size_gb        AS size_gb,
+            v.provisioned_at AS provisioned_at,
+            v.deleted_at     AS deleted_at
         FROM deploy_service_volumes v
         JOIN deploy_services s ON s.id = v.service_id
         JOIN workspaces owned ON owned.id = s.workspace_id
         JOIN workspaces billing_ws ON billing_ws.owner_id = owned.owner_id
         WHERE billing_ws.id = $1
-          AND v.created_at < $3
+          AND v.provisioned_at IS NOT NULL
+          AND v.provisioned_at < $3
           AND COALESCE(v.deleted_at, $3) > $2
         "#,
         [
@@ -198,7 +205,7 @@ pub async fn compute_volume_gb_hours(
     let mut total = 0.0;
     for row in rows {
         let hours = windowed_volume_hours(
-            row.created_at.with_timezone(&Utc),
+            row.provisioned_at.map(|d| d.with_timezone(&Utc)),
             row.deleted_at.map(|d| d.with_timezone(&Utc)),
             window_start,
             window_end,
@@ -248,7 +255,7 @@ struct DeploymentUsageRow {
 #[derive(FromQueryResult)]
 struct VolumeUsageRow {
     size_gb: i32,
-    created_at: chrono::DateTime<chrono::FixedOffset>,
+    provisioned_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     deleted_at: Option<chrono::DateTime<chrono::FixedOffset>>,
 }
 
@@ -331,7 +338,7 @@ mod tests {
     fn windowed_volume_hours_full_window() {
         let start = ts(0);
         let end = ts(3600);
-        let h = windowed_volume_hours(ts(0), None, start, end);
+        let h = windowed_volume_hours(Some(ts(0)), None, start, end);
         assert!((h - 1.0).abs() < 1e-9);
     }
 
@@ -339,23 +346,32 @@ mod tests {
     fn windowed_volume_hours_deleted_mid_window() {
         let start = ts(0);
         let end = ts(3600);
-        let h = windowed_volume_hours(ts(0), Some(ts(1800)), start, end);
+        let h = windowed_volume_hours(Some(ts(0)), Some(ts(1800)), start, end);
         assert!((h - 0.5).abs() < 1e-9);
     }
 
     #[test]
-    fn windowed_volume_hours_created_mid_window() {
+    fn windowed_volume_hours_provisioned_mid_window() {
         let start = ts(0);
         let end = ts(3600);
-        let h = windowed_volume_hours(ts(1800), None, start, end);
+        let h = windowed_volume_hours(Some(ts(1800)), None, start, end);
         assert!((h - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn windowed_volume_hours_queued_not_provisioned_is_zero() {
+        let start = ts(0);
+        let end = ts(3600);
+        // No provisioned_at — the volume row exists but Fly hasn't allocated it
+        // yet (status 'queued'). Nothing billable.
+        assert_eq!(windowed_volume_hours(None, None, start, end), 0.0);
     }
 
     #[test]
     fn windowed_volume_hours_deleted_before_window_excluded() {
         let start = ts(3600);
         let end = ts(7200);
-        let h = windowed_volume_hours(ts(0), Some(ts(1800)), start, end);
+        let h = windowed_volume_hours(Some(ts(0)), Some(ts(1800)), start, end);
         assert_eq!(h, 0.0);
     }
 
