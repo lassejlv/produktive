@@ -11,6 +11,7 @@ import type {
   DeployAccessStatus,
   DeployRegistryCredential,
   DeployRegistryKind,
+  DeployRegion,
   DeployResourcePreset,
 } from "../lib/types";
 import { fieldControlClass, parseKeyValues, RESOURCE_PRESETS } from "../components/deployments/deploy-shared";
@@ -175,12 +176,14 @@ export function CreateCredentialDialog({
 export function CreateServiceDialog({
   open,
   credentials,
+  regions,
   pending,
   onOpenChange,
   onSubmit,
 }: {
   open: boolean;
   credentials: DeployRegistryCredential[];
+  regions: DeployRegion[];
   pending: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (body: {
@@ -204,7 +207,7 @@ export function CreateServiceDialog({
   const [credentialId, setCredentialId] = useState("");
   const [port, setPort] = useState(3000);
   const [environment, setEnvironment] = useState("production");
-  const [region, setRegion] = useState("fra");
+  const [region, setRegion] = useState(regions[0]?.code ?? "ams");
   const [health, setHealth] = useState("/");
   const [resourcePreset, setResourcePreset] = useState<DeployResourcePreset>("preview_small");
   const [envText, setEnvText] = useState("");
@@ -213,6 +216,12 @@ export function CreateServiceDialog({
   useEffect(() => {
     if (!open) setStep(1);
   }, [open]);
+
+  useEffect(() => {
+    if (!regions.some((entry) => entry.code === region)) {
+      setRegion(regions[0]?.code ?? "ams");
+    }
+  }, [region, regions]);
 
   const basicsValid = name.trim().length > 0 && image.trim().length > 0 && port >= 1 && port <= 65535;
 
@@ -360,12 +369,18 @@ export function CreateServiceDialog({
           ) : (
             <>
               <Field label="Region">
-                <input
+                <select
                   className={cn(fieldControlClass, "h-9")}
                   value={region}
                   onChange={(e) => setRegion(e.target.value)}
                   required
-                />
+                >
+                  {regions.map((entry) => (
+                    <option key={entry.code} value={entry.code}>
+                      {entry.flag} {entry.name}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field label="Environment">
                 <input

@@ -322,6 +322,12 @@ export interface DeployRegistryCredential {
   updated_at: Iso;
 }
 
+export interface DeployRegion {
+  code: string;
+  name: string;
+  flag: string;
+}
+
 export interface DeployService {
   id: Uuid;
   workspace_id: Uuid;

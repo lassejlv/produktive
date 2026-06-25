@@ -2,33 +2,26 @@ import {
   Activity,
   ExternalLink,
   Globe,
-  MapPin,
   Rocket,
   ScrollText,
   Settings,
   Terminal,
 } from "lucide-react";
+import { useParams } from "@tanstack/react-router";
 import { resourcePresetLabel } from "#/components/DeployServiceCard";
 import { Segmented } from "#/components/Segmented";
 import { cn } from "#/lib/cn";
 import type { DeployDetailTab } from "#/lib/deployments";
-import {
-  DEPLOY_GLOW_CLASS,
-  DEPLOY_STATUS_COLOR,
-  deployStatusActive,
-} from "#/lib/status";
+import { formatDeployRegion } from "#/lib/deploy-regions";
+import { useDeployRegions } from "#/lib/queries";
+import { DEPLOY_STATUS_COLOR, DEPLOY_STATUS_LABEL, deployStatusActive } from "#/lib/status";
 import {
   useCreateDeployment,
   useRollbackDeployment,
   useStopDeployService,
 } from "#/lib/queries";
 import type { DeployService } from "#/lib/types";
-import {
-  DetailStat,
-  ServiceActionButtons,
-  StatusBadge,
-  resourcePresetDetail,
-} from "./deploy-shared";
+import { ServiceActionButtons } from "./deploy-shared";
 import {
   DeploymentsPanel,
   DomainsPanel,
@@ -51,93 +44,93 @@ export function DeployServiceDetail({
   onTabChange: (tab: DeployDetailTab) => void;
   onDeleted?: () => void;
 }) {
+  const { wid: routeWid } = useParams({ from: "/_authed/$wid" });
+  const { data: regions } = useDeployRegions(routeWid);
   const createDeployment = useCreateDeployment(wid);
   const rollback = useRollbackDeployment(wid);
   const stop = useStopDeployService(wid);
   const color = DEPLOY_STATUS_COLOR[service.status];
   const active = deployStatusActive(service.status);
-  const glow = DEPLOY_GLOW_CLASS[service.status];
 
   return (
-    <div
-      className={cn(
-        "flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]",
-        glow,
-      )}
-    >
-      <div className="shrink-0 border-b border-[var(--color-border)] px-4 py-4 sm:px-5 sm:py-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-elev)]">
+      <div className="shrink-0 border-b border-[var(--color-border)] px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex min-w-0 items-center gap-2">
               <span
                 className={cn(
-                  "inline-block h-2.5 w-2.5 rounded-full",
+                  "inline-block h-2 w-2 shrink-0 rounded-full",
                   active && "pulse-dot",
                 )}
                 style={{
                   background: color,
                   boxShadow: active
-                    ? `0 0 12px color-mix(in srgb, ${color} 60%, transparent)`
+                    ? `0 0 8px color-mix(in srgb, ${color} 50%, transparent)`
                     : undefined,
                 }}
               />
-              <h2 className="truncate text-[18px] font-medium tracking-tight text-[var(--color-fg)] sm:text-[20px]">
+              <h2 className="truncate text-[15px] font-medium tracking-tight text-[var(--color-fg)]">
                 {service.name}
               </h2>
-              <StatusBadge status={service.status} />
+              <span
+                className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.06em]"
+                style={{ color }}
+              >
+                {DEPLOY_STATUS_LABEL[service.status]}
+              </span>
             </div>
-            <div className="mono mt-2 truncate text-[12px] text-[var(--color-fg-muted)]">
+            <p className="mono mt-1 truncate text-[11px] text-[var(--color-fg-muted)]">
               {service.image}
-            </div>
+            </p>
+            <p className="mt-1.5 text-[11px] text-[var(--color-fg-dim)]">
+              {formatDeployRegion(service.region, regions)}
+              <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>
+              {service.environment}
+              <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>
+              :{service.internal_port}
+              <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>
+              {resourcePresetLabel(service.resource_preset)}
+            </p>
+            {service.url && (
+              <a
+                href={service.url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1.5 inline-flex max-w-full items-center gap-1 text-[11px] text-[var(--color-link)] no-underline hover:underline"
+              >
+                <Globe size={11} className="shrink-0" />
+                <span className="truncate">{service.url.replace(/^https?:\/\//, "")}</span>
+                <ExternalLink size={10} className="shrink-0 opacity-60" />
+              </a>
+            )}
           </div>
 
-          <div className="hidden flex-wrap items-center gap-2 sm:flex">
+          <div className="hidden shrink-0 sm:block">
             <ServiceActionButtons
               service={service}
               createDeployment={createDeployment}
               rollback={rollback}
               stop={stop}
+              compact
             />
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-          <DetailStat label="Region" value={service.region} icon={MapPin} />
-          <DetailStat label="Environment" value={service.environment} />
-          <DetailStat label="Port" value={`:${service.internal_port}`} mono />
-          <DetailStat
-            label="Compute"
-            value={resourcePresetLabel(service.resource_preset)}
-            sub={resourcePresetDetail(service.resource_preset)}
-          />
-        </div>
-
-        {service.url && (
-          <a
-            href={service.url}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-3 inline-flex max-w-full items-center gap-1.5 text-[12px] text-[var(--color-link)] no-underline hover:underline"
-          >
-            <Globe size={12} className="shrink-0" />
-            <span className="truncate">{service.url.replace(/^https?:\/\//, "")}</span>
-            <ExternalLink size={11} className="shrink-0 opacity-60" />
-          </a>
-        )}
-
-        <div className="mt-4 sm:hidden">
+        <div className="mt-3 sm:hidden">
           <ServiceActionButtons
             service={service}
             createDeployment={createDeployment}
             rollback={rollback}
             stop={stop}
+            compact
             fullWidth
           />
         </div>
       </div>
 
-      <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-bg-elev)] px-4 py-2.5 sm:px-5">
-        <div className="deploy-tab-rail -mx-1 min-w-0 flex-1 overflow-x-auto px-1">
+      <div className="sticky top-0 z-10 shrink-0 border-b border-[var(--color-border)] bg-[var(--color-bg-elev)] px-3 py-2">
+        <div className="deploy-tab-rail -mx-0.5 min-w-0 overflow-x-auto px-0.5">
           <Segmented
             value={tab}
             onChange={onTabChange}
@@ -152,12 +145,9 @@ export function DeployServiceDetail({
             ]}
           />
         </div>
-        <span className="mono hidden shrink-0 text-[10px] text-[var(--color-fg-dim)] sm:inline">
-          {service.provider_service_id ?? service.slug}
-        </span>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {tab === "deployments" && <DeploymentsPanel wid={wid} service={service} />}
         {tab === "events" && <EventsPanel wid={wid} service={service} />}
         {tab === "logs" && <LogsPanel wid={wid} service={service} />}

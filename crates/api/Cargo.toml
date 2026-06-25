@@ -13,6 +13,7 @@ migration = { package = "unstatus-migration", path = "../migration" }
 produktive-dsl = { path = "../dsl" }
 produktive-probe = { path = "../probe" }
 produktive-deploy = { path = "../deploy" }
+fly = { path = "../fly" }
 polar = { path = "../polar" }
 produktive-cloudflare = { path = "../cloudflare" }
 email = { path = "../email" }

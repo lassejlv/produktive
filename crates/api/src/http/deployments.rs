@@ -10,9 +10,11 @@ use axum::{
 use chrono::{DateTime, FixedOffset, Utc};
 use deploy::{
     validate_env_name, validate_health_path, validate_image_for_registry, validate_internal_port,
-    validate_region, validate_volume_mount_path, validate_volume_name, validate_volume_size_gb,
-    DeploymentStatus, RegistryKind, ResourcePreset, SecretCipher,
+    validate_allowed_region, validate_volume_mount_path, validate_volume_name, validate_volume_size_gb,
+    catalog_from_fly, static_allowed_regions, DeployRegion, DeploymentStatus, RegistryKind,
+    ResourcePreset, SecretCipher, DEFAULT_DEPLOY_REGION,
 };
+use fly::fetch_platform_regions;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -76,6 +78,7 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .route("/services/{service_id}/events", get(list_events))
         .route("/services/{service_id}/logs", get(list_logs))
         .route("/services/{service_id}/metrics", get(list_metrics))
+        .route("/regions", get(list_regions))
         .route_layer(from_fn_with_state(state, deploy_access_guard));
 
     Router::new()
@@ -366,6 +369,34 @@ pub async fn get_access(
 }
 
 #[utoipa::path(
+    get,
+    path = "/api/workspaces/{wid}/deployments/regions",
+    responses((status = 200, body = [DeployRegion])),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn list_regions(State(state): State<AppState>) -> ApiResult<Json<Vec<DeployRegion>>> {
+    ensure_deployments_enabled(&state)?;
+    Ok(Json(load_deploy_regions(&state).await))
+}
+
+async fn load_deploy_regions(state: &AppState) -> Vec<DeployRegion> {
+    match fetch_platform_regions(
+        &state.http,
+        &state.config.fly_api_hostname,
+        state.config.fly_api_token.as_deref(),
+    )
+    .await
+    {
+        Ok(fly_regions) => catalog_from_fly(&fly_regions),
+        Err(error) => {
+            tracing::warn!(error = %error, "falling back to static deploy regions catalog");
+            static_allowed_regions()
+        }
+    }
+}
+
+#[utoipa::path(
     post,
     path = "/api/workspaces/{wid}/deployments/access/request",
     responses((status = 200, body = DeployAccessView)),
@@ -535,10 +566,10 @@ pub async fn create_service(
     validate_health_path(&health_check_path).map_err(deploy_error)?;
     let region = body
         .region
-        .unwrap_or_else(|| "fra".into())
+        .unwrap_or_else(|| DEFAULT_DEPLOY_REGION.into())
         .trim()
         .to_lowercase();
-    validate_region(&region).map_err(deploy_error)?;
+    validate_allowed_region(&region).map_err(deploy_error)?;
     let resource_preset = body
         .resource_preset
         .as_deref()

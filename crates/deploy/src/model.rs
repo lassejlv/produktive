@@ -235,7 +235,7 @@ pub fn validate_service_spec(spec: &ServiceSpec) -> DeployResult<()> {
     validate_internal_port(spec.internal_port)?;
     validate_image_for_registry(spec.registry, &spec.image)?;
     validate_health_path(&spec.health_check_path)?;
-    validate_region(&spec.region)?;
+    crate::regions::validate_allowed_region(&spec.region)?;
     if spec.slug.trim().is_empty() {
         return Err(DeployError::Validation("service slug is required".into()));
     }

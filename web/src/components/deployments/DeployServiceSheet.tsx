@@ -29,7 +29,7 @@ export function DeployServiceSheet({
     >
       <SheetPopup
         side="right"
-        className="flex h-full max-h-full min-h-0 w-full max-w-2xl flex-col border-[var(--color-border)] bg-[var(--color-bg-elev)] p-0 shadow-[var(--shadow-pop)] sm:max-w-2xl"
+        className="flex h-full max-h-full min-h-0 w-full max-w-2xl flex-col border-0 border-s border-[var(--color-border)] bg-[var(--color-bg-elev)] p-0 shadow-none sm:max-w-2xl"
       >
         <DeployServiceDetail
           wid={wid}

@@ -74,6 +74,11 @@ impl Fly {
         format!("https://{app_name}.fly.dev")
     }
 
+    pub async fn list_platform_regions(&self) -> DeployResult<Vec<deploy::FlyPlatformRegion>> {
+        fetch_platform_regions(&self.inner.http, self.inner.base_url.as_str(), Some(&self.inner.api_token))
+            .await
+    }
+
     pub async fn ensure_public_ips(&self, app_name: &str) -> DeployResult<Vec<AllocatedIpAddress>> {
         let mut allocated = Vec::new();
         for kind in ["v6", "shared_v4"] {
@@ -490,6 +495,58 @@ impl Fly {
         }
         serde_json::from_str(&text).map_err(|error| DeployError::Decode(error.to_string()))
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct PlatformRegionsResponse {
+    #[serde(default, rename = "Regions")]
+    regions: Vec<PlatformRegionRow>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PlatformRegionRow {
+    code: String,
+    name: String,
+}
+
+/// Lists Fly platform regions. Uses bearer auth when a token is provided.
+pub async fn fetch_platform_regions(
+    http: &reqwest::Client,
+    base_url: &str,
+    api_token: Option<&str>,
+) -> DeployResult<Vec<deploy::FlyPlatformRegion>> {
+    let url = format!(
+        "{}/v1/platform/regions",
+        base_url.trim_end_matches('/')
+    );
+    let mut request = http.get(url);
+    if let Some(token) = api_token.filter(|value| !value.trim().is_empty()) {
+        request = request.bearer_auth(token);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|error| DeployError::Transport(error.to_string()))?;
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|error| DeployError::Transport(error.to_string()))?;
+    if !status.is_success() {
+        return Err(DeployError::Provider(format!(
+            "Fly platform regions API {status}: {text}"
+        )));
+    }
+    let payload: PlatformRegionsResponse = serde_json::from_str(&text)
+        .map_err(|error| DeployError::Decode(format!("Fly platform regions: {error}")))?;
+    Ok(payload
+        .regions
+        .into_iter()
+        .map(|region| deploy::FlyPlatformRegion {
+            code: region.code,
+            name: region.name,
+        })
+        .collect())
 }
 
 #[derive(Debug, Clone, Deserialize)]

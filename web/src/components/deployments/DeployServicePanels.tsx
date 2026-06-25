@@ -490,40 +490,37 @@ export function SettingsPanel({ wid, service, onDeleted }: { wid: string; servic
   }
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(220px,280px)] md:items-end">
-        <div>
-          <h2 className="text-[13px] font-medium text-[var(--color-fg)]">Compute</h2>
-          <p className="mt-1 text-[12px] leading-5 text-[var(--color-fg-muted)]">
-            Applied when the next deployment creates a machine.
-          </p>
-        </div>
-        <select
-          className={cn(fieldControlClass, "h-9")}
-          value={normalizeResourcePreset(service.resource_preset)}
-          disabled={updateService.isPending}
-          onChange={(event) =>
-            updateService.mutate(
-              {
-                serviceId: service.id,
-                resource_preset: event.target.value as DeployResourcePreset,
-              },
-              {
-                onSuccess: () => toast.success("Compute size updated"),
-                onError: (err) => toast.error((err as Error).message),
-              },
-            )
-          }
-        >
-          {RESOURCE_PRESETS.map((preset) => (
-            <option key={preset.value} value={preset.value}>
-              {preset.label} · {preset.detail}
-            </option>
-          ))}
-        </select>
+    <div className="space-y-5">
+      <section>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[12px] font-medium text-[var(--color-fg-muted)]">Compute</span>
+          <select
+            className={cn(fieldControlClass, "h-9")}
+            value={normalizeResourcePreset(service.resource_preset)}
+            disabled={updateService.isPending}
+            onChange={(event) =>
+              updateService.mutate(
+                {
+                  serviceId: service.id,
+                  resource_preset: event.target.value as DeployResourcePreset,
+                },
+                {
+                  onSuccess: () => toast.success("Compute size updated"),
+                  onError: (err) => toast.error((err as Error).message),
+                },
+              )
+            }
+          >
+            {RESOURCE_PRESETS.map((preset) => (
+              <option key={preset.value} value={preset.value}>
+                {preset.label} · {preset.detail}
+              </option>
+            ))}
+          </select>
+        </label>
       </section>
 
-      <section className="border-t border-[var(--color-border)] pt-5">
+      <section className="border-t border-[var(--color-border)] pt-4">
         <div className="mb-3 flex items-center gap-2">
           <HardDrive size={14} className="text-[var(--color-fg-muted)]" />
           <h2 className="text-[13px] font-medium text-[var(--color-fg)]">Volumes</h2>
@@ -607,14 +604,9 @@ export function SettingsPanel({ wid, service, onDeleted }: { wid: string; servic
         </div>
       </section>
 
-      <section className="border-t border-[var(--color-border)] pt-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-[13px] font-medium text-[var(--color-fg)]">Delete service</h2>
-            <p className="mt-1 text-[12px] leading-5 text-[var(--color-fg-muted)]">
-              Hides the service and queues Fly resource cleanup.
-            </p>
-          </div>
+      <section className="border-t border-[var(--color-border)] pt-4">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[12px] text-[var(--color-fg-muted)]">Delete this service</p>
           <Button
             type="button"
             variant="ghost"

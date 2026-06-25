@@ -69,6 +69,10 @@ pub struct Config {
     pub deploy_secrets_key: Option<String>,
     pub deploy_max_services_per_workspace: i64,
     pub deploy_max_active_deployments_per_workspace: i64,
+    /// Optional Fly API token used to fetch platform region metadata.
+    pub fly_api_token: Option<String>,
+    /// Fly Machines API base URL (defaults to https://api.machines.dev).
+    pub fly_api_hostname: String,
 }
 
 impl Config {
@@ -288,6 +292,15 @@ impl Config {
                 "DEPLOY_MAX_ACTIVE_DEPLOYMENTS_PER_WORKSPACE must be at least 1"
             ));
         }
+        let fly_api_token = std::env::var("FLY_API_TOKEN")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let fly_api_hostname = std::env::var("FLY_API_HOSTNAME")
+            .unwrap_or_else(|_| "https://api.machines.dev".into())
+            .trim()
+            .trim_end_matches('/')
+            .to_owned();
         Ok(Self {
             database_url,
             database_pooled_url,
@@ -333,6 +346,8 @@ impl Config {
             deploy_secrets_key,
             deploy_max_services_per_workspace,
             deploy_max_active_deployments_per_workspace,
+            fly_api_token,
+            fly_api_hostname,
         })
     }
 

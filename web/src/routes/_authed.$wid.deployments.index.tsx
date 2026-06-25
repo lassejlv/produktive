@@ -9,6 +9,7 @@ import {
   useNodesState,
   type Node,
   type NodeChange,
+  type NodeMouseHandler,
   type NodeProps,
 } from "@xyflow/react";
 import { KeyRound, Plus, Rocket, Search, X } from "lucide-react";
@@ -46,6 +47,7 @@ import {
   useCreateDeployService,
   useDeployAccess,
   useDeployCredentials,
+  useDeployRegions,
   useDeployServices,
   useUpdateDeployService,
 } from "../lib/queries";
@@ -83,7 +85,7 @@ function DeploymentsCanvas() {
   );
 }
 
-type ServiceNodeData = { service: DeployService; onOpen?: () => void };
+type ServiceNodeData = { service: DeployService };
 type SNode = Node<ServiceNodeData>;
 
 function Canvas() {
@@ -94,6 +96,8 @@ function Canvas() {
   const approved = access.data?.status === "approved";
   const { data: services = [], isLoading } = useDeployServices(wid, approved);
   const credentials = useDeployCredentials(wid, approved);
+  const deployRegions = useDeployRegions(wid, approved);
+  const regions = deployRegions.data ?? [];
   const update = useUpdateDeployService(wid);
   const createService = useCreateDeployService(wid);
   const createCredential = useCreateDeployCredential(wid);
@@ -114,22 +118,28 @@ function Canvas() {
   const openService = useCallback(
     (serviceId: string, tab?: DeployDetailTab) => {
       void navigate({
+        to: "/$wid/deployments",
+        params: { wid },
         search: (prev) => openServiceSearch(prev, serviceId, tab),
       });
     },
-    [navigate],
+    [navigate, wid],
   );
 
   const closeService = useCallback(() => {
     void navigate({
+      to: "/$wid/deployments",
+      params: { wid },
       search: (prev) => deploymentsSearchWithoutService(prev),
       replace: true,
     });
-  }, [navigate]);
+  }, [navigate, wid]);
 
   const setTab = useCallback(
     (tab: DeployDetailTab) => {
       void navigate({
+        to: "/$wid/deployments",
+        params: { wid },
         search: (prev) => ({
           ...prev,
           tab: tab === "deployments" ? undefined : tab,
@@ -137,7 +147,15 @@ function Canvas() {
         replace: true,
       });
     },
-    [navigate],
+    [navigate, wid],
+  );
+
+  const onNodeClick = useCallback<NodeMouseHandler>(
+    (_event, node) => {
+      if (draggingRef.current) return;
+      openService(node.id);
+    },
+    [openService],
   );
 
   const shown = useMemo(() => {
@@ -167,18 +185,12 @@ function Canvas() {
           id: service.id,
           type: "service",
           position,
-          data: {
-            service,
-            onOpen: () => {
-              if (draggingRef.current) return;
-              openService(service.id);
-            },
-          },
+          data: { service },
           draggable: true,
         } satisfies SNode;
       });
     });
-  }, [shown, setNodes, openService]);
+  }, [shown, setNodes]);
 
   useEffect(() => {
     const timers = saveTimers.current;
@@ -190,6 +202,8 @@ function Canvas() {
 
   const setSearch = (patch: Partial<DeploymentsSearch>) => {
     void navigate({
+      to: "/$wid/deployments",
+      params: { wid },
       search: (prev) => ({
         ...prev,
         q: "q" in patch ? patch.q : prev.q,
@@ -210,8 +224,9 @@ function Canvas() {
       for (const change of changes) {
         if (change.type === "position") {
           if (change.dragging) draggingRef.current = true;
-          if (change.dragging === false && change.position) {
+          if (change.dragging === false) {
             draggingRef.current = false;
+            if (!change.position) continue;
             const id = change.id;
             const x = Math.round(change.position.x);
             const y = Math.round(change.position.y);
@@ -270,6 +285,7 @@ function Canvas() {
         <CreateServiceDialog
           open={serviceOpen}
           credentials={credentials.data ?? []}
+          regions={regions}
           pending={createService.isPending}
           onOpenChange={(open) => {
             if (!open && createService.isPending) return;
@@ -312,6 +328,7 @@ function Canvas() {
           nodes={nodes}
           nodeTypes={NODE_TYPES}
           onNodesChange={onNodesChange}
+          onNodeClick={onNodeClick}
           snapToGrid
           snapGrid={[24, 24]}
           minZoom={0.4}
@@ -354,6 +371,7 @@ function Canvas() {
       <CreateServiceDialog
         open={serviceOpen}
         credentials={credentials.data ?? []}
+        regions={regions}
         pending={createService.isPending}
         onOpenChange={(open) => {
           if (!open && createService.isPending) return;
@@ -521,8 +539,8 @@ function CanvasToolbar({
 }
 
 const ServiceNode = memo(function ServiceNode(props: NodeProps) {
-  const { service, onOpen } = props.data as ServiceNodeData;
-  return <DeployServiceCard service={service} canvas onOpen={onOpen} />;
+  const service = (props.data as ServiceNodeData).service;
+  return <DeployServiceCard service={service} canvas />;
 });
 
 const NODE_TYPES = { service: ServiceNode };

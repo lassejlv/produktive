@@ -29,6 +29,7 @@ import type {
   DeployLogLine,
   DeployMetricPoint,
   DeployRegistryCredential,
+  DeployRegion,
   DeployRegistryKind,
   DeployResourcePreset,
   DeployService,
@@ -505,6 +506,16 @@ export const deployServicesQuery = (wid: string) => ({
 
 export function useDeployServices(wid: string, enabled = true) {
   return useQuery({ ...deployServicesQuery(wid), enabled });
+}
+
+export const deployRegionsQuery = (wid: string) => ({
+  queryKey: ["deployments", wid, "regions"] as const,
+  queryFn: () => api.get<DeployRegion[]>(`/workspaces/${wid}/deployments/regions`),
+  staleTime: 5 * 60_000,
+});
+
+export function useDeployRegions(wid: string, enabled = true) {
+  return useQuery({ ...deployRegionsQuery(wid), enabled });
 }
 
 export const deployCredentialsQuery = (wid: string) => ({

@@ -2,6 +2,8 @@ import { Link, useParams } from "@tanstack/react-router";
 import { MapPin } from "lucide-react";
 import { memo, type ReactNode } from "react";
 import { cn } from "#/lib/cn";
+import { formatDeployRegion } from "#/lib/deploy-regions";
+import { useDeployRegions } from "#/lib/queries";
 import {
   DEPLOY_GLOW_CLASS,
   DEPLOY_STATUS_COLOR,
@@ -78,16 +80,14 @@ interface Props {
   service: DeployService;
   /** Rendered as a draggable node on the canvas (fixed width, propagation guards). */
   canvas?: boolean;
-  /** Opens the service detail sheet on the canvas. */
-  onOpen?: () => void;
 }
 
 export const DeployServiceCard = memo(function DeployServiceCard({
   service,
   canvas,
-  onOpen,
 }: Props) {
   const { wid } = useParams({ from: "/_authed/$wid" });
+  const { data: regions } = useDeployRegions(wid);
   const color = DEPLOY_STATUS_COLOR[service.status];
   const active = deployStatusActive(service.status);
   const pending = deployStatusPending(service.status);
@@ -111,17 +111,9 @@ export const DeployServiceCard = memo(function DeployServiceCard({
             }}
           />
           {canvas ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpen?.();
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-              className="truncate text-left text-[13px] font-medium tracking-tight text-[var(--color-fg)] no-underline hover:text-[var(--color-link)]"
-            >
+            <span className="truncate text-[13px] font-medium tracking-tight text-[var(--color-fg)]">
               {service.name}
-            </button>
+            </span>
           ) : (
             <h2 className="truncate text-[13px] font-medium tracking-tight text-[var(--color-fg)]">
               {service.name}
@@ -157,7 +149,10 @@ export const DeployServiceCard = memo(function DeployServiceCard({
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-1.5">
-            <MetaChip icon={MapPin} label={service.region} />
+            <MetaChip
+              icon={MapPin}
+              label={formatDeployRegion(service.region, regions, "short")}
+            />
             <MetaChip label={service.environment} />
             <MetaChip label={`:${service.internal_port}`} />
           </div>
@@ -174,7 +169,7 @@ export const DeployServiceCard = memo(function DeployServiceCard({
     "border border-[var(--color-border)] bg-[var(--color-bg-elev)]",
     "transition-all duration-200 hover:-translate-y-[1px]",
     glow,
-    canvas ? "w-[300px] select-none no-underline" : "w-full no-underline",
+    canvas ? "w-[300px] cursor-pointer select-none no-underline" : "w-full no-underline",
   );
 
   if (canvas) {

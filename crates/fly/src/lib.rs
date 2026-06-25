@@ -4,5 +4,5 @@ mod client;
 mod models;
 mod provider;
 
-pub use client::{Fly, FlyBuilder, FlyConfig};
+pub use client::{fetch_platform_regions, Fly, FlyBuilder, FlyConfig};
 pub use provider::FlyProvider;

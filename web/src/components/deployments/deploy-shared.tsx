@@ -163,23 +163,28 @@ export function ServiceActionButtons({
   rollback,
   stop,
   fullWidth = false,
+  compact = false,
 }: {
   service: DeployService;
   createDeployment: ReturnType<typeof useCreateDeployment>;
   rollback: ReturnType<typeof useRollbackDeployment>;
   stop: ReturnType<typeof useStopDeployService>;
   fullWidth?: boolean;
+  compact?: boolean;
 }) {
   return (
-    <div className={cn("flex flex-wrap items-center gap-2", fullWidth && "w-full [&>button]:flex-1")}>
+    <div className={cn("flex flex-wrap items-center gap-1.5", fullWidth && "w-full [&>button]:flex-1")}>
       {service.url && (
         <Button
           render={<a href={service.url} target="_blank" rel="noreferrer" />}
-          variant="secondary"
-          size="sm"
+          variant={compact ? "ghost" : "secondary"}
+          size={compact ? "icon-sm" : "sm"}
           className={fullWidth ? "flex-1" : undefined}
+          aria-label="Open service URL"
+          title="Open"
         >
-          <ExternalLink size={13} /> Open
+          <ExternalLink size={13} />
+          {!compact && " Open"}
         </Button>
       )}
       <Button
@@ -203,10 +208,12 @@ export function ServiceActionButtons({
       </Button>
       <Button
         type="button"
-        variant="secondary"
-        size="sm"
+        variant={compact ? "ghost" : "secondary"}
+        size={compact ? "icon-sm" : "sm"}
         className={fullWidth ? "flex-1" : undefined}
         disabled={rollback.isPending}
+        aria-label="Rollback"
+        title="Rollback"
         onClick={() =>
           rollback.mutate(service.id, {
             onSuccess: () => toast.success("Rollback queued"),
@@ -214,13 +221,16 @@ export function ServiceActionButtons({
           })
         }
       >
-        <RotateCcw size={13} /> Rollback
+        <RotateCcw size={13} />
+        {!compact && " Rollback"}
       </Button>
       <Button
         type="button"
         variant="ghost"
-        size="sm"
+        size={compact ? "icon-sm" : "sm"}
         disabled={stop.isPending}
+        aria-label="Stop service"
+        title="Stop"
         onClick={() =>
           stop.mutate(service.id, {
             onSuccess: () => toast.success("Service stop requested"),
@@ -229,7 +239,7 @@ export function ServiceActionButtons({
         }
       >
         <Square size={13} />
-        {!fullWidth && " Stop"}
+        {!compact && " Stop"}
       </Button>
     </div>
   );
