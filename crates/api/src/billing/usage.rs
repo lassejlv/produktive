@@ -167,6 +167,65 @@ pub async fn require_monitor_interval(
     Ok(())
 }
 
+/// Block deployments for subscribers still on a pre-metering version of the
+/// usage-based plan. When `config.deploy_metering_live_since` is set, any
+/// non-free customer whose current billing period started before that instant
+/// is rejected — the plan's prices/meters changed and their subscription
+/// predates it. Free-tier workspaces and customers whose period began at or after
+/// the cutoff pass. Fails open (allows) if billing is disabled or unreachable,
+/// matching the rest of the billing gates.
+pub async fn require_deploy_metering_current(
+    state: &AppState,
+    workspace_id: Uuid,
+) -> ApiResult<()> {
+    let Some(billing) = state.billing.as_ref() else {
+        return Ok(());
+    };
+    let Some(cutoff) = state.config.deploy_metering_live_since else {
+        return Ok(()); // no cutoff configured → no gating
+    };
+
+    let cstate = match customer_state_for_billing(state, workspace_id).await {
+        Ok(state) => state,
+        Err(e) => {
+            tracing::warn!(
+                workspace_id = %workspace_id,
+                error = ?e,
+                "deploy metering currency check skipped (billing state unavailable)"
+            );
+            return Ok(());
+        }
+    };
+
+    let tier = tier_of(&billing.catalog, &cstate);
+    if tier == "free" {
+        return Ok(());
+    }
+
+    let Some(sub) = cstate.active_subscription() else {
+        return Ok(());
+    };
+    let Some(period_start) = parse_timestamp(sub.current_period_start.as_deref()) else {
+        // No period boundary on file — can't prove the subscription is old, so
+        // don't block.
+        return Ok(());
+    };
+
+    if subscription_predates_cutoff(period_start, cutoff.with_timezone(&Utc)) {
+        return Err(ApiError::payment_required(
+            "deployments require the current usage-based plan. Your subscription \
+             started before the plan was updated — please update your plan to continue.",
+        ));
+    }
+    Ok(())
+}
+
+/// Pure decision: true when the subscription's period started strictly before
+/// the metering cutoff (i.e. it's on the pre-update version of the plan).
+pub fn subscription_predates_cutoff(period_start: DateTime<Utc>, cutoff: DateTime<Utc>) -> bool {
+    period_start < cutoff
+}
+
 pub async fn workspace_has_paid_plan(state: &AppState, workspace_id: Uuid) -> ApiResult<bool> {
     let Some(billing) = state.billing.as_ref() else {
         return Ok(true);
@@ -712,5 +771,16 @@ mod tests {
             effective_window_start(start, end, &UsageReset::default()),
             start
         );
+    }
+
+    #[test]
+    fn subscription_predates_cutoff_blocks_old_period() {
+        let cutoff = period_end(1_000_000);
+        // Started before the cutoff → blocked.
+        assert!(subscription_predates_cutoff(period_end(999_999), cutoff));
+        // Started exactly at the cutoff → allowed (not strictly before).
+        assert!(!subscription_predates_cutoff(cutoff, cutoff));
+        // Started after the cutoff → allowed.
+        assert!(!subscription_predates_cutoff(period_end(1_000_001), cutoff));
     }
 }

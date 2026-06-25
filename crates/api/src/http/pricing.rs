@@ -8,8 +8,8 @@ use utoipa::ToSchema;
 use crate::{
     billing::{
         feature_display_name, feature_noun, format_thousands, overage_text, perk_label,
-        trim_decimal, FeatureEntitlement, PolarCatalog, TierCatalog, METERED_FEATURES,
-        PERK_FEATURES,
+        trim_decimal, FeatureEntitlement, PolarCatalog, TierCatalog, DEPLOY_METERED_FEATURES,
+        METERED_FEATURES, PERK_FEATURES,
     },
     error::ApiResult,
     state::AppState,
@@ -177,6 +177,11 @@ fn catalog_plan(_catalog: &PolarCatalog, tier: &TierCatalog) -> PublicPricingPla
             features.push(unlimited_plan_feature(feature));
         }
     }
+    for feature in DEPLOY_METERED_FEATURES {
+        if let Some(ent) = tier.features.get(feature) {
+            features.push(metered_plan_feature(feature, ent));
+        }
+    }
     for perk in PERK_FEATURES {
         features.push(perk_plan_feature(perk, tier.perks.contains(perk)));
     }
@@ -217,6 +222,9 @@ fn metered_plan_feature(feature: &str, ent: &FeatureEntitlement) -> PublicPlanFe
     let usage_price = ent.unit_amount_cents.map(|cents| {
         let (amount, billing_units) = match feature {
             "events" => (cents * 1000.0 / 100.0, 1000.0),
+            "deploy_memory" | "deploy_cpu" | "deploy_volume" | "deploy_egress" => {
+                (cents / 100.0, 1.0)
+            }
             _ => (cents / 100.0, 1.0),
         };
         PublicUsagePrice {
@@ -236,14 +244,31 @@ fn metered_plan_feature(feature: &str, ent: &FeatureEntitlement) -> PublicPlanFe
         included: Some(ent.included),
         unlimited: false,
         reset_interval: Some("month".into()),
-        primary_text: Some(format!(
-            "{} {}",
-            format_thousands(ent.included),
-            feature_noun(feature, ent.included)
-        )),
-        secondary_text: ent.unit_amount_cents.map(|c| overage_text(feature, c)),
+        primary_text: Some(if is_deploy_meter(feature) {
+            // Deploy meters bill from zero; show the overage rate as the headline.
+            ent.unit_amount_cents
+                .map(|c| overage_text(feature, c))
+                .unwrap_or_else(|| format!("0 {}", feature_noun(feature, 0.0)))
+        } else {
+            format!(
+                "{} {}",
+                format_thousands(ent.included),
+                feature_noun(feature, ent.included)
+            )
+        }),
+        secondary_text: if is_deploy_meter(feature) {
+            None
+        } else {
+            ent.unit_amount_cents.map(|c| overage_text(feature, c))
+        },
         usage_price,
     }
+}
+
+/// Deploy resource meters are pure-overage from zero (no included credits), so
+/// they render differently from allowance-based metered features.
+fn is_deploy_meter(feature: &str) -> bool {
+    DEPLOY_METERED_FEATURES.contains(&feature)
 }
 
 fn perk_plan_feature(feature: &str, included: bool) -> PublicPlanFeature {
@@ -272,6 +297,16 @@ fn build_public_features() -> Vec<PublicPricingFeature> {
             display_plural: Some(feature_noun(feature, 2.0).to_owned()),
         });
     }
+    for feature in DEPLOY_METERED_FEATURES {
+        features.push(PublicPricingFeature {
+            id: feature.to_owned(),
+            name: Some(feature_display_name(feature).to_owned()),
+            feature_type: Some("metered".into()),
+            consumable: true,
+            display_singular: Some(feature_noun(feature, 1.0).to_owned()),
+            display_plural: Some(feature_noun(feature, 2.0).to_owned()),
+        });
+    }
     for perk in PERK_FEATURES {
         features.push(PublicPricingFeature {
             id: perk.to_owned(),
@@ -290,6 +325,7 @@ fn build_public_features() -> Vec<PublicPricingFeature> {
 fn feature_order() -> Vec<String> {
     METERED_FEATURES
         .iter()
+        .chain(DEPLOY_METERED_FEATURES.iter())
         .chain(PERK_FEATURES.iter())
         .map(|s| (*s).to_owned())
         .collect()

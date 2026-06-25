@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context, Result};
+use chrono::{DateTime, FixedOffset};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
@@ -44,6 +45,10 @@ pub struct Config {
     pub polar_webhook_secret: Option<String>,
     /// How often the billing reconcile sweep re-reports gauge usage to Polar.
     pub billing_reconcile_tick_seconds: u64,
+    /// How often the deploy usage sweep re-reports GB-hours / vCPU-hours /
+    /// volume GB-hours to Polar. Only active when billing + deployments are
+    /// both enabled.
+    pub deploy_usage_sweep_tick_seconds: u64,
     /// Public app URL for billing checkout redirects (e.g. `http://localhost:5173`).
     pub app_url: Option<String>,
     pub github_client_id: Option<String>,
@@ -73,6 +78,11 @@ pub struct Config {
     pub fly_api_token: Option<String>,
     /// Fly Machines API base URL (defaults to https://api.machines.dev).
     pub fly_api_hostname: String,
+    /// When set, workspaces on a non-free plan whose billing period started
+    /// before this instant are blocked from deployments — used to fence off
+    /// subscribers still on an older version of the usage-based plan after its
+    /// prices/meters changed. Unset = no gating.
+    pub deploy_metering_live_since: Option<DateTime<FixedOffset>>,
 }
 
 impl Config {
@@ -218,6 +228,15 @@ impl Config {
         if billing_reconcile_tick_seconds == 0 {
             return Err(anyhow!("BILLING_RECONCILE_TICK_SECONDS must be at least 1"));
         }
+        let deploy_usage_sweep_tick_seconds = std::env::var("DEPLOY_USAGE_SWEEP_TICK_SECONDS")
+            .unwrap_or_else(|_| "900".into())
+            .parse()
+            .context("DEPLOY_USAGE_SWEEP_TICK_SECONDS must be u64")?;
+        if deploy_usage_sweep_tick_seconds < 60 {
+            return Err(anyhow!(
+                "DEPLOY_USAGE_SWEEP_TICK_SECONDS must be at least 60"
+            ));
+        }
         let app_url = std::env::var("APP_URL")
             .ok()
             .map(|v| v.trim().trim_end_matches('/').to_owned())
@@ -301,6 +320,15 @@ impl Config {
             .trim()
             .trim_end_matches('/')
             .to_owned();
+        let deploy_metering_live_since = std::env::var("DEPLOY_METERING_LIVE_SINCE")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty())
+            .map(|v| {
+                DateTime::parse_from_rfc3339(&v)
+                    .context("DEPLOY_METERING_LIVE_SINCE must be an RFC3339 timestamp")
+            })
+            .transpose()?;
         Ok(Self {
             database_url,
             database_pooled_url,
@@ -331,6 +359,7 @@ impl Config {
             polar_base_url,
             polar_webhook_secret,
             billing_reconcile_tick_seconds,
+            deploy_usage_sweep_tick_seconds,
             app_url,
             github_client_id,
             github_client_secret,
@@ -348,6 +377,7 @@ impl Config {
             deploy_max_active_deployments_per_workspace,
             fly_api_token,
             fly_api_hostname,
+            deploy_metering_live_since,
         })
     }
 

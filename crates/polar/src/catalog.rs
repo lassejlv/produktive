@@ -23,6 +23,26 @@ impl CatalogClient {
             .await?;
         Ok(resp.items)
     }
+
+    /// `GET /v1/meters/` — every meter in the org. Meters carry
+    /// `metadata.feature`, so the API layer builds its `meter_id -> feature` map
+    /// from this list (used for metered prices that have no credit benefit).
+    pub async fn list_meters(&self) -> Result<Vec<Meter>> {
+        let resp: ListResource<Meter> = self.polar.get("/v1/meters/?limit=100").await?;
+        Ok(resp.items)
+    }
+}
+
+/// A Polar usage meter. Only `id`, `metadata.feature`, and `archived_at` are
+/// consumed by the API catalog — the rest is decoded for completeness.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Meter {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub metadata: Metadata,
+    #[serde(default)]
+    pub archived_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

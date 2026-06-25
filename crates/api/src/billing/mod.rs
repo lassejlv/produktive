@@ -1,4 +1,6 @@
 pub mod catalog;
+pub mod deploy_sweep;
+pub mod deploy_usage;
 pub mod display;
 pub mod snapshot;
 pub mod sweep;
@@ -44,7 +46,8 @@ impl Billing {
     /// tier metadata) so billing simply stays disabled.
     pub async fn load(client: Polar) -> Result<Option<Self>, PolarError> {
         let products = client.catalog().list_products().await?;
-        let catalog = PolarCatalog::from_products(products);
+        let meters = client.catalog().list_meters().await?;
+        let catalog = PolarCatalog::from_products_with_meters(products, meters);
         if catalog.is_empty() {
             tracing::warn!("Polar catalog is empty; billing features disabled");
             return Ok(None);

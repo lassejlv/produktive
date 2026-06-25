@@ -29,6 +29,10 @@ pub fn feature_display_name(feature: &str) -> &'static str {
         "events" => "Events",
         "monitors" => "Monitors",
         "members" => "Members",
+        "deploy_memory" => "Deploy memory",
+        "deploy_cpu" => "Deploy CPU",
+        "deploy_volume" => "Deploy storage",
+        "deploy_egress" => "Deploy egress",
         other => perk_label(other),
     }
 }
@@ -42,6 +46,10 @@ pub fn feature_noun(feature: &str, count: f64) -> &'static str {
         ("monitors", false) => "monitors",
         ("members", true) => "member",
         ("members", false) => "members",
+        ("deploy_memory", _) => "GB-hours",
+        ("deploy_cpu", _) => "vCPU-hours",
+        ("deploy_volume", _) => "GB-hours",
+        ("deploy_egress", _) => "GB",
         _ => "units",
     }
 }
@@ -55,6 +63,13 @@ pub fn overage_text(feature: &str, cents_per_unit: f64) -> String {
         ),
         "monitors" => format!("then ${} per monitor", trim_decimal(cents_per_unit / 100.0)),
         "members" => format!("then ${} per member", trim_decimal(cents_per_unit / 100.0)),
+        "deploy_memory" => format!("then ${} per GB-hour", trim_decimal(cents_per_unit / 100.0)),
+        "deploy_cpu" => format!(
+            "then ${} per vCPU-hour",
+            trim_decimal(cents_per_unit / 100.0)
+        ),
+        "deploy_volume" => format!("then ${} per GB-hour", trim_decimal(cents_per_unit / 100.0)),
+        "deploy_egress" => format!("then ${} per GB", trim_decimal(cents_per_unit / 100.0)),
         _ => format!("then ${} per unit", trim_decimal(cents_per_unit / 100.0)),
     }
 }
@@ -105,6 +120,20 @@ mod tests {
         assert_eq!(overage_text("events", 0.05), "then $0.5 per 1,000 events");
         assert_eq!(overage_text("monitors", 50.0), "then $0.5 per monitor");
         assert_eq!(overage_text("members", 100.0), "then $1 per member");
+    }
+
+    #[test]
+    fn overage_for_deploy_meters_is_per_unit_hour() {
+        // trim_decimal rounds to 2 decimal places.
+        assert_eq!(
+            overage_text("deploy_memory", 1.3896),
+            "then $0.01 per GB-hour"
+        );
+        assert_eq!(
+            overage_text("deploy_cpu", 2.7792),
+            "then $0.03 per vCPU-hour"
+        );
+        assert_eq!(overage_text("deploy_volume", 0.0216), "then $0 per GB-hour");
     }
 
     #[test]

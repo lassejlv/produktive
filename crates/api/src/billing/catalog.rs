@@ -6,10 +6,15 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use polar::Product;
+use polar::{Meter, Product};
+use serde_json::Value;
 
 /// Metered features, in display order.
 pub const METERED_FEATURES: [&str; 3] = ["events", "monitors", "members"];
+
+/// Deployment resource meters — pure-overage (no included credits), billed from
+/// zero. Tracked by the deploy usage sweep, not gated on creation.
+pub const DEPLOY_METERED_FEATURES: [&str; 3] = ["deploy_memory", "deploy_cpu", "deploy_volume"];
 
 #[derive(Debug, Clone, Default)]
 pub struct PolarCatalog {
@@ -46,7 +51,33 @@ pub struct FeatureEntitlement {
 }
 
 impl PolarCatalog {
+    /// Convenience for tests: build the catalog from products alone (no meters,
+    /// so metered-only features won't resolve). Production code uses
+    /// [`PolarCatalog::from_products_with_meters`].
+    #[cfg(test)]
     pub fn from_products(products: Vec<Product>) -> Self {
+        Self::from_products_with_meters(products, Vec::new())
+    }
+
+    /// Build the catalog from products plus the org's meters. Meters carry
+    /// `metadata.feature`, so a `meter_id -> feature` map is derivable. This lets
+    /// the catalog register metered features that have a `metered_unit` price but
+    /// no `meter_credit` benefit (e.g. pure-overage deploy meters billed from
+    /// zero) — otherwise their `meter_id` would never be recorded.
+    pub fn from_products_with_meters(products: Vec<Product>, meters: Vec<Meter>) -> Self {
+        let meter_to_feature: BTreeMap<String, String> = meters
+            .into_iter()
+            .filter(|meter| meter.archived_at.is_none())
+            .filter_map(|meter| {
+                meter
+                    .metadata
+                    .get("feature")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+                    .map(|feature| (meter.id, feature))
+            })
+            .collect();
+
         let mut catalog = PolarCatalog::default();
 
         for product in products {
@@ -91,6 +122,39 @@ impl PolarCatalog {
                     }
                     _ => {}
                 }
+            }
+
+            // Register metered features that have a `metered_unit` price but no
+            // credit benefit — pure-overage meters billed from zero (e.g. the
+            // deploy resource meters). Their `meter_id` is resolved to a feature
+            // via the meters list. `included: 0`, `overage_allowed: true`.
+            for price in &product.prices {
+                if price.is_archived || price.amount_type != "metered_unit" {
+                    continue;
+                }
+                let Some(meter_id) = price.meter_id.clone() else {
+                    continue;
+                };
+                let Some(feature) = meter_to_feature.get(&meter_id).cloned() else {
+                    continue;
+                };
+                if features.contains_key(&feature) {
+                    continue;
+                }
+                let unit_amount_cents = price.unit_amount_cents();
+                catalog
+                    .meter_ids
+                    .entry(feature.clone())
+                    .or_insert_with(|| meter_id.clone());
+                features.insert(
+                    feature,
+                    FeatureEntitlement {
+                        meter_id,
+                        included: 0.0,
+                        overage_allowed: unit_amount_cents.is_some(),
+                        unit_amount_cents,
+                    },
+                );
             }
 
             // Resolve borrow-based fields before moving owned fields out of `product`.
@@ -238,5 +302,78 @@ mod tests {
         let c = catalog();
         assert!(c.tier_has_perk("basic", "custom_domain"));
         assert!(!c.tier_has_perk("free", "custom_domain"));
+    }
+
+    fn meters() -> Vec<Meter> {
+        serde_json::from_value(serde_json::json!([
+            {"id": "m_deploy_mem", "name": "deploy_memory", "metadata": {"feature": "deploy_memory"}},
+            {"id": "m_deploy_cpu", "name": "deploy_cpu", "metadata": {"feature": "deploy_cpu"}}
+        ]))
+        .unwrap()
+    }
+
+    #[test]
+    fn metered_price_registers_overage_feature_without_credit_benefit() {
+        let products: Vec<Product> = serde_json::from_value(serde_json::json!([
+            {
+                "id": "prod_basic", "name": "Basic", "metadata": {"tier": "basic"},
+                "recurring_interval": "month",
+                "prices": [
+                    {"amount_type": "fixed", "price_currency": "usd", "price_amount": 500},
+                    {"amount_type": "metered_unit", "price_currency": "usd", "unit_amount": "1.3896", "meter_id": "m_deploy_mem"}
+                ],
+                "benefits": []
+            }
+        ]))
+        .unwrap();
+        let c = PolarCatalog::from_products_with_meters(products, meters());
+
+        // The deploy meter resolves to a feature via the meters list, even with
+        // no credit benefit — pure overage from zero.
+        assert_eq!(c.meter_id("deploy_memory"), Some("m_deploy_mem"));
+        let ent = c.entitlement("basic", "deploy_memory").unwrap();
+        assert_eq!(ent.included, 0.0);
+        assert!(ent.overage_allowed);
+        assert_eq!(ent.unit_amount_cents, Some(1.3896));
+    }
+
+    #[test]
+    fn metered_price_skipped_when_meter_has_no_feature_metadata() {
+        let products: Vec<Product> = serde_json::from_value(serde_json::json!([
+            {
+                "id": "prod_basic", "name": "Basic", "metadata": {"tier": "basic"},
+                "recurring_interval": "month",
+                "prices": [
+                    {"amount_type": "metered_unit", "price_currency": "usd", "unit_amount": "1.0", "meter_id": "m_unknown"}
+                ],
+                "benefits": []
+            }
+        ]))
+        .unwrap();
+        let c = PolarCatalog::from_products_with_meters(products, meters());
+        // m_unknown is not in the meters map, so no feature is registered.
+        assert!(c.entitlement("basic", "deploy_memory").is_none());
+        assert!(c.meter_id("deploy_memory").is_none());
+    }
+
+    #[test]
+    fn archived_meters_are_ignored() {
+        let products: Vec<Product> = serde_json::from_value(serde_json::json!([
+            {
+                "id": "prod_basic", "name": "Basic", "metadata": {"tier": "basic"},
+                "recurring_interval": "month",
+                "prices": [
+                    {"amount_type": "metered_unit", "price_currency": "usd", "unit_amount": "1.0", "meter_id": "m_deploy_mem"}
+                ],
+                "benefits": []
+            }
+        ]))
+        .unwrap();
+        let archived: Vec<Meter> = serde_json::from_value(serde_json::json!([
+            {"id": "m_deploy_mem", "name": "deploy_memory", "metadata": {"feature": "deploy_memory"}, "archived_at": "2026-06-01T00:00:00Z"}
+        ]))
+        .unwrap();
+        let c = PolarCatalog::from_products_with_meters(products, archived);
+        assert!(c.entitlement("basic", "deploy_memory").is_none());
     }
 }

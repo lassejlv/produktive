@@ -22,6 +22,9 @@ pub struct Model {
     pub usage_reset_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub events_consumed_baseline: f64,
     pub events_baseline_period_end: Option<chrono::DateTime<chrono::FixedOffset>>,
+    /// High-water mark for the deploy usage sweep (`workspace_billing_states`).
+    /// NULL until the first successful deploy-usage ingest for this customer.
+    pub deploy_usage_last_sent_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
     pub updated_at: chrono::DateTime<chrono::FixedOffset>,
 }

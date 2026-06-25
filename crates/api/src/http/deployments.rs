@@ -9,10 +9,10 @@ use axum::{
 };
 use chrono::{DateTime, FixedOffset, Utc};
 use deploy::{
-    validate_env_name, validate_health_path, validate_image_for_registry, validate_internal_port,
-    validate_allowed_region, validate_volume_mount_path, validate_volume_name, validate_volume_size_gb,
-    catalog_from_fly, static_allowed_regions, DeployRegion, DeploymentStatus, RegistryKind,
-    ResourcePreset, SecretCipher, DEFAULT_DEPLOY_REGION,
+    catalog_from_fly, static_allowed_regions, validate_allowed_region, validate_env_name,
+    validate_health_path, validate_image_for_registry, validate_internal_port,
+    validate_volume_mount_path, validate_volume_name, validate_volume_size_gb, DeployRegion,
+    DeploymentStatus, RegistryKind, ResourcePreset, SecretCipher, DEFAULT_DEPLOY_REGION,
 };
 use fly::fetch_platform_regions;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
@@ -23,6 +23,7 @@ use uuid::Uuid;
 
 use crate::{
     auth::AuthUser,
+    billing::require_deploy_metering_current,
     error::{ApiError, ApiResult},
     middleware::Membership,
     slug,
@@ -94,6 +95,7 @@ async fn deploy_access_guard(
     next: Next,
 ) -> Result<Response, ApiError> {
     ensure_deployments_enabled(&state)?;
+    require_deploy_metering_current(&state, m.workspace.id).await?;
     match load_access(&state, m.workspace.id).await? {
         Some(row) if row.status == ACCESS_APPROVED => Ok(next.run(req).await),
         _ => Err(ApiError::Forbidden),

@@ -58,6 +58,7 @@ async fn main() -> Result<()> {
     scheduler::spawn(state.clone());
     auth::session_cleanup::spawn(state.clone());
     billing::sweep::spawn(state.clone());
+    billing::deploy_sweep::spawn(state.clone());
     custom_domain_sweep::spawn(state.clone());
 
     let ws_scoped = Router::new()
