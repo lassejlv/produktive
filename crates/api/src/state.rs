@@ -8,6 +8,7 @@ use tokio::sync::Semaphore;
 
 use email::EmailClient;
 use polar::Polar;
+use produktive_cloudflare::Cloudflare;
 
 use crate::{
     billing::Billing, config::Config, logstore::LokiLogs, status_summary_cache::StatusSummaryCache,
@@ -31,6 +32,9 @@ pub struct AppState {
     pub email: EmailClient,
     pub check_semaphore: Arc<Semaphore>,
     pub billing: Option<Billing>,
+    /// Cloudflare for SaaS (custom hostnames). `None` disables the integration;
+    /// custom domains then rely on DNS verification only (the pre-Cloudflare path).
+    pub cloudflare: Option<Cloudflare>,
     pub status_summary_cache: StatusSummaryCache,
     /// Loki-backed log storage. `None` disables every log-storage handler
     /// (they return a 503), keeping the no-logs deployment path working.
@@ -61,6 +65,17 @@ impl AppState {
         let email = build_email()?;
         let check_semaphore = Arc::new(Semaphore::new(config.scheduler_max_concurrent_checks));
         let billing = build_billing(&config).await;
+        let cloudflare = build_cloudflare(&config);
+        // Ensure the Cloudflare for SaaS fallback origin is configured. Idempotent
+        // and best-effort: a failure only means the one-time origin wasn't
+        // re-asserted, so log and carry on rather than failing startup.
+        if let (Some(cf), Some(origin)) =
+            (cloudflare.as_ref(), config.cf_fallback_origin.as_ref())
+        {
+            if let Err(e) = cf.set_fallback_origin(origin).await {
+                tracing::warn!(error = %e, "failed to set Cloudflare fallback origin");
+            }
+        }
         let loki = build_loki(&config, http.clone());
         Ok(Self {
             db,
@@ -70,6 +85,7 @@ impl AppState {
             email,
             check_semaphore,
             billing,
+            cloudflare,
             status_summary_cache: StatusSummaryCache::default(),
             loki,
         })
@@ -150,6 +166,31 @@ async fn build_billing(config: &Config) -> Option<Billing> {
         Ok(None) => None,
         Err(e) => {
             tracing::error!(error = %e, "failed to load Polar catalog; billing disabled");
+            None
+        }
+    }
+}
+
+/// Build the Cloudflare for SaaS client used to manage custom hostnames. Optional:
+/// disabled when `CF_API_TOKEN` or `CF_ZONE_ID` is unset, so the app boots (and
+/// custom domains degrade to DNS-verification-only) without Cloudflare configured.
+fn build_cloudflare(config: &Config) -> Option<Cloudflare> {
+    let (Some(token), Some(zone)) = (config.cf_api_token.as_ref(), config.cf_zone_id.as_ref())
+    else {
+        tracing::warn!("CF_API_TOKEN/CF_ZONE_ID not set; Cloudflare custom hostnames disabled");
+        return None;
+    };
+    let base_url = config
+        .cf_base_url
+        .clone()
+        .unwrap_or_else(|| "https://api.cloudflare.com/client/v4".to_owned());
+    match Cloudflare::new(token.clone(), zone.clone(), base_url) {
+        Ok(client) => {
+            tracing::info!("Cloudflare for SaaS initialized");
+            Some(client)
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "failed to initialize Cloudflare client; custom hostnames disabled");
             None
         }
     }

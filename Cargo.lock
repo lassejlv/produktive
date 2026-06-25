@@ -2328,6 +2328,7 @@ dependencies = [
  "json5",
  "jsonwebtoken",
  "polar",
+ "produktive-cloudflare",
  "produktive-deploy",
  "produktive-dsl",
  "produktive-entity",
@@ -2351,6 +2352,18 @@ dependencies = [
  "url",
  "utoipa",
  "uuid",
+]
+
+[[package]]
+name = "produktive-cloudflare"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "url",
 ]
 
 [[package]]

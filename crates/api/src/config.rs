@@ -28,6 +28,16 @@ pub struct Config {
     pub custom_domain_cname_target: String,
     pub custom_domain_proxy_ipv4: Option<String>,
     pub custom_domain_proxy_ipv6: Option<String>,
+    /// Cloudflare for SaaS (custom hostnames). All optional — when `cf_api_token`
+    /// or `cf_zone_id` is absent the Cloudflare client is disabled and custom
+    /// domains fall back to DNS-verification-only (the pre-Cloudflare path).
+    pub cf_api_token: Option<String>,
+    pub cf_zone_id: Option<String>,
+    pub cf_base_url: Option<String>,
+    pub cf_fallback_origin: Option<String>,
+    /// Zone DCV-delegation UUID, used to render the `_acme-challenge` CNAME each
+    /// customer adds for auto-renewing TXT DCV.
+    pub cf_dcv_delegation_uuid: Option<String>,
     /// Directory containing the built web frontend (`index.html`, `assets/`, ...).
     /// When `None`, static-file serving is disabled.
     pub web_dist_dir: Option<PathBuf>,
@@ -155,7 +165,7 @@ impl Config {
             return Err(anyhow!("SESSION_CLEANUP_TICK_SECONDS must be at least 1"));
         }
         let custom_domain_cname_target = std::env::var("CUSTOM_DOMAIN_CNAME_TARGET")
-            .unwrap_or_else(|_| "custom.produktive.app".into())
+            .unwrap_or_else(|_| "cname.produktive.app".into())
             .trim()
             .trim_end_matches('.')
             .to_lowercase();
@@ -164,6 +174,26 @@ impl Config {
             .map(|v| v.trim().to_owned())
             .filter(|v| !v.is_empty());
         let custom_domain_proxy_ipv6 = std::env::var("CUSTOM_DOMAIN_PROXY_IPV6")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let cf_api_token = std::env::var("CF_API_TOKEN")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let cf_zone_id = std::env::var("CF_ZONE_ID")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let cf_base_url = std::env::var("CF_BASE_URL")
+            .ok()
+            .map(|v| v.trim().trim_end_matches('/').to_owned())
+            .filter(|v| !v.is_empty());
+        let cf_fallback_origin = std::env::var("CF_FALLBACK_ORIGIN")
+            .ok()
+            .map(|v| v.trim().trim_end_matches('.').to_lowercase())
+            .filter(|v| !v.is_empty());
+        let cf_dcv_delegation_uuid = std::env::var("CF_DCV_DELEGATION_UUID")
             .ok()
             .map(|v| v.trim().to_owned())
             .filter(|v| !v.is_empty());
@@ -290,6 +320,11 @@ impl Config {
             custom_domain_cname_target,
             custom_domain_proxy_ipv4,
             custom_domain_proxy_ipv6,
+            cf_api_token,
+            cf_zone_id,
+            cf_base_url,
+            cf_fallback_origin,
+            cf_dcv_delegation_uuid,
             web_dist_dir,
             polar_secret_key,
             polar_base_url,

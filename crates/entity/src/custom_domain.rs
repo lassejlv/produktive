@@ -12,6 +12,12 @@ pub struct Model {
     pub verification_name: String,
     pub verification_value: String,
     pub verified_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    /// Cloudflare for SaaS Custom Hostname id (used to poll/delete the hostname).
+    pub cf_hostname_id: Option<String>,
+    /// Last-seen Cloudflare `ssl.status` (e.g. `pending_validation`, `active`).
+    pub ssl_status: Option<String>,
+    /// When the reconcile sweep last synced state from Cloudflare.
+    pub cf_synced_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
     pub updated_at: chrono::DateTime<chrono::FixedOffset>,
 }

@@ -31,6 +31,7 @@ mod m20260621_000028_create_deploy_log_lines;
 mod m20260621_000029_create_deploy_service_domains;
 mod m20260621_000030_add_deploy_retention_indexes;
 mod m20260621_000031_add_deploy_service_management;
+mod m20260625_000032_add_cloudflare_custom_hostname;
 
 pub struct Migrator;
 
@@ -69,6 +70,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260621_000029_create_deploy_service_domains::Migration),
             Box::new(m20260621_000030_add_deploy_retention_indexes::Migration),
             Box::new(m20260621_000031_add_deploy_service_management::Migration),
+            Box::new(m20260625_000032_add_cloudflare_custom_hostname::Migration),
         ]
     }
 }

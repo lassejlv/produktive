@@ -599,8 +599,9 @@ function CustomDomainRow({
   onDelete: () => void;
 }) {
   const verified = Boolean(domain.verified_at);
+  const active = verified || domain.ssl_status === "active";
   const records = dnsRecords(domain);
-  const [open, setOpen] = useState(!verified);
+  const [open, setOpen] = useState(!active);
   const [activeRecord, setActiveRecord] = useState<DnsRecordKind>(records[0]?.kind ?? "txt");
   const selectedRecord = records.find((record) => record.kind === activeRecord) ?? records[0];
 
@@ -609,8 +610,8 @@ function CustomDomainRow({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-[13px] text-[var(--color-fg)]">{domain.hostname}</p>
-          <p className="mt-0.5 text-[12px] text-[var(--color-fg-dim)]">
-            {verified ? "Verified" : "Pending verification"}
+          <p className="mt-1 flex items-center gap-1.5">
+            <SslStatusPill active={active} status={domain.ssl_status} />
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -618,10 +619,10 @@ function CustomDomainRow({
             <ChevronDown size={12} className={cn("transition-transform", open && "rotate-180")} />
             DNS
           </Button>
-          {!verified && (
+          {!active && (
             <Button type="button" size="xs" onClick={onVerify} disabled={isVerifying}>
               {isVerifying && <Spinner className="size-3" />}
-              Verify
+              Refresh status
             </Button>
           )}
           <Button type="button" variant="ghost" size="xs" onClick={onDelete}>
@@ -648,7 +649,34 @@ function CustomDomainRow({
   );
 }
 
-type DnsRecordKind = "txt" | "cname" | "a" | "aaaa";
+function humanizeSslStatus(status: string | null): string {
+  if (!status) return "Pending validation";
+  const text = status.replace(/_/g, " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function SslStatusPill({ active, status }: { active: boolean; status: string | null }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium",
+        active
+          ? "border-[color-mix(in_srgb,var(--color-ok)_40%,transparent)] text-[var(--color-ok)]"
+          : "border-[var(--color-border)] text-[var(--color-fg-dim)]",
+      )}
+    >
+      <span
+        className={cn(
+          "size-1.5 rounded-full",
+          active ? "bg-[var(--color-ok)]" : "bg-[var(--color-fg-dim)]",
+        )}
+      />
+      {active ? "Active" : humanizeSslStatus(status)}
+    </span>
+  );
+}
+
+type DnsRecordKind = "txt" | "cname" | "acme" | "a" | "aaaa";
 
 type DnsRecord = {
   kind: DnsRecordKind;
@@ -659,6 +687,29 @@ type DnsRecord = {
 };
 
 function dnsRecords(domain: CustomDomain): DnsRecord[] {
+  // Cloudflare-for-SaaS custom hostnames: a routing CNAME, plus an
+  // auto-renewing DCV delegation CNAME for the certificate. Prefer these
+  // whenever the domain has a cname target / DCV delegation configured.
+  if (domain.cname_target && domain.dcv_delegation_target) {
+    return [
+      {
+        kind: "cname",
+        label: "CNAME",
+        type: "CNAME",
+        name: domain.hostname,
+        value: domain.cname_target,
+      },
+      {
+        kind: "acme",
+        label: "Certificate",
+        type: "CNAME",
+        name: `_acme-challenge.${domain.hostname}`,
+        value: domain.dcv_delegation_target,
+      },
+    ];
+  }
+
+  // Legacy self-hosted flow: TXT verification + CNAME, with optional A/AAAA.
   const records: DnsRecord[] = [
     {
       kind: "txt",

@@ -1,6 +1,7 @@
 mod auth;
 mod billing;
 mod config;
+mod custom_domain_sweep;
 mod error;
 mod http;
 mod logstore;
@@ -57,6 +58,7 @@ async fn main() -> Result<()> {
     scheduler::spawn(state.clone());
     auth::session_cleanup::spawn(state.clone());
     billing::sweep::spawn(state.clone());
+    custom_domain_sweep::spawn(state.clone());
 
     let ws_scoped = Router::new()
         .merge(http::workspaces::scoped_routes())

@@ -14,6 +14,7 @@ produktive-dsl = { path = "../dsl" }
 produktive-probe = { path = "../probe" }
 produktive-deploy = { path = "../deploy" }
 polar = { path = "../polar" }
+produktive-cloudflare = { path = "../cloudflare" }
 email = { path = "../email" }
 
 axum.workspace = true

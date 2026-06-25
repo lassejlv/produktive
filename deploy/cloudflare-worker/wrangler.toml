@@ -1,0 +1,30 @@
+# Produktive custom-domain edge proxy — Cloudflare for SaaS "Workers as origin".
+# Deploy:  cd deploy/cloudflare-worker && wrangler deploy
+# Tail:    wrangler tail
+
+name = "produktive-custom-domains"
+main = "worker.js"
+compatibility_date = "2026-06-01"
+
+# Smoke-test URL: produktive-custom-domains.<your-subdomain>.workers.dev
+# Lets us verify the Host-rewrite/forwarding logic BEFORE touching production routing.
+workers_dev = true
+
+# PRODUCTION ROUTE — intentionally left commented until the custom-hostname flow is
+# tested end-to-end. Attaching `*/*` routes ALL produktive.app traffic through this
+# Worker, so it's enabled only at cutover (Cloudflare for SaaS on + fallback origin +
+# a verified custom hostname). Uncomment then, or add the route in the dashboard:
+#   Workers & Pages -> produktive.app -> Workers Routes -> Add route -> `*/*`
+# routes = [
+#   { pattern = "*/*", zone_name = "produktive.app" },
+# ]
+
+[vars]
+# Host header the backend/Railway expects (Railway routes by this).
+APP_HOST = "produktive.app"
+# First-party hosts the Worker passes through untouched (comma-separated).
+APP_HOSTS = "produktive.app,www.produktive.app"
+# App origin the Worker connects to. produktive.app mirrors the old Caddy origin
+# (PRODUKTIVE_ORIGIN=https://produktive.app). At cutover, consider a dedicated
+# *.up.railway.app origin to rule out any Worker-subrequest loop once */* is live.
+RAILWAY_ORIGIN_HOST = "produktive.app"

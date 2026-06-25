@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode},
     routing::{delete, get, post},
     Extension, Json, Router,
 };
@@ -41,15 +41,24 @@ pub struct CustomDomainView {
     pub verification_name: String,
     pub verification_value: String,
     pub verified_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    pub ssl_status: Option<String>,
     pub cname_target: String,
     pub proxy_ipv4: Option<String>,
     pub proxy_ipv6: Option<String>,
+    /// `_acme-challenge.<host>` CNAME target for auto-renewing TXT DCV delegation.
+    /// `None` when the zone DCV-delegation UUID isn't configured.
+    pub dcv_delegation_target: Option<String>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
     pub updated_at: chrono::DateTime<chrono::FixedOffset>,
 }
 
 impl CustomDomainView {
     fn build(row: custom_domain::Model, state: &AppState) -> Self {
+        let dcv_delegation_target = state
+            .config
+            .cf_dcv_delegation_uuid
+            .as_ref()
+            .map(|uuid| format!("{}.{}.dcv.cloudflare.com", row.hostname, uuid));
         Self {
             id: row.id,
             workspace_id: row.workspace_id,
@@ -57,9 +66,11 @@ impl CustomDomainView {
             verification_name: row.verification_name,
             verification_value: row.verification_value,
             verified_at: row.verified_at,
+            ssl_status: row.ssl_status,
             cname_target: state.config.custom_domain_cname_target.clone(),
             proxy_ipv4: state.config.custom_domain_proxy_ipv4.clone(),
             proxy_ipv6: state.config.custom_domain_proxy_ipv6.clone(),
+            dcv_delegation_target,
             created_at: row.created_at,
             updated_at: row.updated_at,
         }
@@ -155,12 +166,42 @@ pub async fn create(
         verification_name: Set(verification_name),
         verification_value: Set(verification_value),
         verified_at: Set(None),
+        cf_hostname_id: Set(None),
+        ssl_status: Set(None),
+        cf_synced_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     }
     .insert(&state.db)
     .await
     .map_err(map_unique_err)?;
+
+    // Register the hostname with Cloudflare for SaaS so Cloudflare issues and
+    // auto-renews the TLS cert. We use TXT DCV (delegation-friendly) because the
+    // edge Worker intercepts the HTTP `.well-known` validation paths. If the row
+    // inserted but Cloudflare rejects it, roll back so the user can retry cleanly.
+    if let Some(cf) = state.cloudflare.as_ref() {
+        match cf.create_custom_hostname(&row.hostname, "txt").await {
+            Ok(ch) => {
+                let ssl_status = ch.ssl_status().map(str::to_owned);
+                let mut am: custom_domain::ActiveModel = row.into();
+                am.cf_hostname_id = Set(Some(ch.id));
+                am.ssl_status = Set(ssl_status);
+                am.updated_at = Set(Utc::now().fixed_offset());
+                let row = am.update(&state.db).await?;
+                return Ok(Json(CustomDomainView::build(row, &state)));
+            }
+            Err(err) => {
+                let _ = custom_domain::Entity::delete_by_id(row.id)
+                    .exec(&state.db)
+                    .await;
+                tracing::error!(error = %err, "failed to register Cloudflare custom hostname");
+                return Err(ApiError::bad_request(
+                    "could not register the domain with our TLS provider; please try again",
+                ));
+            }
+        }
+    }
 
     Ok(Json(CustomDomainView::build(row, &state)))
 }
@@ -192,13 +233,39 @@ pub async fn verify(
         .await?
         .ok_or_else(|| ApiError::not_found("custom domain not found"))?;
 
+    let now = Utc::now().fixed_offset();
+
+    // Cloudflare-backed domains: refresh the cert status from Cloudflare rather
+    // than doing a DNS TXT lookup. Verified once Cloudflare reports `active`.
+    if let (Some(cf), Some(cf_id)) = (state.cloudflare.as_ref(), row.cf_hostname_id.clone()) {
+        let ssl_status = match cf.get_custom_hostname(&cf_id).await {
+            Ok(Some(ch)) => ch.ssl_status().map(str::to_owned),
+            Ok(None) => None,
+            Err(err) => {
+                tracing::error!(error = %err, "failed to fetch Cloudflare custom hostname");
+                return Err(ApiError::service_unavailable(
+                    "could not reach our TLS provider; please try again",
+                ));
+            }
+        };
+        let active = ssl_status.as_deref() == Some("active");
+        let mut am: custom_domain::ActiveModel = row.into();
+        am.ssl_status = Set(ssl_status);
+        am.cf_synced_at = Set(Some(now));
+        if active {
+            am.verified_at = Set(Some(now));
+        }
+        am.updated_at = Set(now);
+        let row = am.update(&state.db).await?;
+        return Ok(Json(CustomDomainView::build(row, &state)));
+    }
+
     if !dns_txt_contains(&state, &row.verification_name, &row.verification_value).await? {
         return Err(ApiError::bad_request(
             "TXT verification record was not found",
         ));
     }
 
-    let now = Utc::now().fixed_offset();
     let mut am: custom_domain::ActiveModel = row.into();
     am.verified_at = Set(Some(now));
     am.updated_at = Set(now);
@@ -229,6 +296,11 @@ pub async fn remove(
         .one(&state.db)
         .await?
         .ok_or_else(|| ApiError::not_found("custom domain not found"))?;
+    if let (Some(cf), Some(cf_id)) = (state.cloudflare.as_ref(), row.cf_hostname_id.as_deref()) {
+        if let Err(err) = cf.delete_custom_hostname(cf_id).await {
+            tracing::warn!(error = %err, cf_id, "failed to delete Cloudflare custom hostname (continuing)");
+        }
+    }
     custom_domain::Entity::delete_by_id(row.id)
         .exec(&state.db)
         .await?;
@@ -282,9 +354,28 @@ fn require_owner(role: WorkspaceRole) -> ApiResult<()> {
 }
 
 pub fn host_from_headers(headers: &HeaderMap) -> Option<String> {
-    let host = headers.get(header::HOST)?.to_str().ok()?;
-    let host = host.rsplit_once(':').map_or(host, |(h, _)| h);
-    normalize_domain(host)
+    // Behind the custom-domain edge proxy (Cloudflare Worker / Caddy), `Host` is
+    // rewritten to the app origin and the real hostname rides in `X-Forwarded-Host`.
+    // Prefer that when the proxy flag is set; otherwise fall back to `Host` (direct
+    // access / local dev). Mirrors spa_meta::host_domain so summary-by-host and the
+    // SPA meta routes resolve custom domains identically.
+    let is_proxied = headers
+        .get("x-produktive-is-custom-domain")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    let raw = if is_proxied {
+        header_value(headers, "x-forwarded-host").or_else(|| header_value(headers, "host"))
+    } else {
+        header_value(headers, "host")
+    }?;
+    normalize_domain(&raw)
+}
+
+fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    let value = headers.get(name)?.to_str().ok()?;
+    let value = value.rsplit_once(':').map_or(value, |(h, _)| h);
+    Some(value.to_owned())
 }
 
 pub(super) fn normalize_domain(input: &str) -> Option<String> {

@@ -1,0 +1,10 @@
+{
+  "name": "produktive-custom-domains",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker: custom-domain edge proxy (Cloudflare for SaaS).",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  }
+}

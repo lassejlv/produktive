@@ -165,6 +165,8 @@ export interface CustomDomain {
   verification_value: string;
   verified_at: Iso | null;
   cname_target: string;
+  ssl_status: string | null;
+  dcv_delegation_target: string | null;
   proxy_ipv4: string | null;
   proxy_ipv6: string | null;
   created_at: Iso;
