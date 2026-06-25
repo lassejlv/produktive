@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, getRouteApi } from "@tanstack/react-router";
 import {
   Background,
   BackgroundVariant,
@@ -16,11 +16,14 @@ import { toast } from "#/lib/toast";
 import { cn } from "#/lib/cn";
 import { DEPLOYMENTS_ENABLED } from "#/lib/features";
 import {
+  type DeployDetailTab,
   type DeployServiceFilter,
   type DeploymentsSearch,
   deployServiceFilterBucket,
+  deploymentsSearchWithoutService,
   matchesDeploySearch,
-  parseDeployServiceFilter,
+  openServiceSearch,
+  parseDeploymentsSearch,
 } from "#/lib/deployments";
 import { DEPLOY_STATUS_COLOR } from "#/lib/status";
 import { Button } from "#/components/ui/button";
@@ -30,6 +33,7 @@ import {
   InputGroupInput,
 } from "#/components/ui/input-group";
 import { DeployServiceCard } from "../components/DeployServiceCard";
+import { DeployServiceSheet } from "../components/deployments/DeployServiceSheet";
 import { EmptyState } from "../components/EmptyState";
 import {
   CreateCredentialDialog,
@@ -47,16 +51,15 @@ import {
 } from "../lib/queries";
 import type { DeployService } from "../lib/types";
 
+const deploymentsIndexRoute = getRouteApi("/_authed/$wid/deployments/");
+
 export const Route = createFileRoute("/_authed/$wid/deployments/")({
   staticData: {
     title: "Deployments",
     description: "Private-preview Docker services with Fly-backed runtime, logs, and metrics.",
     layout: "bleed",
   },
-  validateSearch: (search: Record<string, unknown>): DeploymentsSearch => ({
-    q: typeof search.q === "string" && search.q.trim() ? search.q : undefined,
-    status: parseDeployServiceFilter(search.status),
-  }),
+  validateSearch: parseDeploymentsSearch,
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(deployAccessQuery(params.wid)),
   component: DeploymentsCanvas,
@@ -80,13 +83,13 @@ function DeploymentsCanvas() {
   );
 }
 
-type ServiceNodeData = { service: DeployService };
+type ServiceNodeData = { service: DeployService; onOpen?: () => void };
 type SNode = Node<ServiceNodeData>;
 
 function Canvas() {
   const { wid } = Route.useParams();
   const search = Route.useSearch();
-  const navigate = useNavigate();
+  const navigate = deploymentsIndexRoute.useNavigate();
   const access = useDeployAccess(wid);
   const approved = access.data?.status === "approved";
   const { data: services = [], isLoading } = useDeployServices(wid, approved);
@@ -101,6 +104,41 @@ function Canvas() {
 
   const filter = search.status ?? "all";
   const query = search.q ?? "";
+  const selectedTab = search.tab ?? "deployments";
+
+  const selectedService = useMemo(
+    () => (search.service ? services.find((service) => service.id === search.service) ?? null : null),
+    [services, search.service],
+  );
+
+  const openService = useCallback(
+    (serviceId: string, tab?: DeployDetailTab) => {
+      void navigate({
+        search: (prev) => openServiceSearch(prev, serviceId, tab),
+      });
+    },
+    [navigate],
+  );
+
+  const closeService = useCallback(() => {
+    void navigate({
+      search: (prev) => deploymentsSearchWithoutService(prev),
+      replace: true,
+    });
+  }, [navigate]);
+
+  const setTab = useCallback(
+    (tab: DeployDetailTab) => {
+      void navigate({
+        search: (prev) => ({
+          ...prev,
+          tab: tab === "deployments" ? undefined : tab,
+        }),
+        replace: true,
+      });
+    },
+    [navigate],
+  );
 
   const shown = useMemo(() => {
     return services.filter((service) => {
@@ -129,12 +167,18 @@ function Canvas() {
           id: service.id,
           type: "service",
           position,
-          data: { service },
+          data: {
+            service,
+            onOpen: () => {
+              if (draggingRef.current) return;
+              openService(service.id);
+            },
+          },
           draggable: true,
         } satisfies SNode;
       });
     });
-  }, [shown, setNodes]);
+  }, [shown, setNodes, openService]);
 
   useEffect(() => {
     const timers = saveTimers.current;
@@ -146,19 +190,16 @@ function Canvas() {
 
   const setSearch = (patch: Partial<DeploymentsSearch>) => {
     void navigate({
-      to: "/$wid/deployments",
-      params: { wid },
-      search: {
-        q: "q" in patch ? patch.q : query || undefined,
+      search: (prev) => ({
+        ...prev,
+        q: "q" in patch ? patch.q : prev.q,
         status:
           "status" in patch
             ? patch.status === "all"
               ? undefined
               : patch.status
-            : filter === "all"
-              ? undefined
-              : filter,
-      },
+            : prev.status,
+      }),
       replace: true,
     });
   };
@@ -239,10 +280,7 @@ function Canvas() {
               onSuccess: (service) => {
                 toast.success("Service created");
                 setServiceOpen(false);
-                void navigate({
-                  to: "/$wid/deployments/$serviceId",
-                  params: { wid, serviceId: service.id },
-                });
+                openService(service.id);
               },
               onError: (err) => toast.error((err as Error).message),
             })
@@ -326,14 +364,20 @@ function Canvas() {
             onSuccess: (service) => {
               toast.success("Service created");
               setServiceOpen(false);
-              void navigate({
-                to: "/$wid/deployments/$serviceId",
-                params: { wid, serviceId: service.id },
-              });
+              openService(service.id);
             },
             onError: (err) => toast.error((err as Error).message),
           })
         }
+      />
+
+      <DeployServiceSheet
+        open={Boolean(selectedService)}
+        wid={wid}
+        service={selectedService}
+        tab={selectedTab}
+        onClose={closeService}
+        onTabChange={setTab}
       />
     </>
   );
@@ -477,8 +521,8 @@ function CanvasToolbar({
 }
 
 const ServiceNode = memo(function ServiceNode(props: NodeProps) {
-  const service = (props.data as ServiceNodeData).service;
-  return <DeployServiceCard service={service} canvas />;
+  const { service, onOpen } = props.data as ServiceNodeData;
+  return <DeployServiceCard service={service} canvas onOpen={onOpen} />;
 });
 
 const NODE_TYPES = { service: ServiceNode };

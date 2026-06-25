@@ -189,9 +189,9 @@ function VolumeListRow({
 
       {service ? (
         <Link
-          to="/$wid/deployments/$serviceId"
-          params={{ wid, serviceId: service.id }}
-          search={{ tab: "settings" }}
+          to="/$wid/deployments"
+          params={{ wid }}
+          search={{ service: service.id, tab: "settings" }}
           className="inline-flex shrink-0 items-center gap-1 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-2.5 py-1.5 text-[12px] text-[var(--color-fg-muted)] no-underline transition-colors hover:border-[var(--color-border-hi)] hover:text-[var(--color-fg)]"
         >
           <Server size={12} />

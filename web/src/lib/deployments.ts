@@ -3,12 +3,72 @@ import { deployStatusActive, deployStatusPending } from "./status";
 
 export type DeployServiceFilter = "all" | "live" | "deploying" | "failed" | "stopped";
 
+export type DeployDetailTab =
+  | "deployments"
+  | "events"
+  | "logs"
+  | "metrics"
+  | "domains"
+  | "settings";
+
+export const DEPLOY_DETAIL_TABS: DeployDetailTab[] = [
+  "deployments",
+  "events",
+  "logs",
+  "metrics",
+  "domains",
+  "settings",
+];
+
 export type DeploymentsSearch = {
   q?: string;
   status?: DeployServiceFilter;
+  service?: string;
+  tab?: DeployDetailTab;
 };
 
-export const EMPTY_DEPLOYMENTS_SEARCH: DeploymentsSearch = { q: undefined, status: undefined };
+export const EMPTY_DEPLOYMENTS_SEARCH: DeploymentsSearch = {
+  q: undefined,
+  status: undefined,
+  service: undefined,
+  tab: undefined,
+};
+
+export function parseDeployDetailTab(value: unknown): DeployDetailTab | undefined {
+  return typeof value === "string" && (DEPLOY_DETAIL_TABS as readonly string[]).includes(value)
+    ? (value as DeployDetailTab)
+    : undefined;
+}
+
+export function parseDeploymentsSearch(search: Record<string, unknown>): DeploymentsSearch {
+  return {
+    q: typeof search.q === "string" && search.q.trim() ? search.q : undefined,
+    status: parseDeployServiceFilter(search.status),
+    service: typeof search.service === "string" && search.service.trim() ? search.service : undefined,
+    tab: parseDeployDetailTab(search.tab),
+  };
+}
+
+export function deploymentsSearchWithoutService(search: DeploymentsSearch): DeploymentsSearch {
+  return {
+    q: search.q,
+    status: search.status,
+    service: undefined,
+    tab: undefined,
+  };
+}
+
+export function openServiceSearch(
+  search: DeploymentsSearch,
+  serviceId: string,
+  tab?: DeployDetailTab,
+): DeploymentsSearch {
+  return {
+    ...search,
+    service: serviceId,
+    tab: tab && tab !== "deployments" ? tab : undefined,
+  };
+}
 
 export const DEPLOY_SERVICE_FILTERS: DeployServiceFilter[] = [
   "all",

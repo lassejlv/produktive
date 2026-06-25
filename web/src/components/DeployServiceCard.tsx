@@ -78,9 +78,15 @@ interface Props {
   service: DeployService;
   /** Rendered as a draggable node on the canvas (fixed width, propagation guards). */
   canvas?: boolean;
+  /** Opens the service detail sheet on the canvas. */
+  onOpen?: () => void;
 }
 
-export const DeployServiceCard = memo(function DeployServiceCard({ service, canvas }: Props) {
+export const DeployServiceCard = memo(function DeployServiceCard({
+  service,
+  canvas,
+  onOpen,
+}: Props) {
   const { wid } = useParams({ from: "/_authed/$wid" });
   const color = DEPLOY_STATUS_COLOR[service.status];
   const active = deployStatusActive(service.status);
@@ -105,15 +111,17 @@ export const DeployServiceCard = memo(function DeployServiceCard({ service, canv
             }}
           />
           {canvas ? (
-            <Link
-              to="/$wid/deployments/$serviceId"
-              params={{ wid, serviceId: service.id }}
-              className="truncate text-[13px] font-medium tracking-tight text-[var(--color-fg)] no-underline hover:text-[var(--color-link)]"
-              onClick={(e) => e.stopPropagation()}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen?.();
+              }}
               onMouseDown={(e) => e.stopPropagation()}
+              className="truncate text-left text-[13px] font-medium tracking-tight text-[var(--color-fg)] no-underline hover:text-[var(--color-link)]"
             >
               {service.name}
-            </Link>
+            </button>
           ) : (
             <h2 className="truncate text-[13px] font-medium tracking-tight text-[var(--color-fg)]">
               {service.name}
@@ -179,8 +187,9 @@ export const DeployServiceCard = memo(function DeployServiceCard({ service, canv
 
   return (
     <Link
-      to="/$wid/deployments/$serviceId"
-      params={{ wid, serviceId: service.id }}
+      to="/$wid/deployments"
+      params={{ wid }}
+      search={{ service: service.id }}
       className={className}
       style={{ boxShadow: surfaceShadow(service.status) }}
     >
