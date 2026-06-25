@@ -10,21 +10,24 @@ compatibility_date = "2026-06-01"
 # Lets us verify the Host-rewrite/forwarding logic BEFORE touching production routing.
 workers_dev = true
 
-# PRODUCTION ROUTE — intentionally left commented until the custom-hostname flow is
-# tested end-to-end. Attaching `*/*` routes ALL produktive.app traffic through this
-# Worker, so it's enabled only at cutover (Cloudflare for SaaS on + fallback origin +
-# a verified custom hostname). Uncomment then, or add the route in the dashboard:
-#   Workers & Pages -> produktive.app -> Workers Routes -> Add route -> `*/*`
-# routes = [
-#   { pattern = "*/*", zone_name = "produktive.app" },
-# ]
+# PRODUCTION ROUTE — LIVE (cutover complete). `*/*` catches the whole zone; the Worker
+# passes produktive.app + every *.produktive.app subdomain straight through and only
+# rewrites external customer domains. Cloudflare's Worker loop-prevention sends the
+# in-zone subrequest to the origin, so the main app does not loop.
+routes = [
+  { pattern = "*/*", zone_name = "produktive.app" },
+]
 
 [vars]
 # Host header the backend/Railway expects (Railway routes by this).
 APP_HOST = "produktive.app"
-# First-party hosts the Worker passes through untouched (comma-separated).
-APP_HOSTS = "produktive.app,www.produktive.app"
-# App origin the Worker connects to. produktive.app mirrors the old Caddy origin
-# (PRODUKTIVE_ORIGIN=https://produktive.app). At cutover, consider a dedicated
-# *.up.railway.app origin to rule out any Worker-subrequest loop once */* is live.
+# The app's own zone. produktive.app + every *.produktive.app subdomain (cdn, www,
+# the SaaS records, future subdomains) passes through untouched; only external
+# customer domains get rewritten to the app origin.
+APP_ZONE = "produktive.app"
+# Origin the Worker connects to. MUST be produktive.app: Cloudflare Workers force the
+# outgoing Host header to match the fetch URL's hostname, so you cannot point this at a
+# *.up.railway.app host (Railway then 404s on the wrong Host). produktive.app is proxied,
+# and Cloudflare's Worker loop-prevention sends the in-zone subrequest to the origin
+# rather than re-invoking this Worker, so the */* route does not loop.
 RAILWAY_ORIGIN_HOST = "produktive.app"

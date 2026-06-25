@@ -25,14 +25,13 @@ export default {
     const url = new URL(request.url);
     const incomingHost = url.hostname.toLowerCase();
 
-    const appHosts = (env.APP_HOSTS || env.APP_HOST || "")
-      .split(",")
-      .map((h) => h.trim().toLowerCase())
-      .filter(Boolean);
-
-    // First-party app traffic (produktive.app, www.produktive.app) passes straight
-    // through — the */* route also catches the main app, so we must not rewrite it.
-    if (appHosts.includes(incomingHost)) {
+    // Everything in the app's own zone — produktive.app AND any *.produktive.app
+    // subdomain (cdn, www, the SaaS fallback/cname records, future subdomains) —
+    // passes straight through unchanged. The */* route catches the whole zone, but
+    // only genuine EXTERNAL customer domains (e.g. status.acme.com) get rewritten to
+    // the app origin. This avoids hijacking first-party subdomains like cdn (R2).
+    const appZone = (env.APP_ZONE || "produktive.app").toLowerCase();
+    if (incomingHost === appZone || incomingHost.endsWith("." + appZone)) {
       return fetch(request);
     }
 
