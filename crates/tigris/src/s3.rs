@@ -2,6 +2,7 @@ use std::convert::Infallible;
 
 use aws_config::BehaviorVersion;
 use aws_credential_types::Credentials;
+use aws_smithy_async::rt::sleep::TokioSleep;
 use aws_sdk_s3::config::Builder as S3ConfigBuilder;
 use aws_sdk_s3::error::ProvideErrorMetadata;
 use aws_sdk_s3::Client;
@@ -53,6 +54,7 @@ pub async fn build_s3_client(
     let conf = S3ConfigBuilder::from(&shared)
         .endpoint_url(endpoint.trim_end_matches('/'))
         .force_path_style(true)
+        .sleep_impl(TokioSleep::new())
         .build();
     Client::from_conf(conf)
 }

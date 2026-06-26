@@ -10,6 +10,7 @@ aws-config.workspace = true
 aws-credential-types.workspace = true
 aws-sdk-s3.workspace = true
 aws-sigv4.workspace = true
+aws-smithy-async = { version = "1", features = ["rt-tokio"] }
 reqwest.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json.workspace = true

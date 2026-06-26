@@ -581,6 +581,7 @@ dependencies = [
  "base64-simd",
  "bytes",
  "bytes-utils",
+ "futures-core",
  "http 0.2.12",
  "http 1.4.0",
  "http-body 0.4.6",
@@ -593,6 +594,8 @@ dependencies = [
  "ryu",
  "serde",
  "time",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -4446,6 +4449,7 @@ dependencies = [
  "aws-credential-types",
  "aws-sdk-s3",
  "aws-sigv4",
+ "aws-smithy-async",
  "reqwest",
  "serde",
  "serde_json",
