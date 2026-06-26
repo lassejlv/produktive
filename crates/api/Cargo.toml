@@ -14,6 +14,7 @@ produktive-dsl = { path = "../dsl" }
 produktive-probe = { path = "../probe" }
 produktive-deploy = { path = "../deploy" }
 fly = { path = "../fly" }
+tigris = { path = "../tigris" }
 polar = { path = "../polar" }
 produktive-cloudflare = { path = "../cloudflare" }
 email = { path = "../email" }

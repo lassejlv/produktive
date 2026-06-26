@@ -33,6 +33,8 @@ import type {
   DeployRegistryKind,
   DeployResourcePreset,
   DeploySandbox,
+  CreatedObjectStorageBucket,
+  ObjectStorageBucket,
   DeployService,
   DeployServiceDomain,
   DeployServiceVolume,
@@ -1006,6 +1008,53 @@ export function useDeleteDeploySandboxCheckpoint(wid: string) {
         queryKey: ["deployments", wid, "sandboxes", input.sandboxId, "checkpoints"],
       });
     },
+  });
+}
+
+export const objectStorageBucketsQuery = (wid: string) => ({
+  queryKey: ["object-storage", wid, "buckets"] as const,
+  queryFn: () => api.get<ObjectStorageBucket[]>(`/workspaces/${wid}/object-storage/buckets`),
+  refetchInterval: 15_000,
+});
+
+export function useObjectStorageBuckets(wid: string, enabled = true) {
+  return useQuery({ ...objectStorageBucketsQuery(wid), enabled });
+}
+
+export const objectStorageBucketQuery = (wid: string, bucketId: string) => ({
+  queryKey: ["object-storage", wid, "buckets", bucketId] as const,
+  queryFn: () =>
+    api.get<ObjectStorageBucket>(`/workspaces/${wid}/object-storage/buckets/${bucketId}`),
+  refetchInterval: 10_000,
+});
+
+export function useObjectStorageBucket(wid: string, bucketId: string | null, enabled = true) {
+  return useQuery({
+    ...objectStorageBucketQuery(wid, bucketId ?? ""),
+    enabled: enabled && !!bucketId,
+  });
+}
+
+export function useCreateObjectStorageBucket(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      name: string;
+      slug?: string;
+      region?: string;
+      access?: "private" | "public";
+    }) =>
+      api.post<CreatedObjectStorageBucket>(`/workspaces/${wid}/object-storage/buckets`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["object-storage", wid, "buckets"] }),
+  });
+}
+
+export function useDeleteObjectStorageBucket(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (bucketId: string) =>
+      api.del<OkResponse>(`/workspaces/${wid}/object-storage/buckets/${bucketId}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["object-storage", wid, "buckets"] }),
   });
 }
 

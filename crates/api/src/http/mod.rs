@@ -5,6 +5,8 @@ pub mod custom_domains;
 pub mod deployments;
 pub mod public_sandboxes;
 pub mod sandbox_service;
+pub mod object_storage;
+pub mod object_storage_service;
 pub mod sandboxes;
 pub mod health;
 pub mod incidents;

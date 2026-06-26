@@ -89,6 +89,15 @@ pub struct Config {
     pub sprite_name_prefix: String,
     /// Maximum sandboxes per workspace.
     pub sandbox_max_per_workspace: i64,
+    /// Enables Tigris object storage routes.
+    pub object_storage_enabled: bool,
+    /// Platform Tigris access key for provisioning buckets.
+    pub tigris_access_key_id: Option<String>,
+    pub tigris_secret_access_key: Option<String>,
+    pub tigris_s3_endpoint: String,
+    pub tigris_iam_endpoint: String,
+    pub object_storage_name_prefix: String,
+    pub object_storage_max_buckets_per_workspace: i64,
 }
 
 impl Config {
@@ -359,6 +368,47 @@ impl Config {
         if sandbox_max_per_workspace < 1 {
             return Err(anyhow!("SANDBOX_MAX_PER_WORKSPACE must be at least 1"));
         }
+        let object_storage_enabled = std::env::var("OBJECT_STORAGE_ENABLED")
+            .unwrap_or_else(|_| "false".into())
+            .parse()
+            .context("OBJECT_STORAGE_ENABLED must be bool")?;
+        let tigris_access_key_id = std::env::var("TIGRIS_ACCESS_KEY_ID")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let tigris_secret_access_key = std::env::var("TIGRIS_SECRET_ACCESS_KEY")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty());
+        let tigris_s3_endpoint = std::env::var("TIGRIS_S3_ENDPOINT")
+            .unwrap_or_else(|_| "https://t3.storage.dev".into())
+            .trim()
+            .trim_end_matches('/')
+            .to_owned();
+        let tigris_iam_endpoint = std::env::var("TIGRIS_IAM_ENDPOINT")
+            .unwrap_or_else(|_| "https://iam.storageapi.dev".into())
+            .trim()
+            .trim_end_matches('/')
+            .to_owned();
+        let object_storage_name_prefix = std::env::var("OBJECT_STORAGE_NAME_PREFIX")
+            .or_else(|_| std::env::var("FLY_APP_NAME_PREFIX"))
+            .unwrap_or_else(|_| "prd".into())
+            .trim()
+            .trim_matches('-')
+            .to_owned();
+        if object_storage_name_prefix.is_empty() {
+            return Err(anyhow!("OBJECT_STORAGE_NAME_PREFIX must not be empty"));
+        }
+        let object_storage_max_buckets_per_workspace =
+            std::env::var("OBJECT_STORAGE_MAX_BUCKETS_PER_WORKSPACE")
+                .unwrap_or_else(|_| "10".into())
+                .parse()
+                .context("OBJECT_STORAGE_MAX_BUCKETS_PER_WORKSPACE must be i64")?;
+        if object_storage_max_buckets_per_workspace < 1 {
+            return Err(anyhow!(
+                "OBJECT_STORAGE_MAX_BUCKETS_PER_WORKSPACE must be at least 1"
+            ));
+        }
         Ok(Self {
             database_url,
             database_pooled_url,
@@ -413,6 +463,13 @@ impl Config {
             sprites_api_url,
             sprite_name_prefix,
             sandbox_max_per_workspace,
+            object_storage_enabled,
+            tigris_access_key_id,
+            tigris_secret_access_key,
+            tigris_s3_endpoint,
+            tigris_iam_endpoint,
+            object_storage_name_prefix,
+            object_storage_max_buckets_per_workspace,
         })
     }
 

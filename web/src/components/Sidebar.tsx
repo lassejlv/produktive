@@ -5,6 +5,7 @@ import {
   Box,
   ChevronsUpDown,
   Check,
+  Database,
   FolderTree,
   Globe,
   HardDrive,
@@ -35,7 +36,7 @@ import {
 } from "./ui/sidebar";
 import { cn } from "#/lib/cn";
 import { BRAND_NAME } from "#/lib/brand";
-import { DEPLOYMENTS_ENABLED, LOGS_ENABLED, SANDBOXES_ENABLED } from "#/lib/features";
+import { DEPLOYMENTS_ENABLED, LOGS_ENABLED, OBJECT_STORAGE_ENABLED, SANDBOXES_ENABLED } from "#/lib/features";
 import { auth } from "../lib/api";
 import { useMe, useWorkspaces } from "../lib/queries";
 
@@ -75,8 +76,18 @@ const DEPLOYMENTS: NavItem[] = [
     label: "Services",
     icon: Rocket,
     anim: "pop",
-    excludeActiveWhen: ["/volumes", "/sandboxes"],
+    excludeActiveWhen: ["/volumes", "/sandboxes", "/object-storage"],
   },
+  ...(OBJECT_STORAGE_ENABLED
+    ? [
+        {
+          to: "/$wid/object-storage",
+          label: "Object Storage",
+          icon: Database,
+          anim: "pop" as const,
+        },
+      ]
+    : []),
   ...(SANDBOXES_ENABLED
     ? [
         {

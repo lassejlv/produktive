@@ -123,11 +123,28 @@ where
     .await
 }
 
+pub async fn unique_object_storage_bucket_slug<C>(
+    db: &C,
+    workspace_id: uuid::Uuid,
+    name: &str,
+) -> Result<String, sea_orm::DbErr>
+where
+    C: ConnectionTrait,
+{
+    unique_slug(
+        db,
+        slugify(name, "bucket"),
+        WorkspaceSlugScope::ObjectStorageBucket(workspace_id),
+    )
+    .await
+}
+
 enum WorkspaceSlugScope {
     Global,
     Workspace(uuid::Uuid),
     DeployService(uuid::Uuid),
     DeploySandbox(uuid::Uuid),
+    ObjectStorageBucket(uuid::Uuid),
 }
 
 async fn unique_slug<C>(
@@ -174,6 +191,11 @@ where
         WorkspaceSlugScope::DeploySandbox(workspace_id) => Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT EXISTS(SELECT 1 FROM deploy_sandboxes WHERE workspace_id = $1 AND slug = $2 AND deleted_at IS NULL)",
+            [(*workspace_id).into(), slug.into()],
+        ),
+        WorkspaceSlugScope::ObjectStorageBucket(workspace_id) => Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT EXISTS(SELECT 1 FROM object_storage_buckets WHERE workspace_id = $1 AND slug = $2 AND deleted_at IS NULL)",
             [(*workspace_id).into(), slug.into()],
         ),
     };

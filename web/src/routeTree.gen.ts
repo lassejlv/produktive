@@ -28,6 +28,7 @@ import { Route as AuthedWidIndexRouteImport } from './routes/_authed.$wid.index'
 import { Route as SSlugIncidentsRouteImport } from './routes/s_.$slug.incidents'
 import { Route as AuthedWidStatusRouteImport } from './routes/_authed.$wid.status'
 import { Route as AuthedWidSettingsRouteImport } from './routes/_authed.$wid.settings'
+import { Route as AuthedWidObjectStorageRouteImport } from './routes/_authed.$wid.object-storage'
 import { Route as AuthedWidMembersRouteImport } from './routes/_authed.$wid.members'
 import { Route as AuthedWidIncidentsRouteImport } from './routes/_authed.$wid.incidents'
 import { Route as AuthedWidDeploymentsRouteImport } from './routes/_authed.$wid.deployments'
@@ -151,6 +152,11 @@ const AuthedWidStatusRoute = AuthedWidStatusRouteImport.update({
 const AuthedWidSettingsRoute = AuthedWidSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => AuthedWidRoute,
+} as any)
+const AuthedWidObjectStorageRoute = AuthedWidObjectStorageRouteImport.update({
+  id: '/object-storage',
+  path: '/object-storage',
   getParentRoute: () => AuthedWidRoute,
 } as any)
 const AuthedWidMembersRoute = AuthedWidMembersRouteImport.update({
@@ -335,6 +341,7 @@ export interface FileRoutesByFullPath {
   '/$wid/deployments': typeof AuthedWidDeploymentsRouteWithChildren
   '/$wid/incidents': typeof AuthedWidIncidentsRouteWithChildren
   '/$wid/members': typeof AuthedWidMembersRoute
+  '/$wid/object-storage': typeof AuthedWidObjectStorageRoute
   '/$wid/settings': typeof AuthedWidSettingsRouteWithChildren
   '/$wid/status': typeof AuthedWidStatusRoute
   '/s/$slug/incidents': typeof SSlugIncidentsRouteWithChildren
@@ -381,6 +388,7 @@ export interface FileRoutesByTo {
   '/legal/$doc': typeof LegalDocRoute
   '/$wid/incidents': typeof AuthedWidIncidentsRouteWithChildren
   '/$wid/members': typeof AuthedWidMembersRoute
+  '/$wid/object-storage': typeof AuthedWidObjectStorageRoute
   '/$wid/status': typeof AuthedWidStatusRoute
   '/s/$slug/incidents': typeof SSlugIncidentsRouteWithChildren
   '/$wid': typeof AuthedWidIndexRoute
@@ -432,6 +440,7 @@ export interface FileRoutesById {
   '/_authed/$wid/deployments': typeof AuthedWidDeploymentsRouteWithChildren
   '/_authed/$wid/incidents': typeof AuthedWidIncidentsRouteWithChildren
   '/_authed/$wid/members': typeof AuthedWidMembersRoute
+  '/_authed/$wid/object-storage': typeof AuthedWidObjectStorageRoute
   '/_authed/$wid/settings': typeof AuthedWidSettingsRouteWithChildren
   '/_authed/$wid/status': typeof AuthedWidStatusRoute
   '/s_/$slug/incidents': typeof SSlugIncidentsRouteWithChildren
@@ -484,6 +493,7 @@ export interface FileRouteTypes {
     | '/$wid/deployments'
     | '/$wid/incidents'
     | '/$wid/members'
+    | '/$wid/object-storage'
     | '/$wid/settings'
     | '/$wid/status'
     | '/s/$slug/incidents'
@@ -530,6 +540,7 @@ export interface FileRouteTypes {
     | '/legal/$doc'
     | '/$wid/incidents'
     | '/$wid/members'
+    | '/$wid/object-storage'
     | '/$wid/status'
     | '/s/$slug/incidents'
     | '/$wid'
@@ -580,6 +591,7 @@ export interface FileRouteTypes {
     | '/_authed/$wid/deployments'
     | '/_authed/$wid/incidents'
     | '/_authed/$wid/members'
+    | '/_authed/$wid/object-storage'
     | '/_authed/$wid/settings'
     | '/_authed/$wid/status'
     | '/s_/$slug/incidents'
@@ -761,6 +773,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/$wid/settings'
       preLoaderRoute: typeof AuthedWidSettingsRouteImport
+      parentRoute: typeof AuthedWidRoute
+    }
+    '/_authed/$wid/object-storage': {
+      id: '/_authed/$wid/object-storage'
+      path: '/object-storage'
+      fullPath: '/$wid/object-storage'
+      preLoaderRoute: typeof AuthedWidObjectStorageRouteImport
       parentRoute: typeof AuthedWidRoute
     }
     '/_authed/$wid/members': {
@@ -1058,6 +1077,7 @@ interface AuthedWidRouteChildren {
   AuthedWidDeploymentsRoute: typeof AuthedWidDeploymentsRouteWithChildren
   AuthedWidIncidentsRoute: typeof AuthedWidIncidentsRouteWithChildren
   AuthedWidMembersRoute: typeof AuthedWidMembersRoute
+  AuthedWidObjectStorageRoute: typeof AuthedWidObjectStorageRoute
   AuthedWidSettingsRoute: typeof AuthedWidSettingsRouteWithChildren
   AuthedWidStatusRoute: typeof AuthedWidStatusRoute
   AuthedWidIndexRoute: typeof AuthedWidIndexRoute
@@ -1073,6 +1093,7 @@ const AuthedWidRouteChildren: AuthedWidRouteChildren = {
   AuthedWidDeploymentsRoute: AuthedWidDeploymentsRouteWithChildren,
   AuthedWidIncidentsRoute: AuthedWidIncidentsRouteWithChildren,
   AuthedWidMembersRoute: AuthedWidMembersRoute,
+  AuthedWidObjectStorageRoute: AuthedWidObjectStorageRoute,
   AuthedWidSettingsRoute: AuthedWidSettingsRouteWithChildren,
   AuthedWidStatusRoute: AuthedWidStatusRoute,
   AuthedWidIndexRoute: AuthedWidIndexRoute,

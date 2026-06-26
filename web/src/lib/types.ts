@@ -392,6 +392,32 @@ export interface DeploySandbox {
   updated_at: Iso;
 }
 
+export type ObjectStorageAccess = "private" | "public";
+
+export type ObjectStorageBucketStatus = "creating" | "ready" | "deleting" | "failed";
+
+export interface ObjectStorageBucket {
+  id: Uuid;
+  workspace_id: Uuid;
+  slug: string;
+  name: string;
+  provider: string;
+  provider_bucket_name: string;
+  region: string;
+  access: ObjectStorageAccess;
+  endpoint: string;
+  access_key_id: string | null;
+  secret_configured: boolean;
+  status: ObjectStorageBucketStatus | string;
+  failure_message: string | null;
+  created_at: Iso;
+  updated_at: Iso;
+}
+
+export interface CreatedObjectStorageBucket extends ObjectStorageBucket {
+  secret_access_key: string;
+}
+
 export interface SandboxCheckpoint {
   id: string;
   comment: string | null;

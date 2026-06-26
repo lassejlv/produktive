@@ -10,6 +10,7 @@ use email::EmailClient;
 use polar::Polar;
 use produktive_cloudflare::Cloudflare;
 use sprites::SpritesClient;
+use tigris::{SharedTigrisClient, TigrisClient, TigrisConfig};
 
 use crate::{
     billing::Billing, config::Config, logstore::LokiLogs, status_summary_cache::StatusSummaryCache,
@@ -43,6 +44,9 @@ pub struct AppState {
     /// Sprites.dev client for sandbox VMs. `None` when sandboxes are disabled
     /// or no token is configured.
     pub sprites: Option<Arc<SpritesClient>>,
+    /// Tigris object storage client. `None` when object storage is disabled
+    /// or platform credentials are missing.
+    pub tigris: Option<SharedTigrisClient>,
 }
 
 impl AppState {
@@ -82,6 +86,7 @@ impl AppState {
         }
         let loki = build_loki(&config, http.clone());
         let sprites = build_sprites(&config).await;
+        let tigris = build_tigris(&config, http.clone()).await;
         Ok(Self {
             db,
             config,
@@ -94,6 +99,7 @@ impl AppState {
             status_summary_cache: StatusSummaryCache::default(),
             loki,
             sprites,
+            tigris,
         })
     }
 }
@@ -240,5 +246,33 @@ async fn build_sprites(config: &Config) -> Option<Arc<SpritesClient>> {
     };
 
     tracing::info!("Sprites sandboxes initialized");
+    Some(Arc::new(client))
+}
+
+async fn build_tigris(config: &Config, http: Client) -> Option<SharedTigrisClient> {
+    if !config.object_storage_enabled {
+        tracing::warn!("OBJECT_STORAGE_ENABLED=false; object storage is disabled");
+        return None;
+    }
+    let (Some(access_key_id), Some(secret_access_key)) = (
+        config.tigris_access_key_id.as_ref(),
+        config.tigris_secret_access_key.as_ref(),
+    ) else {
+        tracing::warn!(
+            "TIGRIS_ACCESS_KEY_ID/TIGRIS_SECRET_ACCESS_KEY not set; object storage disabled"
+        );
+        return None;
+    };
+    let client = TigrisClient::new(
+        TigrisConfig {
+            access_key_id: access_key_id.clone(),
+            secret_access_key: secret_access_key.clone(),
+            s3_endpoint: config.tigris_s3_endpoint.clone(),
+            iam_endpoint: config.tigris_iam_endpoint.clone(),
+        },
+        http,
+    )
+    .await;
+    tracing::info!("Tigris object storage initialized");
     Some(Arc::new(client))
 }
