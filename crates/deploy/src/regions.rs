@@ -4,7 +4,10 @@ use utoipa::ToSchema;
 use crate::{DeployError, DeployResult};
 
 /// Fly region codes enabled for Produktive deployments (order preserved for UI).
-pub const ALLOWED_REGION_CODES: &[&str] = &["ams", "arn", "sjc", "yyz"];
+pub const ALLOWED_REGION_CODES: &[&str] = &[
+    "ams", "arn", "fra", "cdg", "lhr", "sjc", "iad", "ord", "dfw", "lax", "yyz", "sin", "nrt",
+    "syd",
+];
 
 pub const DEFAULT_DEPLOY_REGION: &str = "ams";
 
@@ -37,8 +40,18 @@ pub fn region_flag(code: &str) -> &'static str {
     match code {
         "ams" => "🇳🇱",
         "arn" => "🇸🇪",
+        "fra" => "🇩🇪",
+        "cdg" => "🇫🇷",
+        "lhr" => "🇬🇧",
         "sjc" => "🇺🇸",
+        "iad" => "🇺🇸",
+        "ord" => "🇺🇸",
+        "dfw" => "🇺🇸",
+        "lax" => "🇺🇸",
         "yyz" => "🇨🇦",
+        "sin" => "🇸🇬",
+        "nrt" => "🇯🇵",
+        "syd" => "🇦🇺",
         _ => "🌍",
     }
 }
@@ -47,8 +60,18 @@ fn static_region_name(code: &str) -> String {
     match code {
         "ams" => "Amsterdam, Netherlands".into(),
         "arn" => "Stockholm, Sweden".into(),
+        "fra" => "Frankfurt, Germany".into(),
+        "cdg" => "Paris, France".into(),
+        "lhr" => "London, United Kingdom".into(),
         "sjc" => "San Jose, California (US)".into(),
+        "iad" => "Ashburn, Virginia (US)".into(),
+        "ord" => "Chicago, Illinois (US)".into(),
+        "dfw" => "Dallas, Texas (US)".into(),
+        "lax" => "Los Angeles, California (US)".into(),
         "yyz" => "Toronto, Canada".into(),
+        "sin" => "Singapore".into(),
+        "nrt" => "Tokyo, Japan".into(),
+        "syd" => "Sydney, Australia".into(),
         _ => code.to_owned(),
     }
 }
@@ -112,7 +135,10 @@ mod tests {
 
     #[test]
     fn rejects_unknown_region() {
-        assert!(validate_allowed_region("fra").is_err());
+        assert!(validate_allowed_region("gru").is_err());
+        assert!(validate_allowed_region("iad").is_ok());
+        assert!(validate_allowed_region("sin").is_ok());
+        assert!(validate_allowed_region("fra").is_ok());
         assert!(validate_allowed_region("ams").is_ok());
     }
 
@@ -128,10 +154,10 @@ mod tests {
                 name: "San Jose, California (US)".into(),
             },
         ]);
-        assert_eq!(catalog.len(), 4);
+        assert_eq!(catalog.len(), 14);
         assert_eq!(catalog[0].code, "ams");
         assert_eq!(catalog[0].name, "Amsterdam, Netherlands");
-        assert_eq!(catalog[3].code, "yyz");
-        assert_eq!(catalog[3].name, "Toronto, Canada");
+        assert_eq!(catalog[13].code, "syd");
+        assert_eq!(catalog[13].name, "Sydney, Australia");
     }
 }
