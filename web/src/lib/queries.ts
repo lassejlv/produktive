@@ -886,7 +886,6 @@ export function useCreateDeploySandbox(wid: string) {
       cpus?: number;
       ram_mb?: number;
       storage_gb?: number;
-      url_auth?: "sprite" | "public";
     }) => api.post<DeploySandbox>(`/workspaces/${wid}/deployments/sandboxes`, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["deployments", wid, "sandboxes"] }),
   });
@@ -898,15 +897,12 @@ export function useUpdateDeploySandbox(wid: string) {
     mutationFn: ({
       sandboxId,
       name,
-      url_auth,
     }: {
       sandboxId: string;
       name?: string;
-      url_auth?: "sprite" | "public";
     }) =>
       api.patch<DeploySandbox>(`/workspaces/${wid}/deployments/sandboxes/${sandboxId}`, {
         name,
-        url_auth,
       }),
     onSuccess: (sandbox) => {
       qc.setQueryData<DeploySandbox[]>(["deployments", wid, "sandboxes"], (old) =>

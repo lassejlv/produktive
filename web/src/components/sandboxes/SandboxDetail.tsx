@@ -1,4 +1,4 @@
-import { Copy, ExternalLink, LayoutGrid, Settings, Terminal, Trash2 } from "lucide-react";
+import { Copy, LayoutGrid, Settings, Terminal, Trash2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
@@ -18,7 +18,6 @@ import {
 } from "#/lib/queries";
 import {
   DEFAULT_SANDBOX_DETAIL_TAB,
-  SANDBOX_URL_AUTH_OPTIONS,
   SANDBOX_STATUS_COLOR,
   SANDBOX_STATUS_LABEL,
   sandboxStatusActive,
@@ -110,48 +109,8 @@ export function SandboxDetail({
 }
 
 function OverviewPanel({ sandbox }: { sandbox: DeploySandbox }) {
-  const copyUrl = async () => {
-    if (!sandbox.url) return;
-    await navigator.clipboard.writeText(sandbox.url);
-    toast.success("URL copied");
-  };
-
   return (
     <div className="space-y-4">
-      <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] p-4">
-        <h3 className="text-[12px] font-medium uppercase tracking-[0.06em] text-[var(--color-fg-muted)]">
-          Public URL
-        </h3>
-        {sandbox.url ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <a
-              href={sandbox.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="link mono truncate text-[12px]"
-            >
-              {sandbox.url}
-            </a>
-            <Button type="button" variant="secondary" size="sm" onClick={() => void copyUrl()}>
-              <Copy size={14} />
-              Copy
-            </Button>
-            <a href={sandbox.url} target="_blank" rel="noopener noreferrer">
-              <Button type="button" variant="secondary" size="sm">
-                <ExternalLink size={14} />
-                Open
-              </Button>
-            </a>
-          </div>
-        ) : (
-          <p className="mt-2 text-[13px] text-[var(--color-fg-muted)]">
-            URL will appear once the sandbox wakes.
-          </p>
-        )}
-        <p className="mt-3 text-[12px] text-[var(--color-fg-dim)]">
-          URL auth: <span className="capitalize">{sandbox.url_auth}</span>
-        </p>
-      </section>
       <section className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] p-4">
         <h3 className="text-[12px] font-medium uppercase tracking-[0.06em] text-[var(--color-fg-muted)]">
           Metadata
@@ -381,9 +340,6 @@ function SettingsPanel({
   const update = useUpdateDeploySandbox(wid);
   const remove = useDeleteDeploySandbox(wid);
   const [name, setName] = useState(sandbox.name);
-  const [urlAuth, setUrlAuth] = useState<"sprite" | "public">(
-    sandbox.url_auth === "public" ? "public" : "sprite",
-  );
 
   return (
     <div className="space-y-6">
@@ -392,7 +348,7 @@ function SettingsPanel({
         onSubmit={(event) => {
           event.preventDefault();
           update.mutate(
-            { sandboxId: sandbox.id, name: name.trim(), url_auth: urlAuth },
+            { sandboxId: sandbox.id, name: name.trim() },
             {
               onSuccess: () => toast.success("Sandbox updated"),
               onError: (error) => toast.error((error as Error).message),
@@ -408,26 +364,6 @@ function SettingsPanel({
             className={cn("mt-1.5", fieldControlClass)}
             required
           />
-        </div>
-        <div>
-          <p className="text-[12px] text-[var(--color-fg-muted)]">URL access</p>
-          <div className="mt-1.5 flex gap-2">
-            {SANDBOX_URL_AUTH_OPTIONS.map(({ value, label }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setUrlAuth(value)}
-                className={cn(
-                  "rounded-[var(--radius-sm)] border px-2.5 py-1 text-[12px]",
-                  urlAuth === value
-                    ? "border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] text-[var(--color-accent)]"
-                    : "border-[var(--color-border)] text-[var(--color-fg-muted)]",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
         </div>
         <Button type="submit" size="sm" disabled={update.isPending || !name.trim()}>
           {update.isPending && <Spinner className="size-3" />}

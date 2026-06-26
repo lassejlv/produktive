@@ -1,6 +1,6 @@
 # @produktive/sandboxes
 
-TypeScript SDK for Produktive sandboxes. Create isolated Sprites.dev environments, run commands, manage checkpoints, and tear them down.
+TypeScript SDK for Produktive sandboxes. Create isolated environments, run commands, manage checkpoints, and tear them down.
 
 The default API base URL is `https://produktive.app`.
 

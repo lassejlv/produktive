@@ -1,4 +1,3 @@
-import { ExternalLink } from "lucide-react";
 import { cn } from "#/lib/cn";
 import { formatDeployRegion } from "#/lib/deploy-regions";
 import {
@@ -53,7 +52,7 @@ export function SandboxCard({
           {SANDBOX_STATUS_LABEL[sandbox.status] ?? sandbox.status}
         </span>
       </div>
-      <div className="mt-4 flex items-center justify-between gap-3 text-[11px] text-[var(--color-fg-dim)]">
+      <div className="mt-4 text-[11px] text-[var(--color-fg-dim)]">
         <span>
           {formatDeployRegion(sandbox.region, regions)}
           <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>
@@ -61,12 +60,6 @@ export function SandboxCard({
           <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>
           {sandbox.ram_mb} MB
         </span>
-        {sandbox.url && (
-          <span className="inline-flex items-center gap-1 text-[var(--color-link)]">
-            Open
-            <ExternalLink size={12} />
-          </span>
-        )}
       </div>
     </button>
   );
@@ -87,7 +80,7 @@ export function SandboxRow({
     <button
       type="button"
       onClick={onClick}
-      className="grid w-full grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_auto] items-center gap-3 border-b border-[var(--color-border)] px-4 py-3 text-left transition hover:bg-[var(--color-bg-row)]"
+      className="grid w-full grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,0.7fr)] items-center gap-3 border-b border-[var(--color-border)] px-4 py-3 text-left transition hover:bg-[var(--color-bg-row)]"
     >
       <div className="min-w-0">
         <p className="truncate text-[13px] font-medium text-[var(--color-fg)]">{sandbox.name}</p>
@@ -102,19 +95,6 @@ export function SandboxRow({
       <span className="text-[12px] font-medium" style={{ color }}>
         {SANDBOX_STATUS_LABEL[sandbox.status] ?? sandbox.status}
       </span>
-      {sandbox.url ? (
-        <a
-          href={sandbox.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(event) => event.stopPropagation()}
-          className="text-[12px] text-[var(--color-link)]"
-        >
-          URL
-        </a>
-      ) : (
-        <span className="text-[12px] text-[var(--color-fg-dim)]">—</span>
-      )}
     </button>
   );
 }

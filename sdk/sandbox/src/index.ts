@@ -21,7 +21,6 @@ export interface SandboxRecord {
   cpus: number;
   memoryMb: number;
   storageGb: number;
-  url: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -211,7 +210,6 @@ export class Sandbox {
   readonly cpus: number;
   readonly memoryMb: number;
   readonly storageGb: number;
-  readonly url: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 
@@ -226,7 +224,6 @@ export class Sandbox {
     this.cpus = record.cpus;
     this.memoryMb = record.memoryMb;
     this.storageGb = record.storageGb;
-    this.url = record.url;
     this.createdAt = record.createdAt;
     this.updatedAt = record.updatedAt;
     this.#client = client;

@@ -18,7 +18,6 @@ const sandboxRecord = {
   cpus: 1,
   memoryMb: 512,
   storageGb: 5,
-  url: null,
   createdAt: "2026-06-26T12:00:00+00:00",
   updatedAt: "2026-06-26T12:00:00+00:00",
 };

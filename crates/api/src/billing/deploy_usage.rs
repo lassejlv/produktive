@@ -1,6 +1,11 @@
-//! Deployment usage metering helpers — compute preset-allocated GB-hours /
-//! vCPU-hours and volume GB-hours over a sweep window, scoped to a billing
+//! Deployment usage metering helpers — compute preset-allocated GB-seconds /
+//! vCPU-seconds and volume GB-seconds over a sweep window, scoped to a billing
 //! customer (the owner's personal workspace, like the rest of billing).
+//!
+//! Usage is metered per second (Railway's model): the meters sum
+//! `resource × seconds`, so a deployment running for an hour at 1 GB reports
+//! 3,600 GB-seconds. Billing is exact to the millisecond — the sweep clips real
+//! start/stop timestamps to the window, no rounding up to whole minutes/hours.
 //!
 //! These are pure compute + SQL helpers. The actual Polar ingest lives in
 //! [`super::deploy_sweep`], which calls these and turns the deltas into
@@ -24,21 +29,23 @@ const BILLABLE_DEPLOYMENT_STATUSES: [i16; 5] = [
     5, // Live
 ];
 
-/// What resource to sum for [`compute_compute_hours`].
+/// What resource to sum for [`compute_compute_seconds`].
 #[derive(Clone, Copy, Debug)]
 pub enum ComputeKind {
-    /// GB-hours: preset memory / 1024.
+    /// GB-seconds: preset memory / 1024, multiplied by seconds occupied.
     Memory,
-    /// vCPU-hours: preset cpu count.
+    /// vCPU-seconds: preset cpu count, multiplied by seconds occupied.
     Cpu,
 }
 
-/// Allocated memory in GB for a preset (the unit the `deploy_memory` meter sums).
+/// Allocated memory in GB for a preset — the per-second factor the
+/// `deploy_memory` meter multiplies by occupied seconds.
 pub fn preset_memory_gb(preset: ResourcePreset) -> f64 {
     preset.memory_mb() as f64 / 1024.0
 }
 
-/// Allocated vCPUs for a preset (the unit the `deploy_cpu` meter sums).
+/// Allocated vCPUs for a preset — the per-second factor the `deploy_cpu` meter
+/// multiplies by occupied seconds.
 pub fn preset_vcpus(preset: ResourcePreset) -> f64 {
     preset.cpus() as f64
 }
@@ -51,11 +58,11 @@ pub fn preset_rate(preset: ResourcePreset, kind: ComputeKind) -> f64 {
     }
 }
 
-/// Hours a deployment occupied during `[window_start, window_end)`, clipped to
+/// Seconds a deployment occupied during `[window_start, window_end)`, clipped to
 /// the window. `started_at` opens the interval; `finished_at` (or `window_end`
 /// when the deployment is still running) closes it. Returns 0 if the deployment
 /// didn't overlap the window or hasn't started yet.
-pub fn windowed_hours(
+pub fn windowed_seconds(
     started_at: Option<DateTime<Utc>>,
     finished_at: Option<DateTime<Utc>>,
     status: i16,
@@ -82,16 +89,16 @@ pub fn windowed_hours(
     if clipped_end <= clipped_start {
         return 0.0;
     }
-    (clipped_end - clipped_start).num_milliseconds() as f64 / 3_600_000.0
+    (clipped_end - clipped_start).num_milliseconds() as f64 / 1_000.0
 }
 
-/// Volume GB-hours occupied during `[window_start, window_end)`, clipped to the
+/// Volume GB-seconds occupied during `[window_start, window_end)`, clipped to the
 /// window. `provisioned_at` opens the interval — the moment the volume was
 /// actually allocated on the provider, not row-insert time — so a queued or
 /// never-provisioned volume (`provisioned_at` None) bills nothing, mirroring how
-/// [`windowed_hours`] gates on a deployment's `started_at`. `deleted_at` (or
+/// [`windowed_seconds`] gates on a deployment's `started_at`. `deleted_at` (or
 /// `window_end` if still alive) closes.
-pub fn windowed_volume_hours(
+pub fn windowed_volume_seconds(
     provisioned_at: Option<DateTime<Utc>>,
     deleted_at: Option<DateTime<Utc>>,
     window_start: DateTime<Utc>,
@@ -109,13 +116,13 @@ pub fn windowed_volume_hours(
     if clipped_end <= clipped_start {
         return 0.0;
     }
-    (clipped_end - clipped_start).num_milliseconds() as f64 / 3_600_000.0
+    (clipped_end - clipped_start).num_milliseconds() as f64 / 1_000.0
 }
 
-/// Sum of compute hours (GB-hours or vCPU-hours) across all deployments of the
-/// billing customer behind `workspace_id`, over `[window_start, window_end)`.
+/// Sum of compute seconds (GB-seconds or vCPU-seconds) across all deployments of
+/// the billing customer behind `workspace_id`, over `[window_start, window_end)`.
 /// Aggregates across every workspace the owner has, like the rest of billing.
-pub async fn compute_compute_hours(
+pub async fn compute_compute_seconds(
     state: &AppState,
     workspace_id: Uuid,
     window_start: DateTime<Utc>,
@@ -155,21 +162,21 @@ pub async fn compute_compute_hours(
         let Ok(preset) = ResourcePreset::parse(&row.resource_preset) else {
             continue;
         };
-        let hours = windowed_hours(
+        let seconds = windowed_seconds(
             row.started_at.map(|d| d.with_timezone(&Utc)),
             row.finished_at.map(|d| d.with_timezone(&Utc)),
             row.status,
             window_start,
             window_end,
         );
-        total += hours * preset_rate(preset, kind);
+        total += seconds * preset_rate(preset, kind);
     }
     Ok(total)
 }
 
-/// Sum of volume GB-hours across all volumes owned by the billing customer
+/// Sum of volume GB-seconds across all volumes owned by the billing customer
 /// behind `workspace_id`, over `[window_start, window_end)`.
-pub async fn compute_volume_gb_hours(
+pub async fn compute_volume_gb_seconds(
     state: &AppState,
     workspace_id: Uuid,
     window_start: DateTime<Utc>,
@@ -204,13 +211,13 @@ pub async fn compute_volume_gb_hours(
 
     let mut total = 0.0;
     for row in rows {
-        let hours = windowed_volume_hours(
+        let seconds = windowed_volume_seconds(
             row.provisioned_at.map(|d| d.with_timezone(&Utc)),
             row.deleted_at.map(|d| d.with_timezone(&Utc)),
             window_start,
             window_end,
         );
-        total += hours * row.size_gb as f64;
+        total += seconds * row.size_gb as f64;
     }
     Ok(total)
 }
@@ -287,92 +294,92 @@ mod tests {
     }
 
     #[test]
-    fn windowed_hours_full_window_running_live() {
+    fn windowed_seconds_full_window_running_live() {
         let start = ts(0);
         let end = ts(3600);
         // Live across the whole window, no finished_at → end = window_end.
-        let h = windowed_hours(Some(ts(0)), None, 5, start, end);
-        assert!((h - 1.0).abs() < 1e-9);
+        let s = windowed_seconds(Some(ts(0)), None, 5, start, end);
+        assert!((s - 3600.0).abs() < 1e-9);
     }
 
     #[test]
-    fn windowed_hours_starts_mid_window() {
+    fn windowed_seconds_starts_mid_window() {
         let start = ts(0);
         let end = ts(3600);
-        let h = windowed_hours(Some(ts(1800)), None, 5, start, end);
-        assert!((h - 0.5).abs() < 1e-9);
+        let s = windowed_seconds(Some(ts(1800)), None, 5, start, end);
+        assert!((s - 1800.0).abs() < 1e-9);
     }
 
     #[test]
-    fn windowed_hours_stops_mid_window() {
+    fn windowed_seconds_stops_mid_window() {
         let start = ts(0);
         let end = ts(3600);
-        let h = windowed_hours(Some(ts(0)), Some(ts(1800)), 9, start, end);
-        assert!((h - 0.5).abs() < 1e-9);
+        let s = windowed_seconds(Some(ts(0)), Some(ts(1800)), 9, start, end);
+        assert!((s - 1800.0).abs() < 1e-9);
     }
 
     #[test]
-    fn windowed_hours_stopped_before_window_excluded() {
+    fn windowed_seconds_stopped_before_window_excluded() {
         let start = ts(3600);
         let end = ts(7200);
-        let h = windowed_hours(Some(ts(0)), Some(ts(1800)), 9, start, end);
-        assert_eq!(h, 0.0);
+        let s = windowed_seconds(Some(ts(0)), Some(ts(1800)), 9, start, end);
+        assert_eq!(s, 0.0);
     }
 
     #[test]
-    fn windowed_hours_queued_no_started_at() {
+    fn windowed_seconds_queued_no_started_at() {
         let start = ts(0);
         let end = ts(3600);
-        assert_eq!(windowed_hours(None, None, 0, start, end), 0.0);
+        assert_eq!(windowed_seconds(None, None, 0, start, end), 0.0);
     }
 
     #[test]
-    fn windowed_hours_terminal_without_finished_at_is_zero() {
+    fn windowed_seconds_terminal_without_finished_at_is_zero() {
         let start = ts(0);
         let end = ts(3600);
         // Stopped status but no finished_at — defensive: nothing billable.
-        assert_eq!(windowed_hours(Some(ts(0)), None, 9, start, end), 0.0);
+        assert_eq!(windowed_seconds(Some(ts(0)), None, 9, start, end), 0.0);
     }
 
     #[test]
-    fn windowed_volume_hours_full_window() {
+    fn windowed_volume_seconds_full_window() {
         let start = ts(0);
         let end = ts(3600);
-        let h = windowed_volume_hours(Some(ts(0)), None, start, end);
-        assert!((h - 1.0).abs() < 1e-9);
+        let s = windowed_volume_seconds(Some(ts(0)), None, start, end);
+        assert!((s - 3600.0).abs() < 1e-9);
     }
 
     #[test]
-    fn windowed_volume_hours_deleted_mid_window() {
+    fn windowed_volume_seconds_deleted_mid_window() {
         let start = ts(0);
         let end = ts(3600);
-        let h = windowed_volume_hours(Some(ts(0)), Some(ts(1800)), start, end);
-        assert!((h - 0.5).abs() < 1e-9);
+        let s = windowed_volume_seconds(Some(ts(0)), Some(ts(1800)), start, end);
+        assert!((s - 1800.0).abs() < 1e-9);
     }
 
     #[test]
-    fn windowed_volume_hours_provisioned_mid_window() {
+    fn windowed_volume_seconds_provisioned_mid_window() {
         let start = ts(0);
         let end = ts(3600);
-        let h = windowed_volume_hours(Some(ts(1800)), None, start, end);
-        assert!((h - 0.5).abs() < 1e-9);
+        let s = windowed_volume_seconds(Some(ts(1800)), None, start, end);
+        assert!((s - 1800.0).abs() < 1e-9);
     }
 
     #[test]
-    fn windowed_volume_hours_queued_not_provisioned_is_zero() {
+    fn windowed_volume_seconds_queued_not_provisioned_is_zero() {
         let start = ts(0);
         let end = ts(3600);
         // No provisioned_at — the volume row exists but Fly hasn't allocated it
         // yet (status 'queued'). Nothing billable.
-        assert_eq!(windowed_volume_hours(None, None, start, end), 0.0);
+        assert_eq!(windowed_volume_seconds(None, None, start, end), 0.0);
     }
 
     #[test]
-    fn windowed_volume_hours_deleted_before_window_excluded() {
+    fn windowed_volume_seconds_deleted_before_window_excluded() {
         let start = ts(3600);
         let end = ts(7200);
-        let h = windowed_volume_hours(Some(ts(0)), Some(ts(1800)), start, end);
-        assert_eq!(h, 0.0);
+        let s = windowed_volume_seconds(Some(ts(0)), Some(ts(1800)), start, end);
+        assert_eq!(s, 0.0);
     }
 
     #[test]

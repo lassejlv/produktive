@@ -4,7 +4,6 @@ import { Input } from "#/components/ui/input";
 import { Dialog, DialogClose, DialogContent } from "#/components/Dialog";
 import { Spinner } from "#/components/ui/spinner";
 import { cn } from "#/lib/cn";
-import { SANDBOX_URL_AUTH_OPTIONS } from "#/lib/sandboxes";
 import type { DeployRegion } from "#/lib/types";
 import { fieldControlClass } from "#/components/deployments/deploy-shared";
 
@@ -34,7 +33,6 @@ export function CreateSandboxDialog({
     region?: string;
     cpus?: number;
     ram_mb?: number;
-    url_auth?: "sprite" | "public";
   }) => void;
 }) {
   const nameId = useId();
@@ -45,7 +43,6 @@ export function CreateSandboxDialog({
   const [region, setRegion] = useState(regions[0]?.code ?? "fra");
   const [cpus, setCpus] = useState(1);
   const [ramMb, setRamMb] = useState(512);
-  const [urlAuth, setUrlAuth] = useState<"sprite" | "public">("sprite");
 
   const reset = () => {
     setName("");
@@ -53,7 +50,6 @@ export function CreateSandboxDialog({
     setRegion(regions[0]?.code ?? "fra");
     setCpus(1);
     setRamMb(512);
-    setUrlAuth("sprite");
   };
 
   const handleSubmit = (event: FormEvent) => {
@@ -64,7 +60,6 @@ export function CreateSandboxDialog({
       region,
       cpus,
       ram_mb: ramMb,
-      url_auth: urlAuth,
     });
   };
 
@@ -161,26 +156,6 @@ export function CreateSandboxDialog({
                   </button>
                 ))}
               </div>
-            </div>
-          </div>
-          <div>
-            <p className="text-[12px] text-[var(--color-fg-muted)]">URL access</p>
-            <div className="mt-1.5 flex gap-2">
-              {SANDBOX_URL_AUTH_OPTIONS.map(({ value, label }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setUrlAuth(value)}
-                  className={cn(
-                    "rounded-[var(--radius-sm)] border px-2.5 py-1 text-[12px]",
-                    urlAuth === value
-                      ? "border-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] text-[var(--color-accent)]"
-                      : "border-[var(--color-border)] text-[var(--color-fg-muted)]",
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">

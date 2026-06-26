@@ -61,16 +61,12 @@ pub struct CreateSandboxBody {
     pub ram_mb: Option<i32>,
     #[serde(default)]
     pub storage_gb: Option<i32>,
-    #[serde(default)]
-    pub url_auth: Option<String>,
 }
 
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateSandboxBody {
     #[serde(default)]
     pub name: Option<String>,
-    #[serde(default)]
-    pub url_auth: Option<String>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -172,7 +168,6 @@ pub async fn create_sandbox(
             cpus: body.cpus,
             ram_mb: body.ram_mb,
             storage_gb: body.storage_gb,
-            url_auth: body.url_auth,
         },
     )
     .await
@@ -204,7 +199,6 @@ pub async fn update_sandbox(
         sandbox_id,
         UpdateSandboxInput {
             name: body.name,
-            url_auth: body.url_auth,
         },
     )
     .await

@@ -831,9 +831,12 @@ async fn build_balances(
         let Some(ent) = catalog.entitlement(tier, feature) else {
             continue;
         };
+        // Deploy meters bill per second, so Polar's balance is in GB-seconds /
+        // vCPU-seconds. Divide back to GB-hours / vCPU-hours for display — the
+        // unit the billing page labels these tiles with.
         let usage = cstate
             .meter(&ent.meter_id)
-            .map(|m| m.consumed_units)
+            .map(|m| m.consumed_units / 3_600.0)
             .filter(|u| u.is_finite());
         balances.insert(
             feature.to_owned(),

@@ -4,9 +4,9 @@ use chrono::{DateTime, FixedOffset, Utc};
 use deploy::{provider_app_name, validate_allowed_region, DeployError, DEFAULT_DEPLOY_REGION};
 use rand::RngCore;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
-use serde_json::{json, Value};
+use serde_json::json;
 use sha2::{Digest, Sha256};
-use sprites::{SpriteConfig, SpriteStatus, SpritesClient, UrlAuth, UrlSettings};
+use sprites::{SpriteConfig, SpriteStatus, SpritesClient};
 use uuid::Uuid;
 
 use crate::{
@@ -34,13 +34,11 @@ pub struct CreateSandboxInput {
     pub cpus: Option<i32>,
     pub ram_mb: Option<i32>,
     pub storage_gb: Option<i32>,
-    pub url_auth: Option<String>,
 }
 
 #[derive(Clone, Debug)]
 pub struct UpdateSandboxInput {
     pub name: Option<String>,
-    pub url_auth: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -71,9 +69,7 @@ pub struct DeploySandboxView {
     pub cpus: i32,
     pub ram_mb: i32,
     pub storage_gb: i32,
-    pub url: Option<String>,
     pub status: String,
-    pub url_auth: String,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
 }
@@ -93,12 +89,10 @@ pub(crate) struct SandboxRow {
     pub slug: String,
     pub name: String,
     pub provider_name: String,
-    pub provider_metadata: Value,
     pub region: String,
     pub cpus: i32,
     pub ram_mb: i32,
     pub storage_gb: i32,
-    pub url: Option<String>,
     pub status: String,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
@@ -195,7 +189,6 @@ pub async fn create_sandbox(
     let cpus = body.cpus.unwrap_or(1).clamp(1, 8);
     let ram_mb = body.ram_mb.unwrap_or(512).clamp(256, 16_384);
     let storage_gb = body.storage_gb.unwrap_or(10).clamp(1, 100);
-    let url_auth = parse_url_auth(body.url_auth.as_deref())?;
 
     let id = Uuid::now_v7();
     let provider_name = provider_app_name(
@@ -210,21 +203,16 @@ pub async fn create_sandbox(
         region: Some(region.clone()),
         storage_gb: Some(storage_gb as u32),
     };
-    let url_settings = UrlSettings {
-        auth: url_auth.clone(),
-    };
 
     sprites
-        .create_with_config(&provider_name, Some(config), Some(url_settings))
+        .create_with_config(&provider_name, Some(config), None)
         .await
         .map_err(sandbox_error)?;
 
     let info = sprites.get(&provider_name).await.map_err(sandbox_error)?;
     let status = map_sprite_status(info.status);
-    let url = info.url;
     let now = Utc::now().fixed_offset();
     let metadata = json!({
-        "url_auth": url_auth_label(&url_auth),
         "organization_name": info.organization_name,
     });
 
@@ -235,9 +223,9 @@ pub async fn create_sandbox(
             r#"
             INSERT INTO deploy_sandboxes (
                 id, workspace_id, slug, name, provider_name, provider_metadata,
-                region, cpus, ram_mb, storage_gb, url, status, created_by, created_at, updated_at
+                region, cpus, ram_mb, storage_gb, status, created_by, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
             "#,
             [
                 id.into(),
@@ -250,7 +238,6 @@ pub async fn create_sandbox(
                 cpus.into(),
                 ram_mb.into(),
                 storage_gb.into(),
-                url.into(),
                 status.into(),
                 created_by.into(),
                 now.into(),
@@ -268,8 +255,6 @@ pub async fn update_sandbox(
     body: UpdateSandboxInput,
 ) -> ApiResult<DeploySandboxView> {
     ensure_sandbox_access(state, workspace_id).await?;
-    let sprites = sprites_client(state)?;
-    let row = ensure_sandbox(state, workspace_id, sandbox_id).await?;
 
     if let Some(name) = body.name {
         let name = clean_text(name, 1, 120, "name")?;
@@ -284,38 +269,6 @@ pub async fn update_sandbox(
                 "#,
                 [
                     name.into(),
-                    Utc::now().fixed_offset().into(),
-                    sandbox_id.into(),
-                    workspace_id.into(),
-                ],
-            ))
-            .await?;
-    }
-
-    if let Some(url_auth) = body.url_auth {
-        let url_auth = parse_url_auth(Some(&url_auth))?;
-        let sprite = sprites.sprite(&row.provider_name);
-        sprite
-            .update_url_settings(UrlSettings {
-                auth: url_auth.clone(),
-            })
-            .await
-            .map_err(sandbox_error)?;
-        let mut metadata: Value = row.provider_metadata;
-        if let Some(obj) = metadata.as_object_mut() {
-            obj.insert("url_auth".into(), json!(url_auth_label(&url_auth)));
-        }
-        state
-            .db
-            .execute(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                r#"
-                UPDATE deploy_sandboxes
-                SET provider_metadata = $1, updated_at = $2
-                WHERE id = $3 AND workspace_id = $4 AND deleted_at IS NULL
-                "#,
-                [
-                    metadata.into(),
                     Utc::now().fixed_offset().into(),
                     sandbox_id.into(),
                     workspace_id.into(),
@@ -671,8 +624,8 @@ async fn sandbox_rows(
         SandboxRow::find_by_statement(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"
-            SELECT id, workspace_id, slug, name, provider_name, provider_metadata,
-                   region, cpus, ram_mb, storage_gb, url, status, created_at, updated_at
+            SELECT id, workspace_id, slug, name, provider_name,
+                   region, cpus, ram_mb, storage_gb, status, created_at, updated_at
             FROM deploy_sandboxes
             WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
             "#,
@@ -684,8 +637,8 @@ async fn sandbox_rows(
         SandboxRow::find_by_statement(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"
-            SELECT id, workspace_id, slug, name, provider_name, provider_metadata,
-                   region, cpus, ram_mb, storage_gb, url, status, created_at, updated_at
+            SELECT id, workspace_id, slug, name, provider_name,
+                   region, cpus, ram_mb, storage_gb, status, created_at, updated_at
             FROM deploy_sandboxes
             WHERE workspace_id = $1 AND deleted_at IS NULL
             ORDER BY created_at DESC
@@ -719,8 +672,8 @@ async fn ensure_sandbox(
     SandboxRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
-        SELECT id, workspace_id, slug, name, provider_name, provider_metadata,
-               region, cpus, ram_mb, storage_gb, url, status, created_at, updated_at
+        SELECT id, workspace_id, slug, name, provider_name,
+               region, cpus, ram_mb, storage_gb, status, created_at, updated_at
         FROM deploy_sandboxes
         WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
         "#,
@@ -752,11 +705,10 @@ async fn refresh_sandbox(
             DatabaseBackend::Postgres,
             r#"
             UPDATE deploy_sandboxes
-            SET url = $1, status = $2, updated_at = $3
-            WHERE id = $4 AND workspace_id = $5 AND deleted_at IS NULL
+            SET status = $1, updated_at = $2
+            WHERE id = $3 AND workspace_id = $4 AND deleted_at IS NULL
             "#,
             [
-                info.url.into(),
                 status.into(),
                 Utc::now().fixed_offset().into(),
                 sandbox_id.into(),
@@ -848,14 +800,7 @@ fn sandbox_view(row: SandboxRow) -> DeploySandboxView {
         cpus: row.cpus,
         ram_mb: row.ram_mb,
         storage_gb: row.storage_gb,
-        url: row.url,
         status: row.status,
-        url_auth: row
-            .provider_metadata
-            .get("url_auth")
-            .and_then(Value::as_str)
-            .unwrap_or("sprite")
-            .to_owned(),
         created_at: row.created_at,
         updated_at: row.updated_at,
     }
@@ -919,21 +864,6 @@ fn validate_checkpoint_id(value: &str) -> ApiResult<()> {
         Ok(())
     } else {
         Err(ApiError::bad_request("invalid checkpoint id"))
-    }
-}
-
-fn parse_url_auth(raw: Option<&str>) -> ApiResult<UrlAuth> {
-    match raw.unwrap_or("sprite").trim().to_lowercase().as_str() {
-        "sprite" | "org" | "private" => Ok(UrlAuth::Sprite),
-        "public" => Ok(UrlAuth::Public),
-        _ => Err(ApiError::bad_request("url_auth must be sprite or public")),
-    }
-}
-
-fn url_auth_label(auth: &UrlAuth) -> &'static str {
-    match auth {
-        UrlAuth::Public => "public",
-        UrlAuth::Sprite => "sprite",
     }
 }
 

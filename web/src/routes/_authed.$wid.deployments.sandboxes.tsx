@@ -202,12 +202,11 @@ function DeploySandboxesContent({ wid }: { wid: string }) {
         ) : (
           <div className="overflow-x-auto">
             <div className="min-w-[760px] border-b border-[var(--color-border)] px-4 py-2 text-[11px] uppercase tracking-[0.06em] text-[var(--color-fg-dim)] sm:px-6">
-              <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_auto] gap-3">
+              <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,0.7fr)_minmax(0,0.7fr)] gap-3">
                 <span>Name</span>
                 <span>Region</span>
                 <span>Resources</span>
                 <span>Status</span>
-                <span>URL</span>
               </div>
             </div>
             {filtered.map((sandbox) => (

@@ -9,7 +9,7 @@ use crate::{
     billing::{
         feature_display_name, feature_noun, format_thousands, overage_text, perk_label,
         trim_decimal, FeatureEntitlement, PolarCatalog, TierCatalog, DEPLOY_METERED_FEATURES,
-        METERED_FEATURES, PERK_FEATURES,
+        METERED_FEATURES, PERK_FEATURES, SECONDS_PER_MONTH,
     },
     error::ApiResult,
     state::AppState,
@@ -222,9 +222,12 @@ fn metered_plan_feature(feature: &str, ent: &FeatureEntitlement) -> PublicPlanFe
     let usage_price = ent.unit_amount_cents.map(|cents| {
         let (amount, billing_units) = match feature {
             "events" => (cents * 1000.0 / 100.0, 1000.0),
-            "deploy_memory" | "deploy_cpu" | "deploy_volume" | "deploy_egress" => {
-                (cents / 100.0, 1.0)
+            // Per-second compute/storage meters: report the per-month dollar
+            // equivalent (interval is "month"), mirroring `overage_text`.
+            "deploy_memory" | "deploy_cpu" | "deploy_volume" => {
+                (cents * SECONDS_PER_MONTH / 100.0, 1.0)
             }
+            // deploy_egress and everything else are flat per-unit prices.
             _ => (cents / 100.0, 1.0),
         };
         PublicUsagePrice {

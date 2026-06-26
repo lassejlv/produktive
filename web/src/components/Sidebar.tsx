@@ -227,7 +227,7 @@ export function AppSidebar() {
 
           {DEPLOYMENTS_ENABLED && (
             <SidebarGroup>
-              <SidebarGroupLabel>Deployments</SidebarGroupLabel>
+              <SidebarGroupLabel>Cloud</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   {DEPLOYMENTS.map((it) => (

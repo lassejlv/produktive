@@ -1,9 +1,12 @@
 {
   "name": "@produktive/sandboxes",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Produktive sandboxes SDK for JavaScript and TypeScript.",
   "type": "module",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lassejlv/produktive.git",

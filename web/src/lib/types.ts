@@ -376,7 +376,6 @@ export interface Deployment {
 }
 
 export type SandboxStatus = "cold" | "warm" | "active" | "stopped" | "unknown";
-export type SandboxUrlAuth = "sprite" | "public";
 
 export interface DeploySandbox {
   id: Uuid;
@@ -388,9 +387,7 @@ export interface DeploySandbox {
   cpus: number;
   ram_mb: number;
   storage_gb: number;
-  url: string | null;
   status: SandboxStatus | string;
-  url_auth: SandboxUrlAuth | string;
   created_at: Iso;
   updated_at: Iso;
 }

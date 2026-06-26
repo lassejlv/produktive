@@ -55,7 +55,6 @@ pub struct PublicSandbox {
     pub cpus: i32,
     pub memory_mb: i32,
     pub storage_gb: i32,
-    pub url: Option<String>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
 }
@@ -153,7 +152,6 @@ pub async fn create_sandbox(
             cpus: body.cpus,
             ram_mb: body.memory_mb,
             storage_gb: body.storage_gb,
-            url_auth: None,
         },
     )
     .await?;
@@ -349,7 +347,6 @@ fn public_sandbox(view: sandbox_service::DeploySandboxView) -> PublicSandbox {
         cpus: view.cpus,
         memory_mb: view.ram_mb,
         storage_gb: view.storage_gb,
-        url: view.url,
         created_at: view.created_at,
         updated_at: view.updated_at,
     }
