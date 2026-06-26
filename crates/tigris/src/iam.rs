@@ -7,6 +7,7 @@ use aws_sigv4::http_request::{
 use aws_sigv4::sign::v4;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use url::form_urlencoded;
 use uuid::Uuid;
 
@@ -179,9 +180,27 @@ fn sign_request(
         .map_err(|e| TigrisError::Iam(e.to_string()))?
         .into();
 
-    let signable_headers = headers
+    // Match the Tigris JS SDK (`@smithy/signature-v4` with `applyChecksum: true`):
+    // add `x-amz-content-sha256` to the headers _before_ signing so it becomes part
+    // of the canonical request. The default `PayloadChecksumKind::NoHeader` signs
+    // with the real payload hash but omits the header, which the IAM endpoint then
+    // treats as UNSIGNED-PAYLOAD, causing a SignatureDoesNotMatch.
+    let payload_hash = sha256_hex(body);
+    let mut signable_headers_vec: Vec<(String, String)> = Vec::with_capacity(headers.len() + 1);
+    for (name, value) in headers.iter() {
+        signable_headers_vec.push((
+            name.as_str().to_owned(),
+            value.to_str().unwrap_or_default().to_owned(),
+        ));
+    }
+    signable_headers_vec.push((
+        "x-amz-content-sha256".to_owned(),
+        payload_hash.clone(),
+    ));
+    let signable_headers = signable_headers_vec
         .iter()
-        .map(|(name, value)| (name.as_str(), value.to_str().unwrap_or_default()));
+        .map(|(name, value)| (name.as_str(), value.as_str()));
+
     let signable_request = SignableRequest::new(
         method,
         url,
@@ -198,6 +217,10 @@ fn sign_request(
     for (key, value) in headers.iter() {
         signed.push((key.clone(), value.clone()));
     }
+    signed.push((
+        HeaderName::from_static("x-amz-content-sha256"),
+        HeaderValue::from_str(&payload_hash).map_err(|e| TigrisError::Iam(e.to_string()))?,
+    ));
     for (key, value) in instructions.headers() {
         signed.push((
             HeaderName::from_bytes(key.as_bytes())
@@ -206,4 +229,9 @@ fn sign_request(
         ));
     }
     Ok(signed)
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    hex::encode(digest)
 }
