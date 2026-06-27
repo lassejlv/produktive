@@ -216,3 +216,49 @@ function cellText(row: PlanFeatureRow): string {
 export function isFreePlan(plan: PublicPricingPlan): boolean {
   return plan.id === "free" || (plan.price?.amount ?? 0) === 0;
 }
+
+/** Pure-overage deploy resource meters, in display order. */
+export const DEPLOY_FEATURE_IDS = ["deploy_memory", "deploy_cpu", "deploy_volume"] as const;
+
+export interface DeployPricingRow {
+  featureId: string;
+  name: string;
+  /** Metered rate, e.g. `$10.01 per GB-month`. */
+  rateText: string;
+}
+
+/**
+ * Deploy resource meters are usage-based and identical across paid plans, so
+ * they render as one shared "pay as you go" panel rather than per-plan bullets.
+ * Pulls the rate from the first plan that prices each meter.
+ */
+export function deployPricingRows(
+  plans: PublicPricingPlan[],
+  catalog: PublicPricingFeature[],
+): DeployPricingRow[] {
+  const nameById = new Map(catalog.map((f) => [f.id, f.name ?? f.id]));
+  const byFeature = new Map<string, PublicPlanFeature>();
+
+  for (const plan of plans) {
+    for (const feature of plan.features) {
+      if (!(DEPLOY_FEATURE_IDS as readonly string[]).includes(feature.feature_id)) continue;
+      if (byFeature.has(feature.feature_id)) continue;
+      // Only real metered rates carry a usage price; the self-hosted fallback
+      // marks them "Unlimited" with no price, which we skip.
+      if (feature.usage_price?.amount == null) continue;
+      byFeature.set(feature.feature_id, feature);
+    }
+  }
+
+  return DEPLOY_FEATURE_IDS.flatMap((id) => {
+    const feature = byFeature.get(id);
+    if (!feature) return [];
+    return [
+      {
+        featureId: id,
+        name: nameById.get(id) ?? feature.name ?? id,
+        rateText: (feature.primary_text ?? "").replace(/^then\s+/i, ""),
+      },
+    ];
+  });
+}

@@ -7,9 +7,11 @@ import { auth } from "../lib/api";
 import { planActionLabel, type BillingPlanSummary } from "../lib/billing";
 import { cn } from "#/lib/cn";
 import {
+  deployPricingRows,
   formatPlanPrice,
   isFreePlan,
   planHeadlineBullets,
+  type DeployPricingRow,
   type PublicPricingFeature,
   type PublicPricingPlan,
 } from "../lib/pricing";
@@ -91,6 +93,10 @@ function PricingPage() {
                   />
                 ))}
               </div>
+
+              <DeploymentsPricing
+                rows={deployPricingRows(pricing.data.plans, pricing.data.features)}
+              />
             </div>
           )}
         </section>
@@ -277,6 +283,33 @@ function usePlanCta(
     to: "/$wid/settings/billing",
     params: { wid: workspaceSlug },
   };
+}
+
+function DeploymentsPricing({ rows }: { rows: DeployPricingRow[] }) {
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-[15px] font-medium text-[var(--color-fg)]">Deployments</h2>
+        <span className="text-[12px] text-[var(--color-fg-muted)]">Pay as you go</span>
+      </div>
+      <p className="mt-1 text-[13px] text-[var(--color-fg-muted)]">
+        Compute and storage are metered by usage and billed on top of any paid plan.
+      </p>
+      <ul className="mt-3 divide-y divide-[var(--color-border)]">
+        {rows.map((row) => (
+          <li
+            key={row.featureId}
+            className="flex items-baseline justify-between gap-3 py-2 text-[13px]"
+          >
+            <span className="text-[var(--color-fg-muted)]">{row.name}</span>
+            <span className="tabular shrink-0 text-[var(--color-fg)]">{row.rateText}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function PricingSkeleton() {

@@ -2,10 +2,10 @@
 //! vCPU-seconds and volume GB-seconds over a sweep window, scoped to a billing
 //! customer (the owner's personal workspace, like the rest of billing).
 //!
-//! Usage is metered per second (Railway's model): the meters sum
-//! `resource × seconds`, so a deployment running for an hour at 1 GB reports
-//! 3,600 GB-seconds. Billing is exact to the millisecond — the sweep clips real
-//! start/stop timestamps to the window, no rounding up to whole minutes/hours.
+//! The SQL math stays second-precision so start/stop timestamps can be clipped
+//! exactly. The sweep converts these totals to fractional GB-hours / vCPU-hours
+//! before sending usage to Polar, matching the live hourly unit prices while
+//! preserving per-second billing.
 //!
 //! These are pure compute + SQL helpers. The actual Polar ingest lives in
 //! [`super::deploy_sweep`], which calls these and turns the deltas into
@@ -38,14 +38,16 @@ pub enum ComputeKind {
     Cpu,
 }
 
-/// Allocated memory in GB for a preset — the per-second factor the
-/// `deploy_memory` meter multiplies by occupied seconds.
+/// Allocated memory in GB for a preset — the factor used to build internal
+/// second-precision GB-second totals. [`super::deploy_sweep`] converts those
+/// totals to GB-hours before Polar ingest.
 pub fn preset_memory_gb(preset: ResourcePreset) -> f64 {
     preset.memory_mb() as f64 / 1024.0
 }
 
-/// Allocated vCPUs for a preset — the per-second factor the `deploy_cpu` meter
-/// multiplies by occupied seconds.
+/// Allocated vCPUs for a preset — the factor used to build internal
+/// second-precision vCPU-second totals. [`super::deploy_sweep`] converts those
+/// totals to vCPU-hours before Polar ingest.
 pub fn preset_vcpus(preset: ResourcePreset) -> f64 {
     preset.cpus() as f64
 }

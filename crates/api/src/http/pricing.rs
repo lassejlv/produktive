@@ -9,7 +9,7 @@ use crate::{
     billing::{
         feature_display_name, feature_noun, format_thousands, overage_text, perk_label,
         trim_decimal, FeatureEntitlement, PolarCatalog, TierCatalog, DEPLOY_METERED_FEATURES,
-        METERED_FEATURES, PERK_FEATURES, SECONDS_PER_MONTH,
+        HOURS_PER_MONTH, METERED_FEATURES, PERK_FEATURES,
     },
     error::ApiResult,
     state::AppState,
@@ -222,10 +222,10 @@ fn metered_plan_feature(feature: &str, ent: &FeatureEntitlement) -> PublicPlanFe
     let usage_price = ent.unit_amount_cents.map(|cents| {
         let (amount, billing_units) = match feature {
             "events" => (cents * 1000.0 / 100.0, 1000.0),
-            // Per-second compute/storage meters: report the per-month dollar
+            // Hourly compute/storage meters: report the per-month dollar
             // equivalent (interval is "month"), mirroring `overage_text`.
             "deploy_memory" | "deploy_cpu" | "deploy_volume" => {
-                (cents * SECONDS_PER_MONTH / 100.0, 1.0)
+                (cents * HOURS_PER_MONTH / 100.0, 1.0)
             }
             // deploy_egress and everything else are flat per-unit prices.
             _ => (cents / 100.0, 1.0),
@@ -417,7 +417,7 @@ fn stack_lower_tier_features(plans: &mut [PublicPricingPlan]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use polar::Product;
+    use polar::{Meter, Product};
 
     fn catalog() -> PolarCatalog {
         let products: Vec<Product> = serde_json::from_value(serde_json::json!([
@@ -446,6 +446,30 @@ mod tests {
         ]))
         .unwrap();
         PolarCatalog::from_products(products)
+    }
+
+    fn deploy_catalog() -> PolarCatalog {
+        let products: Vec<Product> = serde_json::from_value(serde_json::json!([
+            {
+                "id": "p_pro", "name": "Pro", "metadata": {"tier": "pro"},
+                "recurring_interval": "month",
+                "prices": [
+                    {"amount_type": "fixed", "price_currency": "usd", "price_amount": 4900},
+                    {"amount_type": "metered_unit", "price_currency": "usd", "unit_amount": "1.3896", "meter_id": "m_deploy_mem"},
+                    {"amount_type": "metered_unit", "price_currency": "usd", "unit_amount": "2.7792", "meter_id": "m_deploy_cpu"},
+                    {"amount_type": "metered_unit", "price_currency": "usd", "unit_amount": "0.0216", "meter_id": "m_deploy_vol"}
+                ],
+                "benefits": []
+            }
+        ]))
+        .unwrap();
+        let meters: Vec<Meter> = serde_json::from_value(serde_json::json!([
+            {"id": "m_deploy_mem", "name": "deploy_memory", "metadata": {"feature": "deploy_memory"}},
+            {"id": "m_deploy_cpu", "name": "deploy_cpu", "metadata": {"feature": "deploy_cpu"}},
+            {"id": "m_deploy_vol", "name": "deploy_volume", "metadata": {"feature": "deploy_volume"}}
+        ]))
+        .unwrap();
+        PolarCatalog::from_products_with_meters(products, meters)
     }
 
     #[test]
@@ -480,6 +504,36 @@ mod tests {
             .find(|f| f.feature_id == "custom_domain")
             .unwrap();
         assert_eq!(domain.included, Some(1.0));
+    }
+
+    #[test]
+    fn deploy_metered_plan_features_scale_hourly_prices_to_monthly_display() {
+        let c = deploy_catalog();
+        let plan = catalog_plan(&c, c.tier("pro").unwrap());
+
+        for (feature, hourly_cents, primary_text) in [
+            ("deploy_memory", 1.3896, "then $10.01 per GB-month"),
+            ("deploy_cpu", 2.7792, "then $20.01 per vCPU-month"),
+            ("deploy_volume", 0.0216, "then $0.16 per GB-month"),
+        ] {
+            let plan_feature = plan
+                .features
+                .iter()
+                .find(|f| f.feature_id == feature)
+                .unwrap_or_else(|| panic!("missing {feature}"));
+            assert_eq!(plan_feature.included, Some(0.0));
+            assert_eq!(plan_feature.primary_text.as_deref(), Some(primary_text));
+            assert_eq!(plan_feature.secondary_text, None);
+
+            let usage_price = plan_feature.usage_price.as_ref().unwrap();
+            let expected_monthly_dollars = hourly_cents * HOURS_PER_MONTH / 100.0;
+            assert_eq!(usage_price.billing_units, Some(1.0));
+            assert_eq!(usage_price.interval.as_deref(), Some("month"));
+            assert!((usage_price.amount.unwrap() - expected_monthly_dollars).abs() < f64::EPSILON);
+            assert!(
+                (usage_price.unit_amount.unwrap() - expected_monthly_dollars).abs() < f64::EPSILON
+            );
+        }
     }
 
     #[test]
