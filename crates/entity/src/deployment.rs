@@ -17,6 +17,7 @@ pub struct Model {
     pub provider_deployment_id: Option<String>,
     pub provider_instance_id: Option<String>,
     pub provider_metadata: Json,
+    pub config_snapshot: Option<Json>,
     pub failure_message: Option<String>,
     pub url: Option<String>,
     pub started_at: Option<chrono::DateTime<chrono::FixedOffset>>,

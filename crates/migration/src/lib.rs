@@ -38,6 +38,7 @@ mod m20260625_000035_add_volume_provisioned_at;
 mod m20260626_000036_create_deploy_sandboxes;
 mod m20260626_000037_create_deploy_sandbox_api_tokens;
 mod m20260626_000038_create_object_storage_buckets;
+mod m20260627_000039_add_deployment_config_snapshot;
 
 pub struct Migrator;
 
@@ -83,6 +84,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260626_000036_create_deploy_sandboxes::Migration),
             Box::new(m20260626_000037_create_deploy_sandbox_api_tokens::Migration),
             Box::new(m20260626_000038_create_object_storage_buckets::Migration),
+            Box::new(m20260627_000039_add_deployment_config_snapshot::Migration),
         ]
     }
 }

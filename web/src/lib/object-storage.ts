@@ -2,11 +2,8 @@ import type { DeployRegion } from "#/lib/types";
 
 export const OBJECT_STORAGE_REGIONS: DeployRegion[] = [
   { code: "ams", name: "Amsterdam, Netherlands", flag: "🇳🇱" },
-  { code: "fra", name: "Frankfurt, Germany", flag: "🇩🇪" },
-  { code: "iad", name: "Ashburn, Virginia (US)", flag: "🇺🇸" },
-  { code: "lhr", name: "London, United Kingdom", flag: "🇬🇧" },
-  { code: "ord", name: "Chicago, Illinois (US)", flag: "🇺🇸" },
   { code: "sin", name: "Singapore", flag: "🇸🇬" },
+  { code: "iad", name: "Ashburn, Virginia (US)", flag: "🇺🇸" },
   { code: "sjc", name: "San Jose, California (US)", flag: "🇺🇸" },
 ];
 

@@ -12,7 +12,8 @@ use deploy::{
     catalog_from_fly, static_allowed_regions, validate_allowed_region, validate_env_name,
     validate_health_path, validate_image_for_registry, validate_internal_port,
     validate_volume_mount_path, validate_volume_name, validate_volume_size_gb, DeployRegion,
-    DeploymentStatus, RegistryKind, ResourcePreset, SecretCipher, DEFAULT_DEPLOY_REGION,
+    DeploymentConfigSnapshot, DeploymentStatus, RegistryKind, ResourcePreset, SecretCipher,
+    VolumeSpec, DEFAULT_DEPLOY_REGION,
 };
 use fly::fetch_platform_regions;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
@@ -224,6 +225,22 @@ pub struct DeployServiceVolumeView {
     pub provider_metadata: Value,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
+}
+
+#[derive(FromQueryResult)]
+struct DeploymentSecretSnapshotRow {
+    name: String,
+    encrypted_value: String,
+}
+
+#[derive(FromQueryResult)]
+struct DeploymentVolumeSnapshotRow {
+    id: Uuid,
+    provider_volume_id: Option<String>,
+    name: String,
+    mount_path: String,
+    region: String,
+    size_gb: i32,
 }
 
 #[derive(Serialize, FromQueryResult, ToSchema)]
@@ -1270,6 +1287,7 @@ pub async fn create_deployment(
     let registry = parse_registry_kind(&service.registry_kind)?;
     let image = body.image.unwrap_or_else(|| service.image.clone());
     validate_image_for_registry(registry, &image).map_err(deploy_error)?;
+    let config_snapshot = deployment_config_snapshot(&state, &service).await?;
 
     let deployment = insert_deployment(
         &state,
@@ -1278,6 +1296,7 @@ pub async fn create_deployment(
         auth.user.id,
         image,
         body.image_digest,
+        config_snapshot,
         "deployment queued",
     )
     .await?;
@@ -1357,6 +1376,7 @@ pub async fn rollback_service(
     .one(&state.db)
     .await?;
     let previous = previous.ok_or_else(|| ApiError::conflict("no previous live deployment"))?;
+    let config_snapshot = deployment_config_snapshot(&state, &service).await?;
     let deployment = insert_deployment(
         &state,
         m.workspace.id,
@@ -1364,6 +1384,7 @@ pub async fn rollback_service(
         auth.user.id,
         previous.image,
         previous.image_digest,
+        config_snapshot,
         "rollback queued",
     )
     .await?;
@@ -2011,6 +2032,76 @@ async fn deployment_rows(
     Ok(rows)
 }
 
+async fn deployment_config_snapshot(
+    state: &AppState,
+    service: &DeployServiceView,
+) -> ApiResult<DeploymentConfigSnapshot> {
+    let internal_port = u16::try_from(service.internal_port)
+        .map_err(|_| ApiError::bad_request("invalid deployment service internal port"))?;
+    validate_internal_port(internal_port).map_err(deploy_error)?;
+    let resource_preset = ResourcePreset::parse(&service.resource_preset).map_err(deploy_error)?;
+    let env =
+        serde_json::from_value::<BTreeMap<String, String>>(service.env.clone()).unwrap_or_default();
+
+    let secret_rows =
+        DeploymentSecretSnapshotRow::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+        SELECT name, encrypted_value
+        FROM deploy_service_secrets
+        WHERE workspace_id = $1 AND service_id = $2
+        ORDER BY name ASC
+        "#,
+            [service.workspace_id.into(), service.id.into()],
+        ))
+        .all(&state.db)
+        .await?;
+    let encrypted_secrets = secret_rows
+        .into_iter()
+        .map(|row| (row.name, row.encrypted_value))
+        .collect();
+
+    let volume_rows =
+        DeploymentVolumeSnapshotRow::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+        SELECT id, provider_volume_id, name, mount_path, region, size_gb
+        FROM deploy_service_volumes
+        WHERE workspace_id = $1
+          AND service_id = $2
+          AND deleted_at IS NULL
+        ORDER BY created_at ASC
+        "#,
+            [service.workspace_id.into(), service.id.into()],
+        ))
+        .all(&state.db)
+        .await?;
+    let volumes = volume_rows
+        .into_iter()
+        .map(|row| VolumeSpec {
+            id: row.id,
+            provider_volume_id: row.provider_volume_id,
+            name: row.name,
+            mount_path: row.mount_path,
+            region: row.region,
+            size_gb: row.size_gb,
+        })
+        .collect();
+
+    Ok(DeploymentConfigSnapshot {
+        provider_service_id: service.provider_service_id.clone(),
+        app_name: service.slug.clone(),
+        internal_port,
+        environment: service.environment.clone(),
+        health_check_path: service.health_check_path.clone(),
+        region: service.region.clone(),
+        resource_preset,
+        volumes,
+        env,
+        encrypted_secrets,
+    })
+}
+
 /// Wipes stored runtime log lines for a service. Called when a new deployment
 /// is queued so each release starts with a clean log timeline rather than
 /// carrying the previous release's stdout/stderr.
@@ -2037,10 +2128,13 @@ async fn insert_deployment(
     user_id: Uuid,
     image: String,
     image_digest: Option<String>,
+    config_snapshot: DeploymentConfigSnapshot,
     event_message: &str,
 ) -> ApiResult<DeployDeploymentView> {
     let now = Utc::now().fixed_offset();
     let id = Uuid::now_v7();
+    let config_snapshot =
+        serde_json::to_value(config_snapshot).map_err(|error| ApiError::Internal(error.into()))?;
     state
         .db
         .execute(Statement::from_sql_and_values(
@@ -2048,9 +2142,9 @@ async fn insert_deployment(
             r#"
             INSERT INTO deployments (
                 id, workspace_id, service_id, image, image_digest, status, requested_by,
-                provider, provider_metadata, created_at, updated_at
+                provider, provider_metadata, config_snapshot, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'fly', '{}', $8, $8)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'fly', '{}', $8, $9, $9)
             "#,
             [
                 id.into(),
@@ -2060,6 +2154,7 @@ async fn insert_deployment(
                 image_digest.into(),
                 DeploymentStatus::Queued.code().into(),
                 user_id.into(),
+                config_snapshot.into(),
                 now.into(),
             ],
         ))

@@ -6,8 +6,9 @@ use std::{
 use anyhow::{Context, Result};
 use chrono::{DateTime, FixedOffset, TimeDelta, Utc};
 use deploy::{
-    DeployError, DeployProvider, DeploymentSpec, DeploymentStatus, LogLine, LogQuery, MetricPoint,
-    MetricQuery, ProviderServiceRef, ProviderVolume, ResourcePreset, SecretCipher, VolumeSpec,
+    DeployError, DeployProvider, DeploymentConfigSnapshot, DeploymentSpec, DeploymentStatus,
+    LogLine, LogQuery, MetricPoint, MetricQuery, ProviderServiceRef, ProviderVolume,
+    ResourcePreset, SecretCipher, VolumeSpec,
 };
 use fly::{Fly, FlyConfig, FlyProvider};
 use sea_orm::{
@@ -43,6 +44,7 @@ struct DeploymentJob {
     image: String,
     image_digest: Option<String>,
     provider_instance_id: Option<String>,
+    config_snapshot: Option<serde_json::Value>,
 }
 
 #[derive(Debug, FromQueryResult)]
@@ -261,15 +263,27 @@ async fn claim_next(db: &DatabaseConnection) -> Result<Option<DeploymentJob>> {
                   AND s.id = d.service_id
                   AND s.disabled_at IS NULL
               )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM deployments active
+                WHERE active.workspace_id = d.workspace_id
+                  AND active.service_id = d.service_id
+                  AND active.id <> d.id
+                  AND active.status IN ($2, $3, $4, $5, $6)
+              )
             ORDER BY d.created_at ASC
             LIMIT 1
             FOR UPDATE SKIP LOCKED
         )
-        RETURNING id, workspace_id, service_id, image, image_digest, provider_instance_id
+        RETURNING id, workspace_id, service_id, image, image_digest, provider_instance_id, config_snapshot
         "#,
         [
             DeploymentStatus::Queued.code().into(),
             DeploymentStatus::Provisioning.code().into(),
+            DeploymentStatus::Pulling.code().into(),
+            DeploymentStatus::Starting.code().into(),
+            DeploymentStatus::Healthy.code().into(),
+            DeploymentStatus::RollingBack.code().into(),
         ],
     ))
     .one(db)
@@ -341,6 +355,26 @@ async fn build_spec(
     cipher: &SecretCipher,
     job: &DeploymentJob,
 ) -> Result<DeploymentSpec> {
+    if let Some(snapshot) = job
+        .config_snapshot
+        .as_ref()
+        .filter(|value| !value.is_null())
+    {
+        let snapshot: DeploymentConfigSnapshot = serde_json::from_value(snapshot.clone())
+            .context("invalid deployment config snapshot")?;
+        return snapshot
+            .to_deployment_spec(
+                job.workspace_id,
+                job.service_id,
+                job.id,
+                job.provider_instance_id.clone(),
+                job.image.clone(),
+                job.image_digest.clone(),
+                cipher,
+            )
+            .map_err(|error| anyhow::anyhow!(error));
+    }
+
     let service = ServiceRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
@@ -437,7 +471,7 @@ async fn refresh_inflight(
     let rows = DeploymentJob::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
-        SELECT id, workspace_id, service_id, image, image_digest, provider_instance_id
+        SELECT id, workspace_id, service_id, image, image_digest, provider_instance_id, config_snapshot
         FROM deployments
         WHERE status IN ($1, $2, $3, $4)
           AND provider_instance_id IS NOT NULL
@@ -490,7 +524,7 @@ async fn stop_disabled_services(
     let rows = DeploymentJob::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
-        SELECT d.id, d.workspace_id, d.service_id, d.image, d.image_digest, d.provider_instance_id
+        SELECT d.id, d.workspace_id, d.service_id, d.image, d.image_digest, d.provider_instance_id, d.config_snapshot
         FROM deployments d
         INNER JOIN deploy_services s
             ON s.workspace_id = d.workspace_id AND s.id = d.service_id
@@ -607,7 +641,7 @@ async fn cleanup_deleted_services(
         let deployments = DeploymentJob::find_by_statement(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"
-            SELECT id, workspace_id, service_id, image, image_digest, provider_instance_id
+            SELECT id, workspace_id, service_id, image, image_digest, provider_instance_id, config_snapshot
             FROM deployments
             WHERE workspace_id = $1
               AND service_id = $2
@@ -707,7 +741,7 @@ async fn stop_superseded_deployments(
         // guard additionally protects any even-newer in-flight deployment from
         // being torn down by an older deploy that happens to reach Live.
         r#"
-        SELECT id, workspace_id, service_id, image, image_digest, provider_instance_id
+        SELECT id, workspace_id, service_id, image, image_digest, provider_instance_id, config_snapshot
         FROM deployments
         WHERE workspace_id = $1
           AND service_id = $2
@@ -757,7 +791,7 @@ async fn cleanup_superseded_provider_deployments(
               AND status IN ($2, $3)
             ORDER BY workspace_id, service_id, created_at DESC
         )
-        SELECT d.id, d.workspace_id, d.service_id, d.image, d.image_digest, d.provider_instance_id
+        SELECT d.id, d.workspace_id, d.service_id, d.image, d.image_digest, d.provider_instance_id, d.config_snapshot
         FROM deployments d
         INNER JOIN keeper
             ON keeper.workspace_id = d.workspace_id AND keeper.service_id = d.service_id

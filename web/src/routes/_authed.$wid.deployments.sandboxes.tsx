@@ -39,6 +39,7 @@ export const Route = createFileRoute("/_authed/$wid/deployments/sandboxes")({
     title: "Sandboxes",
     description: "Persistent sandbox environments for agents and untrusted code.",
     parent: { label: "Deployments", to: "/$wid/deployments" },
+    layout: "bare",
   },
   validateSearch: parseSandboxesSearch,
   loader: ({ context, params }) =>

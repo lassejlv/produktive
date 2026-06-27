@@ -123,6 +123,57 @@ pub struct DeploymentSpec {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeploymentConfigSnapshot {
+    pub provider_service_id: Option<String>,
+    pub app_name: String,
+    pub internal_port: u16,
+    pub environment: String,
+    pub health_check_path: String,
+    pub region: String,
+    pub resource_preset: ResourcePreset,
+    pub volumes: Vec<VolumeSpec>,
+    pub env: BTreeMap<String, String>,
+    pub encrypted_secrets: BTreeMap<String, String>,
+}
+
+impl DeploymentConfigSnapshot {
+    pub fn to_deployment_spec(
+        &self,
+        workspace_id: Uuid,
+        service_id: Uuid,
+        deployment_id: Uuid,
+        provider_instance_id: Option<String>,
+        image: String,
+        image_digest: Option<String>,
+        cipher: &crate::SecretCipher,
+    ) -> DeployResult<DeploymentSpec> {
+        let mut secrets = BTreeMap::new();
+        for (name, encrypted_value) in &self.encrypted_secrets {
+            secrets.insert(name.clone(), cipher.decrypt(encrypted_value)?);
+        }
+
+        Ok(DeploymentSpec {
+            workspace_id,
+            service_id,
+            deployment_id,
+            provider_service_id: self.provider_service_id.clone(),
+            provider_instance_id,
+            app_name: self.app_name.clone(),
+            image,
+            image_digest,
+            internal_port: self.internal_port,
+            environment: self.environment.clone(),
+            health_check_path: self.health_check_path.clone(),
+            region: self.region.clone(),
+            resource_preset: self.resource_preset,
+            volumes: self.volumes.clone(),
+            env: self.env.clone(),
+            secrets,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolumeSpec {
     pub id: Uuid,
     pub provider_volume_id: Option<String>,
@@ -405,5 +456,52 @@ mod tests {
         assert!(validate_env_name("DATABASE_URL").is_ok());
         assert!(validate_env_name("FLY_SECRET").is_err());
         assert!(validate_env_name("1BAD").is_err());
+    }
+
+    #[test]
+    fn deployment_config_snapshot_decrypts_secrets_into_spec() {
+        let cipher =
+            crate::SecretCipher::from_hex_key(&"11".repeat(32)).expect("valid test cipher");
+        let encrypted = cipher.encrypt("secret-value").expect("encrypts");
+        let workspace_id = Uuid::now_v7();
+        let service_id = Uuid::now_v7();
+        let deployment_id = Uuid::now_v7();
+        let snapshot = DeploymentConfigSnapshot {
+            provider_service_id: Some("prd-service".into()),
+            app_name: "api".into(),
+            internal_port: 3000,
+            environment: "production".into(),
+            health_check_path: "/health".into(),
+            region: "fra".into(),
+            resource_preset: ResourcePreset::PreviewSmall,
+            volumes: Vec::new(),
+            env: BTreeMap::from([("PUBLIC".into(), "value".into())]),
+            encrypted_secrets: BTreeMap::from([("TOKEN".into(), encrypted)]),
+        };
+
+        let spec = snapshot
+            .to_deployment_spec(
+                workspace_id,
+                service_id,
+                deployment_id,
+                Some("machine-1".into()),
+                "ghcr.io/acme/api:latest".into(),
+                Some("sha256:abc".into()),
+                &cipher,
+            )
+            .expect("snapshot converts");
+
+        assert_eq!(spec.workspace_id, workspace_id);
+        assert_eq!(spec.service_id, service_id);
+        assert_eq!(spec.deployment_id, deployment_id);
+        assert_eq!(spec.provider_service_id.as_deref(), Some("prd-service"));
+        assert_eq!(spec.provider_instance_id.as_deref(), Some("machine-1"));
+        assert_eq!(spec.image, "ghcr.io/acme/api:latest");
+        assert_eq!(spec.image_digest.as_deref(), Some("sha256:abc"));
+        assert_eq!(spec.env.get("PUBLIC").map(String::as_str), Some("value"));
+        assert_eq!(
+            spec.secrets.get("TOKEN").map(String::as_str),
+            Some("secret-value")
+        );
     }
 }

@@ -3,7 +3,6 @@ import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { Dialog, DialogClose, DialogContent } from "#/components/Dialog";
 import { Spinner } from "#/components/ui/spinner";
-import { Segmented } from "#/components/Segmented";
 import { cn } from "#/lib/cn";
 import { OBJECT_STORAGE_REGIONS } from "#/lib/object-storage";
 import { fieldControlClass } from "#/components/deployments/deploy-shared";
@@ -30,13 +29,11 @@ export function CreateBucketDialog({
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [region, setRegion] = useState(OBJECT_STORAGE_REGIONS[0]?.code ?? "ams");
-  const [access, setAccess] = useState<"private" | "public">("private");
 
   const reset = () => {
     setName("");
     setSlug("");
     setRegion(OBJECT_STORAGE_REGIONS[0]?.code ?? "ams");
-    setAccess("private");
   };
 
   const handleSubmit = (event: FormEvent) => {
@@ -45,7 +42,8 @@ export function CreateBucketDialog({
       name: name.trim(),
       slug: slug.trim() || undefined,
       region,
-      access,
+      // Buckets are always private; public access is disabled.
+      access: "private",
     });
   };
 
@@ -107,20 +105,10 @@ export function CreateBucketDialog({
           </div>
           <div>
             <p className="text-[12px] text-[var(--color-fg-muted)]">Access</p>
-            <Segmented
-              className="mt-1.5"
-              value={access}
-              onChange={setAccess}
-              options={[
-                { value: "private", label: "Private" },
-                { value: "public", label: "Public" },
-              ]}
-            />
-            {access === "public" && (
-              <p className="mt-2 text-[12px] text-[var(--color-warn)]">
-                Public buckets allow unauthenticated read access to objects.
-              </p>
-            )}
+            <p className="mt-1.5 text-[13px] text-[var(--color-fg)]">Private</p>
+            <p className="mt-1 text-[12px] text-[var(--color-fg-dim)]">
+              Buckets are private. Public access is disabled.
+            </p>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <DialogClose type="reset" disabled={pending}>

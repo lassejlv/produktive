@@ -27,6 +27,7 @@ export const Route = createFileRoute("/_authed/$wid/object-storage")({
   staticData: {
     title: "Object Storage",
     description: "S3-compatible buckets powered by Tigris.",
+    layout: "bare",
   },
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(deployAccessQuery(params.wid)),
