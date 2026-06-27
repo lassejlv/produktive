@@ -2,6 +2,7 @@ import {
   Activity,
   ArrowUpRight,
   CheckCircle2,
+  ChevronRight,
   Clock,
   Copy,
   Cpu,
@@ -46,6 +47,7 @@ import {
   useCreateDeployServiceDomain,
   useDeleteDeployService,
   useDeleteDeployServiceVolume,
+  useDeployBuildLogs,
   useDeployEvents,
   useDeployLogs,
   useDeployMetrics,
@@ -86,6 +88,8 @@ type MetricChartKind = "cpu" | "memory" | "requests";
 
 export function DeploymentsPanel({ wid, service }: { wid: string; service: DeployService }) {
   const deployments = useDeployments(wid, service.id);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
   if (deployments.isLoading) return <PanelLoading label="Loading deployments…" />;
   if (!deployments.data?.length) {
     return (
@@ -96,29 +100,63 @@ export function DeploymentsPanel({ wid, service }: { wid: string; service: Deplo
       />
     );
   }
+
+  const selected =
+    deployments.data.find((deployment) => deployment.id === selectedId) ?? null;
+
   return (
-    <div className="space-y-2">
-      {deployments.data.map((deployment, index) => (
-        <div
-          key={deployment.id}
-          className="fade-in"
-          style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
-        >
-          <DeploymentRow deployment={deployment} />
-        </div>
-      ))}
+    <div className="space-y-4">
+      <div className="space-y-2">
+        {deployments.data.map((deployment, index) => (
+          <div
+            key={deployment.id}
+            className="fade-in"
+            style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
+          >
+            <DeploymentRow
+              deployment={deployment}
+              selected={selectedId === deployment.id}
+              onSelect={() =>
+                setSelectedId((current) =>
+                  current === deployment.id ? null : deployment.id,
+                )
+              }
+            />
+          </div>
+        ))}
+      </div>
+
+      {selected && (
+        <DeploymentLogsPanel wid={wid} service={service} deployment={selected} />
+      )}
     </div>
   );
 }
 
-function DeploymentRow({ deployment }: { deployment: Deployment }) {
+function DeploymentRow({
+  deployment,
+  selected,
+  onSelect,
+}: {
+  deployment: Deployment;
+  selected: boolean;
+  onSelect: () => void;
+}) {
   const color = DEPLOY_STATUS_COLOR[deployment.status];
   const active = deployStatusActive(deployment.status);
   const pending = deployStatusPending(deployment.status);
 
   return (
-    <div
-      className="group relative overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] transition-colors hover:border-[var(--color-border-hi)]"
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={cn(
+        "group relative w-full overflow-hidden rounded-[var(--radius-md)] border bg-[var(--color-bg-row)] text-left transition-colors",
+        selected
+          ? "border-[var(--color-border-hi)] ring-1 ring-[color-mix(in_srgb,var(--color-accent)_25%,transparent)]"
+          : "border-[var(--color-border)] hover:border-[var(--color-border-hi)]",
+      )}
       style={{ borderLeft: `3px solid ${color}` }}
     >
       <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-start sm:justify-between">
@@ -153,7 +191,16 @@ function DeploymentRow({ deployment }: { deployment: Deployment }) {
             {deployment.finished_at && <span>finished {lastSeen(deployment.finished_at)}</span>}
           </div>
         </div>
-        <StatusBadge status={deployment.status} />
+        <div className="flex shrink-0 items-center gap-2">
+          <StatusBadge status={deployment.status} />
+          <ChevronRight
+            size={14}
+            className={cn(
+              "text-[var(--color-fg-dim)] transition-transform",
+              selected && "rotate-90 text-[var(--color-fg-muted)]",
+            )}
+          />
+        </div>
       </div>
       {deployment.failure_message && (
         <div className="border-t border-[color-mix(in_srgb,var(--color-err)_20%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-err)_6%,transparent)] px-4 py-2.5">
@@ -161,6 +208,111 @@ function DeploymentRow({ deployment }: { deployment: Deployment }) {
             {deployment.failure_message}
           </p>
         </div>
+      )}
+    </button>
+  );
+}
+
+function DeploymentLogsPanel({
+  wid,
+  service,
+  deployment,
+}: {
+  wid: string;
+  service: DeployService;
+  deployment: Deployment;
+}) {
+  const logs = useDeployLogs(wid, service.id, deployment.id);
+  const buildLogs = useDeployBuildLogs(wid, service.id, deployment.id);
+  const events = useDeployEvents(wid, service.id, deployment.id);
+
+  const runtimeLines = (logs.data ?? []).map((line, index) => ({
+    id: `${line.timestamp}-${index}`,
+    level: line.level,
+    message: line.message,
+    timestamp: line.timestamp,
+  }));
+  const buildLines = (buildLogs.data ?? []).map((line, index) => ({
+    id: `${line.timestamp}-${index}`,
+    level: line.level,
+    message: line.message,
+    timestamp: line.timestamp,
+  }));
+  const eventLines = (events.data ?? []).map((event) => ({
+    id: event.id,
+    level: event.level,
+    message: event.message,
+    timestamp: event.created_at,
+  }));
+
+  const digest = deployment.image_digest ? shortDigest(deployment.image_digest) : null;
+
+  return (
+    <div className="fade-in space-y-3">
+      <div className="flex flex-wrap items-center gap-2 px-0.5">
+        <Terminal size={14} className="text-[var(--color-fg-muted)]" />
+        <span className="text-[12px] font-medium text-[var(--color-fg)]">Deployment logs</span>
+        {digest && (
+          <span className="mono text-[11px] text-[var(--color-fg-dim)]">{digest}</span>
+        )}
+      </div>
+
+      {buildLogs.isLoading ? (
+        <PanelLoading label="Loading build logs…" />
+      ) : buildLines.length ? (
+        <LogConsole
+          title="Build logs"
+          icon={ScrollText}
+          lines={buildLines}
+          headerAction={
+            service.build_log_project_id ? (
+              <Button
+                render={
+                  <Link
+                    to="/$wid/logs/$project"
+                    params={{ wid, project: service.build_log_project_id }}
+                  />
+                }
+                type="button"
+                variant="ghost"
+                size="sm"
+              >
+                <ArrowUpRight size={13} />
+                <span className="hidden sm:inline">Open in explorer</span>
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <PanelEmpty
+          icon={ScrollText}
+          label="No build logs"
+          hint="Depot build output for git-source deployments appears here."
+        />
+      )}
+
+      {events.isLoading ? (
+        <PanelLoading label="Loading lifecycle events…" />
+      ) : eventLines.length ? (
+        <LogConsole title="Lifecycle events" icon={ScrollText} lines={eventLines} />
+      ) : (
+        <PanelEmpty
+          icon={ScrollText}
+          label="No lifecycle events"
+          hint="Deploy steps like provisioning and health checks appear here."
+        />
+      )}
+
+      {logs.isLoading ? (
+        <PanelLoading label="Loading runtime logs…" />
+      ) : runtimeLines.length ? (
+        <LogConsole title="Runtime logs" icon={Terminal} lines={runtimeLines} />
+      ) : (
+        <PanelEmpty
+          icon={Terminal}
+          label="No runtime logs"
+          hint="Stdout and stderr from this deployment's instances appear here."
+        />
       )}
     </div>
   );
@@ -270,7 +422,7 @@ export function OverviewPanel({
         <QuickLink
           icon={Terminal}
           label="Logs"
-          hint="runtime + lifecycle"
+          hint="runtime output"
           onClick={() => onTabChange("logs")}
         />
         <QuickLink
@@ -378,19 +530,12 @@ export function EventsPanel({ wid, service }: { wid: string; service: DeployServ
 
 export function LogsPanel({ wid, service }: { wid: string; service: DeployService }) {
   const logs = useDeployLogs(wid, service.id);
-  const events = useDeployEvents(wid, service.id);
 
   const runtimeLines = (logs.data ?? []).map((line, index) => ({
     id: `${line.timestamp}-${index}`,
     level: line.level,
     message: line.message,
     timestamp: line.timestamp,
-  }));
-  const eventLines = (events.data ?? []).map((event) => ({
-    id: event.id,
-    level: event.level,
-    message: event.message,
-    timestamp: event.created_at,
   }));
 
   return (
@@ -425,19 +570,7 @@ export function LogsPanel({ wid, service }: { wid: string; service: DeployServic
         <PanelEmpty
           icon={Terminal}
           label="No logs ingested yet"
-          hint="Runtime logs from the service will stream here."
-        />
-      )}
-
-      {events.isLoading ? (
-        <PanelLoading label="Loading events…" />
-      ) : eventLines.length ? (
-        <LogConsole title="Lifecycle events" icon={ScrollText} lines={eventLines} />
-      ) : (
-        <PanelEmpty
-          icon={ScrollText}
-          label="No lifecycle events"
-          hint="Deploys, stops, and rollbacks are recorded here."
+          hint="Runtime logs from the service will stream here. Open a deployment on the Deploys tab for lifecycle events."
         />
       )}
     </div>

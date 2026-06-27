@@ -338,6 +338,7 @@ export interface DeployService {
   provider: "fly" | string;
   provider_service_id: string | null;
   log_project_id: Uuid | null;
+  build_log_project_id: Uuid | null;
   provider_metadata: unknown;
   slug: string;
   name: string;

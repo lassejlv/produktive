@@ -12,6 +12,7 @@ pub struct Model {
     pub provider: String,
     pub provider_service_id: Option<String>,
     pub log_project_id: Option<Uuid>,
+    pub build_log_project_id: Option<Uuid>,
     pub provider_metadata: Json,
     pub slug: String,
     pub name: String,

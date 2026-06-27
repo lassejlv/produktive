@@ -72,6 +72,7 @@ use crate::state::AppState;
         crate::http::deployments::remove_service_domain,
         crate::http::deployments::list_events,
         crate::http::deployments::list_logs,
+        crate::http::deployments::list_build_logs,
         crate::http::deployments::list_metrics,
         crate::http::deployments::list_regions,
         crate::http::sandboxes::list_sandboxes,

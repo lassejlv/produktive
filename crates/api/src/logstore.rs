@@ -138,6 +138,11 @@ impl LogStore {
             values.push(service.to_owned().into());
             param_idx += 1;
         }
+        if let Some(deployment_id) = params.deployment_id {
+            sql.push_str(&format!(" AND fields->>'deployment_id' = ${param_idx}"));
+            values.push(deployment_id.to_string().into());
+            param_idx += 1;
+        }
         if let Some(q) = params.q.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
             let pattern = ilike_contains(q);
             sql.push_str(&format!(

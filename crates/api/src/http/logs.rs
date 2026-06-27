@@ -213,6 +213,7 @@ pub struct LogSearchQuery {
     pub q: Option<String>,
     pub level: Option<String>,
     pub service: Option<String>,
+    pub deployment_id: Option<Uuid>,
     pub limit: Option<u64>,
 }
 
@@ -487,7 +488,7 @@ async fn deploy_log_project_attachment(
                    environment
             FROM deploy_services
             WHERE workspace_id = $1
-              AND log_project_id = $2
+              AND (log_project_id = $2 OR build_log_project_id = $2)
               AND deleted_at IS NULL
             ORDER BY updated_at DESC
             LIMIT 1

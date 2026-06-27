@@ -830,26 +830,77 @@ export function useDeleteDeployServiceDomain(wid: string) {
   });
 }
 
-export const deployEventsQuery = (wid: string, serviceId: string) => ({
-  queryKey: ["deployments", wid, serviceId, "events"] as const,
-  queryFn: () =>
-    api.get<DeployEvent[]>(`/workspaces/${wid}/deployments/services/${serviceId}/events?limit=50`),
+export const deployEventsQuery = (wid: string, serviceId: string, deploymentId?: string | null) => ({
+  queryKey: ["deployments", wid, serviceId, "events", deploymentId ?? "all"] as const,
+  queryFn: () => {
+    const params = new URLSearchParams({ limit: "50" });
+    if (deploymentId) params.set("deployment_id", deploymentId);
+    return api.get<DeployEvent[]>(
+      `/workspaces/${wid}/deployments/services/${serviceId}/events?${params}`,
+    );
+  },
   refetchInterval: 10_000,
 });
 
-export function useDeployEvents(wid: string, serviceId: string | null) {
-  return useQuery({ ...deployEventsQuery(wid, serviceId ?? ""), enabled: !!serviceId });
+export function useDeployEvents(
+  wid: string,
+  serviceId: string | null,
+  deploymentId?: string | null,
+) {
+  return useQuery({
+    ...deployEventsQuery(wid, serviceId ?? "", deploymentId),
+    enabled: !!serviceId,
+  });
 }
 
-export const deployLogsQuery = (wid: string, serviceId: string) => ({
-  queryKey: ["deployments", wid, serviceId, "logs"] as const,
-  queryFn: () =>
-    api.get<DeployLogLine[]>(`/workspaces/${wid}/deployments/services/${serviceId}/logs?limit=100`),
+export const deployLogsQuery = (wid: string, serviceId: string, deploymentId?: string | null) => ({
+  queryKey: ["deployments", wid, serviceId, "logs", deploymentId ?? "all"] as const,
+  queryFn: () => {
+    const params = new URLSearchParams({ limit: "100" });
+    if (deploymentId) params.set("deployment_id", deploymentId);
+    return api.get<DeployLogLine[]>(
+      `/workspaces/${wid}/deployments/services/${serviceId}/logs?${params}`,
+    );
+  },
   refetchInterval: 10_000,
 });
 
-export function useDeployLogs(wid: string, serviceId: string | null) {
-  return useQuery({ ...deployLogsQuery(wid, serviceId ?? ""), enabled: !!serviceId });
+export function useDeployLogs(
+  wid: string,
+  serviceId: string | null,
+  deploymentId?: string | null,
+) {
+  return useQuery({
+    ...deployLogsQuery(wid, serviceId ?? "", deploymentId),
+    enabled: !!serviceId,
+  });
+}
+
+export const deployBuildLogsQuery = (
+  wid: string,
+  serviceId: string,
+  deploymentId?: string | null,
+) => ({
+  queryKey: ["deployments", wid, serviceId, "build-logs", deploymentId ?? "all"] as const,
+  queryFn: () => {
+    const params = new URLSearchParams({ limit: "200" });
+    if (deploymentId) params.set("deployment_id", deploymentId);
+    return api.get<DeployLogLine[]>(
+      `/workspaces/${wid}/deployments/services/${serviceId}/build-logs?${params}`,
+    );
+  },
+  refetchInterval: 10_000,
+});
+
+export function useDeployBuildLogs(
+  wid: string,
+  serviceId: string | null,
+  deploymentId?: string | null,
+) {
+  return useQuery({
+    ...deployBuildLogsQuery(wid, serviceId ?? "", deploymentId),
+    enabled: !!serviceId,
+  });
 }
 
 export const deployMetricsQuery = (wid: string, serviceId: string) => ({

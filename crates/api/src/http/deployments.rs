@@ -18,7 +18,7 @@ use deploy::{
     DEFAULT_MACHINE_COUNT,
 };
 use fly::fetch_platform_regions;
-use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement, Value as DbValue};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use utoipa::{IntoParams, ToSchema};
@@ -38,6 +38,7 @@ use super::custom_domains::normalize_domain;
 const ACCESS_PENDING: i16 = 0;
 const ACCESS_APPROVED: i16 = 1;
 const ACCESS_DENIED: i16 = 2;
+const BUILD_LOG_RETENTION_DAYS: i32 = 1;
 
 pub fn routes(state: AppState) -> Router<AppState> {
     let gated = Router::new()
@@ -82,6 +83,7 @@ pub fn routes(state: AppState) -> Router<AppState> {
         )
         .route("/services/{service_id}/events", get(list_events))
         .route("/services/{service_id}/logs", get(list_logs))
+        .route("/services/{service_id}/build-logs", get(list_build_logs))
         .route("/services/{service_id}/metrics", get(list_metrics))
         .route("/regions", get(list_regions))
         .merge(super::sandboxes::routes())
@@ -143,6 +145,7 @@ pub struct DeployServiceView {
     pub provider: String,
     pub provider_service_id: Option<String>,
     pub log_project_id: Option<Uuid>,
+    pub build_log_project_id: Option<Uuid>,
     #[schema(value_type = Object)]
     pub provider_metadata: Value,
     pub slug: String,
@@ -394,6 +397,7 @@ pub struct CreateServiceDomainBody {
 #[into_params(parameter_in = Query)]
 pub struct LimitQuery {
     pub limit: Option<u64>,
+    pub deployment_id: Option<Uuid>,
 }
 
 #[derive(Deserialize)]
@@ -754,6 +758,9 @@ pub async fn create_service(
     .await?;
 
     ensure_service_log_project_best_effort(&state, m.workspace.id, id).await;
+    if source_kind == "git" {
+        ensure_build_log_project_best_effort(&state, m.workspace.id, id).await;
+    }
 
     write_service_secrets(
         &state,
@@ -1453,6 +1460,9 @@ pub async fn create_deployment(
     ensure_service_log_project_best_effort(&state, m.workspace.id, service_id).await;
     let was_stopped = service.disabled_at.is_some();
     let is_git = service.source_kind == "git";
+    if is_git {
+        ensure_build_log_project_best_effort(&state, m.workspace.id, service_id).await;
+    }
     // A git service re-builds from source: enqueue Building with a placeholder image
     // the build overwrites. An image service deploys the given/current image directly.
     let (image, image_digest, status, source_repo_url, source_git_ref) = if is_git {
@@ -1879,7 +1889,14 @@ pub async fn list_events(
 ) -> ApiResult<Json<Vec<DeployEventView>>> {
     ensure_service(&state, m.workspace.id, service_id).await?;
     Ok(Json(
-        event_rows(&state, m.workspace.id, service_id, q.limit.unwrap_or(100)).await?,
+        event_rows(
+            &state,
+            m.workspace.id,
+            service_id,
+            q.limit.unwrap_or(100),
+            q.deployment_id,
+        )
+        .await?,
     ))
 }
 
@@ -1903,6 +1920,7 @@ pub async fn list_logs(
 ) -> ApiResult<Json<Vec<DeployLogLineView>>> {
     ensure_service_log_project_best_effort(&state, m.workspace.id, service_id).await;
     let service = load_service(&state, m.workspace.id, service_id).await?;
+    let limit = q.limit.unwrap_or(100);
     if let (Some(store), Some(project_id)) = (state.log_store.as_ref(), service.log_project_id) {
         let rows = store
             .search(
@@ -1913,7 +1931,8 @@ pub async fn list_logs(
                     q: None,
                     level: None,
                     service: None,
-                    limit: q.limit,
+                    deployment_id: q.deployment_id,
+                    limit: Some(limit),
                 },
             )
             .await
@@ -1932,8 +1951,8 @@ pub async fn list_logs(
         }
     }
 
-    let rows = DeployLogLineView::find_by_statement(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
+    let limit = limit.min(500) as i64;
+    let mut sql = String::from(
         r#"
         SELECT observed_at AS timestamp,
                CASE
@@ -1944,18 +1963,80 @@ pub async fn list_logs(
                data
         FROM deploy_log_lines
         WHERE workspace_id = $1 AND service_id = $2
-        ORDER BY observed_at DESC
-        LIMIT $3
         "#,
-        [
-            m.workspace.id.into(),
-            service_id.into(),
-            q.limit.unwrap_or(100).into(),
-        ],
+    );
+    let mut values: Vec<DbValue> = vec![m.workspace.id.into(), service_id.into()];
+    if let Some(deployment_id) = q.deployment_id {
+        sql.push_str(" AND deployment_id = $3");
+        values.push(deployment_id.into());
+        sql.push_str(" ORDER BY observed_at DESC LIMIT $4");
+        values.push(limit.into());
+    } else {
+        sql.push_str(" ORDER BY observed_at DESC LIMIT $3");
+        values.push(limit.into());
+    }
+    let rows = DeployLogLineView::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        &sql,
+        values,
     ))
     .all(&state.db)
     .await?;
     Ok(Json(rows))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/workspaces/{wid}/deployments/services/{service_id}/build-logs",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("service_id" = Uuid, Path, description = "deployment service id"),
+        LimitQuery,
+    ),
+    responses((status = 200, body = [DeployLogLineView])),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn list_build_logs(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path(ServicePath { service_id, .. }): Path<ServicePath>,
+    Query(q): Query<LimitQuery>,
+) -> ApiResult<Json<Vec<DeployLogLineView>>> {
+    ensure_build_log_project_best_effort(&state, m.workspace.id, service_id).await;
+    let service = load_service(&state, m.workspace.id, service_id).await?;
+    let Some(project_id) = service.build_log_project_id else {
+        return Ok(Json(Vec::new()));
+    };
+    let limit = q.limit.unwrap_or(100);
+    if let Some(store) = state.log_store.as_ref() {
+        let rows = store
+            .search(
+                project_id,
+                &crate::http::logs::LogSearchQuery {
+                    from: None,
+                    to: None,
+                    q: None,
+                    level: None,
+                    service: None,
+                    deployment_id: q.deployment_id,
+                    limit: Some(limit),
+                },
+            )
+            .await
+            .unwrap_or_default();
+        return Ok(Json(
+            rows.into_iter()
+                .map(|row| DeployLogLineView {
+                    timestamp: row.timestamp,
+                    level: row.level,
+                    message: row.message,
+                    data: row.fields,
+                })
+                .collect(),
+        ));
+    }
+    Ok(Json(Vec::new()))
 }
 
 #[utoipa::path(
@@ -2086,7 +2167,7 @@ async fn service_rows(
         DatabaseBackend::Postgres,
         r#"
         SELECT s.id, s.workspace_id, s.registry_credential_id, s.provider, s.provider_service_id,
-               s.log_project_id, s.provider_metadata, s.slug, s.name, s.image, s.registry_kind,
+               s.log_project_id, s.build_log_project_id, s.provider_metadata, s.slug, s.name, s.image, s.registry_kind,
                s.source_kind, s.repo_url, s.git_ref, s.dockerfile_path, s.root_dir,
                s.internal_port, s.env, s.environment, s.health_check_path,
                s.health_status, s.health_status_updated_at, s.last_health_checked_at,
@@ -2152,6 +2233,16 @@ struct DeployServiceLogProjectSeed {
     slug: String,
     name: String,
     log_project_id: Option<Uuid>,
+}
+
+#[derive(FromQueryResult)]
+struct DeployServiceBuildLogProjectSeed {
+    id: Uuid,
+    workspace_id: Uuid,
+    slug: String,
+    name: String,
+    source_kind: String,
+    build_log_project_id: Option<Uuid>,
 }
 
 async fn ensure_service_log_project(
@@ -2253,6 +2344,123 @@ fn deploy_log_project_slug(service_slug: &str, service_id: Uuid) -> String {
         service_slug.trim_matches('-'),
         &service_id.simple().to_string()[..8]
     )
+}
+
+fn deploy_build_log_project_slug(service_slug: &str, service_id: Uuid) -> String {
+    format!(
+        "deploy-build-{}-{}",
+        service_slug.trim_matches('-'),
+        &service_id.simple().to_string()[..8]
+    )
+}
+
+async fn ensure_build_log_project(
+    state: &AppState,
+    workspace_id: Uuid,
+    service_id: Uuid,
+) -> ApiResult<Option<Uuid>> {
+    let Some(service) =
+        DeployServiceBuildLogProjectSeed::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT id, workspace_id, slug, name, source_kind, build_log_project_id
+            FROM deploy_services
+            WHERE workspace_id = $1
+              AND id = $2
+              AND deleted_at IS NULL
+            LIMIT 1
+            "#,
+            [workspace_id.into(), service_id.into()],
+        ))
+        .one(&state.db)
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    if service.build_log_project_id.is_some() {
+        return Ok(service.build_log_project_id);
+    }
+    if service.source_kind != "git" {
+        return Ok(None);
+    }
+
+    let project_id = Uuid::now_v7();
+    let project_slug = deploy_build_log_project_slug(&service.slug, service.id);
+    let project_name = format!("{} build logs", service.name);
+    let description = format!("Build logs for deployment service {}", service.name);
+    let now = Utc::now().fixed_offset();
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            INSERT INTO log_projects (
+                id, workspace_id, bucket_id, slug, name, description,
+                retention_days, created_at, updated_at
+            )
+            VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $7)
+            ON CONFLICT DO NOTHING
+            "#,
+            [
+                project_id.into(),
+                service.workspace_id.into(),
+                project_slug.clone().into(),
+                project_name.into(),
+                description.into(),
+                BUILD_LOG_RETENTION_DAYS.into(),
+                now.into(),
+            ],
+        ))
+        .await?;
+
+    let row = state
+        .db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_services
+            SET build_log_project_id = $3,
+                updated_at = now()
+            WHERE workspace_id = $1
+              AND id = $2
+              AND deleted_at IS NULL
+              AND build_log_project_id IS NULL
+            RETURNING build_log_project_id
+            "#,
+            [workspace_id.into(), service_id.into(), project_id.into()],
+        ))
+        .await?;
+
+    let linked = row.and_then(|row| row.try_get::<Uuid>("", "build_log_project_id").ok());
+    if let Some(build_log_project_id) = linked {
+        insert_event(
+            state,
+            workspace_id,
+            service_id,
+            None,
+            "info",
+            "build log project linked",
+            json!({ "build_log_project_id": build_log_project_id, "slug": project_slug }),
+        )
+        .await?;
+    }
+    Ok(linked)
+}
+
+async fn ensure_build_log_project_best_effort(
+    state: &AppState,
+    workspace_id: Uuid,
+    service_id: Uuid,
+) {
+    if let Err(error) = ensure_build_log_project(state, workspace_id, service_id).await {
+        tracing::warn!(
+            workspace_id = %workspace_id,
+            service_id = %service_id,
+            error = ?error,
+            "failed to ensure deployment service build log project"
+        );
+    }
 }
 
 async fn ensure_service_log_project_best_effort(
@@ -2649,18 +2857,31 @@ async fn event_rows(
     workspace_id: Uuid,
     service_id: Uuid,
     limit: u64,
+    deployment_id: Option<Uuid>,
 ) -> ApiResult<Vec<DeployEventView>> {
     let limit = limit.min(500) as i64;
-    let rows = DeployEventView::find_by_statement(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
+    let mut sql = String::from(
         r#"
         SELECT id, service_id, deployment_id, level, message, data, created_at
         FROM deploy_events
         WHERE workspace_id = $1 AND service_id = $2
-        ORDER BY created_at DESC
-        LIMIT $3
+          AND (data->>'phase' IS DISTINCT FROM 'build')
         "#,
-        [workspace_id.into(), service_id.into(), limit.into()],
+    );
+    let mut values: Vec<DbValue> = vec![workspace_id.into(), service_id.into()];
+    if let Some(deployment_id) = deployment_id {
+        sql.push_str(" AND deployment_id = $3");
+        values.push(deployment_id.into());
+        sql.push_str(" ORDER BY created_at DESC LIMIT $4");
+        values.push(limit.into());
+    } else {
+        sql.push_str(" ORDER BY created_at DESC LIMIT $3");
+        values.push(limit.into());
+    }
+    let rows = DeployEventView::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        &sql,
+        values,
     ))
     .all(&state.db)
     .await?;

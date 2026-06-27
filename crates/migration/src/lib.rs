@@ -43,6 +43,7 @@ mod m20260627_000040_link_deploy_services_to_log_projects;
 mod m20260627_000041_add_deploy_service_machine_count;
 mod m20260627_000042_add_deploy_service_build_source;
 mod m20260627_000043_add_deploy_health_watch;
+mod m20260628_000044_add_deploy_build_log_projects;
 
 pub struct Migrator;
 
@@ -93,6 +94,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260627_000041_add_deploy_service_machine_count::Migration),
             Box::new(m20260627_000042_add_deploy_service_build_source::Migration),
             Box::new(m20260627_000043_add_deploy_health_watch::Migration),
+            Box::new(m20260628_000044_add_deploy_build_log_projects::Migration),
         ]
     }
 }

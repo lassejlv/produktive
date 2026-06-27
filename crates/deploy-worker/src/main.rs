@@ -71,7 +71,10 @@ struct BuildJob {
     dockerfile_path: Option<String>,
     root_dir: Option<String>,
     slug: String,
+    name: String,
+    environment: String,
     provider_service_id: Option<String>,
+    build_log_project_id: Option<Uuid>,
 }
 
 /// Fail a build whose task has been running longer than this (seconds). Must be
@@ -80,6 +83,7 @@ struct BuildJob {
 const BUILD_STUCK_SECONDS: i64 = 3900;
 /// Grace before a `Building` row is failed when this worker has no build provider.
 const NO_PROVIDER_GRACE_SECONDS: i64 = 60;
+const BUILD_LOG_RETENTION_DAYS: i32 = 1;
 
 /// Sends a deployment id back to the reconciler loop on drop, so the in-flight
 /// build set is freed on every task exit path including a panic.
@@ -265,6 +269,7 @@ async fn main() -> Result<()> {
             Some(bp) => {
                 if let Err(error) = claim_and_spawn_builds(
                     &db,
+                    log_db.as_ref(),
                     &fly,
                     bp,
                     &config,
@@ -526,6 +531,7 @@ fn build_provider_from_config(config: &Config) -> Option<DepotProvider> {
 /// detached task per build, so the reconciler loop never blocks on a build.
 async fn claim_and_spawn_builds(
     db: &DatabaseConnection,
+    log_db: Option<&DatabaseConnection>,
     fly: &Fly,
     provider: &DepotProvider,
     config: &Config,
@@ -538,7 +544,7 @@ async fn claim_and_spawn_builds(
         SELECT d.id, d.workspace_id, d.service_id,
                s.source_kind, COALESCE(d.source_repo_url, s.repo_url) AS repo_url,
                COALESCE(d.git_ref, s.git_ref) AS git_ref, s.dockerfile_path, s.root_dir,
-               s.slug, s.provider_service_id
+               s.slug, s.name, s.environment, s.provider_service_id, s.build_log_project_id
         FROM deployments d
         INNER JOIN deploy_services s
             ON s.workspace_id = d.workspace_id AND s.id = d.service_id
@@ -558,6 +564,7 @@ async fn claim_and_spawn_builds(
             continue; // already building in this process
         }
         let db = db.clone();
+        let log_db = log_db.cloned();
         let fly = fly.clone();
         let provider = provider.clone();
         let prefix = config.fly_app_name_prefix.clone();
@@ -568,7 +575,8 @@ async fn claim_and_spawn_builds(
         };
         tokio::spawn(async move {
             let _guard = guard; // frees the in-flight id on every exit path
-            run_build_job(&db, &fly, &provider, &prefix, &registry_host, job).await;
+            run_build_job(&db, log_db.as_ref(), &fly, &provider, &prefix, &registry_host, job)
+                .await;
         });
     }
     Ok(())
@@ -576,6 +584,7 @@ async fn claim_and_spawn_builds(
 
 async fn run_build_job(
     db: &DatabaseConnection,
+    log_db: Option<&DatabaseConnection>,
     fly: &Fly,
     provider: &DepotProvider,
     prefix: &str,
@@ -587,12 +596,22 @@ async fn run_build_job(
     // converted into a terminal BuildFailed. Otherwise the row would stay Building
     // and the reconciler would re-spawn it every tick.
     let db_inner = db.clone();
+    let log_db = log_db.cloned();
     let fly = fly.clone();
     let provider = provider.clone();
     let prefix = prefix.to_owned();
     let registry_host = registry_host.to_owned();
     let result = tokio::spawn(async move {
-        run_build_job_inner(&db_inner, &fly, &provider, &prefix, &registry_host, &job).await
+        run_build_job_inner(
+            &db_inner,
+            log_db.as_ref(),
+            &fly,
+            &provider,
+            &prefix,
+            &registry_host,
+            &job,
+        )
+        .await
     })
     .await;
 
@@ -614,6 +633,7 @@ async fn run_build_job(
 
 async fn run_build_job_inner(
     db: &DatabaseConnection,
+    log_db: Option<&DatabaseConnection>,
     fly: &Fly,
     provider: &DepotProvider,
     prefix: &str,
@@ -676,23 +696,61 @@ async fn run_build_job_inner(
         image_repository: format!("{registry_host}/{app_name}"),
     };
 
-    // Bridge the synchronous log sink to async insert_event via a bounded channel;
+    // Bridge the synchronous log sink to async ingest via a bounded channel;
     // try_send drops lines under backpressure rather than blocking the build.
+    let build_log_project_id = ensure_build_log_project(
+        db,
+        job.workspace_id,
+        job.service_id,
+        &job.slug,
+        &job.name,
+        &job.source_kind,
+        job.build_log_project_id,
+    )
+    .await?;
     let (log_tx, mut log_rx) = tokio::sync::mpsc::channel::<String>(256);
-    let log_db = db.clone();
+    let log_db_worker = log_db.cloned();
+    let event_db = db.clone();
     let (ws, svc, did) = (job.workspace_id, job.service_id, job.id);
+    let slug = job.slug.clone();
+    let environment = job.environment.clone();
     let drain = tokio::spawn(async move {
+        let mut seq = 0u64;
         while let Some(line) = log_rx.recv().await {
-            let _ = insert_event(
-                &log_db,
-                ws,
-                svc,
-                Some(did),
-                "info",
-                &line,
-                json!({ "phase": "build" }),
-            )
-            .await;
+            if let (Some(log_db), Some(project_id)) = (log_db_worker.as_ref(), build_log_project_id)
+            {
+                if let Err(error) = insert_build_log_event(
+                    log_db,
+                    ws,
+                    svc,
+                    did,
+                    project_id,
+                    &slug,
+                    &environment,
+                    seq,
+                    &line,
+                )
+                .await
+                {
+                    tracing::warn!(
+                        deployment_id = %did,
+                        error = ?error,
+                        "failed to ingest build log line"
+                    );
+                }
+            } else {
+                let _ = insert_event(
+                    &event_db,
+                    ws,
+                    svc,
+                    Some(did),
+                    "info",
+                    &line,
+                    json!({ "phase": "build" }),
+                )
+                .await;
+            }
+            seq += 1;
         }
     });
 
@@ -2113,6 +2171,135 @@ fn deploy_log_project_slug(service_slug: &str, service_id: Uuid) -> String {
         service_slug.trim_matches('-'),
         &service_id.simple().to_string()[..8]
     )
+}
+
+fn deploy_build_log_project_slug(service_slug: &str, service_id: Uuid) -> String {
+    format!(
+        "deploy-build-{}-{}",
+        service_slug.trim_matches('-'),
+        &service_id.simple().to_string()[..8]
+    )
+}
+
+async fn ensure_build_log_project(
+    db: &DatabaseConnection,
+    workspace_id: Uuid,
+    service_id: Uuid,
+    slug: &str,
+    name: &str,
+    source_kind: &str,
+    existing: Option<Uuid>,
+) -> Result<Option<Uuid>> {
+    if existing.is_some() {
+        return Ok(existing);
+    }
+    if source_kind != "git" {
+        return Ok(None);
+    }
+
+    let project_id = Uuid::now_v7();
+    let project_slug = deploy_build_log_project_slug(slug, service_id);
+    let project_name = format!("{} build logs", name);
+    let description = format!("Build logs for deployment service {}", name);
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        INSERT INTO log_projects (
+            id, workspace_id, bucket_id, slug, name, description,
+            retention_days, created_at, updated_at
+        )
+        VALUES ($1, $2, NULL, $3, $4, $5, $6, now(), now())
+        ON CONFLICT DO NOTHING
+        "#,
+        [
+            project_id.into(),
+            workspace_id.into(),
+            project_slug.clone().into(),
+            project_name.into(),
+            description.into(),
+            BUILD_LOG_RETENTION_DAYS.into(),
+        ],
+    ))
+    .await?;
+
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_services
+            SET build_log_project_id = $3,
+                updated_at = now()
+            WHERE workspace_id = $1
+              AND id = $2
+              AND deleted_at IS NULL
+              AND build_log_project_id IS NULL
+            RETURNING build_log_project_id
+            "#,
+            [workspace_id.into(), service_id.into(), project_id.into()],
+        ))
+        .await?;
+
+    let linked = row.and_then(|row| row.try_get::<Uuid>("", "build_log_project_id").ok());
+    if let Some(build_log_project_id) = linked {
+        insert_event(
+            db,
+            workspace_id,
+            service_id,
+            None,
+            "info",
+            "build log project linked",
+            json!({ "build_log_project_id": build_log_project_id, "slug": project_slug }),
+        )
+        .await?;
+    }
+    Ok(linked)
+}
+
+async fn insert_build_log_event(
+    log_db: &DatabaseConnection,
+    workspace_id: Uuid,
+    service_id: Uuid,
+    deployment_id: Uuid,
+    project_id: Uuid,
+    service_slug: &str,
+    environment: &str,
+    line_seq: u64,
+    message: &str,
+) -> Result<()> {
+    let now = Utc::now().fixed_offset();
+    let fields = json!({
+        "deployment_id": deployment_id,
+        "deploy_service_id": service_id,
+        "phase": "build",
+        "line": line_seq,
+    });
+    log_db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            INSERT INTO log_events (
+                time, received_at, project_id, workspace_id, event_id,
+                level, message, service, environment, operation,
+                request_id, trace_id, source, fields
+            )
+            VALUES ($1, now(), $2, $3, $4, $5, $6, $7, $8, NULL, NULL, NULL, $9, $10)
+            "#,
+            [
+                now.into(),
+                project_id.into(),
+                workspace_id.into(),
+                format!("deploy-build:{}:{}", deployment_id, line_seq).into(),
+                "info".into(),
+                message.into(),
+                service_slug.into(),
+                environment.into(),
+                "deploy.build".into(),
+                fields.into(),
+            ],
+        ))
+        .await?;
+    Ok(())
 }
 
 async fn insert_log_line(
