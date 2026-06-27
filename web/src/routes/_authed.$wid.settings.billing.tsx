@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "#/lib/toast";
 import { BillingActionDialog } from "../components/billing/BillingActionDialog";
 import { CurrentPlanCard } from "../components/billing/CurrentPlanCard";
+import { DeploymentsBreakdown } from "../components/billing/DeploymentsBreakdown";
 import { PlanChangeDialog } from "../components/billing/PlanChangeDialog";
 import { PlanTable } from "../components/billing/PlanTable";
 import { Button } from "#/components/ui/button";
@@ -16,11 +17,7 @@ import {
   nextResetText,
   planChangeKind,
   usageNumbers,
-  featureNoun,
-  formatCost,
-  formatUsageNumber,
   type BillingAction,
-  type BillingBalanceSummary,
   type BillingPlanSummary,
 } from "../lib/billing";
 import { usePolarCheckout } from "../hooks/use-polar-checkout";
@@ -139,11 +136,10 @@ function BillingPage() {
         <UsageCard monitors={monitors} members={members} events={events} eventsSub="Unlimited" />
 
         {hasDeployUsage && (
-          <DeployUsageCard
-            memory={billing.balances.deploy_memory}
-            cpu={billing.balances.deploy_cpu}
-            volume={billing.balances.deploy_volume}
-            resetText="Current period"
+          <DeploymentsBreakdown
+            balances={billing.balances}
+            currentPlan={currentPlan}
+            periodText="Current period"
           />
         )}
 
@@ -218,11 +214,10 @@ function BillingPage() {
         />
 
         {hasDeployUsage && (
-          <DeployUsageCard
-            memory={billing.balances.deploy_memory}
-            cpu={billing.balances.deploy_cpu}
-            volume={billing.balances.deploy_volume}
-            resetText={nextResetText(billing.balances.deploy_memory)}
+          <DeploymentsBreakdown
+            balances={billing.balances}
+            currentPlan={currentPlan}
+            periodText={nextResetText(billing.balances.deploy_memory)}
           />
         )}
 
@@ -342,74 +337,6 @@ function UsageCard({
       <UsageTile label="Members" usage={members} />
       <UsageTile label="Events" usage={events} sub={eventsSub} />
     </div>
-  );
-}
-
-function DeployUsageCard({
-  memory,
-  cpu,
-  volume,
-  resetText,
-}: {
-  memory: BillingBalanceSummary | null | undefined;
-  cpu: BillingBalanceSummary | null | undefined;
-  volume: BillingBalanceSummary | null | undefined;
-  resetText: string;
-}) {
-  const hasCost = memory?.cost != null || cpu?.cost != null || volume?.cost != null;
-  const total = (memory?.cost ?? 0) + (cpu?.cost ?? 0) + (volume?.cost ?? 0);
-
-  return (
-    <section>
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
-          Deployments usage
-        </h3>
-        {hasCost && (
-          <span className="tabular text-[12px] text-[var(--color-fg-muted)]">
-            {formatCost(total)} this period
-          </span>
-        )}
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <DeployUsageTile label="Memory" balance={memory} resetText={resetText} />
-        <DeployUsageTile label="CPU" balance={cpu} resetText={resetText} />
-        <DeployUsageTile label="Volumes" balance={volume} resetText={resetText} />
-      </div>
-    </section>
-  );
-}
-
-/** Deploy resource tile: headline the dollar cost, with raw usage as context. */
-function DeployUsageTile({
-  label,
-  balance,
-  resetText,
-}: {
-  label: string;
-  balance: BillingBalanceSummary | null | undefined;
-  resetText: string;
-}) {
-  const cost = balance?.cost ?? null;
-  const usage = balance?.usage ?? null;
-  const noun = balance ? featureNoun(balance.feature_id) : null;
-
-  return (
-    <StatTile
-      label={label}
-      value={cost != null ? formatCost(cost) : "—"}
-      sub={
-        <span>
-          {usage != null && (
-            <span className="text-[var(--color-fg-dim)]">
-              {formatUsageNumber(usage)}
-              {noun ? ` ${noun}` : ""} ·{" "}
-            </span>
-          )}
-          {resetText}
-        </span>
-      }
-    />
   );
 }
 
