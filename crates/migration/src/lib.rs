@@ -40,6 +40,7 @@ mod m20260626_000037_create_deploy_sandbox_api_tokens;
 mod m20260626_000038_create_object_storage_buckets;
 mod m20260627_000039_add_deployment_config_snapshot;
 mod m20260627_000040_link_deploy_services_to_log_projects;
+mod m20260627_000041_add_deploy_service_machine_count;
 
 pub struct Migrator;
 
@@ -87,6 +88,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260626_000038_create_object_storage_buckets::Migration),
             Box::new(m20260627_000039_add_deployment_config_snapshot::Migration),
             Box::new(m20260627_000040_link_deploy_services_to_log_projects::Migration),
+            Box::new(m20260627_000041_add_deploy_service_machine_count::Migration),
         ]
     }
 }

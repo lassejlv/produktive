@@ -74,9 +74,10 @@ pub fn windowed_seconds(
     let Some(start) = started_at else {
         return 0.0; // Queued, never claimed
     };
-    // For still-running billable statuses, the interval is open: end = window_end.
+    // For still-running billable statuses, the runtime interval is open even
+    // if `finished_at` was set when the deployment reached live.
     let end = if BILLABLE_DEPLOYMENT_STATUSES.contains(&status) {
-        finished_at.unwrap_or(window_end)
+        window_end
     } else {
         match finished_at {
             Some(f) => f,
@@ -140,7 +141,8 @@ pub async fn compute_compute_seconds(
             d.status           AS status,
             d.started_at       AS started_at,
             d.finished_at      AS finished_at,
-            s.resource_preset  AS resource_preset
+            COALESCE(d.config_snapshot->>'resource_preset', s.resource_preset) AS resource_preset,
+            COALESCE((d.config_snapshot->>'machine_count')::INTEGER, s.machine_count, 1) AS machine_count
         FROM deployments d
         JOIN deploy_services s ON s.id = d.service_id
         JOIN workspaces owned ON owned.id = s.workspace_id
@@ -148,7 +150,10 @@ pub async fn compute_compute_seconds(
         WHERE billing_ws.id = $1
           AND d.started_at IS NOT NULL
           AND d.started_at < $3
-          AND COALESCE(d.finished_at, $3) > $2
+          AND CASE
+                WHEN d.status IN (1, 2, 3, 4, 5) THEN $3
+                ELSE COALESCE(d.finished_at, $3)
+              END > $2
         "#,
         [
             billing_workspace_id.into(),
@@ -171,7 +176,7 @@ pub async fn compute_compute_seconds(
             window_start,
             window_end,
         );
-        total += seconds * preset_rate(preset, kind);
+        total += seconds * preset_rate(preset, kind) * f64::from(row.machine_count.max(1));
     }
     Ok(total)
 }
@@ -259,6 +264,7 @@ struct DeploymentUsageRow {
     started_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     finished_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     resource_preset: String,
+    machine_count: i32,
 }
 
 #[derive(FromQueryResult)]
@@ -296,6 +302,21 @@ mod tests {
     }
 
     #[test]
+    fn machine_count_multiplies_compute_seconds() {
+        let seconds = 60.0;
+        let machines = 3;
+        let preset = ResourcePreset::PreviewMedium;
+        assert_eq!(
+            seconds * preset_rate(preset, ComputeKind::Memory) * f64::from(machines),
+            180.0
+        );
+        assert_eq!(
+            seconds * preset_rate(preset, ComputeKind::Cpu) * f64::from(machines),
+            180.0
+        );
+    }
+
+    #[test]
     fn windowed_seconds_full_window_running_live() {
         let start = ts(0);
         let end = ts(3600);
@@ -318,6 +339,14 @@ mod tests {
         let end = ts(3600);
         let s = windowed_seconds(Some(ts(0)), Some(ts(1800)), 9, start, end);
         assert!((s - 1800.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn windowed_seconds_live_ignores_deploy_finished_at() {
+        let start = ts(0);
+        let end = ts(3600);
+        let s = windowed_seconds(Some(ts(0)), Some(ts(120)), 5, start, end);
+        assert!((s - 3600.0).abs() < 1e-9);
     }
 
     #[test]

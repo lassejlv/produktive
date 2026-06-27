@@ -14,7 +14,13 @@ import type {
   DeployRegion,
   DeployResourcePreset,
 } from "../lib/types";
-import { fieldControlClass, parseKeyValues, RESOURCE_PRESETS } from "../components/deployments/deploy-shared";
+import {
+  MACHINE_COUNT_OPTIONS,
+  RESOURCE_PRESETS,
+  fieldControlClass,
+  machineCountLabel,
+  parseKeyValues,
+} from "../components/deployments/deploy-shared";
 
 export type { DeployDetailTab } from "#/lib/deployments";
 
@@ -198,6 +204,7 @@ export function CreateServiceDialog({
     health_check_path: string;
     region: string;
     resource_preset: DeployResourcePreset;
+    machine_count: number;
   }) => void;
 }) {
   const [step, setStep] = useState<1 | 2>(1);
@@ -210,6 +217,7 @@ export function CreateServiceDialog({
   const [region, setRegion] = useState(regions[0]?.code ?? "ams");
   const [health, setHealth] = useState("/");
   const [resourcePreset, setResourcePreset] = useState<DeployResourcePreset>("preview_small");
+  const [machineCount, setMachineCount] = useState(1);
   const [envText, setEnvText] = useState("");
   const [secretText, setSecretText] = useState("");
 
@@ -245,6 +253,7 @@ export function CreateServiceDialog({
         health_check_path: health,
         region,
         resource_preset: resourcePreset,
+        machine_count: machineCount,
       });
     } catch (error) {
       toast.error((error as Error).message);
@@ -390,7 +399,7 @@ export function CreateServiceDialog({
                   required
                 />
               </Field>
-              <Field label="Compute" className="sm:col-span-2">
+              <Field label="Compute">
                 <select
                   className={cn(fieldControlClass, "h-9")}
                   value={resourcePreset}
@@ -399,6 +408,19 @@ export function CreateServiceDialog({
                   {RESOURCE_PRESETS.map((preset) => (
                     <option key={preset.value} value={preset.value}>
                       {preset.label} · {preset.detail}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Machines">
+                <select
+                  className={cn(fieldControlClass, "h-9")}
+                  value={machineCount}
+                  onChange={(e) => setMachineCount(Number(e.target.value))}
+                >
+                  {MACHINE_COUNT_OPTIONS.map((count) => (
+                    <option key={count} value={count}>
+                      {machineCountLabel(count)}
                     </option>
                   ))}
                 </select>
@@ -443,4 +465,3 @@ function Field({
     </label>
   );
 }
-

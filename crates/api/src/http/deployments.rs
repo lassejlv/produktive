@@ -11,9 +11,10 @@ use chrono::{DateTime, FixedOffset, Utc};
 use deploy::{
     catalog_from_fly, static_allowed_regions, validate_allowed_region, validate_env_name,
     validate_health_path, validate_image_for_registry, validate_internal_port,
-    validate_volume_mount_path, validate_volume_name, validate_volume_size_gb, DeployRegion,
-    DeploymentConfigSnapshot, DeploymentStatus, RegistryKind, ResourcePreset, SecretCipher,
-    VolumeSpec, DEFAULT_DEPLOY_REGION,
+    validate_machine_count, validate_volume_mount_path, validate_volume_name,
+    validate_volume_size_gb, DeployRegion, DeploymentConfigSnapshot, DeploymentStatus,
+    RegistryKind, ResourcePreset, SecretCipher, VolumeSpec, DEFAULT_DEPLOY_REGION,
+    DEFAULT_MACHINE_COUNT,
 };
 use fly::fetch_platform_regions;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
@@ -154,6 +155,7 @@ pub struct DeployServiceView {
     pub health_check_path: String,
     pub region: String,
     pub resource_preset: String,
+    pub machine_count: i32,
     pub url: Option<String>,
     pub status: String,
     pub canvas_x: i32,
@@ -301,12 +303,16 @@ pub struct CreateServiceBody {
     pub region: Option<String>,
     #[serde(default)]
     pub resource_preset: Option<String>,
+    #[serde(default)]
+    pub machine_count: Option<u16>,
 }
 
 #[derive(Deserialize, ToSchema)]
 pub struct UpdateServiceSettingsBody {
     #[serde(default)]
     pub resource_preset: Option<String>,
+    #[serde(default)]
+    pub machine_count: Option<u16>,
     #[serde(default)]
     pub canvas_x: Option<i32>,
     #[serde(default)]
@@ -610,6 +616,8 @@ pub async fn create_service(
         .transpose()
         .map_err(deploy_error)?
         .unwrap_or(ResourcePreset::PreviewSmall);
+    let machine_count = validate_machine_count(body.machine_count.unwrap_or(DEFAULT_MACHINE_COUNT))
+        .map_err(deploy_error)?;
     for name in body.env.keys().chain(body.secrets.keys()) {
         validate_env_name(name).map_err(deploy_error)?;
     }
@@ -636,9 +644,9 @@ pub async fn create_service(
             INSERT INTO deploy_services (
                 id, workspace_id, registry_credential_id, provider, provider_metadata,
                 slug, name, image, registry_kind, internal_port, env, environment,
-                health_check_path, region, resource_preset, status, created_by, created_at, updated_at
+                health_check_path, region, resource_preset, machine_count, status, created_by, created_at, updated_at
             )
-            VALUES ($1, $2, $3, 'fly', '{}', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16)
+            VALUES ($1, $2, $3, 'fly', '{}', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $17)
             "#,
             [
                 id.into(),
@@ -654,6 +662,7 @@ pub async fn create_service(
                 health_check_path.into(),
                 region.into(),
                 resource_preset.as_str().into(),
+                i32::from(machine_count).into(),
                 DeploymentStatus::Stopped.code().into(),
                 auth.user.id.into(),
                 now.into(),
@@ -726,6 +735,19 @@ pub async fn update_service_settings(
     Json(body): Json<UpdateServiceSettingsBody>,
 ) -> ApiResult<Json<DeployServiceView>> {
     ensure_service(&state, m.workspace.id, service_id).await?;
+    let requested_machine_count = body
+        .machine_count
+        .map(validate_machine_count)
+        .transpose()
+        .map_err(deploy_error)?;
+    if let Some(machine_count) = requested_machine_count {
+        if machine_count > 1 && service_volume_count(&state, m.workspace.id, service_id).await? > 0
+        {
+            return Err(ApiError::conflict(
+                "multi-machine services cannot use persistent volumes yet",
+            ));
+        }
+    }
 
     if let Some(resource_preset) = body.resource_preset.as_deref() {
         m.require_owner()?;
@@ -755,6 +777,39 @@ pub async fn update_service_settings(
             "compute size updated",
             json!({
                 "resource_preset": resource_preset.as_str(),
+                "applies_on": "next_deployment"
+            }),
+        )
+        .await?;
+    }
+
+    if let Some(machine_count) = requested_machine_count {
+        m.require_owner()?;
+        state
+            .db
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"
+                UPDATE deploy_services
+                SET machine_count = $3, updated_at = now()
+                WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+                "#,
+                [
+                    m.workspace.id.into(),
+                    service_id.into(),
+                    i32::from(machine_count).into(),
+                ],
+            ))
+            .await?;
+        insert_event(
+            &state,
+            m.workspace.id,
+            service_id,
+            None,
+            "info",
+            "machine count updated",
+            json!({
+                "machine_count": machine_count,
                 "applies_on": "next_deployment"
             }),
         )
@@ -1050,6 +1105,11 @@ pub async fn create_service_volume(
     if service_volume_count(&state, m.workspace.id, service_id).await? >= 1 {
         return Err(ApiError::conflict(
             "Fly Machines support one volume per service",
+        ));
+    }
+    if service.machine_count > 1 {
+        return Err(ApiError::conflict(
+            "multi-machine services cannot use persistent volumes yet",
         ));
     }
     let name = body.name.trim().to_lowercase();
@@ -1897,7 +1957,7 @@ async fn service_rows(
         SELECT s.id, s.workspace_id, s.registry_credential_id, s.provider, s.provider_service_id,
                s.log_project_id, s.provider_metadata, s.slug, s.name, s.image, s.registry_kind,
                s.internal_port, s.env, s.environment, s.health_check_path, s.region,
-               s.resource_preset, s.url,
+               s.resource_preset, s.machine_count, s.url,
                CASE s.status
                     WHEN 0 THEN 'queued'
                     WHEN 1 THEN 'provisioning'
@@ -2201,6 +2261,10 @@ async fn deployment_config_snapshot(
         .map_err(|_| ApiError::bad_request("invalid deployment service internal port"))?;
     validate_internal_port(internal_port).map_err(deploy_error)?;
     let resource_preset = ResourcePreset::parse(&service.resource_preset).map_err(deploy_error)?;
+    let machine_count = u16::try_from(service.machine_count)
+        .ok()
+        .and_then(|value| validate_machine_count(value).ok())
+        .unwrap_or(DEFAULT_MACHINE_COUNT);
     let env =
         serde_json::from_value::<BTreeMap<String, String>>(service.env.clone()).unwrap_or_default();
 
@@ -2257,6 +2321,7 @@ async fn deployment_config_snapshot(
         health_check_path: service.health_check_path.clone(),
         region: service.region.clone(),
         resource_preset,
+        machine_count,
         volumes,
         env,
         encrypted_secrets,

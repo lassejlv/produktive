@@ -65,12 +65,14 @@ import type {
 import {
   CopyChip,
   DetailStat,
+  MACHINE_COUNT_OPTIONS,
   PanelCard,
   PanelEmpty,
   PanelLoading,
   RESOURCE_PRESETS,
   StatusBadge,
   fieldControlClass,
+  machineCountLabel,
   normalizeResourcePreset,
   parseKeyValues,
   resourcePresetDetail,
@@ -195,7 +197,7 @@ export function OverviewPanel({
         <DetailStat
           label="Compute"
           value={resourcePresetDetail(service.resource_preset)}
-          sub={service.environment}
+          sub={machineCountLabel(service.machine_count)}
           icon={Gauge}
         />
         <DetailStat
@@ -692,32 +694,60 @@ export function SettingsPanel({
   return (
     <div className="space-y-5">
       <section>
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[12px] font-medium text-[var(--color-fg-muted)]">Compute</span>
-          <select
-            className={cn(fieldControlClass, "h-9")}
-            value={normalizeResourcePreset(service.resource_preset)}
-            disabled={updateService.isPending}
-            onChange={(event) =>
-              updateService.mutate(
-                {
-                  serviceId: service.id,
-                  resource_preset: event.target.value as DeployResourcePreset,
-                },
-                {
-                  onSuccess: () => toast.success("Compute size updated"),
-                  onError: (err) => toast.error((err as Error).message),
-                },
-              )
-            }
-          >
-            {RESOURCE_PRESETS.map((preset) => (
-              <option key={preset.value} value={preset.value}>
-                {preset.label} · {preset.detail}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[12px] font-medium text-[var(--color-fg-muted)]">Compute</span>
+            <select
+              className={cn(fieldControlClass, "h-9")}
+              value={normalizeResourcePreset(service.resource_preset)}
+              disabled={updateService.isPending}
+              onChange={(event) =>
+                updateService.mutate(
+                  {
+                    serviceId: service.id,
+                    resource_preset: event.target.value as DeployResourcePreset,
+                  },
+                  {
+                    onSuccess: () => toast.success("Compute size updated"),
+                    onError: (err) => toast.error((err as Error).message),
+                  },
+                )
+              }
+            >
+              {RESOURCE_PRESETS.map((preset) => (
+                <option key={preset.value} value={preset.value}>
+                  {preset.label} · {preset.detail}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[12px] font-medium text-[var(--color-fg-muted)]">Machines</span>
+            <select
+              className={cn(fieldControlClass, "h-9")}
+              value={service.machine_count}
+              disabled={updateService.isPending}
+              onChange={(event) =>
+                updateService.mutate(
+                  {
+                    serviceId: service.id,
+                    machine_count: Number(event.target.value),
+                  },
+                  {
+                    onSuccess: () => toast.success("Machine count updated"),
+                    onError: (err) => toast.error((err as Error).message),
+                  },
+                )
+              }
+            >
+              {MACHINE_COUNT_OPTIONS.map((count) => (
+                <option key={count} value={count}>
+                  {machineCountLabel(count)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </section>
 
       <EnvSection wid={wid} service={service} />

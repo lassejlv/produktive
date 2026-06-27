@@ -568,6 +568,7 @@ export function useCreateDeployService(wid: string) {
       health_check_path?: string;
       region?: string;
       resource_preset?: DeployResourcePreset;
+      machine_count?: number;
     }) => api.post<DeployService>(`/workspaces/${wid}/deployments/services`, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["deployments", wid] }),
   });
@@ -579,16 +580,19 @@ export function useUpdateDeployService(wid: string) {
     mutationFn: ({
       serviceId,
       resource_preset,
+      machine_count,
       canvas_x,
       canvas_y,
     }: {
       serviceId: string;
       resource_preset?: DeployResourcePreset;
+      machine_count?: number;
       canvas_x?: number;
       canvas_y?: number;
     }) =>
       api.patch<DeployService>(`/workspaces/${wid}/deployments/services/${serviceId}`, {
         resource_preset,
+        machine_count,
         canvas_x,
         canvas_y,
       }),

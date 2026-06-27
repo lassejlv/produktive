@@ -8,6 +8,8 @@ use crate::{DeployError, DeployResult, DeploymentStatus};
 
 pub const DEFAULT_PROVIDER: ProviderKind = ProviderKind::Fly;
 pub const DEFAULT_RESOURCE_PRESET: ResourcePreset = ResourcePreset::PreviewSmall;
+pub const DEFAULT_MACHINE_COUNT: u16 = 1;
+pub const MAX_MACHINE_COUNT: u16 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -87,6 +89,20 @@ impl ResourcePreset {
     }
 }
 
+pub fn validate_machine_count(value: u16) -> DeployResult<u16> {
+    if (DEFAULT_MACHINE_COUNT..=MAX_MACHINE_COUNT).contains(&value) {
+        Ok(value)
+    } else {
+        Err(DeployError::Validation(format!(
+            "machine_count must be between {DEFAULT_MACHINE_COUNT} and {MAX_MACHINE_COUNT}"
+        )))
+    }
+}
+
+fn default_machine_count() -> u16 {
+    DEFAULT_MACHINE_COUNT
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceSpec {
     pub workspace_id: Uuid,
@@ -100,6 +116,8 @@ pub struct ServiceSpec {
     pub health_check_path: String,
     pub region: String,
     pub resource_preset: ResourcePreset,
+    #[serde(default = "default_machine_count")]
+    pub machine_count: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +127,7 @@ pub struct DeploymentSpec {
     pub deployment_id: Uuid,
     pub provider_service_id: Option<String>,
     pub provider_instance_id: Option<String>,
+    pub provider_instance_ids: Vec<String>,
     pub app_name: String,
     pub image: String,
     pub image_digest: Option<String>,
@@ -117,6 +136,8 @@ pub struct DeploymentSpec {
     pub health_check_path: String,
     pub region: String,
     pub resource_preset: ResourcePreset,
+    #[serde(default = "default_machine_count")]
+    pub machine_count: u16,
     pub volumes: Vec<VolumeSpec>,
     pub env: BTreeMap<String, String>,
     pub secrets: BTreeMap<String, String>,
@@ -131,6 +152,8 @@ pub struct DeploymentConfigSnapshot {
     pub health_check_path: String,
     pub region: String,
     pub resource_preset: ResourcePreset,
+    #[serde(default = "default_machine_count")]
+    pub machine_count: u16,
     pub volumes: Vec<VolumeSpec>,
     pub env: BTreeMap<String, String>,
     pub encrypted_secrets: BTreeMap<String, String>,
@@ -143,6 +166,7 @@ impl DeploymentConfigSnapshot {
         service_id: Uuid,
         deployment_id: Uuid,
         provider_instance_id: Option<String>,
+        provider_instance_ids: Vec<String>,
         image: String,
         image_digest: Option<String>,
         cipher: &crate::SecretCipher,
@@ -158,6 +182,7 @@ impl DeploymentConfigSnapshot {
             deployment_id,
             provider_service_id: self.provider_service_id.clone(),
             provider_instance_id,
+            provider_instance_ids,
             app_name: self.app_name.clone(),
             image,
             image_digest,
@@ -166,6 +191,7 @@ impl DeploymentConfigSnapshot {
             health_check_path: self.health_check_path.clone(),
             region: self.region.clone(),
             resource_preset: self.resource_preset,
+            machine_count: validate_machine_count(self.machine_count)?,
             volumes: self.volumes.clone(),
             env: self.env.clone(),
             secrets,
@@ -208,6 +234,18 @@ pub struct ProviderDeployment {
     pub image_digest: Option<String>,
     pub url: Option<String>,
     pub volumes: Vec<ProviderVolume>,
+    pub instances: Vec<ProviderInstance>,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderInstance {
+    pub provider_instance_id: String,
+    pub status: DeploymentStatus,
+    pub region: String,
+    pub cpu_kind: String,
+    pub cpus: u16,
+    pub memory_mb: u16,
     pub metadata: serde_json::Value,
 }
 

@@ -346,6 +346,7 @@ export interface DeployService {
   health_check_path: string;
   region: string;
   resource_preset: DeployResourcePreset | string;
+  machine_count: number;
   url: string | null;
   status: DeployStatus;
   disabled_at: Iso | null;

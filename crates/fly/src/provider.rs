@@ -2,9 +2,10 @@ use std::collections::BTreeMap;
 
 use async_trait::async_trait;
 use deploy::{
-    provider_app_name, DeployError, DeployProvider, DeployResult, DeploymentSpec, DeploymentStatus,
-    LogLine, LogQuery, MetricPoint, MetricQuery, ProviderDeployment, ProviderDomain, ProviderKind,
-    ProviderService, ProviderServiceRef, ProviderVolume, VolumeSpec,
+    provider_app_name, validate_machine_count, DeployError, DeployProvider, DeployResult,
+    DeploymentSpec, DeploymentStatus, LogLine, LogQuery, MetricPoint, MetricQuery,
+    ProviderDeployment, ProviderDomain, ProviderInstance, ProviderKind, ProviderService,
+    ProviderServiceRef, ProviderVolume, VolumeSpec,
 };
 use serde_json::{json, Value};
 
@@ -50,6 +51,19 @@ impl FlyProvider {
 
     fn network_name(&self, deployment: &DeploymentSpec) -> String {
         format!("{}-network", self.app_name(deployment))
+    }
+
+    fn deployment_machine_ids(deployment: &DeploymentSpec) -> Vec<String> {
+        let mut ids = Vec::new();
+        if let Some(id) = deployment.provider_instance_id.as_deref() {
+            ids.push(id.to_owned());
+        }
+        for id in &deployment.provider_instance_ids {
+            if !ids.iter().any(|existing| existing == id) {
+                ids.push(id.clone());
+            }
+        }
+        ids
     }
 
     fn provider_domain(&self, certificate: CertificateResponse) -> ProviderDomain {
@@ -156,9 +170,15 @@ impl DeployProvider for FlyProvider {
     }
 
     async fn deploy_image(&self, deployment: &DeploymentSpec) -> DeployResult<ProviderDeployment> {
+        let machine_count = validate_machine_count(deployment.machine_count)?;
         if deployment.volumes.len() > 1 {
             return Err(DeployError::Validation(
                 "Fly Machines support only one volume mount per machine".into(),
+            ));
+        }
+        if machine_count > 1 && !deployment.volumes.is_empty() {
+            return Err(DeployError::Validation(
+                "Fly Machines cannot attach the same volume to multiple machines".into(),
             ));
         }
 
@@ -185,7 +205,6 @@ impl DeployProvider for FlyProvider {
             provider_volumes.push(provider_volume);
         }
 
-        let checks = BTreeMap::new();
         let mut metadata = BTreeMap::new();
         metadata.insert(
             "produktive_service_id".into(),
@@ -196,61 +215,121 @@ impl DeployProvider for FlyProvider {
             deployment.deployment_id.to_string(),
         );
 
-        let body = CreateMachineRequest {
-            name: format!("deploy-{}", deployment.deployment_id.simple()),
-            region: deployment.region.clone(),
-            skip_launch: false,
-            skip_service_registration: false,
-            config: MachineConfig {
-                image: deployment.image.clone(),
-                env,
-                guest: GuestConfig {
-                    cpu_kind: deployment.resource_preset.cpu_kind().into(),
-                    cpus: deployment.resource_preset.cpus(),
-                    memory_mb: deployment.resource_preset.memory_mb(),
+        let mut created = Vec::new();
+        for index in 0..machine_count {
+            let mut machine_metadata = metadata.clone();
+            machine_metadata.insert("produktive_machine_index".into(), (index + 1).to_string());
+            machine_metadata.insert("produktive_machine_count".into(), machine_count.to_string());
+            let body = CreateMachineRequest {
+                name: if machine_count == 1 {
+                    format!("deploy-{}", deployment.deployment_id.simple())
+                } else {
+                    format!(
+                        "deploy-{}-{:02}",
+                        deployment.deployment_id.simple(),
+                        index + 1
+                    )
                 },
-                mounts,
-                services: vec![ServiceConfig {
-                    protocol: "tcp".into(),
-                    internal_port: deployment.internal_port,
-                    ports: vec![
-                        ServicePort {
-                            port: 80,
-                            handlers: vec!["http".into()],
-                        },
-                        ServicePort {
-                            port: 443,
-                            handlers: vec!["tls".into(), "http".into()],
-                        },
-                    ],
-                }],
-                checks,
-                restart: RestartConfig {
-                    policy: "always".into(),
+                region: deployment.region.clone(),
+                skip_launch: false,
+                skip_service_registration: false,
+                config: MachineConfig {
+                    image: deployment.image.clone(),
+                    env: env.clone(),
+                    guest: GuestConfig {
+                        cpu_kind: deployment.resource_preset.cpu_kind().into(),
+                        cpus: deployment.resource_preset.cpus(),
+                        memory_mb: deployment.resource_preset.memory_mb(),
+                    },
+                    mounts: mounts
+                        .iter()
+                        .map(|mount| MachineMountConfig {
+                            volume: mount.volume.clone(),
+                            path: mount.path.clone(),
+                        })
+                        .collect(),
+                    services: vec![ServiceConfig {
+                        protocol: "tcp".into(),
+                        internal_port: deployment.internal_port,
+                        ports: vec![
+                            ServicePort {
+                                port: 80,
+                                handlers: vec!["http".into()],
+                            },
+                            ServicePort {
+                                port: 443,
+                                handlers: vec!["tls".into(), "http".into()],
+                            },
+                        ],
+                    }],
+                    checks: BTreeMap::new(),
+                    restart: RestartConfig {
+                        policy: "always".into(),
+                    },
+                    metadata: machine_metadata,
                 },
-                metadata,
-            },
-        };
+            };
 
-        let machine = self.client.create_machine(&app_name, &body).await?;
+            match self.client.create_machine(&app_name, &body).await {
+                Ok(machine) => created.push(machine),
+                Err(error) => {
+                    for machine in &created {
+                        let _ = self.client.delete_machine(&app_name, &machine.id).await;
+                    }
+                    return Err(error);
+                }
+            }
+        }
+
+        let machine = created
+            .first()
+            .ok_or_else(|| DeployError::Provider("no Fly machine was created".into()))?;
         let machine_id = machine.id.clone();
+        let instances = created
+            .iter()
+            .map(|machine| ProviderInstance {
+                provider_instance_id: machine.id.clone(),
+                status: DeploymentStatus::from_provider_state(
+                    machine.state.as_deref().unwrap_or(""),
+                ),
+                region: machine
+                    .region
+                    .clone()
+                    .unwrap_or_else(|| deployment.region.clone()),
+                cpu_kind: deployment.resource_preset.cpu_kind().to_owned(),
+                cpus: deployment.resource_preset.cpus(),
+                memory_mb: deployment.resource_preset.memory_mb(),
+                metadata: json!({
+                    "machine_id": machine.id.clone(),
+                    "machine_instance_id": machine.instance_id.clone(),
+                    "region": machine.region.clone(),
+                    "state": machine.state.clone(),
+                    "name": machine.name.clone(),
+                    "created_at": machine.created_at.clone(),
+                    "updated_at": machine.updated_at.clone(),
+                }),
+            })
+            .collect::<Vec<_>>();
         Ok(ProviderDeployment {
             provider: ProviderKind::Fly,
             provider_deployment_id: machine_id.clone(),
             provider_instance_id: Some(machine_id.clone()),
             status: DeploymentStatus::from_provider_state(machine.state.as_deref().unwrap_or("")),
-            image_digest: machine.image_ref.and_then(|image| image.digest),
+            image_digest: machine.image_ref.clone().and_then(|image| image.digest),
             url: Some(self.client.app_url(&app_name)),
             volumes: provider_volumes.clone(),
+            instances: instances.clone(),
             metadata: json!({
                 "app_name": app_name,
                 "machine_id": machine_id,
-                "machine_instance_id": machine.instance_id,
-                "region": machine.region,
-                "state": machine.state,
-                "name": machine.name,
-                "created_at": machine.created_at,
-                "updated_at": machine.updated_at,
+                "machine_count": machine_count,
+                "machines": instances,
+                "machine_instance_id": machine.instance_id.clone(),
+                "region": machine.region.clone(),
+                "state": machine.state.clone(),
+                "name": machine.name.clone(),
+                "created_at": machine.created_at.clone(),
+                "updated_at": machine.updated_at.clone(),
                 "volumes": provider_volumes,
                 "config": machine.config,
             }),
@@ -271,6 +350,7 @@ impl DeployProvider for FlyProvider {
                 image_digest: deployment.image_digest.clone(),
                 url: Some(self.client.app_url(&app_name)),
                 volumes: Vec::new(),
+                instances: Vec::new(),
                 metadata: json!({ "app_name": app_name }),
             });
         };
@@ -281,9 +361,29 @@ impl DeployProvider for FlyProvider {
             provider_deployment_id: refreshed_machine_id.clone(),
             provider_instance_id: Some(refreshed_machine_id.clone()),
             status: DeploymentStatus::from_provider_state(machine.state.as_deref().unwrap_or("")),
-            image_digest: machine.image_ref.and_then(|image| image.digest),
+            image_digest: machine.image_ref.clone().and_then(|image| image.digest),
             url: Some(self.client.app_url(&app_name)),
             volumes: Vec::new(),
+            instances: vec![ProviderInstance {
+                provider_instance_id: refreshed_machine_id.clone(),
+                status: DeploymentStatus::from_provider_state(
+                    machine.state.as_deref().unwrap_or(""),
+                ),
+                region: machine
+                    .region
+                    .clone()
+                    .unwrap_or_else(|| deployment.region.clone()),
+                cpu_kind: deployment.resource_preset.cpu_kind().to_owned(),
+                cpus: deployment.resource_preset.cpus(),
+                memory_mb: deployment.resource_preset.memory_mb(),
+                metadata: json!({
+                    "machine_id": refreshed_machine_id.clone(),
+                    "machine_instance_id": machine.instance_id.clone(),
+                    "state": machine.state.clone(),
+                    "region": machine.region.clone(),
+                    "updated_at": machine.updated_at.clone(),
+                }),
+            }],
             metadata: json!({
                 "app_name": app_name,
                 "machine_id": refreshed_machine_id,
@@ -296,26 +396,43 @@ impl DeployProvider for FlyProvider {
     }
 
     async fn stop_service(&self, deployment: &DeploymentSpec) -> DeployResult<()> {
-        let Some(machine_id) = deployment.provider_instance_id.as_deref() else {
+        let machine_ids = Self::deployment_machine_ids(deployment);
+        if machine_ids.is_empty() {
             return Ok(());
-        };
-        self.client
-            .stop_machine(&self.app_name(deployment), machine_id)
-            .await
+        }
+        let app_name = self.app_name(deployment);
+        let mut first_error = None;
+        for machine_id in machine_ids {
+            match self.client.stop_machine(&app_name, &machine_id).await {
+                Ok(()) | Err(deploy::DeployError::NotFound(_)) => {}
+                Err(error) if first_error.is_none() => first_error = Some(error),
+                Err(_) => {}
+            }
+        }
+        if let Some(error) = first_error {
+            return Err(error);
+        }
+        Ok(())
     }
 
     async fn destroy_deployment(&self, deployment: &DeploymentSpec) -> DeployResult<()> {
-        let Some(machine_id) = deployment.provider_instance_id.as_deref() else {
+        let machine_ids = Self::deployment_machine_ids(deployment);
+        if machine_ids.is_empty() {
             return Ok(());
-        };
-        match self
-            .client
-            .delete_machine(&self.app_name(deployment), machine_id)
-            .await
-        {
-            Ok(()) | Err(deploy::DeployError::NotFound(_)) => Ok(()),
-            Err(error) => Err(error),
         }
+        let app_name = self.app_name(deployment);
+        let mut first_error = None;
+        for machine_id in machine_ids {
+            match self.client.delete_machine(&app_name, &machine_id).await {
+                Ok(()) | Err(deploy::DeployError::NotFound(_)) => {}
+                Err(error) if first_error.is_none() => first_error = Some(error),
+                Err(_) => {}
+            }
+        }
+        if let Some(error) = first_error {
+            return Err(error);
+        }
+        Ok(())
     }
 
     async fn destroy_service(&self, service: &ProviderServiceRef) -> DeployResult<()> {
@@ -454,6 +571,7 @@ mod tests {
             deployment_id: Uuid::now_v7(),
             provider_service_id: None,
             provider_instance_id: None,
+            provider_instance_ids: Vec::new(),
             app_name: "api".into(),
             image: "ghcr.io/acme/api:latest".into(),
             image_digest: None,
@@ -462,6 +580,7 @@ mod tests {
             health_check_path: "/health".into(),
             region: "fra".into(),
             resource_preset: ResourcePreset::PreviewSmall,
+            machine_count: 1,
             volumes: Vec::new(),
             env: BTreeMap::new(),
             secrets: BTreeMap::new(),
@@ -485,6 +604,7 @@ mod tests {
             deployment_id: Uuid::now_v7(),
             provider_service_id: None,
             provider_instance_id: None,
+            provider_instance_ids: Vec::new(),
             app_name: "api".into(),
             image: "ghcr.io/acme/api:latest".into(),
             image_digest: None,
@@ -493,6 +613,7 @@ mod tests {
             health_check_path: "/health".into(),
             region: "fra".into(),
             resource_preset: ResourcePreset::PreviewSmall,
+            machine_count: 1,
             volumes: Vec::new(),
             env: BTreeMap::new(),
             secrets: BTreeMap::new(),
@@ -521,6 +642,51 @@ mod tests {
             error,
             DeployError::Validation(message)
                 if message == "Fly Machines support only one volume mount per machine"
+        ));
+    }
+
+    #[tokio::test]
+    async fn rejects_multi_machine_volume_before_provider_calls() {
+        let fly = Fly::builder()
+            .api_token("token")
+            .org_slug("personal")
+            .app_name_prefix("prd")
+            .build()
+            .unwrap();
+        let provider = FlyProvider::new(fly);
+        let deployment = DeploymentSpec {
+            workspace_id: Uuid::parse_str("018f18e0-0000-7000-8000-000000000000").unwrap(),
+            service_id: Uuid::parse_str("018f18e0-1111-7000-8000-000000000000").unwrap(),
+            deployment_id: Uuid::now_v7(),
+            provider_service_id: None,
+            provider_instance_id: None,
+            provider_instance_ids: Vec::new(),
+            app_name: "api".into(),
+            image: "ghcr.io/acme/api:latest".into(),
+            image_digest: None,
+            internal_port: 3000,
+            environment: "production".into(),
+            health_check_path: "/health".into(),
+            region: "fra".into(),
+            resource_preset: ResourcePreset::PreviewSmall,
+            machine_count: 2,
+            volumes: vec![VolumeSpec {
+                id: Uuid::now_v7(),
+                provider_volume_id: Some("vol_123".into()),
+                name: "data".into(),
+                mount_path: "/data".into(),
+                region: "fra".into(),
+                size_gb: 1,
+            }],
+            env: BTreeMap::new(),
+            secrets: BTreeMap::new(),
+        };
+
+        let error = provider.deploy_image(&deployment).await.unwrap_err();
+        assert!(matches!(
+            error,
+            DeployError::Validation(message)
+                if message == "Fly Machines cannot attach the same volume to multiple machines"
         ));
     }
 }

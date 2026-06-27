@@ -6,9 +6,9 @@ use std::{
 use anyhow::{Context, Result};
 use chrono::{DateTime, FixedOffset, TimeDelta, Utc};
 use deploy::{
-    DeployError, DeployProvider, DeploymentConfigSnapshot, DeploymentSpec, DeploymentStatus,
-    LogLine, LogQuery, MetricPoint, MetricQuery, ProviderServiceRef, ProviderVolume,
-    ResourcePreset, SecretCipher, VolumeSpec,
+    validate_machine_count, DeployError, DeployProvider, DeploymentConfigSnapshot, DeploymentSpec,
+    DeploymentStatus, LogLine, LogQuery, MetricPoint, MetricQuery, ProviderServiceRef,
+    ProviderVolume, ResourcePreset, SecretCipher, VolumeSpec, DEFAULT_MACHINE_COUNT,
 };
 use fly::{Fly, FlyConfig, FlyProvider};
 use sea_orm::{
@@ -58,6 +58,7 @@ struct ServiceRow {
     health_check_path: String,
     region: String,
     resource_preset: String,
+    machine_count: i32,
 }
 
 #[derive(Debug, FromQueryResult)]
@@ -139,6 +140,11 @@ struct PendingLogProjectLine {
     log_project_id: Uuid,
     service_slug: String,
     environment: String,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct ProviderInstanceIdRow {
+    provider_instance_id: String,
 }
 
 #[tokio::main]
@@ -372,8 +378,10 @@ async fn run_job(
         Ok(provider_deployment) => {
             let status = provider_deployment.status;
             let provider_volumes = provider_deployment.volumes.clone();
+            let provider_instances = provider_deployment.instances.clone();
             update_deployment_from_provider(db, &job, provider_deployment).await?;
             sync_provider_volumes(db, job.workspace_id, job.service_id, &provider_volumes).await?;
+            sync_provider_instances(db, &job, &provider_instances).await?;
             update_service_after_deploy(db, job.workspace_id, job.service_id, status).await?;
             if status == DeploymentStatus::Live {
                 if let Err(error) = stop_superseded_deployments(db, cipher, provider, &job).await {
@@ -408,6 +416,7 @@ async fn build_spec(
     cipher: &SecretCipher,
     job: &DeploymentJob,
 ) -> Result<DeploymentSpec> {
+    let provider_instance_ids = deployment_provider_instance_ids(db, job).await?;
     if let Some(snapshot) = job
         .config_snapshot
         .as_ref()
@@ -421,6 +430,7 @@ async fn build_spec(
                 job.service_id,
                 job.id,
                 job.provider_instance_id.clone(),
+                provider_instance_ids,
                 job.image.clone(),
                 job.image_digest.clone(),
                 cipher,
@@ -432,7 +442,7 @@ async fn build_spec(
         DatabaseBackend::Postgres,
         r#"
         SELECT provider_service_id, slug, internal_port, env,
-               environment, health_check_path, region, resource_preset
+               environment, health_check_path, region, resource_preset, machine_count
         FROM deploy_services
         WHERE workspace_id = $1 AND id = $2
         LIMIT 1
@@ -495,6 +505,7 @@ async fn build_spec(
         deployment_id: job.id,
         provider_service_id: service.provider_service_id,
         provider_instance_id: job.provider_instance_id.clone(),
+        provider_instance_ids,
         app_name: service.slug,
         image: job.image.clone(),
         image_digest: job.image_digest.clone(),
@@ -504,10 +515,49 @@ async fn build_spec(
         region: service.region,
         resource_preset: ResourcePreset::parse(&service.resource_preset)
             .map_err(|error| anyhow::anyhow!(error))?,
+        machine_count: u16::try_from(service.machine_count)
+            .ok()
+            .and_then(|value| validate_machine_count(value).ok())
+            .unwrap_or(DEFAULT_MACHINE_COUNT),
         volumes,
         env,
         secrets,
     })
+}
+
+async fn deployment_provider_instance_ids(
+    db: &DatabaseConnection,
+    job: &DeploymentJob,
+) -> Result<Vec<String>> {
+    let rows = ProviderInstanceIdRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT provider_instance_id
+        FROM deploy_instances
+        WHERE workspace_id = $1
+          AND service_id = $2
+          AND deployment_id = $3
+          AND stopped_at IS NULL
+        ORDER BY created_at ASC
+        "#,
+        [
+            job.workspace_id.into(),
+            job.service_id.into(),
+            job.id.into(),
+        ],
+    ))
+    .all(db)
+    .await?;
+    let mut ids = Vec::new();
+    if let Some(primary) = job.provider_instance_id.as_deref() {
+        ids.push(primary.to_owned());
+    }
+    for row in rows {
+        if !ids.iter().any(|id| id == &row.provider_instance_id) {
+            ids.push(row.provider_instance_id);
+        }
+    }
+    Ok(ids)
 }
 
 fn needs_existing_volume_detach(spec: &DeploymentSpec) -> bool {
@@ -547,9 +597,11 @@ async fn refresh_inflight(
             Ok(provider_deployment) => {
                 let status = provider_deployment.status;
                 let provider_volumes = provider_deployment.volumes.clone();
+                let provider_instances = provider_deployment.instances.clone();
                 update_deployment_from_provider(db, &job, provider_deployment).await?;
                 sync_provider_volumes(db, job.workspace_id, job.service_id, &provider_volumes)
                     .await?;
+                sync_provider_instances(db, &job, &provider_instances).await?;
                 update_service_after_deploy(db, job.workspace_id, job.service_id, status).await?;
                 if status == DeploymentStatus::Live {
                     if let Err(error) =
@@ -1014,15 +1066,34 @@ async fn collect_logs(
     log_db: Option<&DatabaseConnection>,
     provider: &impl DeployProvider,
 ) -> Result<()> {
-    let targets = LogTarget::find_by_statement(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
+    let log_project_columns_available = match deploy_log_project_columns_available(db).await {
+        Ok(available) => available,
+        Err(error) => {
+            tracing::warn!(
+                error = ?error,
+                "failed to inspect deployment log-project columns"
+            );
+            false
+        }
+    };
+    if log_project_columns_available {
+        flush_pending_log_project_lines_best_effort(db, log_db).await;
+    }
+
+    let log_project_id_select = if log_project_columns_available {
+        "s.log_project_id AS log_project_id"
+    } else {
+        "NULL::uuid AS log_project_id"
+    };
+
+    let sql = format!(
         r#"
         SELECT s.workspace_id,
                s.id AS service_id,
                d.id AS deployment_id,
                s.provider_service_id AS provider_service_id,
                d.provider_instance_id AS provider_instance_id,
-               s.log_project_id AS log_project_id,
+               {log_project_id_select},
                s.slug,
                s.name
         FROM deploy_services s
@@ -1041,7 +1112,11 @@ async fn collect_logs(
           AND s.provider_service_id IS NOT NULL
         ORDER BY s.updated_at DESC
         LIMIT 25
-        "#,
+        "#
+    );
+    let targets = LogTarget::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        &sql,
         [
             DeploymentStatus::Provisioning.code().into(),
             DeploymentStatus::Pulling.code().into(),
@@ -1055,7 +1130,21 @@ async fn collect_logs(
     .await?;
 
     for target in targets {
-        let log_project_id = ensure_service_log_project(db, &target).await?;
+        let log_project_id = if log_project_columns_available {
+            match ensure_service_log_project(db, &target).await {
+                Ok(log_project_id) => log_project_id,
+                Err(error) => {
+                    tracing::warn!(
+                        service_id = %target.service_id,
+                        error = ?error,
+                        "failed to ensure deployment service log project"
+                    );
+                    continue;
+                }
+            }
+        } else {
+            None
+        };
         let logs = match provider
             .logs(&LogQuery {
                 service_id: target.service_id,
@@ -1077,13 +1166,64 @@ async fn collect_logs(
             }
         };
         for line in logs {
-            insert_log_line(db, &target, log_project_id, line).await?;
+            if let Err(error) = insert_log_line(
+                db,
+                &target,
+                log_project_id,
+                line,
+                log_project_columns_available,
+            )
+            .await
+            {
+                tracing::warn!(
+                    service_id = %target.service_id,
+                    error = ?error,
+                    "failed to store deployment service log line"
+                );
+            }
         }
     }
-    if let Some(log_db) = log_db {
-        flush_pending_log_project_lines(db, log_db).await?;
+    if log_project_columns_available {
+        flush_pending_log_project_lines_best_effort(db, log_db).await;
     }
     Ok(())
+}
+
+async fn deploy_log_project_columns_available(db: &DatabaseConnection) -> Result<bool> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT COUNT(*) = 3 AS available
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND (
+                (table_name = 'deploy_services' AND column_name = 'log_project_id')
+                OR (table_name = 'deploy_log_lines' AND column_name = 'log_project_id')
+                OR (table_name = 'deploy_log_lines' AND column_name = 'log_project_ingested_at')
+              )
+            "#,
+            [],
+        ))
+        .await?;
+    Ok(row
+        .and_then(|row| row.try_get::<bool>("", "available").ok())
+        .unwrap_or(false))
+}
+
+async fn flush_pending_log_project_lines_best_effort(
+    db: &DatabaseConnection,
+    log_db: Option<&DatabaseConnection>,
+) {
+    let Some(log_db) = log_db else {
+        return;
+    };
+    if let Err(error) = flush_pending_log_project_lines(db, log_db).await {
+        tracing::warn!(
+            error = ?error,
+            "failed to flush pending deployment logs into log projects"
+        );
+    }
 }
 
 async fn ensure_service_log_project(
@@ -1168,6 +1308,7 @@ async fn insert_log_line(
     target: &LogTarget,
     log_project_id: Option<Uuid>,
     line: LogLine,
+    log_project_columns_available: bool,
 ) -> Result<()> {
     let provider_log_id = line
         .source_id
@@ -1177,32 +1318,59 @@ async fn insert_log_line(
         .provider_instance_id
         .clone()
         .or_else(|| target.provider_instance_id.clone());
-    db.execute(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"
-        INSERT INTO deploy_log_lines (
-            id, workspace_id, service_id, deployment_id, provider_instance_id,
-            provider_log_id, stream, message, data, observed_at, log_project_id, created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
-        ON CONFLICT (service_id, provider_log_id)
-        DO UPDATE SET log_project_id = COALESCE(deploy_log_lines.log_project_id, EXCLUDED.log_project_id)
-        "#,
-        [
-            Uuid::now_v7().into(),
-            target.workspace_id.into(),
-            target.service_id.into(),
-            target.deployment_id.into(),
-            provider_instance_id.into(),
-            provider_log_id.into(),
-            line.stream.into(),
-            line.message.into(),
-            line.metadata.into(),
-            line.timestamp.into(),
-            log_project_id.into(),
-        ],
-    ))
-    .await?;
+    if log_project_columns_available {
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            INSERT INTO deploy_log_lines (
+                id, workspace_id, service_id, deployment_id, provider_instance_id,
+                provider_log_id, stream, message, data, observed_at, log_project_id, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+            ON CONFLICT (service_id, provider_log_id)
+            DO UPDATE SET log_project_id = COALESCE(deploy_log_lines.log_project_id, EXCLUDED.log_project_id)
+            "#,
+            [
+                Uuid::now_v7().into(),
+                target.workspace_id.into(),
+                target.service_id.into(),
+                target.deployment_id.into(),
+                provider_instance_id.into(),
+                provider_log_id.into(),
+                line.stream.into(),
+                line.message.into(),
+                line.metadata.into(),
+                line.timestamp.into(),
+                log_project_id.into(),
+            ],
+        ))
+        .await?;
+    } else {
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            INSERT INTO deploy_log_lines (
+                id, workspace_id, service_id, deployment_id, provider_instance_id,
+                provider_log_id, stream, message, data, observed_at, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+            ON CONFLICT (service_id, provider_log_id) DO NOTHING
+            "#,
+            [
+                Uuid::now_v7().into(),
+                target.workspace_id.into(),
+                target.service_id.into(),
+                target.deployment_id.into(),
+                provider_instance_id.into(),
+                provider_log_id.into(),
+                line.stream.into(),
+                line.message.into(),
+                line.metadata.into(),
+                line.timestamp.into(),
+            ],
+        ))
+        .await?;
+    }
     Ok(())
 }
 
@@ -1454,6 +1622,59 @@ async fn sync_provider_volumes(
     Ok(())
 }
 
+async fn sync_provider_instances(
+    db: &DatabaseConnection,
+    job: &DeploymentJob,
+    instances: &[deploy::ProviderInstance],
+) -> Result<()> {
+    for instance in instances {
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            INSERT INTO deploy_instances (
+                id, workspace_id, service_id, deployment_id, provider_instance_id,
+                status, region, cpu_kind, cpus, memory_mb, started_at, stopped_at,
+                created_at, updated_at
+            )
+            VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(),
+                CASE WHEN $6 IN ($11, $12, $13) THEN now() ELSE NULL END,
+                now(), now()
+            )
+            ON CONFLICT (provider_instance_id) DO UPDATE SET
+                status = EXCLUDED.status,
+                region = EXCLUDED.region,
+                cpu_kind = EXCLUDED.cpu_kind,
+                cpus = EXCLUDED.cpus,
+                memory_mb = EXCLUDED.memory_mb,
+                stopped_at = CASE
+                    WHEN EXCLUDED.status IN ($11, $12, $13)
+                        THEN COALESCE(deploy_instances.stopped_at, now())
+                    ELSE deploy_instances.stopped_at
+                END,
+                updated_at = now()
+            "#,
+            [
+                Uuid::now_v7().into(),
+                job.workspace_id.into(),
+                job.service_id.into(),
+                job.id.into(),
+                instance.provider_instance_id.clone().into(),
+                instance.status.code().into(),
+                instance.region.clone().into(),
+                instance.cpu_kind.clone().into(),
+                i32::from(instance.cpus).into(),
+                i32::from(instance.memory_mb).into(),
+                DeploymentStatus::Failed.code().into(),
+                DeploymentStatus::RolledBack.code().into(),
+                DeploymentStatus::Stopped.code().into(),
+            ],
+        ))
+        .await?;
+    }
+    Ok(())
+}
+
 async fn provider_instance_count(
     db: &DatabaseConnection,
     workspace_id: Uuid,
@@ -1463,11 +1684,19 @@ async fn provider_instance_count(
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"
-            SELECT COUNT(*)::BIGINT AS count
-            FROM deployments
-            WHERE workspace_id = $1
-              AND service_id = $2
-              AND provider_instance_id IS NOT NULL
+            SELECT (
+                SELECT COUNT(*)::BIGINT
+                FROM deployments
+                WHERE workspace_id = $1
+                  AND service_id = $2
+                  AND provider_instance_id IS NOT NULL
+            ) + (
+                SELECT COUNT(*)::BIGINT
+                FROM deploy_instances
+                WHERE workspace_id = $1
+                  AND service_id = $2
+                  AND stopped_at IS NULL
+            ) AS count
             "#,
             [workspace_id.into(), service_id.into()],
         ))
@@ -1632,10 +1861,9 @@ async fn update_deployment_from_provider(
     provider_deployment: deploy::ProviderDeployment,
 ) -> Result<()> {
     let finished_at: Option<DateTime<FixedOffset>> = match provider_deployment.status {
-        DeploymentStatus::Live
-        | DeploymentStatus::Failed
-        | DeploymentStatus::RolledBack
-        | DeploymentStatus::Stopped => Some(Utc::now().fixed_offset()),
+        DeploymentStatus::Failed | DeploymentStatus::RolledBack | DeploymentStatus::Stopped => {
+            Some(Utc::now().fixed_offset())
+        }
         _ => None,
     };
     db.execute(Statement::from_sql_and_values(
@@ -1648,7 +1876,7 @@ async fn update_deployment_from_provider(
             provider_metadata = $5,
             image_digest = COALESCE($6, image_digest),
             url = COALESCE($7, url),
-            finished_at = COALESCE($8, finished_at),
+            finished_at = $8,
             updated_at = now()
         WHERE id = $1
         "#,
@@ -1720,6 +1948,7 @@ async fn fail_deployment(
         ],
     ))
     .await?;
+    close_deployment_instances(db, job, DeploymentStatus::Failed).await?;
     insert_event(
         db,
         job.workspace_id,
@@ -1742,12 +1971,13 @@ async fn mark_deployment_stopped(
         DatabaseBackend::Postgres,
         r#"
         UPDATE deployments
-        SET status = $2, finished_at = COALESCE(finished_at, now()), updated_at = now()
+        SET status = $2, finished_at = now(), updated_at = now()
         WHERE id = $1
         "#,
         [job.id.into(), DeploymentStatus::Stopped.code().into()],
     ))
     .await?;
+    close_deployment_instances(db, job, DeploymentStatus::Stopped).await?;
     insert_event(
         db,
         job.workspace_id,
@@ -1772,13 +2002,14 @@ async fn mark_deployment_destroyed(
         UPDATE deployments
         SET status = $2,
             provider_instance_id = NULL,
-            finished_at = COALESCE(finished_at, now()),
+            finished_at = now(),
             updated_at = now()
         WHERE id = $1
         "#,
         [job.id.into(), DeploymentStatus::Stopped.code().into()],
     ))
     .await?;
+    close_deployment_instances(db, job, DeploymentStatus::Stopped).await?;
     insert_event(
         db,
         job.workspace_id,
@@ -1788,6 +2019,34 @@ async fn mark_deployment_destroyed(
         message,
         json!({ "provider_instance_removed": true }),
     )
+    .await?;
+    Ok(())
+}
+
+async fn close_deployment_instances(
+    db: &DatabaseConnection,
+    job: &DeploymentJob,
+    status: DeploymentStatus,
+) -> Result<()> {
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        UPDATE deploy_instances
+        SET status = $4,
+            stopped_at = COALESCE(stopped_at, now()),
+            updated_at = now()
+        WHERE workspace_id = $1
+          AND service_id = $2
+          AND deployment_id = $3
+          AND stopped_at IS NULL
+        "#,
+        [
+            job.workspace_id.into(),
+            job.service_id.into(),
+            job.id.into(),
+            status.code().into(),
+        ],
+    ))
     .await?;
     Ok(())
 }

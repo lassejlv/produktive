@@ -15,17 +15,17 @@ use entity::{
 use rand::RngCore;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait,
-    QueryFilter, QueryOrder, Statement,
+    FromQueryResult, QueryFilter, QueryOrder, Statement, Value as DbValue,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
     auth::{password::sha256_hex, AuthUser},
     error::{ApiError, ApiResult},
-    logstore::{LogStats24h, NormalizedEvent},
+    logstore::{ilike_contains, LogStats24h, NormalizedEvent},
     middleware::Membership,
     slug::slugify,
     state::AppState,
@@ -237,6 +237,33 @@ pub struct LogSearchResponse {
     pub storage: LogStorageInfo,
 }
 
+#[derive(Debug, FromQueryResult)]
+struct DeployLogProjectAttachment {
+    service_id: Uuid,
+    service_slug: String,
+    environment: String,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct DeployLogProjectFallbackRow {
+    provider_log_id: String,
+    observed_at: DateTime<FixedOffset>,
+    created_at: DateTime<FixedOffset>,
+    stream: String,
+    level: String,
+    message: String,
+    data: Value,
+    deployment_id: Option<Uuid>,
+    provider_instance_id: Option<String>,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct DeployLogProjectStatsRow {
+    event_count: i64,
+    bytes_ingested: i64,
+    last_ingested_at: Option<DateTime<FixedOffset>>,
+}
+
 #[derive(Serialize, ToSchema)]
 pub struct IngestResponse {
     pub accepted: usize,
@@ -431,18 +458,98 @@ async fn load_bucket(
     }
 }
 
-/// Count events and bytes for a project over the last 24h via TimescaleDB.
-/// Returns zeros on any failure so a transient storage hiccup never blocks
-/// the project listing.
-async fn project_stats_24h(state: &AppState, project_id: Uuid) -> LogStats24h {
-    let Some(store) = state.log_store.as_ref() else {
-        return LogStats24h::default();
+async fn deploy_log_project_attachment(
+    state: &AppState,
+    workspace_id: Uuid,
+    project_id: Uuid,
+) -> ApiResult<Option<DeployLogProjectAttachment>> {
+    Ok(
+        DeployLogProjectAttachment::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT id AS service_id,
+                   slug AS service_slug,
+                   environment
+            FROM deploy_services
+            WHERE workspace_id = $1
+              AND log_project_id = $2
+              AND deleted_at IS NULL
+            ORDER BY updated_at DESC
+            LIMIT 1
+            "#,
+            [workspace_id.into(), project_id.into()],
+        ))
+        .one(&state.db)
+        .await?,
+    )
+}
+
+/// Count events and bytes for a project over the last 24h. Timescale remains
+/// the source of truth; deployment-owned projects fall back to deploy log rows
+/// while mirroring is unavailable or still catching up.
+async fn project_stats_24h(state: &AppState, workspace_id: Uuid, project_id: Uuid) -> LogStats24h {
+    let since = (Utc::now() - Duration::hours(24)).fixed_offset();
+    let since_ms = since.timestamp_millis();
+    let store_stats = match state.log_store.as_ref() {
+        Some(store) => match store.stats_24h(project_id, since_ms).await {
+            Ok(stats) => stats,
+            Err(error) => {
+                tracing::warn!(
+                    project_id = %project_id,
+                    error = ?error,
+                    "log project stats query failed"
+                );
+                LogStats24h::default()
+            }
+        },
+        None => LogStats24h::default(),
     };
-    let since_ms = (Utc::now() - Duration::hours(24)).timestamp_millis();
-    store
-        .stats_24h(project_id, since_ms)
+    if store_stats.event_count > 0 || store_stats.last_ingested_at.is_some() {
+        return store_stats;
+    }
+    deploy_log_project_stats_24h(state, workspace_id, project_id, since)
         .await
         .unwrap_or_default()
+}
+
+async fn deploy_log_project_stats_24h(
+    state: &AppState,
+    workspace_id: Uuid,
+    project_id: Uuid,
+    since: DateTime<FixedOffset>,
+) -> ApiResult<LogStats24h> {
+    let Some(attachment) = deploy_log_project_attachment(state, workspace_id, project_id).await?
+    else {
+        return Ok(LogStats24h::default());
+    };
+    let row = DeployLogProjectStatsRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT COUNT(*)::bigint AS event_count,
+               COALESCE(SUM(octet_length(message) + octet_length(data::text)), 0)::bigint AS bytes_ingested,
+               MAX(observed_at) AS last_ingested_at
+        FROM deploy_log_lines
+        WHERE workspace_id = $1
+          AND service_id = $2
+          AND (log_project_id = $3 OR log_project_id IS NULL)
+          AND observed_at >= $4
+        "#,
+        [
+            workspace_id.into(),
+            attachment.service_id.into(),
+            project_id.into(),
+            since.into(),
+        ],
+    ))
+    .one(&state.db)
+    .await?;
+    Ok(row
+        .map(|row| LogStats24h {
+            event_count: row.event_count,
+            bytes_ingested: row.bytes_ingested,
+            last_ingested_at: row.last_ingested_at,
+        })
+        .unwrap_or_default())
 }
 
 // --- Project handlers ---------------------------------------------------
@@ -463,7 +570,7 @@ pub async fn list_projects(
     let mut views = Vec::with_capacity(projects.len());
     for project in projects {
         let bucket = load_bucket(&state, project.bucket_id).await?;
-        let stats = project_stats_24h(&state, project.id).await;
+        let stats = project_stats_24h(&state, m.workspace.id, project.id).await;
         views.push(LogProjectView::build(project, bucket, stats));
     }
     Ok(Json(views))
@@ -533,7 +640,7 @@ pub async fn get_project(
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
     let bucket = load_bucket(&state, project.bucket_id).await?;
-    let stats = project_stats_24h(&state, project.id).await;
+    let stats = project_stats_24h(&state, m.workspace.id, project.id).await;
     Ok(Json(LogProjectView::build(project, bucket, stats)))
 }
 
@@ -679,7 +786,21 @@ pub async fn search_events(
         return Err(disabled());
     };
     let project = resolve_project(&state, m.workspace.id, &project).await?;
-    let events = store.search(project.id, &query).await?;
+    let events = match store.search(project.id, &query).await {
+        Ok(events) if !events.is_empty() => events,
+        Ok(_) => search_deploy_log_project_events(&state, m.workspace.id, project.id, &query)
+            .await?
+            .unwrap_or_default(),
+        Err(error) => {
+            let fallback =
+                search_deploy_log_project_events(&state, m.workspace.id, project.id, &query)
+                    .await?;
+            match fallback {
+                Some(events) if !events.is_empty() => events,
+                _ => return Err(error),
+            }
+        }
+    };
     Ok(Json(LogSearchResponse {
         events,
         // Synthetic, opaque identifier — never expose the internal DB URL.
@@ -688,6 +809,168 @@ pub async fn search_events(
             backend: "timescale".to_owned(),
         },
     }))
+}
+
+async fn search_deploy_log_project_events(
+    state: &AppState,
+    workspace_id: Uuid,
+    project_id: Uuid,
+    query: &LogSearchQuery,
+) -> ApiResult<Option<Vec<LogSearchEvent>>> {
+    let attachment = match deploy_log_project_attachment(state, workspace_id, project_id).await {
+        Ok(Some(attachment)) => attachment,
+        Ok(None) => return Ok(None),
+        Err(error) => {
+            tracing::warn!(
+                project_id = %project_id,
+                error = ?error,
+                "deployment log-project fallback is unavailable"
+            );
+            return Ok(None);
+        }
+    };
+    if let Some(service) = non_empty(query.service.as_deref()) {
+        if !attachment.service_slug.eq_ignore_ascii_case(service) {
+            return Ok(Some(Vec::new()));
+        }
+    }
+
+    let limit = query.limit.unwrap_or(250).clamp(1, 1000);
+    let (from, to) = log_search_time_range(query);
+    let mut sql = String::from(
+        r#"
+        SELECT provider_log_id,
+               observed_at,
+               created_at,
+               stream,
+               CASE
+                   WHEN stream = 'stderr' THEN 'error'
+                   ELSE COALESCE(NULLIF(data->>'level', ''), stream)
+               END AS level,
+               message,
+               data,
+               deployment_id,
+               provider_instance_id
+        FROM deploy_log_lines
+        WHERE workspace_id = $1
+          AND service_id = $2
+          AND (log_project_id = $3 OR log_project_id IS NULL)
+          AND observed_at >= $4
+          AND observed_at <= $5
+        "#,
+    );
+    let mut values: Vec<DbValue> = vec![
+        workspace_id.into(),
+        attachment.service_id.into(),
+        project_id.into(),
+        from.into(),
+        to.into(),
+    ];
+    let mut param_idx = 6;
+
+    if let Some(level) = non_empty(query.level.as_deref()) {
+        sql.push_str(&format!(
+            r#"
+          AND lower(CASE
+              WHEN stream = 'stderr' THEN 'error'
+              ELSE COALESCE(NULLIF(data->>'level', ''), stream)
+          END) = lower(${param_idx})
+            "#
+        ));
+        values.push(level.to_owned().into());
+        param_idx += 1;
+    }
+    if let Some(q) = non_empty(query.q.as_deref()) {
+        let pattern = ilike_contains(q);
+        sql.push_str(&format!(
+            " AND (message ILIKE ${param_idx} ESCAPE '\\' OR data::text ILIKE ${param_idx} ESCAPE '\\')"
+        ));
+        values.push(pattern.into());
+        param_idx += 1;
+    }
+
+    sql.push_str(&format!(" ORDER BY observed_at DESC LIMIT ${param_idx}"));
+    values.push((limit as i64).into());
+
+    let rows = DeployLogProjectFallbackRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        &sql,
+        values,
+    ))
+    .all(&state.db)
+    .await;
+    let rows = match rows {
+        Ok(rows) => rows,
+        Err(error) => {
+            tracing::warn!(
+                project_id = %project_id,
+                error = ?error,
+                "deployment log-project fallback search failed"
+            );
+            return Ok(None);
+        }
+    };
+
+    Ok(Some(
+        rows.into_iter()
+            .map(|row| {
+                let fields = deploy_log_fallback_fields(&row, &attachment);
+                LogSearchEvent {
+                    event_id: format!("deploy:{}:{}", attachment.service_id, row.provider_log_id),
+                    timestamp: row.observed_at,
+                    received_at: row.created_at,
+                    level: row.level,
+                    message: row.message,
+                    service: Some(attachment.service_slug.clone()),
+                    environment: Some(attachment.environment.clone()),
+                    operation: None,
+                    request_id: None,
+                    trace_id: None,
+                    source: "deploy.fly".to_owned(),
+                    event: fields.clone(),
+                    fields,
+                }
+            })
+            .collect(),
+    ))
+}
+
+fn log_search_time_range(
+    params: &LogSearchQuery,
+) -> (DateTime<FixedOffset>, DateTime<FixedOffset>) {
+    let now = Utc::now().fixed_offset();
+    let from = params
+        .from
+        .unwrap_or_else(|| (Utc::now() - Duration::hours(24)).fixed_offset());
+    let to = params.to.unwrap_or(now);
+    (from, to)
+}
+
+fn non_empty(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|s| !s.is_empty())
+}
+
+fn deploy_log_fallback_fields(
+    row: &DeployLogProjectFallbackRow,
+    attachment: &DeployLogProjectAttachment,
+) -> Value {
+    let mut fields = match row.data.clone() {
+        Value::Object(map) => map,
+        value => {
+            let mut map = serde_json::Map::new();
+            map.insert("provider_data".to_owned(), value);
+            map
+        }
+    };
+    fields.insert("stream".to_owned(), json!(row.stream));
+    fields.insert("deployment_id".to_owned(), json!(row.deployment_id));
+    fields.insert(
+        "provider_instance_id".to_owned(),
+        json!(row.provider_instance_id),
+    );
+    fields.insert("provider_log_id".to_owned(), json!(row.provider_log_id));
+    fields.insert("deploy_service_id".to_owned(), json!(attachment.service_id));
+    Value::Object(fields)
 }
 
 // --- Alert-rule handlers ------------------------------------------------

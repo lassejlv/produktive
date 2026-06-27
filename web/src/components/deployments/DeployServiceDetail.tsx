@@ -25,6 +25,7 @@ import {
   deployStatusActive,
 } from "#/lib/status";
 import type { DeployDetailTab } from "#/lib/deployments";
+import { machineCountLabel } from "./deploy-shared";
 import type { DeployService } from "#/lib/types";
 import { ServiceActionButtons } from "./deploy-shared";
 import {
@@ -96,6 +97,8 @@ export function DeployServiceDetail({
               :{service.internal_port}
               <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>
               {resourcePresetLabel(service.resource_preset)}
+              <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>
+              {machineCountLabel(service.machine_count)}
             </p>
             {service.url && (
               <a

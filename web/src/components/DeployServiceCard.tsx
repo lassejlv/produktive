@@ -4,6 +4,7 @@ import { memo, type ReactNode } from "react";
 import { cn } from "#/lib/cn";
 import { formatDeployRegion } from "#/lib/deploy-regions";
 import { useDeployRegions } from "#/lib/queries";
+import { machineCountLabel } from "./deployments/deploy-shared";
 import {
   DEPLOY_GLOW_CLASS,
   DEPLOY_STATUS_COLOR,
@@ -148,6 +149,7 @@ export const DeployServiceCard = memo(function DeployServiceCard({ service, canv
           <div className="flex flex-wrap gap-1.5">
             <MetaChip icon={MapPin} label={formatDeployRegion(service.region, regions, "short")} />
             <MetaChip label={service.environment} />
+            <MetaChip label={machineCountLabel(service.machine_count)} />
             <MetaChip label={`:${service.internal_port}`} />
             {shortDigest(service.last_deploy_image_digest) && (
               <MetaChip label={shortDigest(service.last_deploy_image_digest) as string} />
@@ -244,6 +246,7 @@ export function DeployServiceRow({ service }: { service: DeployService }) {
       <div className="hidden shrink-0 items-center gap-1.5 md:flex">
         <MetaChip icon={MapPin} label={formatDeployRegion(service.region, regions, "short")} />
         <MetaChip label={service.environment} />
+        <MetaChip label={machineCountLabel(service.machine_count)} />
         <MetaChip label={`:${service.internal_port}`} />
         {shortDigest(service.last_deploy_image_digest) && (
           <MetaChip label={shortDigest(service.last_deploy_image_digest) as string} />

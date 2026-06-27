@@ -33,6 +33,12 @@ export const RESOURCE_PRESETS: Array<{
   { value: "preview_large", label: "Large", detail: "2 shared CPUs / 2 GB" },
 ];
 
+export const MACHINE_COUNT_OPTIONS = [1, 2, 3, 4, 5] as const;
+
+export function machineCountLabel(count: number): string {
+  return `${count} machine${count === 1 ? "" : "s"}`;
+}
+
 export const fieldControlClass =
   "w-full rounded-[var(--radius-md)] border border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] px-3 text-[13px] text-[var(--color-fg)] shadow-[var(--shadow-xs)] outline-none transition-[border-color,box-shadow] focus:border-[var(--color-accent)] focus:shadow-[var(--ring-accent)]";
 

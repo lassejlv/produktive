@@ -23,6 +23,7 @@ pub struct Model {
     pub health_check_path: String,
     pub region: String,
     pub resource_preset: String,
+    pub machine_count: i32,
     pub url: Option<String>,
     pub status: i16,
     pub canvas_x: i32,
