@@ -37,6 +37,10 @@ struct Config {
     build_registry_host: String,
     fly_registry_token: Option<String>,
     poll_interval: Duration,
+    deploy_watch_interval: Duration,
+    deploy_watch_timeout: Duration,
+    deploy_watch_batch_size: i64,
+    deploy_health_failure_threshold: i32,
     retention_cleanup_interval: Duration,
     retention_delete_batch_size: i64,
     log_retention_days: i64,
@@ -129,6 +133,26 @@ struct MetricTarget {
 }
 
 #[derive(Debug, FromQueryResult)]
+struct HealthWatchTarget {
+    workspace_id: Uuid,
+    service_id: Uuid,
+    deployment_id: Uuid,
+    url: String,
+    health_check_path: String,
+    health_status: String,
+    health_failure_count: i32,
+}
+
+#[derive(Debug)]
+struct HealthProbeOutcome {
+    ok: bool,
+    status_code: Option<i32>,
+    latency_ms: i32,
+    error: Option<String>,
+    checked_url: String,
+}
+
+#[derive(Debug, FromQueryResult)]
 struct DomainJob {
     id: Uuid,
     workspace_id: Uuid,
@@ -217,9 +241,16 @@ async fn main() -> Result<()> {
     .map_err(|error| anyhow::anyhow!(error))?;
     let provider = FlyProvider::new(fly.clone());
     let build_provider = build_provider_from_config(&config);
+    let health_client = reqwest::Client::builder()
+        .user_agent("produktive-deploy-watch/0.1")
+        .timeout(config.deploy_watch_timeout)
+        .redirect(reqwest::redirect::Policy::limited(3))
+        .build()
+        .context("failed to build deployment health check HTTP client")?;
 
     tracing::info!("produktive deploy worker started");
     let mut last_metric_collection = Instant::now() - Duration::from_secs(60);
+    let mut last_deploy_watch = Instant::now() - config.deploy_watch_interval;
     let mut last_retention_cleanup = Instant::now() - config.retention_cleanup_interval;
     // Deployment ids whose build is running in a spawned task; the authoritative
     // double-spawn guard for this (single) process. Ids are returned via
@@ -277,6 +308,14 @@ async fn main() -> Result<()> {
         }
         if let Err(error) = collect_logs(&db, log_db.as_ref(), &provider).await {
             tracing::warn!(error = ?error, "deployment log collection failed");
+        }
+        if last_deploy_watch.elapsed() >= config.deploy_watch_interval {
+            if let Err(error) =
+                watch_deployment_health(&db, &provider, &health_client, &config).await
+            {
+                tracing::warn!(error = ?error, "deployment health watch failed");
+            }
+            last_deploy_watch = Instant::now();
         }
         if last_metric_collection.elapsed() >= Duration::from_secs(60) {
             if let Err(error) = collect_metrics(&db, &provider).await {
@@ -341,6 +380,25 @@ impl Config {
                 .unwrap_or_else(|| "registry.fly.io".into()),
             fly_registry_token: optional_env("FLY_REGISTRY_TOKEN"),
             poll_interval,
+            deploy_watch_interval: Duration::from_secs(parse_positive_u64_env(
+                "DEPLOY_WATCH_INTERVAL_SECONDS",
+                30,
+                5,
+                3_600,
+            )?),
+            deploy_watch_timeout: Duration::from_secs(parse_positive_u64_env(
+                "DEPLOY_WATCH_TIMEOUT_SECONDS",
+                5,
+                1,
+                60,
+            )?),
+            deploy_watch_batch_size: parse_positive_i64_env("DEPLOY_WATCH_BATCH_SIZE", 25, 1, 200)?,
+            deploy_health_failure_threshold: parse_positive_i64_env(
+                "DEPLOY_HEALTH_FAILURE_THRESHOLD",
+                3,
+                1,
+                20,
+            )? as i32,
             retention_cleanup_interval,
             retention_delete_batch_size,
             log_retention_days: parse_positive_i64_env("DEPLOY_LOG_RETENTION_DAYS", 7, 1, 365)?,
@@ -582,10 +640,7 @@ async fn run_build_job_inner(
         SET started_at = now(), updated_at = now()
         WHERE id = $1 AND status = $2
         "#,
-        [
-            job.id.into(),
-            DeploymentStatus::Building.code().into(),
-        ],
+        [job.id.into(), DeploymentStatus::Building.code().into()],
     ))
     .await?;
 
@@ -598,9 +653,10 @@ async fn run_build_job_inner(
     // Ensure the Fly app exists *before* pushing to its registry namespace. The
     // app is otherwise created inside deploy_image (after the build), so a first
     // deploy would push to a non-existent app. ensure_app is idempotent.
-    let app_name = job.provider_service_id.clone().unwrap_or_else(|| {
-        provider_app_name(prefix, job.workspace_id, job.service_id, &job.slug)
-    });
+    let app_name = job
+        .provider_service_id
+        .clone()
+        .unwrap_or_else(|| provider_app_name(prefix, job.workspace_id, job.service_id, &job.slug));
     let network = format!("{app_name}-network");
     fly.ensure_app(&app_name, &network)
         .await
@@ -640,10 +696,9 @@ async fn run_build_job_inner(
         }
     });
 
-    let mut sink: Box<dyn FnMut(&str) + Send> =
-        Box::new(move |line: &str| {
-            let _ = log_tx.try_send(line.to_owned());
-        });
+    let mut sink: Box<dyn FnMut(&str) + Send> = Box::new(move |line: &str| {
+        let _ = log_tx.try_send(line.to_owned());
+    });
     let outcome = provider.build(&spec, &mut *sink).await;
     drop(sink); // closes log_tx so the drain task can finish
     let _ = drain.await;
@@ -1643,6 +1698,309 @@ async fn collect_logs(
     Ok(())
 }
 
+async fn watch_deployment_health(
+    db: &DatabaseConnection,
+    provider: &impl DeployProvider,
+    http: &reqwest::Client,
+    config: &Config,
+) -> Result<()> {
+    if !deploy_health_columns_available(db).await? {
+        tracing::debug!("deployment health-watch columns not available yet; skipping health watch");
+        return Ok(());
+    }
+
+    let watch_interval_seconds = i64::try_from(config.deploy_watch_interval.as_secs())
+        .unwrap_or(i64::MAX)
+        .max(1);
+    let targets = HealthWatchTarget::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT s.workspace_id,
+               s.id AS service_id,
+               d.id AS deployment_id,
+               COALESCE(d.url, s.url) AS url,
+               s.health_check_path,
+               s.health_status,
+               s.health_failure_count
+        FROM deploy_services s
+        JOIN LATERAL (
+            SELECT d.id, d.url
+            FROM deployments d
+            WHERE d.workspace_id = s.workspace_id
+              AND d.service_id = s.id
+              AND d.provider_instance_id IS NOT NULL
+              AND d.status IN ($1, $2)
+            ORDER BY d.updated_at DESC
+            LIMIT 1
+        ) d ON TRUE
+        WHERE s.disabled_at IS NULL
+          AND s.deleted_at IS NULL
+          AND s.provider = $3
+          AND s.provider_service_id IS NOT NULL
+          AND COALESCE(d.url, s.url) IS NOT NULL
+          AND (
+              s.last_health_checked_at IS NULL
+              OR s.last_health_checked_at <= now() - ($4::BIGINT * INTERVAL '1 second')
+          )
+        ORDER BY s.last_health_checked_at ASC NULLS FIRST, s.updated_at DESC
+        LIMIT $5
+        "#,
+        [
+            DeploymentStatus::Healthy.code().into(),
+            DeploymentStatus::Live.code().into(),
+            provider.provider().as_str().into(),
+            watch_interval_seconds.into(),
+            config.deploy_watch_batch_size.into(),
+        ],
+    ))
+    .all(db)
+    .await?;
+
+    for target in targets {
+        let outcome = probe_deployment_health(http, &target).await;
+        persist_health_probe(
+            db,
+            &target,
+            &outcome,
+            config.deploy_health_failure_threshold,
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+async fn deploy_health_columns_available(db: &DatabaseConnection) -> Result<bool> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT COUNT(*) = 8 AS available
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'deploy_services'
+              AND column_name IN (
+                  'health_status',
+                  'health_status_updated_at',
+                  'last_health_checked_at',
+                  'last_health_ok_at',
+                  'last_health_status_code',
+                  'last_health_latency_ms',
+                  'health_failure_count',
+                  'last_health_error'
+              )
+            "#,
+            [],
+        ))
+        .await?;
+    Ok(row
+        .and_then(|row| row.try_get::<bool>("", "available").ok())
+        .unwrap_or(false))
+}
+
+async fn probe_deployment_health(
+    http: &reqwest::Client,
+    target: &HealthWatchTarget,
+) -> HealthProbeOutcome {
+    let started = Instant::now();
+    let checked_url = match deployment_health_url(&target.url, &target.health_check_path) {
+        Ok(url) => url,
+        Err(error) => {
+            return HealthProbeOutcome {
+                ok: false,
+                status_code: None,
+                latency_ms: 0,
+                error: Some(error),
+                checked_url: target.url.clone(),
+            }
+        }
+    };
+
+    match http.get(&checked_url).send().await {
+        Ok(response) => {
+            let status = response.status();
+            let status_code = Some(i32::from(status.as_u16()));
+            let latency_ms = elapsed_millis_i32(started.elapsed());
+            if status.is_success() {
+                HealthProbeOutcome {
+                    ok: true,
+                    status_code,
+                    latency_ms,
+                    error: None,
+                    checked_url,
+                }
+            } else {
+                HealthProbeOutcome {
+                    ok: false,
+                    status_code,
+                    latency_ms,
+                    error: Some(format!("HTTP {}", status.as_u16())),
+                    checked_url,
+                }
+            }
+        }
+        Err(error) => HealthProbeOutcome {
+            ok: false,
+            status_code: None,
+            latency_ms: elapsed_millis_i32(started.elapsed()),
+            error: Some(error.to_string()),
+            checked_url,
+        },
+    }
+}
+
+async fn persist_health_probe(
+    db: &DatabaseConnection,
+    target: &HealthWatchTarget,
+    outcome: &HealthProbeOutcome,
+    failure_threshold: i32,
+) -> Result<()> {
+    let previous_status = normalize_health_status(&target.health_status);
+    let previous_failures = target.health_failure_count.max(0);
+    let failure_count = if outcome.ok {
+        0
+    } else {
+        previous_failures.saturating_add(1)
+    };
+    let health_status = if outcome.ok {
+        "healthy"
+    } else if failure_count >= failure_threshold {
+        "unhealthy"
+    } else {
+        "degraded"
+    };
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        UPDATE deploy_services
+        SET health_status = $3,
+            health_status_updated_at = CASE
+                WHEN health_status <> $3 THEN now()
+                ELSE health_status_updated_at
+            END,
+            last_health_checked_at = now(),
+            last_health_ok_at = CASE
+                WHEN $4 THEN now()
+                ELSE last_health_ok_at
+            END,
+            last_health_status_code = $5,
+            last_health_latency_ms = $6,
+            health_failure_count = $7,
+            last_health_error = $8,
+            updated_at = now()
+        WHERE workspace_id = $1
+          AND id = $2
+          AND deleted_at IS NULL
+        "#,
+        [
+            target.workspace_id.into(),
+            target.service_id.into(),
+            health_status.into(),
+            outcome.ok.into(),
+            outcome.status_code.into(),
+            outcome.latency_ms.into(),
+            failure_count.into(),
+            outcome.error.clone().into(),
+        ],
+    ))
+    .await?;
+
+    if let Some((level, message)) = health_transition_event(
+        previous_status,
+        previous_failures,
+        health_status,
+        failure_count,
+    ) {
+        insert_event(
+            db,
+            target.workspace_id,
+            target.service_id,
+            Some(target.deployment_id),
+            level,
+            message,
+            json!({
+                "previous_status": previous_status,
+                "health_status": health_status,
+                "failure_count": failure_count,
+                "failure_threshold": failure_threshold,
+                "status_code": outcome.status_code,
+                "latency_ms": outcome.latency_ms,
+                "error": outcome.error,
+                "url": outcome.checked_url,
+            }),
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+fn deployment_health_url(base_url: &str, health_check_path: &str) -> Result<String, String> {
+    let mut url = reqwest::Url::parse(base_url.trim())
+        .map_err(|error| format!("invalid deployment URL: {error}"))?;
+    url.set_path("/");
+    url.set_query(None);
+    url.set_fragment(None);
+
+    let path = health_check_path.trim();
+    let path = if path.is_empty() { "/" } else { path };
+    let path = path.trim_start_matches('/');
+    let joined = if path.is_empty() {
+        url
+    } else {
+        url.join(path)
+            .map_err(|error| format!("invalid health check path: {error}"))?
+    };
+    Ok(joined.to_string())
+}
+
+fn elapsed_millis_i32(duration: Duration) -> i32 {
+    i32::try_from(duration.as_millis()).unwrap_or(i32::MAX)
+}
+
+fn normalize_health_status(status: &str) -> &'static str {
+    match status {
+        "healthy" => "healthy",
+        "degraded" => "degraded",
+        "unhealthy" => "unhealthy",
+        _ => "unknown",
+    }
+}
+
+fn health_transition_event(
+    previous_status: &'static str,
+    previous_failures: i32,
+    health_status: &'static str,
+    _failure_count: i32,
+) -> Option<(&'static str, &'static str)> {
+    if health_status == "healthy" {
+        if previous_status == "healthy" && previous_failures == 0 {
+            None
+        } else if previous_status == "unknown" {
+            Some(("info", "deployment health healthy"))
+        } else {
+            Some(("info", "deployment health recovered"))
+        }
+    } else if health_status == "unhealthy" {
+        if previous_status == "unhealthy" {
+            None
+        } else {
+            Some(("error", "deployment health unhealthy"))
+        }
+    } else if health_status == "degraded" {
+        if previous_status == "degraded" {
+            None
+        } else if previous_status == "healthy" || previous_status == "unknown" {
+            Some(("warn", "deployment health degraded"))
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
 async fn deploy_log_project_columns_available(db: &DatabaseConnection) -> Result<bool> {
     let row = db
         .query_one(Statement::from_sql_and_values(
@@ -2631,6 +2989,49 @@ fn parse_positive_i64_env(name: &str, default: i64, min: i64, max: i64) -> Resul
         "{name} must be between {min} and {max}"
     );
     Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deployment_health_url_joins_path_from_root() {
+        assert_eq!(
+            deployment_health_url("https://example.fly.dev/app", "/health").unwrap(),
+            "https://example.fly.dev/health"
+        );
+        assert_eq!(
+            deployment_health_url("https://example.fly.dev", "/").unwrap(),
+            "https://example.fly.dev/"
+        );
+    }
+
+    #[test]
+    fn health_transition_events_fire_only_on_transitions() {
+        assert_eq!(
+            health_transition_event("unknown", 0, "healthy", 0),
+            Some(("info", "deployment health healthy"))
+        );
+        assert_eq!(
+            health_transition_event("healthy", 0, "degraded", 1),
+            Some(("warn", "deployment health degraded"))
+        );
+        assert_eq!(health_transition_event("degraded", 1, "degraded", 2), None);
+        assert_eq!(
+            health_transition_event("degraded", 2, "unhealthy", 3),
+            Some(("error", "deployment health unhealthy"))
+        );
+        assert_eq!(
+            health_transition_event("unhealthy", 3, "unhealthy", 4),
+            None
+        );
+        assert_eq!(
+            health_transition_event("unhealthy", 4, "healthy", 0),
+            Some(("info", "deployment health recovered"))
+        );
+        assert_eq!(health_transition_event("healthy", 0, "healthy", 0), None);
+    }
 }
 
 fn init_tracing() {
