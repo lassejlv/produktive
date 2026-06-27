@@ -13,7 +13,7 @@ use crate::{
     client::Fly,
     models::{
         CertificateResponse, CreateMachineRequest, CreateVolumeRequest, GuestConfig, MachineConfig,
-        MachineMountConfig, RestartConfig, ServiceConfig, ServicePort,
+        MachineMountConfig, MachineResponse, RestartConfig, ServiceConfig, ServicePort,
     },
 };
 
@@ -215,21 +215,38 @@ impl DeployProvider for FlyProvider {
             deployment.deployment_id.to_string(),
         );
 
+        // Adopt machines a prior attempt of THIS deployment already created
+        // (machine names are deterministic per deployment id) so a retry —
+        // whether the client-layer auth retry, a worker restart mid-deploy, or a
+        // future job-level requeue — completes the deploy instead of duplicating
+        // machines. A failed listing is propagated rather than risking a duplicate.
+        let existing_machines = self.client.list_machines(&app_name).await?;
+
         let mut created = Vec::new();
+        // Ids created in THIS attempt only; on partial failure we roll back our own
+        // work but leave adopted/prior-progress machines for the next retry.
+        let mut created_now = Vec::new();
         for index in 0..machine_count {
+            let machine_name = if machine_count == 1 {
+                format!("deploy-{}", deployment.deployment_id.simple())
+            } else {
+                format!(
+                    "deploy-{}-{:02}",
+                    deployment.deployment_id.simple(),
+                    index + 1
+                )
+            };
+
+            if let Some(existing) = find_adoptable_machine(&existing_machines, &machine_name) {
+                created.push(existing.clone());
+                continue;
+            }
+
             let mut machine_metadata = metadata.clone();
             machine_metadata.insert("produktive_machine_index".into(), (index + 1).to_string());
             machine_metadata.insert("produktive_machine_count".into(), machine_count.to_string());
             let body = CreateMachineRequest {
-                name: if machine_count == 1 {
-                    format!("deploy-{}", deployment.deployment_id.simple())
-                } else {
-                    format!(
-                        "deploy-{}-{:02}",
-                        deployment.deployment_id.simple(),
-                        index + 1
-                    )
-                },
+                name: machine_name,
                 region: deployment.region.clone(),
                 skip_launch: false,
                 skip_service_registration: false,
@@ -271,10 +288,13 @@ impl DeployProvider for FlyProvider {
             };
 
             match self.client.create_machine(&app_name, &body).await {
-                Ok(machine) => created.push(machine),
+                Ok(machine) => {
+                    created_now.push(machine.id.clone());
+                    created.push(machine);
+                }
                 Err(error) => {
-                    for machine in &created {
-                        let _ = self.client.delete_machine(&app_name, &machine.id).await;
+                    for machine_id in &created_now {
+                        let _ = self.client.delete_machine(&app_name, machine_id).await;
                     }
                     return Err(error);
                 }
@@ -519,6 +539,23 @@ impl DeployProvider for FlyProvider {
     }
 }
 
+/// Finds a machine a prior deploy attempt created that can be reused: one whose
+/// name matches the deterministic per-deployment name and that is still alive.
+/// Destroyed/destroying machines (e.g. rolled back by an earlier attempt) are
+/// ignored so the deploy recreates them rather than adopting a dead machine.
+fn find_adoptable_machine<'a>(
+    machines: &'a [MachineResponse],
+    name: &str,
+) -> Option<&'a MachineResponse> {
+    machines.iter().find(|machine| {
+        machine.name.as_deref() == Some(name)
+            && !matches!(
+                machine.state.as_deref(),
+                Some("destroyed") | Some("destroying")
+            )
+    })
+}
+
 fn normalize_certificate_status(certificate: &CertificateResponse) -> String {
     let provider_status = certificate
         .status
@@ -530,9 +567,9 @@ fn normalize_certificate_status(certificate: &CertificateResponse) -> String {
         "active".into()
     } else if matches!(provider_status.as_str(), "failed" | "error") {
         "failed".into()
-    } else if provider_status.is_empty() {
-        "pending_validation".into()
-    } else if has_validation_errors(certificate.validation_errors.as_ref()) {
+    } else if provider_status.is_empty()
+        || has_validation_errors(certificate.validation_errors.as_ref())
+    {
         "pending_validation".into()
     } else {
         provider_status
@@ -555,6 +592,44 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
+
+    fn machine(name: &str, state: &str) -> MachineResponse {
+        MachineResponse {
+            id: format!("id-{name}"),
+            name: Some(name.into()),
+            state: Some(state.into()),
+            region: None,
+            image_ref: None,
+            instance_id: None,
+            created_at: None,
+            updated_at: None,
+            config: None,
+        }
+    }
+
+    #[test]
+    fn adopts_live_machine_with_matching_name() {
+        let machines = vec![machine("deploy-abc", "started")];
+        let found = find_adoptable_machine(&machines, "deploy-abc");
+        assert_eq!(found.map(|m| m.id.as_str()), Some("id-deploy-abc"));
+    }
+
+    #[test]
+    fn ignores_machine_with_different_name() {
+        let machines = vec![machine("deploy-other", "started")];
+        assert!(find_adoptable_machine(&machines, "deploy-abc").is_none());
+    }
+
+    #[test]
+    fn ignores_destroyed_or_destroying_machine() {
+        for state in ["destroyed", "destroying"] {
+            let machines = vec![machine("deploy-abc", state)];
+            assert!(
+                find_adoptable_machine(&machines, "deploy-abc").is_none(),
+                "should not adopt a {state} machine"
+            );
+        }
+    }
 
     #[test]
     fn derives_app_name_without_provider_id() {

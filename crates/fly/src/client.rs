@@ -17,6 +17,22 @@ const DEFAULT_API_HOSTNAME: &str = "https://api.machines.dev";
 const DEFAULT_PLATFORM_API_HOSTNAME: &str = "https://api.fly.io";
 const DEFAULT_USER_AGENT: &str = "produktive-fly/0.1";
 
+// Fly intermittently rejects a perfectly valid token with a 401/403
+// "Authenticate: token validation error" — a transient auth-backend / grant
+// propagation blip (common right after a brand-new app is created, when machine
+// creation immediately follows `ensure_app`). Cycling auth-header formats does
+// not help: every format is rejected during the blip, so the deploy fails
+// terminally even though the same token succeeds seconds later. We retry the
+// whole request with bounded exponential backoff, but ONLY for this narrow case
+// (see `is_transient_fly_auth_error`): a 401/403 is rejected before the handler
+// runs, so re-issuing is side-effect-free even for non-idempotent POSTs like
+// `create_machine`. Non-auth failures (5xx/timeout, where a machine could have
+// been created) are never retried here.
+const FLY_AUTH_RETRY_MAX_ATTEMPTS: u32 = 4;
+const FLY_AUTH_RETRY_BASE_DELAY: Duration = Duration::from_millis(500);
+const FLY_AUTH_RETRY_MAX_DELAY: Duration = Duration::from_secs(8);
+const FLY_AUTH_RETRY_BACKOFF_FACTOR: u32 = 2;
+
 #[derive(Clone, Debug)]
 pub struct Fly {
     inner: Arc<FlyInner>,
@@ -162,6 +178,26 @@ impl Fly {
             None,
         )
         .await
+    }
+
+    /// Lists every machine on an app. A brand-new app (just created by
+    /// `ensure_app`) has no machines and Fly may 404 the collection until it
+    /// propagates, so a `NotFound` is reported as an empty list. Used by
+    /// `deploy_image` to adopt a machine a prior attempt already created instead
+    /// of creating a duplicate (idempotent re-deploy).
+    pub async fn list_machines(&self, app_name: &str) -> DeployResult<Vec<MachineResponse>> {
+        match self
+            .request::<(), Vec<MachineResponse>>(
+                Method::GET,
+                &format!("/v1/apps/{app_name}/machines"),
+                None,
+            )
+            .await
+        {
+            Ok(machines) => Ok(machines),
+            Err(DeployError::NotFound(_)) => Ok(Vec::new()),
+            Err(error) => Err(error),
+        }
     }
 
     pub async fn stop_machine(&self, app_name: &str, machine_id: &str) -> DeployResult<()> {
@@ -329,34 +365,49 @@ impl Fly {
             query_pairs.append_pair("step", "60");
         }
 
-        let mut last_failure = None;
+        let mut transient_failure = None;
         let mut text = None;
-        for authorization in fly_authorization_headers(&self.inner.api_token) {
-            let response = self
-                .inner
-                .http
-                .get(url.clone())
-                .header("Authorization", authorization)
-                .send()
-                .await
-                .map_err(|error| DeployError::Transport(error.to_string()))?;
-            let status = response.status();
-            let response_text = response
-                .text()
-                .await
-                .map_err(|error| DeployError::Transport(error.to_string()))?;
-            if status.is_success() {
-                text = Some(response_text);
-                break;
+        'retry: for retry in 0..FLY_AUTH_RETRY_MAX_ATTEMPTS {
+            if retry > 0 {
+                tokio::time::sleep(auth_retry_delay(retry - 1)).await;
             }
-            last_failure = Some(format!("Fly metrics API {status}: {response_text}"));
-            if !matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
-                break;
+            let mut last_failure = None;
+            let mut last_transient = false;
+            for authorization in fly_authorization_headers(&self.inner.api_token) {
+                let response = self
+                    .inner
+                    .http
+                    .get(url.clone())
+                    .header("Authorization", authorization)
+                    .send()
+                    .await
+                    .map_err(|error| DeployError::Transport(error.to_string()))?;
+                let status = response.status();
+                let response_text = response
+                    .text()
+                    .await
+                    .map_err(|error| DeployError::Transport(error.to_string()))?;
+                if status.is_success() {
+                    text = Some(response_text);
+                    break 'retry;
+                }
+                last_failure = Some(format!("Fly metrics API {status}: {response_text}"));
+                last_transient = is_transient_fly_auth_error(status, &response_text);
+                if !matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                    break;
+                }
             }
+            if last_transient {
+                transient_failure = last_failure;
+                continue;
+            }
+            return Err(DeployError::Provider(
+                last_failure.unwrap_or_else(|| "Fly metrics API request failed".into()),
+            ));
         }
         let text = text.ok_or_else(|| {
             DeployError::Provider(
-                last_failure.unwrap_or_else(|| "Fly metrics API request failed".into()),
+                transient_failure.unwrap_or_else(|| "Fly metrics API request failed".into()),
             )
         })?;
         let payload: PrometheusRangeResponse =
@@ -414,35 +465,50 @@ impl Fly {
     {
         let url = Url::parse(&format!("{DEFAULT_PLATFORM_API_HOSTNAME}/graphql"))
             .map_err(|error| DeployError::Config(format!("invalid Fly GraphQL URL: {error}")))?;
-        let mut last_failure = None;
+        let mut transient_failure = None;
         let mut text = None;
-        for authorization in fly_authorization_headers(&self.inner.api_token) {
-            let response = self
-                .inner
-                .http
-                .post(url.clone())
-                .header("Authorization", authorization)
-                .json(&GraphqlRequest { query, variables })
-                .send()
-                .await
-                .map_err(|error| DeployError::Transport(error.to_string()))?;
-            let status = response.status();
-            let response_text = response
-                .text()
-                .await
-                .map_err(|error| DeployError::Transport(error.to_string()))?;
-            if status.is_success() {
-                text = Some(response_text);
-                break;
+        'retry: for retry in 0..FLY_AUTH_RETRY_MAX_ATTEMPTS {
+            if retry > 0 {
+                tokio::time::sleep(auth_retry_delay(retry - 1)).await;
             }
-            last_failure = Some(format!("Fly GraphQL {status}: {response_text}"));
-            if !matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
-                break;
+            let mut last_failure = None;
+            let mut last_transient = false;
+            for authorization in fly_authorization_headers(&self.inner.api_token) {
+                let response = self
+                    .inner
+                    .http
+                    .post(url.clone())
+                    .header("Authorization", authorization)
+                    .json(&GraphqlRequest { query, variables })
+                    .send()
+                    .await
+                    .map_err(|error| DeployError::Transport(error.to_string()))?;
+                let status = response.status();
+                let response_text = response
+                    .text()
+                    .await
+                    .map_err(|error| DeployError::Transport(error.to_string()))?;
+                if status.is_success() {
+                    text = Some(response_text);
+                    break 'retry;
+                }
+                last_failure = Some(format!("Fly GraphQL {status}: {response_text}"));
+                last_transient = is_transient_fly_auth_error(status, &response_text);
+                if !matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                    break;
+                }
             }
+            if last_transient {
+                transient_failure = last_failure;
+                continue;
+            }
+            return Err(DeployError::Provider(
+                last_failure.unwrap_or_else(|| "Fly GraphQL request failed".into()),
+            ));
         }
         let text = text.ok_or_else(|| {
             DeployError::Provider(
-                last_failure.unwrap_or_else(|| "Fly GraphQL request failed".into()),
+                transient_failure.unwrap_or_else(|| "Fly GraphQL request failed".into()),
             )
         })?;
         let payload: GraphqlResponse<T> =
@@ -472,54 +538,71 @@ impl Fly {
             .base_url
             .join(path.trim_start_matches('/'))
             .map_err(|error| DeployError::Config(format!("invalid Fly API URL: {error}")))?;
-        let mut last_failure = None;
-        for authorization in fly_authorization_headers(&self.inner.api_token) {
-            let mut request = self
-                .inner
-                .http
-                .request(method.clone(), url.clone())
-                .header("Authorization", authorization);
-            if let Some(body) = body.as_ref() {
-                request = request.json(body);
+        let mut transient_failure = None;
+        for retry in 0..FLY_AUTH_RETRY_MAX_ATTEMPTS {
+            if retry > 0 {
+                tokio::time::sleep(auth_retry_delay(retry - 1)).await;
             }
+            let mut last_failure = None;
+            let mut last_transient = false;
+            for authorization in fly_authorization_headers(&self.inner.api_token) {
+                let mut request = self
+                    .inner
+                    .http
+                    .request(method.clone(), url.clone())
+                    .header("Authorization", authorization);
+                if let Some(body) = body.as_ref() {
+                    request = request.json(body);
+                }
 
-            let response = request
-                .send()
-                .await
-                .map_err(|error| DeployError::Transport(error.to_string()))?;
-            let status = response.status();
-            if status == StatusCode::NO_CONTENT {
-                return serde_json::from_value(serde_json::Value::Null)
-                    .map_err(|error| DeployError::Decode(error.to_string()));
-            }
-            let text = response
-                .text()
-                .await
-                .map_err(|error| DeployError::Transport(error.to_string()))?;
-            if status.is_success() {
-                if text.trim().is_empty() {
+                let response = request
+                    .send()
+                    .await
+                    .map_err(|error| DeployError::Transport(error.to_string()))?;
+                let status = response.status();
+                if status == StatusCode::NO_CONTENT {
                     return serde_json::from_value(serde_json::Value::Null)
                         .map_err(|error| DeployError::Decode(error.to_string()));
                 }
-                return serde_json::from_str(&text)
-                    .map_err(|error| DeployError::Decode(error.to_string()));
+                let text = response
+                    .text()
+                    .await
+                    .map_err(|error| DeployError::Transport(error.to_string()))?;
+                if status.is_success() {
+                    if text.trim().is_empty() {
+                        return serde_json::from_value(serde_json::Value::Null)
+                            .map_err(|error| DeployError::Decode(error.to_string()));
+                    }
+                    return serde_json::from_str(&text)
+                        .map_err(|error| DeployError::Decode(error.to_string()));
+                }
+                if status == StatusCode::NOT_FOUND {
+                    return Err(DeployError::NotFound("Fly resource not found".into()));
+                }
+                if status == StatusCode::TOO_MANY_REQUESTS {
+                    return Err(DeployError::RateLimited(
+                        "Fly API rate limit exceeded".into(),
+                    ));
+                }
+                last_failure = Some(format!("Fly API {method} {path} {status}: {text}"));
+                last_transient = is_transient_fly_auth_error(status, &text);
+                if !matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                    break;
+                }
             }
-            if status == StatusCode::NOT_FOUND {
-                return Err(DeployError::NotFound("Fly resource not found".into()));
+            // Every auth-header format was exhausted. Retry the whole request only
+            // for a transient Fly auth blip; any other failure is terminal.
+            if last_transient {
+                transient_failure = last_failure;
+                continue;
             }
-            if status == StatusCode::TOO_MANY_REQUESTS {
-                return Err(DeployError::RateLimited(
-                    "Fly API rate limit exceeded".into(),
-                ));
-            }
-            last_failure = Some(format!("Fly API {method} {path} {status}: {text}"));
-            if !matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
-                break;
-            }
+            return Err(DeployError::Provider(last_failure.unwrap_or_else(|| {
+                format!("Fly API {method} {path} request failed")
+            })));
         }
-        Err(DeployError::Provider(last_failure.unwrap_or_else(|| {
-            format!("Fly API {method} {path} request failed")
-        })))
+        Err(DeployError::Provider(transient_failure.unwrap_or_else(
+            || format!("Fly API {method} {path} request failed"),
+        )))
     }
 }
 
@@ -639,6 +722,28 @@ struct AllocateIpData {
 struct AllocateIpPayload {
     #[serde(rename = "ipAddress")]
     ip_address: Option<AllocatedIpAddress>,
+}
+
+/// A transient Fly auth blip worth retrying: a 401/403 whose body is the
+/// "Authenticate: token validation error" wording Fly returns when a valid token
+/// is briefly rejected. Gating on both the status (rejected before the handler,
+/// so no side effect) and the specific wording keeps genuinely-invalid or revoked
+/// tokens — which return a 401 with a different body — failing fast.
+fn is_transient_fly_auth_error(status: StatusCode, body: &str) -> bool {
+    if !matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+        return false;
+    }
+    let body = body.to_ascii_lowercase();
+    body.contains("token validation") || body.contains("authenticate")
+}
+
+/// Exponential backoff for transient-auth retries: 500ms, 1s, 2s, … capped at
+/// [`FLY_AUTH_RETRY_MAX_DELAY`]. `attempt` is the zero-based retry index.
+fn auth_retry_delay(attempt: u32) -> Duration {
+    let factor = FLY_AUTH_RETRY_BACKOFF_FACTOR.saturating_pow(attempt);
+    FLY_AUTH_RETRY_BASE_DELAY
+        .saturating_mul(factor)
+        .min(FLY_AUTH_RETRY_MAX_DELAY)
 }
 
 fn is_already_allocated_error(message: &str) -> bool {
@@ -966,5 +1071,43 @@ mod tests {
             .app_name_prefix("prd")
             .build()
             .is_err());
+    }
+
+    #[test]
+    fn transient_auth_matches_fly_token_validation() {
+        let body = r#"{"error":"Authenticate: token validation error"}"#;
+        assert!(is_transient_fly_auth_error(StatusCode::UNAUTHORIZED, body));
+        assert!(is_transient_fly_auth_error(StatusCode::FORBIDDEN, body));
+    }
+
+    #[test]
+    fn transient_auth_ignores_non_auth_status() {
+        // A 400/5xx may have side effects (e.g. a created machine) and must never retry.
+        assert!(!is_transient_fly_auth_error(
+            StatusCode::BAD_REQUEST,
+            "Authenticate: token validation error"
+        ));
+        assert!(!is_transient_fly_auth_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "token validation error"
+        ));
+    }
+
+    #[test]
+    fn transient_auth_fails_fast_on_plain_unauthorized() {
+        // A genuinely invalid/revoked token returns a different body; don't waste retries.
+        assert!(!is_transient_fly_auth_error(
+            StatusCode::UNAUTHORIZED,
+            r#"{"error":"invalid token"}"#
+        ));
+    }
+
+    #[test]
+    fn auth_retry_delay_backs_off_and_caps() {
+        assert_eq!(auth_retry_delay(0), Duration::from_millis(500));
+        assert_eq!(auth_retry_delay(1), Duration::from_secs(1));
+        assert_eq!(auth_retry_delay(2), Duration::from_secs(2));
+        assert_eq!(auth_retry_delay(3), Duration::from_secs(4));
+        assert_eq!(auth_retry_delay(10), FLY_AUTH_RETRY_MAX_DELAY);
     }
 }
