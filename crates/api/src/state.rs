@@ -13,7 +13,7 @@ use sprites::SpritesClient;
 use tigris::{SharedTigrisClient, TigrisClient, TigrisConfig};
 
 use crate::{
-    billing::Billing, config::Config, logstore::LokiLogs, status_summary_cache::StatusSummaryCache,
+    billing::Billing, config::Config, logstore::LogStore, status_summary_cache::StatusSummaryCache,
 };
 
 const REDIS_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
@@ -38,9 +38,9 @@ pub struct AppState {
     /// custom domains then rely on DNS verification only (the pre-Cloudflare path).
     pub cloudflare: Option<Cloudflare>,
     pub status_summary_cache: StatusSummaryCache,
-    /// Loki-backed log storage. `None` disables every log-storage handler
-    /// (they return a 503), keeping the no-logs deployment path working.
-    pub loki: Option<Arc<LokiLogs>>,
+    /// TimescaleDB-backed log event storage. `None` disables every log-storage
+    /// handler (they return a 503), keeping the no-logs deployment path working.
+    pub log_store: Option<LogStore>,
     /// Sprites.dev client for sandbox VMs. `None` when sandboxes are disabled
     /// or no token is configured.
     pub sprites: Option<Arc<SpritesClient>>,
@@ -84,7 +84,7 @@ impl AppState {
                 tracing::warn!(error = %e, "failed to set Cloudflare fallback origin");
             }
         }
-        let loki = build_loki(&config, http.clone());
+        let log_store = crate::log_db::build_log_store(&config).await;
         let sprites = build_sprites(&config).await;
         let tigris = build_tigris(&config, http.clone()).await;
         Ok(Self {
@@ -97,34 +97,12 @@ impl AppState {
             billing,
             cloudflare,
             status_summary_cache: StatusSummaryCache::default(),
-            loki,
+            log_store,
             sprites,
             tigris,
         })
     }
 }
-
-/// Build the Loki log store, reusing the shared async HTTP client. Log storage
-/// is optional: it is only enabled when `LOKI_URL` is set (`LOKI_TENANT` is
-/// optional). A failure to construct the client disables logs rather than
-/// failing startup.
-fn build_loki(config: &Config, http: Client) -> Option<Arc<LokiLogs>> {
-    let Some(url) = config.loki_url.as_ref() else {
-        tracing::warn!("LOKI_URL not set; log storage is disabled");
-        return None;
-    };
-    match LokiLogs::new(url, config.loki_tenant.clone(), http) {
-        Ok(loki) => {
-            tracing::info!("Loki log storage initialized");
-            Some(Arc::new(loki))
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "failed to initialize Loki client; log storage disabled");
-            None
-        }
-    }
-}
-
 async fn redis_connect_with_timeout<F>(future: F) -> anyhow::Result<ConnectionManager>
 where
     F: Future<Output = redis::RedisResult<ConnectionManager>>,

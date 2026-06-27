@@ -24,7 +24,7 @@ use uuid::Uuid;
 use crate::{
     auth::{password::sha256_hex, AuthUser},
     error::{ApiError, ApiResult},
-    logstore::NormalizedEvent,
+    logstore::{LogStats24h, NormalizedEvent},
     middleware::Membership,
     slug::slugify,
     state::AppState,
@@ -334,7 +334,7 @@ impl LogProjectView {
     fn build(
         project: log_project::Model,
         bucket: Option<log_storage_bucket::Model>,
-        event_count_24h: i64,
+        stats: LogStats24h,
     ) -> Self {
         let (bucket_name, bucket_storage_uri) = match bucket {
             Some(b) => (Some(b.name), Some(b.storage_uri)),
@@ -352,9 +352,9 @@ impl LogProjectView {
             retention_days: project.retention_days,
             created_at: project.created_at,
             updated_at: project.updated_at,
-            event_count_24h,
-            bytes_ingested_24h: 0,
-            last_ingested_at: None,
+            event_count_24h: stats.event_count,
+            bytes_ingested_24h: stats.bytes_ingested,
+            last_ingested_at: stats.last_ingested_at,
         }
     }
 }
@@ -430,16 +430,18 @@ async fn load_bucket(
     }
 }
 
-/// Count events for a project over the last 24h via Loki. Returns 0 on any
-/// failure so a transient storage hiccup never blocks the project listing.
-async fn event_count_24h(state: &AppState, project_id: Uuid) -> i64 {
-    let Some(loki) = state.loki.as_ref() else {
-        return 0;
+/// Count events and bytes for a project over the last 24h via TimescaleDB.
+/// Returns zeros on any failure so a transient storage hiccup never blocks
+/// the project listing.
+async fn project_stats_24h(state: &AppState, project_id: Uuid) -> LogStats24h {
+    let Some(store) = state.log_store.as_ref() else {
+        return LogStats24h::default();
     };
     let since_ms = (Utc::now() - Duration::hours(24)).timestamp_millis();
-    loki.count_recent(&project_id.to_string(), since_ms)
+    store
+        .stats_24h(project_id, since_ms)
         .await
-        .unwrap_or(0)
+        .unwrap_or_default()
 }
 
 // --- Project handlers ---------------------------------------------------
@@ -448,7 +450,7 @@ pub async fn list_projects(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
 ) -> ApiResult<Json<Vec<LogProjectView>>> {
-    if state.loki.is_none() {
+    if state.log_store.is_none() {
         return Err(disabled());
     }
     let projects = log_project::Entity::find()
@@ -460,8 +462,8 @@ pub async fn list_projects(
     let mut views = Vec::with_capacity(projects.len());
     for project in projects {
         let bucket = load_bucket(&state, project.bucket_id).await?;
-        let count = event_count_24h(&state, project.id).await;
-        views.push(LogProjectView::build(project, bucket, count));
+        let stats = project_stats_24h(&state, project.id).await;
+        views.push(LogProjectView::build(project, bucket, stats));
     }
     Ok(Json(views))
 }
@@ -471,7 +473,7 @@ pub async fn create_project(
     Extension(m): Extension<Membership>,
     Json(body): Json<CreateLogProjectBody>,
 ) -> ApiResult<Json<LogProjectView>> {
-    if state.loki.is_none() {
+    if state.log_store.is_none() {
         return Err(disabled());
     }
     let name = body.name.trim().to_owned();
@@ -513,7 +515,7 @@ pub async fn create_project(
     .insert(&state.db)
     .await?;
 
-    Ok(Json(LogProjectView::build(project, None, 0)))
+    Ok(Json(LogProjectView::build(project, None, LogStats24h::default())))
 }
 
 pub async fn get_project(
@@ -521,13 +523,13 @@ pub async fn get_project(
     Extension(m): Extension<Membership>,
     Path((_wid, project)): Path<(String, String)>,
 ) -> ApiResult<Json<LogProjectView>> {
-    if state.loki.is_none() {
+    if state.log_store.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
     let bucket = load_bucket(&state, project.bucket_id).await?;
-    let count = event_count_24h(&state, project.id).await;
-    Ok(Json(LogProjectView::build(project, bucket, count)))
+    let stats = project_stats_24h(&state, project.id).await;
+    Ok(Json(LogProjectView::build(project, bucket, stats)))
 }
 
 pub async fn delete_project(
@@ -535,10 +537,13 @@ pub async fn delete_project(
     Extension(m): Extension<Membership>,
     Path((_wid, project)): Path<(String, String)>,
 ) -> ApiResult<Json<OkResponse>> {
-    if state.loki.is_none() {
+    if state.log_store.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
+    if let Some(store) = state.log_store.as_ref() {
+        store.delete_project_events(project.id).await?;
+    }
     // Tokens and alert rules cascade-delete via FK in the migration.
     log_project::Entity::delete_by_id(project.id)
         .exec(&state.db)
@@ -553,7 +558,7 @@ pub async fn list_tokens(
     Extension(m): Extension<Membership>,
     Path((_wid, project)): Path<(String, String)>,
 ) -> ApiResult<Json<Vec<LogIngestTokenView>>> {
-    if state.loki.is_none() {
+    if state.log_store.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -571,7 +576,7 @@ pub async fn create_token(
     Path((_wid, project)): Path<(String, String)>,
     Json(body): Json<CreateLogTokenBody>,
 ) -> ApiResult<Json<CreatedLogIngestToken>> {
-    if state.loki.is_none() {
+    if state.log_store.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -616,7 +621,7 @@ pub async fn revoke_token(
     Extension(m): Extension<Membership>,
     Path((_wid, project, token_id)): Path<(String, String, Uuid)>,
 ) -> ApiResult<Json<OkResponse>> {
-    if state.loki.is_none() {
+    if state.log_store.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -642,17 +647,17 @@ pub async fn search_events(
     Path((_wid, project)): Path<(String, String)>,
     Query(query): Query<LogSearchQuery>,
 ) -> ApiResult<Json<LogSearchResponse>> {
-    let Some(loki) = state.loki.clone() else {
+    let Some(store) = state.log_store.as_ref() else {
         return Err(disabled());
     };
     let project = resolve_project(&state, m.workspace.id, &project).await?;
-    let events = loki.search(&project.id.to_string(), &query).await?;
+    let events = store.search(project.id, &query).await?;
     Ok(Json(LogSearchResponse {
         events,
-        // Synthetic, opaque identifier — never expose the internal Loki URL.
+        // Synthetic, opaque identifier — never expose the internal DB URL.
         storage: LogStorageInfo {
-            storage_uri: format!("loki://{}", project.id),
-            backend: "loki".to_owned(),
+            storage_uri: format!("timescale://{}", project.id),
+            backend: "timescale".to_owned(),
         },
     }))
 }
@@ -664,7 +669,7 @@ pub async fn list_alert_rules(
     Extension(m): Extension<Membership>,
     Path((_wid, project)): Path<(String, String)>,
 ) -> ApiResult<Json<Vec<LogAlertRuleView>>> {
-    if state.loki.is_none() {
+    if state.log_store.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -682,7 +687,7 @@ pub async fn create_alert_rule(
     Path((_wid, project)): Path<(String, String)>,
     Json(body): Json<CreateLogAlertRuleBody>,
 ) -> ApiResult<Json<LogAlertRuleView>> {
-    if state.loki.is_none() {
+    if state.log_store.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -713,10 +718,10 @@ pub async fn create_alert_rule(
     .insert(&state.db)
     .await?;
 
-    // TODO(alerts): background alert EVALUATION (periodic query of Loki and
+    // TODO(alerts): background alert EVALUATION (periodic query of log storage and
     // notification firing) is out of scope. Rules are persisted but never
     // evaluated yet; wire a sweep that reads each rule's window/threshold,
-    // queries Loki, and emits notifications / log_alert_firing rows.
+    // queries log events, and emits notifications / log_alert_firing rows.
 
     Ok(Json(row.into()))
 }
@@ -727,7 +732,7 @@ pub async fn update_alert_rule(
     Path((_wid, project, rule_id)): Path<(String, String, Uuid)>,
     Json(body): Json<UpdateLogAlertRuleBody>,
 ) -> ApiResult<Json<LogAlertRuleView>> {
-    if state.loki.is_none() {
+    if state.log_store.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -771,7 +776,7 @@ pub async fn delete_alert_rule(
     Extension(m): Extension<Membership>,
     Path((_wid, project, rule_id)): Path<(String, String, Uuid)>,
 ) -> ApiResult<Json<OkResponse>> {
-    if state.loki.is_none() {
+    if state.log_store.is_none() {
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
@@ -793,7 +798,7 @@ async fn ingest(
     headers: HeaderMap,
     body: Bytes,
 ) -> ApiResult<Json<IngestResponse>> {
-    let Some(loki) = state.loki.clone() else {
+    let Some(store) = state.log_store.as_ref() else {
         return Err(disabled());
     };
 
@@ -815,13 +820,16 @@ async fn ingest(
     }
 
     let project_id = token_row.project_id;
+    let workspace_id = token_row.workspace_id;
 
     let payload: Value = parse_ingest_body(&body)?;
     let events = normalize_payload(&payload, MAX_INGEST_EVENTS)?;
     let accepted = if events.is_empty() {
         0
     } else {
-        loki.ingest_events(&project_id.to_string(), &events).await?
+        store
+            .ingest_events(workspace_id, project_id, &events)
+            .await?
     };
 
     // Best-effort last_used_at touch; ignore failures.
@@ -889,7 +897,7 @@ fn parse_ingest_body(body: &Bytes) -> ApiResult<Value> {
 //
 // Minimal copy of the normalization logic from the orphaned `crates/logging`
 // crate (which pulls in a duckdb dependency we do not want). Turns a raw
-// ingest payload into `NormalizedEvent`s for Loki.
+// ingest payload into `NormalizedEvent`s for TimescaleDB.
 
 fn normalize_payload(payload: &Value, max_events: usize) -> ApiResult<Vec<NormalizedEvent>> {
     let raw_events: Vec<&Value> = if let Some(arr) = payload.as_array() {

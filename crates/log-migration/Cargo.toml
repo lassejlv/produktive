@@ -1,0 +1,12 @@
+[package]
+name = "unstatus-log-migration"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "log_migration"
+path = "src/lib.rs"
+
+[dependencies]
+sea-orm-migration.workspace = true
+async-trait.workspace = true

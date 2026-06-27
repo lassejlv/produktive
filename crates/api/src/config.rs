@@ -58,13 +58,12 @@ pub struct Config {
     pub worker_token: Option<String>,
     pub worker_tokens: BTreeMap<String, String>,
     pub worker_lease_seconds: u64,
-    /// Base URL of the Grafana Loki HTTP endpoint for log storage (e.g.
-    /// `http://loki-railway.railway.internal:3100`). When unset, log storage is
-    /// disabled.
-    pub loki_url: Option<String>,
-    /// Optional Loki tenant; sent as the `X-Scope-OrgID` header on every
-    /// request. Unset when Loki has `auth_enabled = false` (the common case).
-    pub loki_tenant: Option<String>,
+    /// Direct (non-pooled) connection to the log events TimescaleDB — used for
+    /// log DB migrations. When unset, log ingest/search is disabled.
+    pub log_database_url: Option<String>,
+    /// Pooled connection to the log events DB at runtime. Falls back to
+    /// `log_database_url` when unset.
+    pub log_database_pooled_url: Option<String>,
     /// Enables private-preview deployment routes. Access is still workspace
     /// approved server-side.
     pub deployments_enabled: bool,
@@ -291,14 +290,15 @@ impl Config {
         if worker_lease_seconds == 0 {
             return Err(anyhow!("WORKER_LEASE_SECONDS must be at least 1"));
         }
-        let loki_url = std::env::var("LOKI_URL")
-            .ok()
-            .map(|v| v.trim().trim_end_matches('/').to_owned())
-            .filter(|v| !v.is_empty());
-        let loki_tenant = std::env::var("LOKI_TENANT")
+        let log_database_url = std::env::var("LOG_DATABASE_URL")
             .ok()
             .map(|v| v.trim().to_owned())
             .filter(|v| !v.is_empty());
+        let log_database_pooled_url = std::env::var("LOG_DATABASE_POOLED_URL")
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty())
+            .or_else(|| log_database_url.clone());
         let deployments_enabled = std::env::var("DEPLOYMENTS_ENABLED")
             .unwrap_or_else(|_| "false".into())
             .parse()
@@ -449,8 +449,8 @@ impl Config {
             worker_token,
             worker_tokens,
             worker_lease_seconds,
-            loki_url,
-            loki_tenant,
+            log_database_url,
+            log_database_pooled_url,
             deployments_enabled,
             deploy_secrets_key,
             deploy_max_services_per_workspace,

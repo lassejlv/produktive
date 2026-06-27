@@ -5,6 +5,8 @@ mod custom_domain_sweep;
 mod error;
 mod http;
 mod logstore;
+mod log_db;
+mod log_retention_sweep;
 mod middleware;
 mod notification_webhook;
 mod openapi;
@@ -18,7 +20,9 @@ mod target;
 
 use anyhow::Result;
 use axum::{http::HeaderValue, routing::get, Router};
-use migration::{Migrator, MigratorTrait};
+use log_migration::Migrator as LogMigrator;
+use migration::Migrator;
+use sea_orm_migration::MigratorTrait;
 use sea_orm::{ConnectOptions, Database};
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -44,6 +48,13 @@ async fn main() -> Result<()> {
     Migrator::up(&migration_db, None).await?;
     migration_db.close().await?;
 
+    if config.log_database_url.is_some() {
+        tracing::info!("running log database migrations");
+        let log_migration_db = crate::log_db::connect_log_migration_db(&config).await?;
+        LogMigrator::up(&log_migration_db, None).await?;
+        log_migration_db.close().await?;
+    }
+
     let mut opt = ConnectOptions::new(config.database_pooled_url.clone());
     opt.max_connections(20)
         .min_connections(2)
@@ -60,6 +71,7 @@ async fn main() -> Result<()> {
     billing::sweep::spawn(state.clone());
     billing::deploy_sweep::spawn(state.clone());
     custom_domain_sweep::spawn(state.clone());
+    log_retention_sweep::spawn(state.clone());
 
     let ws_scoped = Router::new()
         .merge(http::workspaces::scoped_routes())

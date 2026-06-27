@@ -10,6 +10,7 @@ path = "src/main.rs"
 [dependencies]
 produktive-entity = { path = "../entity" }
 migration = { package = "unstatus-migration", path = "../migration" }
+log_migration = { package = "unstatus-log-migration", path = "../log-migration" }
 produktive-dsl = { path = "../dsl" }
 produktive-probe = { path = "../probe" }
 produktive-deploy = { path = "../deploy" }

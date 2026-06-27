@@ -12,6 +12,7 @@ members = [
     "crates/tigris",
     "crates/entity",
     "crates/migration",
+    "crates/log-migration",
     "crates/probe",
     "crates/worker",
 ]
