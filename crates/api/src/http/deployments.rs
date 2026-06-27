@@ -140,6 +140,7 @@ pub struct DeployServiceView {
     pub registry_credential_id: Option<Uuid>,
     pub provider: String,
     pub provider_service_id: Option<String>,
+    pub log_project_id: Option<Uuid>,
     #[schema(value_type = Object)]
     pub provider_metadata: Value,
     pub slug: String,
@@ -658,7 +659,9 @@ pub async fn create_service(
                 now.into(),
             ],
         ))
-        .await?;
+    .await?;
+
+    ensure_service_log_project_best_effort(&state, m.workspace.id, id).await;
 
     write_service_secrets(
         &state,
@@ -1283,6 +1286,7 @@ pub async fn create_deployment(
         ));
     }
     let service = load_service(&state, m.workspace.id, service_id).await?;
+    ensure_service_log_project_best_effort(&state, m.workspace.id, service_id).await;
     let was_stopped = service.disabled_at.is_some();
     let registry = parse_registry_kind(&service.registry_kind)?;
     let image = body.image.unwrap_or_else(|| service.image.clone());
@@ -1334,6 +1338,7 @@ pub async fn rollback_service(
 ) -> ApiResult<Json<DeployDeploymentView>> {
     m.require_owner()?;
     let service = load_service(&state, m.workspace.id, service_id).await?;
+    ensure_service_log_project_best_effort(&state, m.workspace.id, service_id).await;
     let was_stopped = service.disabled_at.is_some();
     if active_deployment_count(&state, m.workspace.id).await?
         >= state.config.deploy_max_active_deployments_per_workspace
@@ -1705,7 +1710,37 @@ pub async fn list_logs(
     Path(ServicePath { service_id, .. }): Path<ServicePath>,
     Query(q): Query<LimitQuery>,
 ) -> ApiResult<Json<Vec<DeployLogLineView>>> {
-    ensure_service(&state, m.workspace.id, service_id).await?;
+    ensure_service_log_project_best_effort(&state, m.workspace.id, service_id).await;
+    let service = load_service(&state, m.workspace.id, service_id).await?;
+    if let (Some(store), Some(project_id)) = (state.log_store.as_ref(), service.log_project_id) {
+        let rows = store
+            .search(
+                project_id,
+                &crate::http::logs::LogSearchQuery {
+                    from: None,
+                    to: None,
+                    q: None,
+                    level: None,
+                    service: None,
+                    limit: q.limit,
+                },
+            )
+            .await
+            .unwrap_or_default();
+        if !rows.is_empty() {
+            return Ok(Json(
+                rows.into_iter()
+                    .map(|row| DeployLogLineView {
+                        timestamp: row.timestamp,
+                        level: row.level,
+                        message: row.message,
+                        data: row.fields,
+                    })
+                    .collect(),
+            ));
+        }
+    }
+
     let rows = DeployLogLineView::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
@@ -1860,8 +1895,9 @@ async fn service_rows(
         DatabaseBackend::Postgres,
         r#"
         SELECT s.id, s.workspace_id, s.registry_credential_id, s.provider, s.provider_service_id,
-               s.provider_metadata, s.slug, s.name, s.image, s.registry_kind, s.internal_port, s.env,
-               s.environment, s.health_check_path, s.region, s.resource_preset, s.url,
+               s.log_project_id, s.provider_metadata, s.slug, s.name, s.image, s.registry_kind,
+               s.internal_port, s.env, s.environment, s.health_check_path, s.region,
+               s.resource_preset, s.url,
                CASE s.status
                     WHEN 0 THEN 'queued'
                     WHEN 1 THEN 'provisioning'
@@ -1909,6 +1945,131 @@ async fn load_service(
         .into_iter()
         .next()
         .ok_or_else(|| ApiError::not_found("deployment service not found"))
+}
+
+#[derive(FromQueryResult)]
+struct DeployServiceLogProjectSeed {
+    id: Uuid,
+    workspace_id: Uuid,
+    slug: String,
+    name: String,
+    log_project_id: Option<Uuid>,
+}
+
+async fn ensure_service_log_project(
+    state: &AppState,
+    workspace_id: Uuid,
+    service_id: Uuid,
+) -> ApiResult<Option<Uuid>> {
+    let Some(service) =
+        DeployServiceLogProjectSeed::find_by_statement(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT id, workspace_id, slug, name, log_project_id
+            FROM deploy_services
+            WHERE workspace_id = $1
+              AND id = $2
+              AND deleted_at IS NULL
+            LIMIT 1
+            "#,
+            [workspace_id.into(), service_id.into()],
+        ))
+        .one(&state.db)
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    if service.log_project_id.is_some() {
+        return Ok(service.log_project_id);
+    }
+
+    let project_id = service.id;
+    let project_slug = deploy_log_project_slug(&service.slug, service.id);
+    let project_name = format!("{} runtime logs", service.name);
+    let description = format!("Runtime logs for deployment service {}", service.name);
+    let now = Utc::now().fixed_offset();
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            INSERT INTO log_projects (
+                id, workspace_id, bucket_id, slug, name, description,
+                retention_days, created_at, updated_at
+            )
+            VALUES ($1, $2, NULL, $3, $4, $5, 30, $6, $6)
+            ON CONFLICT DO NOTHING
+            "#,
+            [
+                project_id.into(),
+                service.workspace_id.into(),
+                project_slug.clone().into(),
+                project_name.into(),
+                description.into(),
+                now.into(),
+            ],
+        ))
+        .await?;
+
+    let row = state
+        .db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+	            UPDATE deploy_services s
+	            SET log_project_id = p.id,
+	                updated_at = now()
+	            FROM log_projects p
+	            WHERE s.workspace_id = $1
+	              AND s.id = $2
+	              AND s.deleted_at IS NULL
+	              AND s.log_project_id IS NULL
+	              AND p.workspace_id = s.workspace_id
+	              AND p.id = s.id
+	            RETURNING s.log_project_id
+	            "#,
+            [workspace_id.into(), service_id.into()],
+        ))
+        .await?;
+
+    let linked = row.and_then(|row| row.try_get::<Uuid>("", "log_project_id").ok());
+    if let Some(log_project_id) = linked {
+        insert_event(
+            state,
+            workspace_id,
+            service_id,
+            None,
+            "info",
+            "log project linked",
+            json!({ "log_project_id": log_project_id, "slug": project_slug }),
+        )
+        .await?;
+    }
+    Ok(linked)
+}
+
+fn deploy_log_project_slug(service_slug: &str, service_id: Uuid) -> String {
+    format!(
+        "deploy-{}-{}",
+        service_slug.trim_matches('-'),
+        &service_id.simple().to_string()[..8]
+    )
+}
+
+async fn ensure_service_log_project_best_effort(
+    state: &AppState,
+    workspace_id: Uuid,
+    service_id: Uuid,
+) {
+    if let Err(error) = ensure_service_log_project(state, workspace_id, service_id).await {
+        tracing::warn!(
+            workspace_id = %workspace_id,
+            service_id = %service_id,
+            error = ?error,
+            "failed to ensure deployment service log project"
+        );
+    }
 }
 
 async fn ensure_service(state: &AppState, workspace_id: Uuid, service_id: Uuid) -> ApiResult<()> {

@@ -11,6 +11,7 @@ pub struct Model {
     pub registry_credential_id: Option<Uuid>,
     pub provider: String,
     pub provider_service_id: Option<String>,
+    pub log_project_id: Option<Uuid>,
     pub provider_metadata: Json,
     pub slug: String,
     pub name: String,

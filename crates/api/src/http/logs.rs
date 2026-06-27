@@ -14,7 +14,8 @@ use entity::{
 };
 use rand::RngCore;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait,
+    QueryFilter, QueryOrder, Statement,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -515,7 +516,11 @@ pub async fn create_project(
     .insert(&state.db)
     .await?;
 
-    Ok(Json(LogProjectView::build(project, None, LogStats24h::default())))
+    Ok(Json(LogProjectView::build(
+        project,
+        None,
+        LogStats24h::default(),
+    )))
 }
 
 pub async fn get_project(
@@ -541,6 +546,29 @@ pub async fn delete_project(
         return Err(disabled());
     }
     let project = resolve_project(&state, m.workspace.id, &project).await?;
+    let attached = state
+        .db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM deploy_services
+                WHERE workspace_id = $1
+                  AND log_project_id = $2
+                  AND deleted_at IS NULL
+            ) AS attached
+            "#,
+            [m.workspace.id.into(), project.id.into()],
+        ))
+        .await?
+        .and_then(|row| row.try_get::<bool>("", "attached").ok())
+        .unwrap_or(false);
+    if attached {
+        return Err(ApiError::conflict(
+            "log project is attached to a deployment service",
+        ));
+    }
     if let Some(store) = state.log_store.as_ref() {
         store.delete_project_events(project.id).await?;
     }

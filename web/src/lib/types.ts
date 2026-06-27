@@ -334,6 +334,7 @@ export interface DeployService {
   registry_credential_id: Uuid | null;
   provider: "fly" | string;
   provider_service_id: string | null;
+  log_project_id: Uuid | null;
   provider_metadata: unknown;
   slug: string;
   name: string;

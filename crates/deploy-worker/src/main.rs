@@ -23,6 +23,7 @@ use uuid::Uuid;
 #[derive(Clone)]
 struct Config {
     database_url: String,
+    log_database_url: Option<String>,
     deploy_secrets_key: String,
     fly_api_token: String,
     fly_org_slug: String,
@@ -72,6 +73,9 @@ struct LogTarget {
     deployment_id: Option<Uuid>,
     provider_service_id: String,
     provider_instance_id: Option<String>,
+    log_project_id: Option<Uuid>,
+    slug: String,
+    name: String,
 }
 
 #[derive(Debug, FromQueryResult)]
@@ -120,6 +124,23 @@ struct DeletedVolumeRow {
     provider_volume_id: Option<String>,
 }
 
+#[derive(Debug, FromQueryResult)]
+struct PendingLogProjectLine {
+    id: Uuid,
+    workspace_id: Uuid,
+    service_id: Uuid,
+    deployment_id: Option<Uuid>,
+    provider_instance_id: Option<String>,
+    provider_log_id: String,
+    stream: String,
+    message: String,
+    data: serde_json::Value,
+    observed_at: DateTime<FixedOffset>,
+    log_project_id: Uuid,
+    service_slug: String,
+    environment: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let _ = dotenvy::dotenv();
@@ -134,6 +155,7 @@ async fn main() -> Result<()> {
         .idle_timeout(Duration::from_secs(60))
         .sqlx_logging(false);
     let db = Database::connect(opt).await?;
+    let log_db = connect_log_db(&config).await;
     let cipher = SecretCipher::from_hex_key(&config.deploy_secrets_key)
         .map_err(|error| anyhow::anyhow!(error))?;
     let provider = FlyProvider::new(
@@ -168,7 +190,7 @@ async fn main() -> Result<()> {
         if let Err(error) = reconcile_domains(&db, &provider).await {
             tracing::warn!(error = ?error, "deployment domain reconciliation failed");
         }
-        if let Err(error) = collect_logs(&db, &provider).await {
+        if let Err(error) = collect_logs(&db, log_db.as_ref(), &provider).await {
             tracing::warn!(error = ?error, "deployment log collection failed");
         }
         if last_metric_collection.elapsed() >= Duration::from_secs(60) {
@@ -219,6 +241,8 @@ impl Config {
             parse_positive_i64_env("DEPLOY_RETENTION_DELETE_BATCH_SIZE", 5_000, 1, 100_000)?;
         Ok(Self {
             database_url,
+            log_database_url: optional_env("LOG_DATABASE_POOLED_URL")
+                .or_else(|| optional_env("LOG_DATABASE_URL")),
             deploy_secrets_key: required_env("DEPLOY_SECRETS_KEY")?,
             fly_api_token: required_env("FLY_API_TOKEN")?,
             fly_org_slug: required_env("FLY_ORG_SLUG")?,
@@ -243,6 +267,35 @@ impl Config {
                 365,
             )?,
         })
+    }
+}
+
+async fn connect_log_db(config: &Config) -> Option<DatabaseConnection> {
+    let Some(url) = config.log_database_url.as_ref() else {
+        tracing::warn!("LOG_DATABASE_URL not set; deployment log-project ingest disabled");
+        return None;
+    };
+
+    let mut opt = ConnectOptions::new(url.clone());
+    opt.max_connections(3)
+        .min_connections(0)
+        .connect_timeout(Duration::from_secs(8))
+        .acquire_timeout(Duration::from_secs(8))
+        .idle_timeout(Duration::from_secs(60))
+        .sqlx_logging(false);
+
+    match Database::connect(opt).await {
+        Ok(db) => {
+            tracing::info!("deployment log-project ingest initialized");
+            Some(db)
+        }
+        Err(error) => {
+            tracing::warn!(
+                error = ?error,
+                "failed to connect log database; deployment logs will remain in deploy_log_lines"
+            );
+            None
+        }
     }
 }
 
@@ -956,7 +1009,11 @@ async fn reconcile_domains(db: &DatabaseConnection, provider: &impl DeployProvid
     Ok(())
 }
 
-async fn collect_logs(db: &DatabaseConnection, provider: &impl DeployProvider) -> Result<()> {
+async fn collect_logs(
+    db: &DatabaseConnection,
+    log_db: Option<&DatabaseConnection>,
+    provider: &impl DeployProvider,
+) -> Result<()> {
     let targets = LogTarget::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
@@ -964,7 +1021,10 @@ async fn collect_logs(db: &DatabaseConnection, provider: &impl DeployProvider) -
                s.id AS service_id,
                d.id AS deployment_id,
                s.provider_service_id AS provider_service_id,
-               d.provider_instance_id AS provider_instance_id
+               d.provider_instance_id AS provider_instance_id,
+               s.log_project_id AS log_project_id,
+               s.slug,
+               s.name
         FROM deploy_services s
         JOIN LATERAL (
             SELECT id, provider_instance_id
@@ -995,6 +1055,7 @@ async fn collect_logs(db: &DatabaseConnection, provider: &impl DeployProvider) -
     .await?;
 
     for target in targets {
+        let log_project_id = ensure_service_log_project(db, &target).await?;
         let logs = match provider
             .logs(&LogQuery {
                 service_id: target.service_id,
@@ -1016,13 +1077,98 @@ async fn collect_logs(db: &DatabaseConnection, provider: &impl DeployProvider) -
             }
         };
         for line in logs {
-            insert_log_line(db, &target, line).await?;
+            insert_log_line(db, &target, log_project_id, line).await?;
         }
+    }
+    if let Some(log_db) = log_db {
+        flush_pending_log_project_lines(db, log_db).await?;
     }
     Ok(())
 }
 
-async fn insert_log_line(db: &DatabaseConnection, target: &LogTarget, line: LogLine) -> Result<()> {
+async fn ensure_service_log_project(
+    db: &DatabaseConnection,
+    target: &LogTarget,
+) -> Result<Option<Uuid>> {
+    if target.log_project_id.is_some() {
+        return Ok(target.log_project_id);
+    }
+
+    let project_id = target.service_id;
+    let project_slug = deploy_log_project_slug(&target.slug, target.service_id);
+    let project_name = format!("{} runtime logs", target.name);
+    let description = format!("Runtime logs for deployment service {}", target.name);
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        INSERT INTO log_projects (
+            id, workspace_id, bucket_id, slug, name, description,
+            retention_days, created_at, updated_at
+        )
+        VALUES ($1, $2, NULL, $3, $4, $5, 30, now(), now())
+        ON CONFLICT DO NOTHING
+        "#,
+        [
+            project_id.into(),
+            target.workspace_id.into(),
+            project_slug.clone().into(),
+            project_name.into(),
+            description.into(),
+        ],
+    ))
+    .await?;
+
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+	            UPDATE deploy_services s
+	            SET log_project_id = p.id,
+	                updated_at = now()
+	            FROM log_projects p
+	            WHERE s.workspace_id = $1
+	              AND s.id = $2
+	              AND s.deleted_at IS NULL
+	              AND s.log_project_id IS NULL
+	              AND p.workspace_id = s.workspace_id
+	              AND p.id = s.id
+	            RETURNING s.log_project_id
+	            "#,
+            [target.workspace_id.into(), target.service_id.into()],
+        ))
+        .await?;
+
+    let linked = row.and_then(|row| row.try_get::<Uuid>("", "log_project_id").ok());
+    if let Some(log_project_id) = linked {
+        insert_event(
+            db,
+            target.workspace_id,
+            target.service_id,
+            None,
+            "info",
+            "log project linked",
+            json!({ "log_project_id": log_project_id, "slug": project_slug }),
+        )
+        .await?;
+    }
+    Ok(linked)
+}
+
+fn deploy_log_project_slug(service_slug: &str, service_id: Uuid) -> String {
+    format!(
+        "deploy-{}-{}",
+        service_slug.trim_matches('-'),
+        &service_id.simple().to_string()[..8]
+    )
+}
+
+async fn insert_log_line(
+    db: &DatabaseConnection,
+    target: &LogTarget,
+    log_project_id: Option<Uuid>,
+    line: LogLine,
+) -> Result<()> {
     let provider_log_id = line
         .source_id
         .clone()
@@ -1036,10 +1182,11 @@ async fn insert_log_line(db: &DatabaseConnection, target: &LogTarget, line: LogL
         r#"
         INSERT INTO deploy_log_lines (
             id, workspace_id, service_id, deployment_id, provider_instance_id,
-            provider_log_id, stream, message, data, observed_at, created_at
+            provider_log_id, stream, message, data, observed_at, log_project_id, created_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
-        ON CONFLICT (service_id, provider_log_id) DO NOTHING
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+        ON CONFLICT (service_id, provider_log_id)
+        DO UPDATE SET log_project_id = COALESCE(deploy_log_lines.log_project_id, EXCLUDED.log_project_id)
         "#,
         [
             Uuid::now_v7().into(),
@@ -1052,10 +1199,135 @@ async fn insert_log_line(db: &DatabaseConnection, target: &LogTarget, line: LogL
             line.message.into(),
             line.metadata.into(),
             line.timestamp.into(),
+            log_project_id.into(),
         ],
     ))
     .await?;
     Ok(())
+}
+
+async fn flush_pending_log_project_lines(
+    db: &DatabaseConnection,
+    log_db: &DatabaseConnection,
+) -> Result<()> {
+    let rows = PendingLogProjectLine::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT l.id,
+               l.workspace_id,
+               l.service_id,
+               l.deployment_id,
+               l.provider_instance_id,
+               l.provider_log_id,
+               l.stream,
+               l.message,
+               l.data,
+               l.observed_at,
+               l.log_project_id AS log_project_id,
+               s.slug AS service_slug,
+               s.environment
+        FROM deploy_log_lines l
+        INNER JOIN deploy_services s
+            ON s.workspace_id = l.workspace_id AND s.id = l.service_id
+        WHERE l.log_project_id IS NOT NULL
+          AND l.log_project_ingested_at IS NULL
+        ORDER BY l.observed_at ASC
+        LIMIT 200
+        "#,
+        [],
+    ))
+    .all(db)
+    .await?;
+
+    for row in rows {
+        if let Err(error) = insert_log_project_event(log_db, &row).await {
+            tracing::warn!(
+                log_line_id = %row.id,
+                service_id = %row.service_id,
+                error = ?error,
+                "failed to ingest deployment log line into log project"
+            );
+            continue;
+        }
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_log_lines
+            SET log_project_ingested_at = now()
+            WHERE id = $1
+              AND log_project_ingested_at IS NULL
+            "#,
+            [row.id.into()],
+        ))
+        .await?;
+    }
+    Ok(())
+}
+
+async fn insert_log_project_event(
+    log_db: &DatabaseConnection,
+    row: &PendingLogProjectLine,
+) -> Result<()> {
+    let level = deploy_log_level(&row.stream, &row.data);
+    let fields = deploy_log_fields(row);
+    log_db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            INSERT INTO log_events (
+                time, received_at, project_id, workspace_id, event_id,
+                level, message, service, environment, operation,
+                request_id, trace_id, source, fields
+            )
+            VALUES ($1, now(), $2, $3, $4, $5, $6, $7, $8, NULL, NULL, NULL, $9, $10)
+            "#,
+            [
+                row.observed_at.into(),
+                row.log_project_id.into(),
+                row.workspace_id.into(),
+                format!("deploy:{}:{}", row.service_id, row.provider_log_id).into(),
+                level.into(),
+                row.message.clone().into(),
+                row.service_slug.clone().into(),
+                row.environment.clone().into(),
+                "deploy.fly".into(),
+                fields.into(),
+            ],
+        ))
+        .await?;
+    Ok(())
+}
+
+fn deploy_log_level(stream: &str, data: &serde_json::Value) -> String {
+    if stream == "stderr" {
+        return "error".to_owned();
+    }
+    data.get("level")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(stream)
+        .to_owned()
+}
+
+fn deploy_log_fields(row: &PendingLogProjectLine) -> serde_json::Value {
+    let mut fields = match row.data.clone() {
+        serde_json::Value::Object(map) => map,
+        value => {
+            let mut map = serde_json::Map::new();
+            map.insert("provider_data".to_owned(), value);
+            map
+        }
+    };
+    fields.insert("stream".to_owned(), json!(row.stream));
+    fields.insert("deployment_id".to_owned(), json!(row.deployment_id));
+    fields.insert(
+        "provider_instance_id".to_owned(),
+        json!(row.provider_instance_id),
+    );
+    fields.insert("provider_log_id".to_owned(), json!(row.provider_log_id));
+    fields.insert("deploy_service_id".to_owned(), json!(row.service_id));
+    serde_json::Value::Object(fields)
 }
 
 async fn collect_metrics(db: &DatabaseConnection, provider: &impl DeployProvider) -> Result<()> {
