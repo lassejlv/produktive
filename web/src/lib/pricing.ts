@@ -230,18 +230,72 @@ export interface DeployPricingRow {
   name: string;
   /** Metered rate, e.g. `$10.01 per GB-month`. */
   rateText: string;
+  /** Monthly dollar rate per allocated unit (GB or vCPU). */
+  unitAmount: number;
 }
 
-/**
- * Cloud resource meters are usage-based and identical across paid plans, so
- * they render as one shared "pay as you go" panel rather than per-plan bullets.
- * Pulls the rate from the first plan that prices each meter.
- */
-export function deployPricingRows(
-  plans: PublicPricingPlan[],
-  catalog: PublicPricingFeature[],
-): DeployPricingRow[] {
-  const nameById = new Map(catalog.map((f) => [f.id, f.name ?? f.id]));
+/** Per-unit labels for the public pricing calculator inputs. */
+export const DEPLOY_METER_UNITS: Record<(typeof DEPLOY_FEATURE_IDS)[number], string> = {
+  deploy_memory: "GB",
+  deploy_cpu: "vCPU",
+  deploy_volume: "GB",
+  object_storage: "GB",
+};
+
+/** Matches `SANDBOX_USAGE_MULTIPLIER` in `crates/api/src/billing/deploy_usage.rs`. */
+export const SANDBOX_USAGE_MULTIPLIER = 1.3;
+
+/** Deploy meters that sandboxes bill through, at a premium multiplier. */
+export const SANDBOX_METER_IDS = ["deploy_memory", "deploy_cpu", "deploy_volume"] as const;
+
+export interface CloudUsageCalculatorDefaults {
+  memoryGb: number;
+  cpuVcpu: number;
+  volumeGb: number;
+  objectStorageGb: number;
+  sandboxMemoryGb: number;
+  sandboxCpuVcpu: number;
+  sandboxVolumeGb: number;
+}
+
+/** Sensible starting values for the public cloud usage calculator. */
+export const CLOUD_USAGE_CALCULATOR_DEFAULTS: CloudUsageCalculatorDefaults = {
+  memoryGb: 1,
+  cpuVcpu: 0.5,
+  volumeGb: 1,
+  objectStorageGb: 10,
+  sandboxMemoryGb: 0.5,
+  sandboxCpuVcpu: 0.25,
+  sandboxVolumeGb: 1,
+};
+
+export type CloudUsageSection = "deployment" | "sandbox";
+
+export interface CloudUsageEstimateLine {
+  section: CloudUsageSection;
+  featureId: (typeof DEPLOY_FEATURE_IDS)[number];
+  label: string;
+  quantity: number;
+  unit: string;
+  rateText: string;
+  unitAmount: number;
+  cost: number;
+}
+
+export interface CloudUsageEstimateSection {
+  title: string;
+  note?: string;
+  lines: CloudUsageEstimateLine[];
+  total: number;
+}
+
+export interface CloudUsageEstimate {
+  deployment: CloudUsageEstimateSection;
+  sandbox: CloudUsageEstimateSection;
+  total: number;
+}
+
+function deployMeterFeaturesById(plans: PublicPricingPlan[]): Map<string, PublicPlanFeature> {
   const byFeature = new Map<string, PublicPlanFeature>();
 
   for (const plan of plans) {
@@ -255,15 +309,156 @@ export function deployPricingRows(
     }
   }
 
+  return byFeature;
+}
+
+/**
+ * Cloud resource meters are usage-based and identical across paid plans, so
+ * they render as one shared "pay as you go" panel rather than per-plan bullets.
+ * Pulls the rate from the first plan that prices each meter.
+ */
+export function deployPricingRows(
+  plans: PublicPricingPlan[],
+  catalog: PublicPricingFeature[],
+): DeployPricingRow[] {
+  const nameById = new Map(catalog.map((f) => [f.id, f.name ?? f.id]));
+  const byFeature = deployMeterFeaturesById(plans);
+
   return DEPLOY_FEATURE_IDS.flatMap((id) => {
     const feature = byFeature.get(id);
     if (!feature) return [];
+    const unitAmount = feature.usage_price?.unit_amount;
+    if (unitAmount == null) return [];
     return [
       {
         featureId: id,
         name: nameById.get(id) ?? feature.name ?? id,
         rateText: (feature.primary_text ?? "").replace(/^then\s+/i, ""),
+        unitAmount,
       },
     ];
   });
+}
+
+/** Estimate monthly cloud usage from allocated resources and public meter rates. */
+export function estimateCloudUsageCost(
+  rows: DeployPricingRow[],
+  input: CloudUsageCalculatorDefaults,
+): CloudUsageEstimate | null {
+  if (rows.length === 0) return null;
+
+  const rowByFeature = new Map(rows.map((row) => [row.featureId, row]));
+
+  const deploymentQuantities: Record<(typeof DEPLOY_FEATURE_IDS)[number], number> = {
+    deploy_memory: input.memoryGb,
+    deploy_cpu: input.cpuVcpu,
+    deploy_volume: input.volumeGb,
+    object_storage: input.objectStorageGb,
+  };
+
+  const sandboxQuantities: Record<(typeof SANDBOX_METER_IDS)[number], number> = {
+    deploy_memory: input.sandboxMemoryGb,
+    deploy_cpu: input.sandboxCpuVcpu,
+    deploy_volume: input.sandboxVolumeGb,
+  };
+
+  const deploymentLines = DEPLOY_FEATURE_IDS.flatMap((featureId) => {
+    const row = rowByFeature.get(featureId);
+    if (!row) return [];
+    const quantity = Math.max(0, deploymentQuantities[featureId] ?? 0);
+    return [buildEstimateLine("deployment", featureId, row, quantity, row.unitAmount)];
+  });
+
+  const sandboxLines = SANDBOX_METER_IDS.flatMap((featureId) => {
+    const row = rowByFeature.get(featureId);
+    if (!row) return [];
+    const quantity = Math.max(0, sandboxQuantities[featureId] ?? 0);
+    const unitAmount = row.unitAmount * SANDBOX_USAGE_MULTIPLIER;
+    return [
+      buildEstimateLine(
+        "sandbox",
+        featureId,
+        row,
+        quantity,
+        unitAmount,
+        sandboxRateText(featureId, row.unitAmount),
+        sandboxLineLabel(featureId),
+      ),
+    ];
+  });
+
+  const deploymentTotal = deploymentLines.reduce((sum, line) => sum + line.cost, 0);
+  const sandboxTotal = sandboxLines.reduce((sum, line) => sum + line.cost, 0);
+
+  return {
+    deployment: {
+      title: "Deployments",
+      lines: deploymentLines,
+      total: deploymentTotal,
+    },
+    sandbox: {
+      title: "Sandboxes",
+      note: "Billed at 30% above deployment rates for memory, CPU, and disk.",
+      lines: sandboxLines,
+      total: sandboxTotal,
+    },
+    total: deploymentTotal + sandboxTotal,
+  };
+}
+
+function buildEstimateLine(
+  section: CloudUsageSection,
+  featureId: (typeof DEPLOY_FEATURE_IDS)[number],
+  row: DeployPricingRow,
+  quantity: number,
+  unitAmount: number,
+  rateText = row.rateText,
+  label = row.name,
+): CloudUsageEstimateLine {
+  return {
+    section,
+    featureId,
+    label,
+    quantity,
+    unit: DEPLOY_METER_UNITS[featureId],
+    rateText,
+    unitAmount,
+    cost: quantity * unitAmount,
+  };
+}
+
+function sandboxLineLabel(featureId: (typeof SANDBOX_METER_IDS)[number]): string {
+  switch (featureId) {
+    case "deploy_memory":
+      return "Sandbox memory";
+    case "deploy_cpu":
+      return "Sandbox CPU";
+    case "deploy_volume":
+      return "Sandbox disk";
+  }
+}
+
+export function sandboxRateText(
+  featureId: (typeof SANDBOX_METER_IDS)[number],
+  baseUnitAmount: number,
+): string {
+  return `${formatResourceRateText(featureId, baseUnitAmount * SANDBOX_USAGE_MULTIPLIER)} · 30% premium`;
+}
+
+function formatResourceRateText(
+  featureId: (typeof SANDBOX_METER_IDS)[number],
+  unitAmount: number,
+): string {
+  const amount = formatRateAmount(unitAmount);
+  if (featureId === "deploy_cpu") {
+    return `$${amount} per vCPU-month`;
+  }
+  return `$${amount} per GB-month`;
+}
+
+function formatRateAmount(value: number): string {
+  return new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value);
 }
