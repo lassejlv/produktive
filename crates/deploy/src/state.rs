@@ -15,6 +15,8 @@ pub enum DeploymentStatus {
     RollingBack,
     RolledBack,
     Stopped,
+    Building,
+    BuildFailed,
 }
 
 impl DeploymentStatus {
@@ -30,6 +32,8 @@ impl DeploymentStatus {
             Self::RollingBack => "rolling_back",
             Self::RolledBack => "rolled_back",
             Self::Stopped => "stopped",
+            Self::Building => "building",
+            Self::BuildFailed => "build_failed",
         }
     }
 
@@ -45,6 +49,8 @@ impl DeploymentStatus {
             Self::RollingBack => 7,
             Self::RolledBack => 8,
             Self::Stopped => 9,
+            Self::Building => 10,
+            Self::BuildFailed => 11,
         }
     }
 
@@ -60,6 +66,8 @@ impl DeploymentStatus {
             7 => Ok(Self::RollingBack),
             8 => Ok(Self::RolledBack),
             9 => Ok(Self::Stopped),
+            10 => Ok(Self::Building),
+            11 => Ok(Self::BuildFailed),
             _ => Err(DeployError::Validation(format!(
                 "unknown deployment status code {code}"
             ))),
@@ -102,6 +110,8 @@ mod tests {
             DeploymentStatus::RollingBack,
             DeploymentStatus::RolledBack,
             DeploymentStatus::Stopped,
+            DeploymentStatus::Building,
+            DeploymentStatus::BuildFailed,
         ] {
             assert_eq!(DeploymentStatus::from_code(status.code()).unwrap(), status);
         }

@@ -41,6 +41,52 @@ impl RegistryKind {
     }
 }
 
+/// How a service's runnable image is obtained.
+///
+/// `Image` is the original path: the user supplies a pre-built image reference.
+/// `Git` is the build path: the user supplies a source repository that is built
+/// into an image before deployment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceKind {
+    Image,
+    Git,
+}
+
+impl SourceKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Image => "image",
+            Self::Git => "git",
+        }
+    }
+
+    pub fn parse(value: &str) -> DeployResult<Self> {
+        match value.trim() {
+            "image" => Ok(Self::Image),
+            "git" => Ok(Self::Git),
+            _ => Err(DeployError::Validation(
+                "source_kind must be image or git".into(),
+            )),
+        }
+    }
+}
+
+/// A buildable source. For v1 only public GitHub repositories are supported.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceSpec {
+    pub kind: SourceKind,
+    /// Canonical `https://github.com/owner/repo` URL.
+    pub repo_url: String,
+    /// Branch, tag, or commit SHA. `None` builds the repository's default branch.
+    pub git_ref: Option<String>,
+    /// Path to the Dockerfile relative to `root_dir`. `None` triggers Dockerfile
+    /// auto-detection, falling back to Railpack when absent.
+    pub dockerfile_path: Option<String>,
+    /// Build context subdirectory relative to the repo root. `None` uses the root.
+    pub root_dir: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResourcePreset {
@@ -160,6 +206,7 @@ pub struct DeploymentConfigSnapshot {
 }
 
 impl DeploymentConfigSnapshot {
+    #[allow(clippy::too_many_arguments)]
     pub fn to_deployment_spec(
         &self,
         workspace_id: Uuid,
@@ -197,6 +244,50 @@ impl DeploymentConfigSnapshot {
             secrets,
         })
     }
+}
+
+/// Which builder produced (or will produce) the image for a git source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BuildEngine {
+    Dockerfile,
+    Railpack,
+}
+
+impl BuildEngine {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Dockerfile => "dockerfile",
+            Self::Railpack => "railpack",
+        }
+    }
+}
+
+/// Input to a [`crate::BuildProvider`]: a source to build and the registry image
+/// name to push the result to.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildSpec {
+    pub workspace_id: Uuid,
+    pub service_id: Uuid,
+    pub deployment_id: Uuid,
+    pub source: SourceSpec,
+    /// Fully-qualified target image repository (without a tag), e.g.
+    /// `registry.fly.io/<app>`. The provider appends the resolved tag.
+    pub image_repository: String,
+}
+
+/// Result of a successful build: the pushed image plus build provenance that the
+/// worker writes back onto the deployment row.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildOutcome {
+    /// The pushed image reference (repository + tag) the deploy step consumes.
+    pub image_ref: String,
+    /// Digest of the pushed image, if the builder reports one.
+    pub digest: Option<String>,
+    /// Commit SHA that was built, if resolved during clone.
+    pub commit_sha: Option<String>,
+    /// Which builder produced the image.
+    pub build_engine: BuildEngine,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -420,6 +511,71 @@ pub fn validate_image_for_registry(kind: RegistryKind, image: &str) -> DeployRes
     }
 }
 
+/// Validate a build source URL for v1: only public `https://github.com/owner/repo`
+/// is accepted. Rejects SSH/`git@` forms, credentials-in-URL, non-`github.com`
+/// hosts (including `*.github.com` and Enterprise), and malformed owner/repo paths.
+/// Returns the normalized `https://github.com/owner/repo` URL (no `.git`, no trailing slash).
+pub fn validate_public_github_url(url: &str) -> DeployResult<String> {
+    let raw = url.trim();
+    if raw.is_empty() || raw.len() > 256 || raw.contains(char::is_whitespace) {
+        return Err(DeployError::Validation(
+            "repository URL is required and must be a single https://github.com/... URL".into(),
+        ));
+    }
+
+    let rest = raw.strip_prefix("https://").ok_or_else(|| {
+        DeployError::Validation("repository URL must start with https:// (SSH is not supported)".into())
+    })?;
+
+    // Reject credentials-in-URL (user:pass@host) and any userinfo component.
+    let (host_and_path, _) = match rest.split_once('/') {
+        Some((host, path)) => ((host, path), ()),
+        None => {
+            return Err(DeployError::Validation(
+                "repository URL must be https://github.com/owner/repo".into(),
+            ))
+        }
+    };
+    let (host, path) = host_and_path;
+    if host.contains('@') || host.contains(':') {
+        return Err(DeployError::Validation(
+            "repository host must be exactly github.com with no credentials or port".into(),
+        ));
+    }
+    if !host.eq_ignore_ascii_case("github.com") {
+        return Err(DeployError::Validation(
+            "only public github.com repositories are supported".into(),
+        ));
+    }
+
+    // Strip query/fragment, an optional trailing `.git`, and a trailing slash.
+    let path = path.split(['?', '#']).next().unwrap_or(path);
+    let path = path.trim_end_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+
+    let mut segments = path.split('/');
+    let owner = segments.next().unwrap_or("");
+    let repo = segments.next().unwrap_or("");
+    if owner.is_empty() || repo.is_empty() || segments.next().is_some() {
+        return Err(DeployError::Validation(
+            "repository URL must be https://github.com/owner/repo".into(),
+        ));
+    }
+    let valid_segment = |s: &str| {
+        !s.is_empty()
+            && s.len() <= 100
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    };
+    if !valid_segment(owner) || !valid_segment(repo) {
+        return Err(DeployError::Validation(
+            "repository owner and name may only contain letters, numbers, '-', '_', and '.'".into(),
+        ));
+    }
+
+    Ok(format!("https://github.com/{owner}/{repo}"))
+}
+
 pub fn validate_env_name(name: &str) -> DeployResult<()> {
     let mut chars = name.chars();
     let Some(first) = chars.next() else {
@@ -497,6 +653,49 @@ mod tests {
     }
 
     #[test]
+    fn accepts_and_normalizes_public_github_urls() {
+        assert_eq!(
+            validate_public_github_url("https://github.com/owner/repo").unwrap(),
+            "https://github.com/owner/repo"
+        );
+        // .git suffix, trailing slash, query string all normalize away.
+        assert_eq!(
+            validate_public_github_url("https://github.com/owner/repo.git/").unwrap(),
+            "https://github.com/owner/repo"
+        );
+        assert_eq!(
+            validate_public_github_url("https://github.com/owner/repo?ref=main").unwrap(),
+            "https://github.com/owner/repo"
+        );
+    }
+
+    #[test]
+    fn rejects_non_public_github_urls() {
+        // SSH / git@ form
+        assert!(validate_public_github_url("git@github.com:owner/repo.git").is_err());
+        // credentials in URL
+        assert!(validate_public_github_url("https://user:pass@github.com/owner/repo").is_err());
+        // non-github host
+        assert!(validate_public_github_url("https://gitlab.com/owner/repo").is_err());
+        // GitHub Enterprise / subdomain
+        assert!(validate_public_github_url("https://ghe.github.com/owner/repo").is_err());
+        // missing repo segment
+        assert!(validate_public_github_url("https://github.com/owner").is_err());
+        // extra path segments
+        assert!(validate_public_github_url("https://github.com/owner/repo/tree/main").is_err());
+        // plain http
+        assert!(validate_public_github_url("http://github.com/owner/repo").is_err());
+    }
+
+    #[test]
+    fn source_kind_round_trips() {
+        for kind in [SourceKind::Image, SourceKind::Git] {
+            assert_eq!(SourceKind::parse(kind.as_str()).unwrap(), kind);
+        }
+        assert!(SourceKind::parse("bogus").is_err());
+    }
+
+    #[test]
     fn deployment_config_snapshot_decrypts_secrets_into_spec() {
         let cipher =
             crate::SecretCipher::from_hex_key(&"11".repeat(32)).expect("valid test cipher");
@@ -512,6 +711,7 @@ mod tests {
             health_check_path: "/health".into(),
             region: "fra".into(),
             resource_preset: ResourcePreset::PreviewSmall,
+            machine_count: 1,
             volumes: Vec::new(),
             env: BTreeMap::from([("PUBLIC".into(), "value".into())]),
             encrypted_secrets: BTreeMap::from([("TOKEN".into(), encrypted)]),
@@ -523,6 +723,7 @@ mod tests {
                 service_id,
                 deployment_id,
                 Some("machine-1".into()),
+                Vec::new(),
                 "ghcr.io/acme/api:latest".into(),
                 Some("sha256:abc".into()),
                 &cipher,

@@ -11,8 +11,9 @@ use chrono::{DateTime, FixedOffset, Utc};
 use deploy::{
     catalog_from_fly, static_allowed_regions, validate_allowed_region, validate_env_name,
     validate_health_path, validate_image_for_registry, validate_internal_port,
-    validate_machine_count, validate_volume_mount_path, validate_volume_name,
-    validate_volume_size_gb, DeployRegion, DeploymentConfigSnapshot, DeploymentStatus,
+    validate_machine_count, validate_public_github_url, validate_volume_mount_path,
+    validate_volume_name, validate_volume_size_gb, DeployRegion, DeploymentConfigSnapshot,
+    DeploymentStatus,
     RegistryKind, ResourcePreset, SecretCipher, VolumeSpec, DEFAULT_DEPLOY_REGION,
     DEFAULT_MACHINE_COUNT,
 };
@@ -148,6 +149,11 @@ pub struct DeployServiceView {
     pub name: String,
     pub image: String,
     pub registry_kind: String,
+    pub source_kind: String,
+    pub repo_url: Option<String>,
+    pub git_ref: Option<String>,
+    pub dockerfile_path: Option<String>,
+    pub root_dir: Option<String>,
     pub internal_port: i32,
     #[schema(value_type = Object)]
     pub env: Value,
@@ -178,6 +184,8 @@ pub struct DeployDeploymentView {
     pub service_id: Uuid,
     pub image: String,
     pub image_digest: Option<String>,
+    pub commit_sha: Option<String>,
+    pub build_provider: Option<String>,
     pub status: String,
     pub provider: String,
     pub provider_deployment_id: Option<String>,
@@ -286,8 +294,27 @@ pub struct CreateRegistryCredentialBody {
 #[derive(Deserialize, ToSchema)]
 pub struct CreateServiceBody {
     pub name: String,
-    pub image: String,
-    pub registry_kind: String,
+    /// Pre-built image reference (image source). Required unless `source_kind` is `git`.
+    #[serde(default)]
+    pub image: Option<String>,
+    /// Registry of `image` (image source only).
+    #[serde(default)]
+    pub registry_kind: Option<String>,
+    /// `image` (default) or `git` to build a public GitHub repo into an image.
+    #[serde(default)]
+    pub source_kind: Option<String>,
+    /// Public `https://github.com/owner/repo` URL (git source only).
+    #[serde(default)]
+    pub git_url: Option<String>,
+    /// Branch, tag, or commit to build (git source). Defaults to the default branch.
+    #[serde(default)]
+    pub git_ref: Option<String>,
+    /// Path to the Dockerfile relative to `root_dir` (git source). Auto-detected if absent.
+    #[serde(default)]
+    pub dockerfile_path: Option<String>,
+    /// Build context subdirectory relative to the repo root (git source).
+    #[serde(default)]
+    pub root_dir: Option<String>,
     #[serde(default)]
     pub registry_credential_id: Option<Uuid>,
     pub internal_port: u16,
@@ -598,8 +625,50 @@ pub async fn create_service(
         ));
     }
 
-    let registry = parse_registry_kind(&body.registry_kind)?;
-    validate_image_for_registry(registry, body.image.trim()).map_err(deploy_error)?;
+    let source_kind = body
+        .source_kind
+        .as_deref()
+        .map(str::trim)
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_else(|| "image".into());
+    let (image_value, registry_value, repo_url, source_git_ref, dockerfile_path, root_dir) =
+        match source_kind.as_str() {
+            "image" => {
+                let image = body
+                    .image
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| ApiError::bad_request("image is required for an image source"))?
+                    .to_owned();
+                let registry = parse_registry_kind(body.registry_kind.as_deref().unwrap_or("ghcr"))?;
+                validate_image_for_registry(registry, &image).map_err(deploy_error)?;
+                (image, registry.as_str().to_owned(), None, None, None, None)
+            }
+            "git" => {
+                let git_url = body
+                    .git_url
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| ApiError::bad_request("git_url is required for a git source"))?;
+                let repo_url = validate_public_github_url(git_url).map_err(deploy_error)?;
+                (
+                    // Placeholder; the build overwrites deployments.image before deploy.
+                    "pending-build".to_owned(),
+                    "ghcr".to_owned(),
+                    Some(repo_url),
+                    validate_git_ref_opt(body.git_ref.as_deref())?,
+                    validate_subpath_opt(body.dockerfile_path.as_deref())?,
+                    validate_subpath_opt(body.root_dir.as_deref())?,
+                )
+            }
+            other => {
+                return Err(ApiError::bad_request(format!(
+                    "source_kind must be image or git (got '{other}')"
+                )))
+            }
+        };
     validate_internal_port(body.internal_port).map_err(deploy_error)?;
     let health_check_path = body.health_check_path.unwrap_or_else(|| "/".into());
     validate_health_path(&health_check_path).map_err(deploy_error)?;
@@ -643,10 +712,11 @@ pub async fn create_service(
             r#"
             INSERT INTO deploy_services (
                 id, workspace_id, registry_credential_id, provider, provider_metadata,
-                slug, name, image, registry_kind, internal_port, env, environment,
+                slug, name, image, registry_kind, source_kind, repo_url, git_ref,
+                dockerfile_path, root_dir, internal_port, env, environment,
                 health_check_path, region, resource_preset, machine_count, status, created_by, created_at, updated_at
             )
-            VALUES ($1, $2, $3, 'fly', '{}', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $17)
+            VALUES ($1, $2, $3, 'fly', '{}', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $22)
             "#,
             [
                 id.into(),
@@ -654,8 +724,13 @@ pub async fn create_service(
                 body.registry_credential_id.into(),
                 slug.into(),
                 name.into(),
-                body.image.trim().to_owned().into(),
-                registry.as_str().into(),
+                image_value.clone().into(),
+                registry_value.into(),
+                source_kind.clone().into(),
+                repo_url.clone().into(),
+                source_git_ref.clone().into(),
+                dockerfile_path.into(),
+                root_dir.into(),
                 i32::from(body.internal_port).into(),
                 json!(body.env).into(),
                 environment.into(),
@@ -691,6 +766,27 @@ pub async fn create_service(
         json!({}),
     )
     .await?;
+
+    // A git source builds immediately on create: enqueue a Building deployment the
+    // worker will pick up. An image source waits for an explicit deploy. The service
+    // row is already committed, so if the enqueue fails we soft-delete it rather than
+    // leave an orphaned git service that counts against the limit and can never deploy.
+    if source_kind == "git" {
+        if let Err(error) = enqueue_initial_git_build(
+            &state,
+            m.workspace.id,
+            id,
+            auth.user.id,
+            image_value,
+            repo_url,
+            source_git_ref,
+        )
+        .await
+        {
+            soft_delete_service_best_effort(&state, m.workspace.id, id).await;
+            return Err(error);
+        }
+    }
 
     load_service(&state, m.workspace.id, id).await.map(Json)
 }
@@ -1348,9 +1444,26 @@ pub async fn create_deployment(
     let service = load_service(&state, m.workspace.id, service_id).await?;
     ensure_service_log_project_best_effort(&state, m.workspace.id, service_id).await;
     let was_stopped = service.disabled_at.is_some();
-    let registry = parse_registry_kind(&service.registry_kind)?;
-    let image = body.image.unwrap_or_else(|| service.image.clone());
-    validate_image_for_registry(registry, &image).map_err(deploy_error)?;
+    let is_git = service.source_kind == "git";
+    // A git service re-builds from source: enqueue Building with a placeholder image
+    // the build overwrites. An image service deploys the given/current image directly.
+    let (image, image_digest, status, source_repo_url, source_git_ref) = if is_git {
+        let repo_url = service.repo_url.clone().ok_or_else(|| {
+            ApiError::bad_request("git service is missing a repository URL")
+        })?;
+        (
+            "pending-build".to_owned(),
+            None,
+            DeploymentStatus::Building,
+            Some(repo_url),
+            service.git_ref.clone(),
+        )
+    } else {
+        let registry = parse_registry_kind(&service.registry_kind)?;
+        let image = body.image.unwrap_or_else(|| service.image.clone());
+        validate_image_for_registry(registry, &image).map_err(deploy_error)?;
+        (image, body.image_digest, DeploymentStatus::Queued, None, None)
+    };
     let config_snapshot = deployment_config_snapshot(&state, &service).await?;
 
     let deployment = insert_deployment(
@@ -1359,9 +1472,12 @@ pub async fn create_deployment(
         service_id,
         auth.user.id,
         image,
-        body.image_digest,
+        image_digest,
         config_snapshot,
-        "deployment queued",
+        if is_git { "build queued" } else { "deployment queued" },
+        status,
+        source_repo_url,
+        source_git_ref,
     )
     .await?;
     clear_service_logs(&state, m.workspace.id, service_id).await?;
@@ -1410,7 +1526,7 @@ pub async fn rollback_service(
     let previous = DeployDeploymentView::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
-        SELECT id, workspace_id, service_id, image, image_digest,
+        SELECT id, workspace_id, service_id, image, image_digest, commit_sha, build_provider,
                CASE status
                     WHEN 0 THEN 'queued'
                     WHEN 1 THEN 'provisioning'
@@ -1422,6 +1538,8 @@ pub async fn rollback_service(
                     WHEN 7 THEN 'rolling_back'
                     WHEN 8 THEN 'rolled_back'
                     WHEN 9 THEN 'stopped'
+                    WHEN 10 THEN 'building'
+                    WHEN 11 THEN 'build_failed'
                     ELSE 'unknown'
                END AS status,
                provider, provider_deployment_id, provider_instance_id, provider_metadata,
@@ -1442,6 +1560,8 @@ pub async fn rollback_service(
     .await?;
     let previous = previous.ok_or_else(|| ApiError::conflict("no previous live deployment"))?;
     let config_snapshot = deployment_config_snapshot(&state, &service).await?;
+    // Rollback re-deploys an already-built image; never rebuilds, even for a git
+    // service. So it enqueues at Queued with no source provenance.
     let deployment = insert_deployment(
         &state,
         m.workspace.id,
@@ -1451,6 +1571,9 @@ pub async fn rollback_service(
         previous.image_digest,
         config_snapshot,
         "rollback queued",
+        DeploymentStatus::Queued,
+        None,
+        None,
     )
     .await?;
     clear_service_logs(&state, m.workspace.id, service_id).await?;
@@ -1956,6 +2079,7 @@ async fn service_rows(
         r#"
         SELECT s.id, s.workspace_id, s.registry_credential_id, s.provider, s.provider_service_id,
                s.log_project_id, s.provider_metadata, s.slug, s.name, s.image, s.registry_kind,
+               s.source_kind, s.repo_url, s.git_ref, s.dockerfile_path, s.root_dir,
                s.internal_port, s.env, s.environment, s.health_check_path, s.region,
                s.resource_preset, s.machine_count, s.url,
                CASE s.status
@@ -1969,6 +2093,8 @@ async fn service_rows(
                     WHEN 7 THEN 'rolling_back'
                     WHEN 8 THEN 'rolled_back'
                     WHEN 9 THEN 'stopped'
+                    WHEN 10 THEN 'building'
+                    WHEN 11 THEN 'build_failed'
                     ELSE 'unknown'
                END AS status,
                s.canvas_x, s.canvas_y,
@@ -2225,7 +2351,7 @@ async fn deployment_rows(
     let rows = DeployDeploymentView::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
-        SELECT id, workspace_id, service_id, image, image_digest,
+        SELECT id, workspace_id, service_id, image, image_digest, commit_sha, build_provider,
                CASE status
                     WHEN 0 THEN 'queued'
                     WHEN 1 THEN 'provisioning'
@@ -2237,6 +2363,8 @@ async fn deployment_rows(
                     WHEN 7 THEN 'rolling_back'
                     WHEN 8 THEN 'rolled_back'
                     WHEN 9 THEN 'stopped'
+                    WHEN 10 THEN 'building'
+                    WHEN 11 THEN 'build_failed'
                     ELSE 'unknown'
                END AS status,
                provider, provider_deployment_id, provider_instance_id, provider_metadata,
@@ -2347,6 +2475,64 @@ async fn clear_service_logs(
     Ok(())
 }
 
+/// Enqueue the first build for a freshly-created git service (a `Building`
+/// deployment the worker will pick up). Fallible so the caller can roll back the
+/// service if this fails.
+#[allow(clippy::too_many_arguments)]
+async fn enqueue_initial_git_build(
+    state: &AppState,
+    workspace_id: Uuid,
+    service_id: Uuid,
+    user_id: Uuid,
+    image: String,
+    repo_url: Option<String>,
+    git_ref: Option<String>,
+) -> ApiResult<()> {
+    let service = load_service(state, workspace_id, service_id).await?;
+    let config_snapshot = deployment_config_snapshot(state, &service).await?;
+    insert_deployment(
+        state,
+        workspace_id,
+        service_id,
+        user_id,
+        image,
+        None,
+        config_snapshot,
+        "build queued",
+        DeploymentStatus::Building,
+        repo_url,
+        git_ref,
+    )
+    .await?;
+    mark_service_queued_for_deployment(state, workspace_id, service_id, false).await
+}
+
+/// Soft-delete a service, best effort (used to roll back a partially-created service).
+async fn soft_delete_service_best_effort(state: &AppState, workspace_id: Uuid, service_id: Uuid) {
+    let now = Utc::now().fixed_offset();
+    let _ = state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_services
+            SET status = $3,
+                disabled_at = COALESCE(disabled_at, $4),
+                deleted_at = COALESCE(deleted_at, $4),
+                updated_at = $4
+            WHERE workspace_id = $1 AND id = $2 AND deleted_at IS NULL
+            "#,
+            [
+                workspace_id.into(),
+                service_id.into(),
+                DeploymentStatus::Stopped.code().into(),
+                now.into(),
+            ],
+        ))
+        .await;
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn insert_deployment(
     state: &AppState,
     workspace_id: Uuid,
@@ -2356,6 +2542,9 @@ async fn insert_deployment(
     image_digest: Option<String>,
     config_snapshot: DeploymentConfigSnapshot,
     event_message: &str,
+    status: DeploymentStatus,
+    source_repo_url: Option<String>,
+    git_ref: Option<String>,
 ) -> ApiResult<DeployDeploymentView> {
     let now = Utc::now().fixed_offset();
     let id = Uuid::now_v7();
@@ -2367,10 +2556,10 @@ async fn insert_deployment(
             DatabaseBackend::Postgres,
             r#"
             INSERT INTO deployments (
-                id, workspace_id, service_id, image, image_digest, status, requested_by,
-                provider, provider_metadata, config_snapshot, created_at, updated_at
+                id, workspace_id, service_id, image, image_digest, source_repo_url, git_ref,
+                status, requested_by, provider, provider_metadata, config_snapshot, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'fly', '{}', $8, $9, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'fly', '{}', $10, $11, $11)
             "#,
             [
                 id.into(),
@@ -2378,7 +2567,9 @@ async fn insert_deployment(
                 service_id.into(),
                 image.into(),
                 image_digest.into(),
-                DeploymentStatus::Queued.code().into(),
+                source_repo_url.into(),
+                git_ref.into(),
+                status.code().into(),
                 user_id.into(),
                 config_snapshot.into(),
                 now.into(),
@@ -2566,7 +2757,7 @@ async fn active_deployment_count(state: &AppState, workspace_id: Uuid) -> ApiRes
             r#"
             SELECT COUNT(*)::BIGINT AS count
             FROM deployments
-            WHERE workspace_id = $1 AND status IN (0, 1, 2, 3, 4, 5, 7)
+            WHERE workspace_id = $1 AND status IN (0, 1, 2, 3, 4, 5, 7, 10)
             "#,
             [workspace_id.into()],
         ))
@@ -2614,6 +2805,52 @@ fn deploy_cipher(state: &AppState) -> ApiResult<SecretCipher> {
             ApiError::service_unavailable("deployment secrets are not configured")
         })?;
     SecretCipher::from_hex_key(key).map_err(deploy_error)
+}
+
+/// Trim an optional string, dropping it if empty.
+fn clean_opt(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
+/// Validate an optional git ref (branch/tag/commit): bounded length, no leading
+/// `-` (option injection), and a conservative ref-name charset.
+fn validate_git_ref_opt(value: Option<&str>) -> ApiResult<Option<String>> {
+    let Some(value) = clean_opt(value) else {
+        return Ok(None);
+    };
+    let valid = value.len() <= 255
+        && !value.starts_with('-')
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '/' | '-'));
+    if !valid {
+        return Err(ApiError::bad_request(
+            "git_ref must be a valid branch, tag, or commit (<=255 chars; letters, digits, '.', '_', '/', '-')",
+        ));
+    }
+    Ok(Some(value))
+}
+
+/// Validate an optional repo-relative subpath: no leading slash, no `..`, no drive/scheme.
+fn validate_subpath_opt(value: Option<&str>) -> ApiResult<Option<String>> {
+    let Some(value) = clean_opt(value) else {
+        return Ok(None);
+    };
+    let trimmed = value.trim_start_matches("./");
+    if trimmed.is_empty()
+        || trimmed.starts_with('/')
+        || trimmed.starts_with('\\')
+        || trimmed.contains(':')
+        || trimmed.split(['/', '\\']).any(|segment| segment == "..")
+    {
+        return Err(ApiError::bad_request(
+            "path must be relative to the repository root (no '..' or leading '/')",
+        ));
+    }
+    Ok(Some(value))
 }
 
 fn parse_registry_kind(raw: &str) -> ApiResult<RegistryKind> {

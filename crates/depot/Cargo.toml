@@ -1,0 +1,18 @@
+[package]
+name = "depot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+produktive-deploy = { path = "../deploy" }
+
+async-trait.workspace = true
+base64 = "0.22"
+serde_json.workspace = true
+tokio = { workspace = true, features = ["process", "io-util"] }
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

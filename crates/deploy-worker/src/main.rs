@@ -1,15 +1,18 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, FixedOffset, TimeDelta, Utc};
 use deploy::{
-    validate_machine_count, DeployError, DeployProvider, DeploymentConfigSnapshot, DeploymentSpec,
+    provider_app_name, validate_machine_count, BuildOutcome, BuildProvider, BuildProviderKind,
+    BuildSpec, DeployError, DeployProvider, DeploymentConfigSnapshot, DeploymentSpec,
     DeploymentStatus, LogLine, LogQuery, MetricPoint, MetricQuery, ProviderServiceRef,
-    ProviderVolume, ResourcePreset, SecretCipher, VolumeSpec, DEFAULT_MACHINE_COUNT,
+    ProviderVolume, ResourcePreset, SecretCipher, SourceKind, SourceSpec, VolumeSpec,
+    DEFAULT_MACHINE_COUNT,
 };
+use depot::{DepotConfig, DepotProvider};
 use fly::{Fly, FlyConfig, FlyProvider};
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection,
@@ -29,6 +32,10 @@ struct Config {
     fly_org_slug: String,
     fly_api_hostname: String,
     fly_app_name_prefix: String,
+    depot_token: Option<String>,
+    depot_project_id: Option<String>,
+    build_registry_host: String,
+    fly_registry_token: Option<String>,
     poll_interval: Duration,
     retention_cleanup_interval: Duration,
     retention_delete_batch_size: i64,
@@ -46,6 +53,41 @@ struct DeploymentJob {
     image_digest: Option<String>,
     provider_instance_id: Option<String>,
     config_snapshot: Option<serde_json::Value>,
+}
+
+/// A deployment in `Building` status joined with its service's source config.
+#[derive(Debug, FromQueryResult)]
+struct BuildJob {
+    id: Uuid,
+    workspace_id: Uuid,
+    service_id: Uuid,
+    source_kind: String,
+    repo_url: Option<String>,
+    git_ref: Option<String>,
+    dockerfile_path: Option<String>,
+    root_dir: Option<String>,
+    slug: String,
+    provider_service_id: Option<String>,
+}
+
+/// Fail a build whose task has been running longer than this (seconds). Must be
+/// comfortably greater than the Depot build timeout (default 2700s) so a healthy
+/// long build is bounded by the builder, not reaped out from under it.
+const BUILD_STUCK_SECONDS: i64 = 3900;
+/// Grace before a `Building` row is failed when this worker has no build provider.
+const NO_PROVIDER_GRACE_SECONDS: i64 = 60;
+
+/// Sends a deployment id back to the reconciler loop on drop, so the in-flight
+/// build set is freed on every task exit path including a panic.
+struct BuildDoneGuard {
+    id: Uuid,
+    tx: tokio::sync::mpsc::UnboundedSender<Uuid>,
+}
+
+impl Drop for BuildDoneGuard {
+    fn drop(&mut self) {
+        let _ = self.tx.send(self.id);
+    }
 }
 
 #[derive(Debug, FromQueryResult)]
@@ -154,7 +196,9 @@ async fn main() -> Result<()> {
 
     let config = Config::from_env()?;
     let mut opt = ConnectOptions::new(config.database_url.clone());
-    opt.max_connections(5)
+    // Headroom for concurrent build tasks (each uses a log-drain + write connection)
+    // alongside the reconciler's own queries.
+    opt.max_connections(8)
         .min_connections(1)
         .connect_timeout(Duration::from_secs(8))
         .acquire_timeout(Duration::from_secs(8))
@@ -164,20 +208,55 @@ async fn main() -> Result<()> {
     let log_db = connect_log_db(&config).await;
     let cipher = SecretCipher::from_hex_key(&config.deploy_secrets_key)
         .map_err(|error| anyhow::anyhow!(error))?;
-    let provider = FlyProvider::new(
-        Fly::from_config(FlyConfig {
-            api_token: config.fly_api_token.clone(),
-            org_slug: config.fly_org_slug.clone(),
-            api_hostname: Some(config.fly_api_hostname.clone()),
-            app_name_prefix: config.fly_app_name_prefix.clone(),
-        })
-        .map_err(|error| anyhow::anyhow!(error))?,
-    );
+    let fly = Fly::from_config(FlyConfig {
+        api_token: config.fly_api_token.clone(),
+        org_slug: config.fly_org_slug.clone(),
+        api_hostname: Some(config.fly_api_hostname.clone()),
+        app_name_prefix: config.fly_app_name_prefix.clone(),
+    })
+    .map_err(|error| anyhow::anyhow!(error))?;
+    let provider = FlyProvider::new(fly.clone());
+    let build_provider = build_provider_from_config(&config);
 
     tracing::info!("produktive deploy worker started");
     let mut last_metric_collection = Instant::now() - Duration::from_secs(60);
     let mut last_retention_cleanup = Instant::now() - config.retention_cleanup_interval;
+    // Deployment ids whose build is running in a spawned task; the authoritative
+    // double-spawn guard for this (single) process. Ids are returned via
+    // `build_done_rx` (including on panic, via a Drop guard) and removed below.
+    let mut inflight_builds: HashSet<Uuid> = HashSet::new();
+    let (build_done_tx, mut build_done_rx) = tokio::sync::mpsc::unbounded_channel::<Uuid>();
     loop {
+        while let Ok(id) = build_done_rx.try_recv() {
+            inflight_builds.remove(&id);
+        }
+        match build_provider.as_ref() {
+            Some(bp) => {
+                if let Err(error) = claim_and_spawn_builds(
+                    &db,
+                    &fly,
+                    bp,
+                    &config,
+                    &mut inflight_builds,
+                    &build_done_tx,
+                )
+                .await
+                {
+                    tracing::warn!(error = ?error, "build claim failed");
+                }
+                if let Err(error) = reap_hung_builds(&db).await {
+                    tracing::warn!(error = ?error, "build reaper failed");
+                }
+            }
+            // No build provider on this worker: a git-source deployment would hang
+            // in Building forever, so fail it (after a short grace) with a clear
+            // message. Safe under the single-worker-process assumption.
+            None => {
+                if let Err(error) = fail_unbuildable_deployments(&db).await {
+                    tracing::warn!(error = ?error, "build reaper failed");
+                }
+            }
+        }
         if let Err(error) = stop_disabled_services(&db, &cipher, &provider).await {
             tracing::warn!(error = ?error, "stop disabled deployment services failed");
         }
@@ -256,6 +335,11 @@ impl Config {
                 .unwrap_or_else(|| "https://api.machines.dev".into()),
             fly_app_name_prefix: optional_env("FLY_APP_NAME_PREFIX")
                 .unwrap_or_else(|| "prd".into()),
+            depot_token: optional_env("DEPOT_TOKEN"),
+            depot_project_id: optional_env("DEPOT_PROJECT_ID"),
+            build_registry_host: optional_env("BUILD_REGISTRY_HOST")
+                .unwrap_or_else(|| "registry.fly.io".into()),
+            fly_registry_token: optional_env("FLY_REGISTRY_TOKEN"),
             poll_interval,
             retention_cleanup_interval,
             retention_delete_batch_size,
@@ -328,7 +412,7 @@ async fn claim_next(db: &DatabaseConnection) -> Result<Option<DeploymentJob>> {
                 WHERE active.workspace_id = d.workspace_id
                   AND active.service_id = d.service_id
                   AND active.id <> d.id
-                  AND active.status IN ($2, $3, $4, $5, $6)
+                  AND active.status IN ($2, $3, $4, $5, $6, $7)
               )
             ORDER BY d.created_at ASC
             LIMIT 1
@@ -343,11 +427,379 @@ async fn claim_next(db: &DatabaseConnection) -> Result<Option<DeploymentJob>> {
             DeploymentStatus::Starting.code().into(),
             DeploymentStatus::Healthy.code().into(),
             DeploymentStatus::RollingBack.code().into(),
+            // A service mid-build must block a concurrent deploy claim.
+            DeploymentStatus::Building.code().into(),
         ],
     ))
     .one(db)
     .await?;
     Ok(row)
+}
+
+fn build_provider_from_config(config: &Config) -> Option<DepotProvider> {
+    let (Some(token), Some(project_id), Some(registry_password)) = (
+        config.depot_token.clone(),
+        config.depot_project_id.clone(),
+        config.fly_registry_token.clone(),
+    ) else {
+        tracing::warn!(
+            "depot build provider disabled (DEPOT_TOKEN/DEPOT_PROJECT_ID/FLY_REGISTRY_TOKEN not all set)"
+        );
+        return None;
+    };
+    match DepotProvider::new(DepotConfig::new(
+        token,
+        project_id,
+        config.build_registry_host.clone(),
+        registry_password,
+    )) {
+        Ok(provider) => {
+            tracing::info!("depot build provider initialized");
+            Some(provider)
+        }
+        Err(error) => {
+            tracing::warn!(error = ?error, "depot build provider disabled");
+            None
+        }
+    }
+}
+
+/// Claim `Building` deployments not already building in this process and spawn a
+/// detached task per build, so the reconciler loop never blocks on a build.
+async fn claim_and_spawn_builds(
+    db: &DatabaseConnection,
+    fly: &Fly,
+    provider: &DepotProvider,
+    config: &Config,
+    inflight: &mut HashSet<Uuid>,
+    done_tx: &tokio::sync::mpsc::UnboundedSender<Uuid>,
+) -> Result<()> {
+    let rows = BuildJob::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT d.id, d.workspace_id, d.service_id,
+               s.source_kind, COALESCE(d.source_repo_url, s.repo_url) AS repo_url,
+               COALESCE(d.git_ref, s.git_ref) AS git_ref, s.dockerfile_path, s.root_dir,
+               s.slug, s.provider_service_id
+        FROM deployments d
+        INNER JOIN deploy_services s
+            ON s.workspace_id = d.workspace_id AND s.id = d.service_id
+        WHERE d.status = $1
+          AND s.disabled_at IS NULL
+          AND s.deleted_at IS NULL
+        ORDER BY d.created_at ASC
+        LIMIT 2
+        "#,
+        [DeploymentStatus::Building.code().into()],
+    ))
+    .all(db)
+    .await?;
+
+    for job in rows {
+        if !inflight.insert(job.id) {
+            continue; // already building in this process
+        }
+        let db = db.clone();
+        let fly = fly.clone();
+        let provider = provider.clone();
+        let prefix = config.fly_app_name_prefix.clone();
+        let registry_host = config.build_registry_host.clone();
+        let guard = BuildDoneGuard {
+            id: job.id,
+            tx: done_tx.clone(),
+        };
+        tokio::spawn(async move {
+            let _guard = guard; // frees the in-flight id on every exit path
+            run_build_job(&db, &fly, &provider, &prefix, &registry_host, job).await;
+        });
+    }
+    Ok(())
+}
+
+async fn run_build_job(
+    db: &DatabaseConnection,
+    fly: &Fly,
+    provider: &DepotProvider,
+    prefix: &str,
+    registry_host: &str,
+    job: BuildJob,
+) {
+    let (id, workspace_id, service_id) = (job.id, job.workspace_id, job.service_id);
+    // Run the build in a nested task so a *panic* (not just an Err) is caught and
+    // converted into a terminal BuildFailed. Otherwise the row would stay Building
+    // and the reconciler would re-spawn it every tick.
+    let db_inner = db.clone();
+    let fly = fly.clone();
+    let provider = provider.clone();
+    let prefix = prefix.to_owned();
+    let registry_host = registry_host.to_owned();
+    let result = tokio::spawn(async move {
+        run_build_job_inner(&db_inner, &fly, &provider, &prefix, &registry_host, &job).await
+    })
+    .await;
+
+    let failure = match result {
+        Ok(Ok(())) => None,
+        Ok(Err(error)) => Some(error.to_string()),
+        Err(join_error) => {
+            tracing::error!(deployment_id = %id, error = ?join_error, "build task panicked");
+            Some("build task panicked".to_owned())
+        }
+    };
+    if let Some(message) = failure {
+        tracing::warn!(deployment_id = %id, error = %message, "build job failed");
+        if let Err(error) = fail_build(db, id, workspace_id, service_id, &message).await {
+            tracing::warn!(deployment_id = %id, error = ?error, "failed to record build failure");
+        }
+    }
+}
+
+async fn run_build_job_inner(
+    db: &DatabaseConnection,
+    fly: &Fly,
+    provider: &DepotProvider,
+    prefix: &str,
+    registry_host: &str,
+    job: &BuildJob,
+) -> Result<()> {
+    insert_event(
+        db,
+        job.workspace_id,
+        job.service_id,
+        Some(job.id),
+        "info",
+        "build started",
+        json!({}),
+    )
+    .await?;
+    // Stamp the build start so the reaper measures from when the build actually
+    // began (not deployment creation), and so a row waiting for a build slot is
+    // never mistaken for a hung build.
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        UPDATE deployments
+        SET started_at = now(), updated_at = now()
+        WHERE id = $1 AND status = $2
+        "#,
+        [
+            job.id.into(),
+            DeploymentStatus::Building.code().into(),
+        ],
+    ))
+    .await?;
+
+    let kind = SourceKind::parse(&job.source_kind).map_err(|error| anyhow::anyhow!(error))?;
+    let repo_url = job
+        .repo_url
+        .clone()
+        .context("git-source deployment is missing a repository URL")?;
+
+    // Ensure the Fly app exists *before* pushing to its registry namespace. The
+    // app is otherwise created inside deploy_image (after the build), so a first
+    // deploy would push to a non-existent app. ensure_app is idempotent.
+    let app_name = job.provider_service_id.clone().unwrap_or_else(|| {
+        provider_app_name(prefix, job.workspace_id, job.service_id, &job.slug)
+    });
+    let network = format!("{app_name}-network");
+    fly.ensure_app(&app_name, &network)
+        .await
+        .map_err(|error| anyhow::anyhow!(error))?;
+
+    let spec = BuildSpec {
+        workspace_id: job.workspace_id,
+        service_id: job.service_id,
+        deployment_id: job.id,
+        source: SourceSpec {
+            kind,
+            repo_url,
+            git_ref: job.git_ref.clone(),
+            dockerfile_path: job.dockerfile_path.clone(),
+            root_dir: job.root_dir.clone(),
+        },
+        image_repository: format!("{registry_host}/{app_name}"),
+    };
+
+    // Bridge the synchronous log sink to async insert_event via a bounded channel;
+    // try_send drops lines under backpressure rather than blocking the build.
+    let (log_tx, mut log_rx) = tokio::sync::mpsc::channel::<String>(256);
+    let log_db = db.clone();
+    let (ws, svc, did) = (job.workspace_id, job.service_id, job.id);
+    let drain = tokio::spawn(async move {
+        while let Some(line) = log_rx.recv().await {
+            let _ = insert_event(
+                &log_db,
+                ws,
+                svc,
+                Some(did),
+                "info",
+                &line,
+                json!({ "phase": "build" }),
+            )
+            .await;
+        }
+    });
+
+    let mut sink: Box<dyn FnMut(&str) + Send> =
+        Box::new(move |line: &str| {
+            let _ = log_tx.try_send(line.to_owned());
+        });
+    let outcome = provider.build(&spec, &mut *sink).await;
+    drop(sink); // closes log_tx so the drain task can finish
+    let _ = drain.await;
+
+    let outcome = outcome.map_err(|error| anyhow::anyhow!(error))?;
+    finish_build(db, job, &outcome).await
+}
+
+/// Record a successful build: write the pushed image + provenance and flip the
+/// row to `Queued` so the existing Fly deploy path takes over. The `status =
+/// Building` guard prevents clobbering a row already advanced or reaped.
+async fn finish_build(
+    db: &DatabaseConnection,
+    job: &BuildJob,
+    outcome: &BuildOutcome,
+) -> Result<()> {
+    let result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+        UPDATE deployments
+        SET image = $2,
+            image_digest = COALESCE($3, image_digest),
+            commit_sha = COALESCE($4, commit_sha),
+            build_provider = $5,
+            status = $6,
+            updated_at = now()
+        WHERE id = $1 AND status = $7
+        "#,
+            [
+                job.id.into(),
+                outcome.image_ref.clone().into(),
+                outcome.digest.clone().into(),
+                outcome.commit_sha.clone().into(),
+                BuildProviderKind::Depot.as_str().into(),
+                DeploymentStatus::Queued.code().into(),
+                DeploymentStatus::Building.code().into(),
+            ],
+        ))
+        .await?;
+    if result.rows_affected() == 0 {
+        // The row left Building (reaped/stopped) while the build ran; the pushed
+        // image is now orphaned. Don't deploy it; just record the race.
+        tracing::warn!(
+            deployment_id = %job.id,
+            image = %outcome.image_ref,
+            "build finished but deployment was no longer Building; image not deployed"
+        );
+        return Ok(());
+    }
+    insert_event(
+        db,
+        job.workspace_id,
+        job.service_id,
+        Some(job.id),
+        "info",
+        "build succeeded",
+        json!({ "image": outcome.image_ref, "engine": outcome.build_engine.as_str() }),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Record a failed build as terminal `BuildFailed`. Guarded so it never overrides
+/// a row already advanced past `Building`.
+async fn fail_build(
+    db: &DatabaseConnection,
+    deployment_id: Uuid,
+    workspace_id: Uuid,
+    service_id: Uuid,
+    message: &str,
+) -> Result<()> {
+    let result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+        UPDATE deployments
+        SET status = $2, failure_message = $3, finished_at = now(), updated_at = now()
+        WHERE id = $1 AND status = $4
+        "#,
+            [
+                deployment_id.into(),
+                DeploymentStatus::BuildFailed.code().into(),
+                message.into(),
+                DeploymentStatus::Building.code().into(),
+            ],
+        ))
+        .await?;
+    if result.rows_affected() == 0 {
+        tracing::warn!(
+            deployment_id = %deployment_id,
+            "build failed but deployment was no longer Building; status unchanged"
+        );
+        return Ok(());
+    }
+    insert_event(
+        db,
+        workspace_id,
+        service_id,
+        Some(deployment_id),
+        "error",
+        "build failed",
+        json!({ "error": message }),
+    )
+    .await?;
+    Ok(())
+}
+
+/// Reap builds whose task has been running longer than [`BUILD_STUCK_SECONDS`]
+/// (keyed on `started_at`, set when the build actually begins). Recovers rows
+/// whose build task died (worker restart) without touching rows still waiting
+/// for a build slot (`started_at IS NULL`).
+async fn reap_hung_builds(db: &DatabaseConnection) -> Result<()> {
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        UPDATE deployments
+        SET status = $1, failure_message = $2, finished_at = now(), updated_at = now()
+        WHERE status = $3
+          AND started_at IS NOT NULL
+          AND started_at < now() - ($4::bigint * interval '1 second')
+        "#,
+        [
+            DeploymentStatus::BuildFailed.code().into(),
+            "build timed out".into(),
+            DeploymentStatus::Building.code().into(),
+            BUILD_STUCK_SECONDS.into(),
+        ],
+    ))
+    .await
+    .map(|_| ())
+    .map_err(Into::into)
+}
+
+/// Fail `Building` deployments when this worker has no build provider. Bounded by
+/// a short grace so a just-created row isn't failed instantly. Safe under the
+/// single-worker-process assumption (no other process is building these rows).
+async fn fail_unbuildable_deployments(db: &DatabaseConnection) -> Result<()> {
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        UPDATE deployments
+        SET status = $1, failure_message = $2, finished_at = now(), updated_at = now()
+        WHERE status = $3
+          AND created_at < now() - ($4::bigint * interval '1 second')
+        "#,
+        [
+            DeploymentStatus::BuildFailed.code().into(),
+            "build provider not configured on this worker".into(),
+            DeploymentStatus::Building.code().into(),
+            NO_PROVIDER_GRACE_SECONDS.into(),
+        ],
+    ))
+    .await
+    .map(|_| ())
+    .map_err(Into::into)
 }
 
 async fn run_job(
@@ -635,7 +1087,7 @@ async fn stop_disabled_services(
             ON s.workspace_id = d.workspace_id AND s.id = d.service_id
         WHERE s.disabled_at IS NOT NULL
           AND s.deleted_at IS NULL
-          AND d.status IN ($1, $2, $3, $4, $5, $6, $7)
+          AND d.status IN ($1, $2, $3, $4, $5, $6, $7, $8)
         ORDER BY d.updated_at ASC
         LIMIT 20
         "#,
@@ -647,6 +1099,8 @@ async fn stop_disabled_services(
             DeploymentStatus::Healthy.code().into(),
             DeploymentStatus::Live.code().into(),
             DeploymentStatus::RollingBack.code().into(),
+            // Reap a build in flight when its service is disabled.
+            DeploymentStatus::Building.code().into(),
         ],
     ))
     .all(db)

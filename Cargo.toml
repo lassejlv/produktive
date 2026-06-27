@@ -9,6 +9,7 @@ members = [
     "crates/polar",
     "crates/cloudflare",
     "crates/fly",
+    "crates/depot",
     "crates/tigris",
     "crates/entity",
     "crates/migration",
