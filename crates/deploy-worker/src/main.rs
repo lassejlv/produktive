@@ -702,6 +702,10 @@ async fn stop_superseded_deployments(
 ) -> Result<()> {
     let rows = DeploymentJob::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
+        // Only retire deployments OLDER (by created_at) than the one being cut
+        // over to. The current deployment is excluded by id; the `created_at`
+        // guard additionally protects any even-newer in-flight deployment from
+        // being torn down by an older deploy that happens to reach Live.
         r#"
         SELECT id, workspace_id, service_id, image, image_digest, provider_instance_id
         FROM deployments
@@ -709,7 +713,8 @@ async fn stop_superseded_deployments(
           AND service_id = $2
           AND id <> $3
           AND provider_instance_id IS NOT NULL
-        ORDER BY updated_at ASC
+          AND created_at < (SELECT created_at FROM deployments WHERE id = $3)
+        ORDER BY created_at ASC
         "#,
         [
             current.workspace_id.into(),
@@ -734,24 +739,33 @@ async fn cleanup_superseded_provider_deployments(
 ) -> Result<()> {
     let rows = DeploymentJob::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
+        // Retire only deployments STRICTLY OLDER (by created_at) than the newest
+        // healthy/live deployment for each service. The keeper is chosen by
+        // `created_at` (immutable), not `updated_at` (churned by reconcile
+        // writes), and a freshly-created deployment that is still booting
+        // (Queued/Provisioning/Pulling/Starting) is newer than any current
+        // keeper, so it is never destroyed. Without the `created_at < keeper`
+        // guard this reaper killed the brand-new machine whenever it had not yet
+        // reached Healthy/Live, leaving the old deployment serving.
         r#"
-        WITH current_live AS (
+        WITH keeper AS (
             SELECT DISTINCT ON (workspace_id, service_id)
-                   id, workspace_id, service_id
+                   id, workspace_id, service_id, created_at
             FROM deployments
             WHERE provider = $1
               AND provider_instance_id IS NOT NULL
               AND status IN ($2, $3)
-            ORDER BY workspace_id, service_id, updated_at DESC
+            ORDER BY workspace_id, service_id, created_at DESC
         )
         SELECT d.id, d.workspace_id, d.service_id, d.image, d.image_digest, d.provider_instance_id
         FROM deployments d
-        INNER JOIN current_live live
-            ON live.workspace_id = d.workspace_id AND live.service_id = d.service_id
-        WHERE d.id <> live.id
+        INNER JOIN keeper
+            ON keeper.workspace_id = d.workspace_id AND keeper.service_id = d.service_id
+        WHERE d.id <> keeper.id
           AND d.provider = $1
           AND d.provider_instance_id IS NOT NULL
-        ORDER BY d.updated_at ASC
+          AND d.created_at < keeper.created_at
+        ORDER BY d.created_at ASC
         LIMIT 20
         "#,
         [
