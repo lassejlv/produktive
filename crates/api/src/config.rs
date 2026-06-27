@@ -44,8 +44,8 @@ pub struct Config {
     pub polar_webhook_secret: Option<String>,
     /// How often the billing reconcile sweep re-reports gauge usage to Polar.
     pub billing_reconcile_tick_seconds: u64,
-    /// How often the deploy usage sweep re-reports GB-seconds / vCPU-seconds /
-    /// volume GB-seconds to Polar. Only active when billing + deployments are
+    /// How often the deploy usage sweep reports GB-hours / vCPU-hours /
+    /// volume GB-hours to Polar. Only active when billing + deployments are
     /// both enabled.
     pub deploy_usage_sweep_tick_seconds: u64,
     /// Public app URL for billing checkout redirects (e.g. `http://localhost:5173`).

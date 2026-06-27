@@ -123,6 +123,10 @@ pub struct BillingBalanceSummary {
     pub granted: Option<f64>,
     pub remaining: Option<f64>,
     pub usage: Option<f64>,
+    /// Estimated dollar cost of the current-period usage. Populated for the
+    /// pure-overage deploy resource meters (usage × unit price); `None` for
+    /// allowance-based features that bill from a flat plan price.
+    pub cost: Option<f64>,
     pub unlimited: bool,
     pub next_reset_at: Option<i64>,
 }
@@ -247,6 +251,7 @@ async fn disabled_summary(state: &AppState, workspace_id: uuid::Uuid) -> ApiResu
             granted: None,
             remaining: None,
             usage: Some(monitor_count(state, workspace_id).await?),
+            cost: None,
             unlimited: true,
             next_reset_at: None,
         },
@@ -258,6 +263,7 @@ async fn disabled_summary(state: &AppState, workspace_id: uuid::Uuid) -> ApiResu
             granted: None,
             remaining: None,
             usage: Some(member_count(state, workspace_id).await?),
+            cost: None,
             unlimited: true,
             next_reset_at: None,
         },
@@ -269,6 +275,7 @@ async fn disabled_summary(state: &AppState, workspace_id: uuid::Uuid) -> ApiResu
             granted: None,
             remaining: None,
             usage: None,
+            cost: None,
             unlimited: true,
             next_reset_at: None,
         },
@@ -789,6 +796,7 @@ async fn build_balances(
                         granted: None,
                         remaining: None,
                         usage: Some(billing_member_count(state, workspace_id).await?),
+                        cost: None,
                         unlimited: true,
                         next_reset_at,
                     },
@@ -818,6 +826,7 @@ async fn build_balances(
                 granted: Some(ent.included),
                 remaining,
                 usage,
+                cost: None,
                 unlimited: false,
                 next_reset_at,
             },
@@ -831,13 +840,20 @@ async fn build_balances(
         let Some(ent) = catalog.entitlement(tier, feature) else {
             continue;
         };
-        // Deploy meters bill per second, so Polar's balance is in GB-seconds /
-        // vCPU-seconds. Divide back to GB-hours / vCPU-hours for display — the
-        // unit the billing page labels these tiles with.
+        // Deploy meters are ingested as fractional GB-hours / vCPU-hours from
+        // second-precision usage, which is also the unit the billing page labels
+        // these tiles with.
         let usage = cstate
             .meter(&ent.meter_id)
-            .map(|m| m.consumed_units / 3_600.0)
+            .map(|m| m.consumed_units)
             .filter(|u| u.is_finite());
+        // Estimated cost for the period: usage (GB-hours / vCPU-hours) times the
+        // hourly unit price. `unit_amount_cents` is per GB-hour / vCPU-hour, so
+        // the two cancel to dollars without any time conversion.
+        let cost = match (usage, ent.unit_amount_cents) {
+            (Some(units), Some(cents)) => Some(units * cents / 100.0),
+            _ => None,
+        };
         balances.insert(
             feature.to_owned(),
             BillingBalanceSummary {
@@ -845,6 +861,7 @@ async fn build_balances(
                 granted: None,
                 remaining: None,
                 usage,
+                cost,
                 unlimited: false,
                 next_reset_at,
             },

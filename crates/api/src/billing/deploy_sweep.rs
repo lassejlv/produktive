@@ -1,7 +1,8 @@
 //! Periodic deploy usage sweep. Every tick, for each billing-customer
-//! workspace, compute the GB-seconds / vCPU-seconds / volume GB-seconds consumed
-//! since the last successful ingest and report them to Polar as three usage
-//! events.
+//! workspace, compute second-precision resource usage since the last successful
+//! ingest and report it to Polar as fractional GB-hours / vCPU-hours / volume
+//! GB-hours. This keeps Railway-style per-second metering while matching Polar's
+//! hourly unit prices.
 //!
 //! Mirrors [`super::sweep`] (the gauge re-report) but for deployment resource
 //! meters. The events carry a deterministic `external_id` per (feature, billing
@@ -27,6 +28,12 @@ use crate::{
     },
     state::AppState,
 };
+
+const SECONDS_PER_HOUR: f64 = 3_600.0;
+
+fn seconds_to_hours(seconds: f64) -> f64 {
+    seconds / SECONDS_PER_HOUR
+}
 
 /// Spawn the deploy usage sweep. No-op when billing is disabled or deployments
 /// are off — there's nothing to meter.
@@ -126,7 +133,9 @@ async fn sweep_one(
     let volume_seconds =
         compute_volume_gb_seconds(state, billing_workspace_id, window_start, window_end).await?;
 
-    if memory_seconds <= f64::EPSILON && cpu_seconds <= f64::EPSILON && volume_seconds <= f64::EPSILON
+    if memory_seconds <= f64::EPSILON
+        && cpu_seconds <= f64::EPSILON
+        && volume_seconds <= f64::EPSILON
     {
         // Nothing billable this window — still advance the marker so the next
         // sweep doesn't re-scan an ever-growing empty window.
@@ -172,10 +181,14 @@ fn build_events(
     volume_seconds: f64,
 ) -> Vec<EventCreate> {
     let mut events = Vec::with_capacity(3);
-    if memory_seconds > f64::EPSILON {
+    let memory_hours = seconds_to_hours(memory_seconds);
+    let cpu_hours = seconds_to_hours(cpu_seconds);
+    let volume_hours = seconds_to_hours(volume_seconds);
+
+    if memory_hours > f64::EPSILON {
         events.push(
             EventCreate::new("deploy_memory", ext)
-                .metadata("value", memory_seconds)
+                .metadata("value", memory_hours)
                 .external_id(deploy_usage_event_key(
                     "memory",
                     billing_workspace_id,
@@ -184,10 +197,10 @@ fn build_events(
                 )),
         );
     }
-    if cpu_seconds > f64::EPSILON {
+    if cpu_hours > f64::EPSILON {
         events.push(
             EventCreate::new("deploy_cpu", ext)
-                .metadata("value", cpu_seconds)
+                .metadata("value", cpu_hours)
                 .external_id(deploy_usage_event_key(
                     "cpu",
                     billing_workspace_id,
@@ -196,10 +209,10 @@ fn build_events(
                 )),
         );
     }
-    if volume_seconds > f64::EPSILON {
+    if volume_hours > f64::EPSILON {
         events.push(
             EventCreate::new("deploy_volume", ext)
-                .metadata("value", volume_seconds)
+                .metadata("value", volume_hours)
                 .external_id(deploy_usage_event_key(
                     "volume",
                     billing_workspace_id,
@@ -279,17 +292,45 @@ mod tests {
     }
 
     #[test]
-    fn build_events_metadata_value_is_the_seconds() {
+    fn build_events_metadata_value_is_fractional_hours_from_seconds() {
         let ws = Uuid::nil();
         let start = Utc.timestamp_opt(0, 0).unwrap();
         let end = Utc.timestamp_opt(3600, 0).unwrap();
-        let events = build_events("cus_1", ws, start, end, 1.5, 0.7, 0.0);
+        let events = build_events("cus_1", ws, start, end, 5_400.0, 2_520.0, 0.0);
         let mem = &events[0];
         let value = mem.metadata.get("value").and_then(|v| v.as_f64()).unwrap();
         assert!((value - 1.5).abs() < f64::EPSILON);
         let cpu = &events[1];
         let value = cpu.metadata.get("value").and_then(|v| v.as_f64()).unwrap();
         assert!((value - 0.7).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn build_events_preserves_one_second_usage_as_fractional_hours() {
+        let ws = Uuid::nil();
+        let start = Utc.timestamp_opt(0, 0).unwrap();
+        let end = Utc.timestamp_opt(1, 0).unwrap();
+        let events = build_events("cus_1", ws, start, end, 0.5, 1.0, 2.0);
+
+        let memory_value = events[0]
+            .metadata
+            .get("value")
+            .and_then(|v| v.as_f64())
+            .unwrap();
+        let cpu_value = events[1]
+            .metadata
+            .get("value")
+            .and_then(|v| v.as_f64())
+            .unwrap();
+        let volume_value = events[2]
+            .metadata
+            .get("value")
+            .and_then(|v| v.as_f64())
+            .unwrap();
+
+        assert!((memory_value - (0.5 / 3_600.0)).abs() < f64::EPSILON);
+        assert!((cpu_value - (1.0 / 3_600.0)).abs() < f64::EPSILON);
+        assert!((volume_value - (2.0 / 3_600.0)).abs() < f64::EPSILON);
     }
 
     #[test]

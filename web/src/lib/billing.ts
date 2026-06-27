@@ -30,6 +30,8 @@ export interface BillingBalanceSummary {
   granted?: number | null;
   remaining?: number | null;
   usage?: number | null;
+  /** Estimated dollar cost of the period's usage (deploy resource meters). */
+  cost?: number | null;
   unlimited: boolean;
   next_reset_at?: number | null;
 }
@@ -272,6 +274,16 @@ export function nextResetText(balance: BillingBalanceSummary | null | undefined)
 export function formatUsageNumber(value: number): string {
   return new Intl.NumberFormat(undefined, {
     maximumFractionDigits: value < 10 ? 1 : 0,
+  }).format(value);
+}
+
+/** Dollar cost with two decimals, e.g. `1.24` → `$1.24`. */
+export function formatCost(value: number): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value);
 }
 

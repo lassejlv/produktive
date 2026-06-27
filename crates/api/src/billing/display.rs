@@ -1,9 +1,9 @@
 //! Shared human-facing formatting for the billing/pricing API responses.
 
-/// Seconds in a billing month (30 days). Deploy resource meters bill per second
-/// (Railway's model), so their per-second unit price is scaled by this to show a
-/// human-readable per-month rate. Matches the frontend's `SECONDS_PER_MONTH`.
-pub const SECONDS_PER_MONTH: f64 = 86_400.0 * 30.0;
+/// Hours in a billing month (30 days). Deploy resource meters are sent to Polar
+/// as fractional GB-hours / vCPU-hours, so their hourly price is scaled by this
+/// to show a human-readable per-month rate while still billing by the second.
+pub const HOURS_PER_MONTH: f64 = 24.0 * 30.0;
 
 /// Boolean perks, in display order (matches the public pricing layout).
 pub const PERK_FEATURES: [&str; 6] = [
@@ -68,19 +68,20 @@ pub fn overage_text(feature: &str, cents_per_unit: f64) -> String {
         ),
         "monitors" => format!("then ${} per monitor", trim_decimal(cents_per_unit / 100.0)),
         "members" => format!("then ${} per member", trim_decimal(cents_per_unit / 100.0)),
-        // Deploy compute/storage meters bill per second; show the per-month
-        // equivalent so the rate reads as dollars rather than "$0".
+        // Deploy compute/storage meters accrue as fractional hours from exact
+        // seconds; show the per-month equivalent so the rate reads as dollars
+        // per allocated resource.
         "deploy_memory" => format!(
             "then ${} per GB-month",
-            trim_decimal(cents_per_unit * SECONDS_PER_MONTH / 100.0)
+            trim_decimal(cents_per_unit * HOURS_PER_MONTH / 100.0)
         ),
         "deploy_cpu" => format!(
             "then ${} per vCPU-month",
-            trim_decimal(cents_per_unit * SECONDS_PER_MONTH / 100.0)
+            trim_decimal(cents_per_unit * HOURS_PER_MONTH / 100.0)
         ),
         "deploy_volume" => format!(
             "then ${} per GB-month",
-            trim_decimal(cents_per_unit * SECONDS_PER_MONTH / 100.0)
+            trim_decimal(cents_per_unit * HOURS_PER_MONTH / 100.0)
         ),
         // Egress is priced per GB transferred (not per unit of time).
         "deploy_egress" => format!("then ${} per GB", trim_decimal(cents_per_unit / 100.0)),
@@ -138,17 +139,17 @@ mod tests {
 
     #[test]
     fn overage_for_deploy_meters_is_per_unit_month() {
-        // Per-second cents in (Railway's rates), human-readable per-month out.
+        // Hourly cents in (Railway-style monthly rates), human-readable per-month out.
         assert_eq!(
-            overage_text("deploy_memory", 0.000386),
+            overage_text("deploy_memory", 1.3896),
             "then $10.01 per GB-month"
         );
         assert_eq!(
-            overage_text("deploy_cpu", 0.000772),
+            overage_text("deploy_cpu", 2.7792),
             "then $20.01 per vCPU-month"
         );
         assert_eq!(
-            overage_text("deploy_volume", 0.000006),
+            overage_text("deploy_volume", 0.0216),
             "then $0.16 per GB-month"
         );
         // Egress is still a flat per-GB transfer rate.
