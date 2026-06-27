@@ -79,7 +79,7 @@ export function showPlanLimitToast(message: string, wid: string) {
     action: {
       label: "Upgrade",
       onClick: () => {
-        window.location.assign(`/${wid}/settings/billing`);
+        window.location.assign(`/${wid}/settings/usage`);
       },
     },
   });
