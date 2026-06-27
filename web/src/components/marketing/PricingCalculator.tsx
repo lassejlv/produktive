@@ -1,4 +1,14 @@
+import { ArrowRight, Calculator } from "lucide-react";
 import { useMemo, useState } from "react";
+import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "#/components/ui/dialog";
 import { Input } from "#/components/ui/input";
 import { formatCost } from "#/lib/billing";
 import { cn } from "#/lib/cn";
@@ -74,6 +84,7 @@ const SANDBOX_FIELDS = [
 ] as const;
 
 export function PricingCalculator({ rows }: { rows: DeployPricingRow[] }) {
+  const [open, setOpen] = useState(false);
   const [values, setValues] = useState(CLOUD_USAGE_CALCULATOR_DEFAULTS);
   const rowByFeature = useMemo(() => new Map(rows.map((row) => [row.featureId, row])), [rows]);
   const estimate = useMemo(() => estimateCloudUsageCost(rows, values), [rows, values]);
@@ -81,56 +92,92 @@ export function PricingCalculator({ rows }: { rows: DeployPricingRow[] }) {
   if (rows.length === 0 || !estimate) return null;
 
   return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-[15px] font-medium text-[var(--color-fg)]">Cloud usage calculator</h2>
-        <span className="text-[12px] text-[var(--color-fg-muted)]">Pay as you go</span>
-      </div>
-      <p className="mt-1 text-[13px] text-[var(--color-fg-muted)]">
-        Estimate monthly cost for deployments, sandboxes, volumes, and object storage. Billed on top
-        of any paid plan.
-      </p>
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={cn(
+          "group flex w-full items-center gap-4 rounded-[var(--radius-md)] border border-[var(--color-border)] p-4 text-left",
+          "transition-colors hover:border-[var(--color-border-hi)] hover:bg-[var(--color-bg-row)]",
+        )}
+      >
+        <span className="grid size-9 shrink-0 place-items-center rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elev)] text-[var(--color-fg-muted)] transition-colors group-hover:text-[var(--color-fg)]">
+          <Calculator className="size-[18px]" strokeWidth={1.75} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14px] font-medium text-[var(--color-fg)]">
+            Cloud usage calculator
+          </span>
+          <span className="mt-0.5 block text-[13px] text-[var(--color-fg-muted)]">
+            Estimate deployments, sandboxes, volumes &amp; object storage — pay as you go.
+          </span>
+        </span>
+        <span className="hidden shrink-0 items-center gap-1.5 text-[13px] font-medium text-[var(--color-fg-muted)] transition-colors group-hover:text-[var(--color-fg)] sm:flex">
+          Open
+          <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+        </span>
+      </button>
 
-      <CalculatorSection
-        title="Deployments"
-        fields={DEPLOYMENT_FIELDS}
-        rowByFeature={rowByFeature}
-        values={values}
-        onChange={setValues}
-        rateText={(_featureId, row) => row.rateText}
-      />
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogPopup className="max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>Cloud usage calculator</DialogTitle>
+            <DialogDescription>
+              Estimate monthly cost for deployments, sandboxes, volumes, and object storage. Billed
+              on top of any paid plan.
+            </DialogDescription>
+          </DialogHeader>
 
-      <CalculatorSection
-        title="Sandboxes"
-        description="Warm sandboxes bill through the same meters at a 30% premium."
-        fields={SANDBOX_FIELDS}
-        rowByFeature={rowByFeature}
-        values={values}
-        onChange={setValues}
-        rateText={(featureId, row) => sandboxRateText(featureId, row.unitAmount)}
-        className="mt-6 border-t border-[var(--color-border)] pt-5"
-      />
+          <DialogPanel>
+            <CalculatorSection
+              title="Deployments"
+              fields={DEPLOYMENT_FIELDS}
+              rowByFeature={rowByFeature}
+              values={values}
+              onChange={setValues}
+              rateText={(_featureId, row) => row.rateText}
+            />
 
-      <div className="mt-6 border-t border-[var(--color-border)] pt-4">
-        <EstimateSection section={estimate.deployment} />
-        <EstimateSection section={estimate.sandbox} className="mt-4" />
+            <CalculatorSection
+              title="Sandboxes"
+              description="Warm sandboxes bill through the same meters at a 30% premium."
+              fields={SANDBOX_FIELDS}
+              rowByFeature={rowByFeature}
+              values={values}
+              onChange={setValues}
+              rateText={(featureId, row) => sandboxRateText(featureId, row.unitAmount)}
+              className="mt-6 border-t border-[var(--color-border)] pt-5"
+            />
 
-        <div className="mt-4 flex items-end justify-between gap-3 border-t border-[var(--color-border)] pt-3">
-          <div>
-            <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
-              Estimated cloud usage
+            {(estimate.deployment.lines.length > 0 || estimate.sandbox.lines.length > 0) && (
+              <div className="mt-6 border-t border-[var(--color-border)] pt-4">
+                <EstimateSection section={estimate.deployment} />
+                <EstimateSection section={estimate.sandbox} className="mt-4" />
+              </div>
+            )}
+          </DialogPanel>
+
+          <DialogFooter className="sm:justify-between">
+            <div className="flex w-full items-end justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-[var(--color-fg-dim)]">
+                  Estimated cloud usage
+                </div>
+                <p className="mt-1 text-[12px] text-[var(--color-fg-muted)]">
+                  Plan subscription billed separately.
+                </p>
+              </div>
+              <div className="tabular text-right text-[22px] font-medium leading-none tracking-tight text-[var(--color-fg)]">
+                {formatCost(estimate.total)}
+                <span className="ml-1 text-[13px] font-normal text-[var(--color-fg-muted)]">
+                  / mo
+                </span>
+              </div>
             </div>
-            <p className="mt-1 text-[12px] text-[var(--color-fg-muted)]">
-              Plan subscription billed separately.
-            </p>
-          </div>
-          <div className="tabular text-right text-[22px] font-medium leading-none tracking-tight text-[var(--color-fg)]">
-            {formatCost(estimate.total)}
-            <span className="ml-1 text-[13px] font-normal text-[var(--color-fg-muted)]">/ mo</span>
-          </div>
-        </div>
-      </div>
-    </div>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
+    </>
   );
 }
 
