@@ -432,6 +432,7 @@ export interface SandboxExecResult {
   stdout: string;
   stderr: string;
   truncated: boolean;
+  timed_out: boolean;
 }
 
 export interface SandboxApiToken {
@@ -673,6 +674,13 @@ export interface LogProject {
   event_count_24h: number;
   bytes_ingested_24h: number;
   last_ingested_at: Iso | null;
+  attached_service: LogProjectAttachedService | null;
+}
+
+export interface LogProjectAttachedService {
+  id: Uuid;
+  slug: string;
+  environment: string;
 }
 
 export interface LogIngestToken {

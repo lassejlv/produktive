@@ -5,8 +5,7 @@ use crate::{DeployError, DeployResult};
 
 /// Fly region codes enabled for Produktive deployments (order preserved for UI).
 pub const ALLOWED_REGION_CODES: &[&str] = &[
-    "ams", "arn", "fra", "cdg", "lhr", "sjc", "iad", "ord", "dfw", "lax", "yyz", "sin", "nrt",
-    "syd",
+    "ams", "arn", "sin", "iad", "sjc",
 ];
 
 pub const DEFAULT_DEPLOY_REGION: &str = "ams";
@@ -138,7 +137,7 @@ mod tests {
         assert!(validate_allowed_region("gru").is_err());
         assert!(validate_allowed_region("iad").is_ok());
         assert!(validate_allowed_region("sin").is_ok());
-        assert!(validate_allowed_region("fra").is_ok());
+        assert!(validate_allowed_region("fra").is_err());
         assert!(validate_allowed_region("ams").is_ok());
     }
 
@@ -154,10 +153,10 @@ mod tests {
                 name: "San Jose, California (US)".into(),
             },
         ]);
-        assert_eq!(catalog.len(), 14);
+        assert_eq!(catalog.len(), 5);
         assert_eq!(catalog[0].code, "ams");
         assert_eq!(catalog[0].name, "Amsterdam, Netherlands");
-        assert_eq!(catalog[13].code, "syd");
-        assert_eq!(catalog[13].name, "Sydney, Australia");
+        assert_eq!(catalog[4].code, "sjc");
+        assert_eq!(catalog[4].name, "San Jose, California (US)");
     }
 }

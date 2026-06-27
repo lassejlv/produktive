@@ -1,5 +1,8 @@
-import { Copy, LayoutGrid, Settings, Terminal, Trash2 } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { FitAddon } from "@xterm/addon-fit";
+import { Terminal as XTerm } from "@xterm/xterm";
+import "@xterm/xterm/css/xterm.css";
+import { Copy, LayoutGrid, Settings, Terminal as TerminalIcon, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { Segmented } from "#/components/Segmented";
@@ -89,7 +92,7 @@ export function SandboxDetail({
             onChange={onTabChange}
             options={[
               { value: "overview", label: "Overview", icon: LayoutGrid },
-              { value: "exec", label: "Exec", icon: Terminal },
+              { value: "exec", label: "Exec", icon: TerminalIcon },
               { value: "checkpoints", label: "Checkpoints", icon: Copy },
               { value: "settings", label: "Settings", icon: Settings },
             ]}
@@ -100,9 +103,7 @@ export function SandboxDetail({
         {tab === "overview" && <OverviewPanel sandbox={sandbox} />}
         {tab === "exec" && <ExecPanel wid={wid} sandbox={sandbox} />}
         {tab === "checkpoints" && <CheckpointsPanel wid={wid} sandbox={sandbox} />}
-        {tab === "settings" && (
-          <SettingsPanel wid={wid} sandbox={sandbox} onDeleted={onDeleted} />
-        )}
+        {tab === "settings" && <SettingsPanel wid={wid} sandbox={sandbox} onDeleted={onDeleted} />}
       </div>
     </div>
   );
@@ -140,79 +141,220 @@ function OverviewPanel({ sandbox }: { sandbox: DeploySandbox }) {
 
 function ExecPanel({ wid, sandbox }: { wid: string; sandbox: DeploySandbox }) {
   const exec = useExecDeploySandbox(wid);
-  const [command, setCommand] = useState("uname");
-  const [args, setArgs] = useState("-a");
-  const [cwd, setCwd] = useState("");
-  const [result, setResult] = useState<string | null>(null);
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const termRef = useRef<XTerm | null>(null);
+  const inputRef = useRef("");
+  const cwdRef = useRef("/");
+  const historyRef = useRef<string[]>([]);
+  const historyIndexRef = useRef<number | null>(null);
+  const pendingRef = useRef(false);
+  const execMutateRef = useRef(exec.mutate);
 
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    exec.mutate(
-      {
-        sandboxId: sandbox.id,
-        command: command.trim(),
-        args: args
-          .split(/\s+/)
-          .map((item) => item.trim())
-          .filter(Boolean),
-        cwd: cwd.trim() || undefined,
-      },
-      {
-        onSuccess: (data) => {
-          const chunks = [
-            `$ ${command} ${args}`.trim(),
-            data.stdout ? `\n${data.stdout}` : "",
-            data.stderr ? `\n[stderr]\n${data.stderr}` : "",
-            `\nexit ${data.exit_code}${data.truncated ? " (truncated)" : ""}`,
-          ];
-          setResult(chunks.join(""));
-        },
-        onError: (error) => toast.error((error as Error).message),
-      },
+  useEffect(() => {
+    execMutateRef.current = exec.mutate;
+  }, [exec.mutate]);
+
+  const write = useCallback((value: string) => {
+    termRef.current?.write(value.replace(/\n/g, "\r\n"));
+  }, []);
+
+  const prompt = useCallback(() => {
+    termRef.current?.write(`\r\n\x1b[32m${sandbox.slug}\x1b[0m:\x1b[34m${cwdRef.current}\x1b[0m$ `);
+  }, [sandbox.slug]);
+
+  const rewriteInput = useCallback(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.write(
+      `\r\x1b[2K\x1b[32m${sandbox.slug}\x1b[0m:\x1b[34m${cwdRef.current}\x1b[0m$ ${inputRef.current}`,
     );
-  };
+  }, [sandbox.slug]);
+
+  const runCommand = useCallback(
+    (raw: string) => {
+      const line = raw.trim();
+      if (!line) {
+        prompt();
+        return;
+      }
+
+      historyRef.current = [...historyRef.current.filter((item) => item !== line), line].slice(
+        -100,
+      );
+      historyIndexRef.current = null;
+
+      if (line === "clear" || line === "cls") {
+        termRef.current?.clear();
+        prompt();
+        return;
+      }
+
+      if (line === "pwd") {
+        write(`${cwdRef.current}\n`);
+        prompt();
+        return;
+      }
+
+      if (line === "cd" || line.startsWith("cd ")) {
+        const next = line.slice(2).trim() || "/";
+        if (next.startsWith("/")) {
+          cwdRef.current = next;
+        } else if (next === "..") {
+          cwdRef.current = cwdRef.current.split("/").filter(Boolean).slice(0, -1).join("/");
+          cwdRef.current = cwdRef.current ? `/${cwdRef.current}` : "/";
+        } else if (next !== ".") {
+          cwdRef.current = `${cwdRef.current.replace(/\/$/, "")}/${next}`;
+        }
+        prompt();
+        return;
+      }
+
+      pendingRef.current = true;
+      termRef.current?.write("\r\n");
+      execMutateRef.current(
+        {
+          sandboxId: sandbox.id,
+          command: "sh",
+          args: ["-lc", line],
+          cwd: cwdRef.current,
+        },
+        {
+          onSuccess: (data) => {
+            if (data.stdout) write(data.stdout);
+            if (data.stderr) write(`\x1b[31m${data.stderr}\x1b[0m`);
+            if (data.timed_out) write("\x1b[33mcommand timed out\x1b[0m\n");
+            if (data.truncated) write("\x1b[33moutput truncated\x1b[0m\n");
+            if (data.exit_code !== 0) write(`\x1b[90mexit ${data.exit_code}\x1b[0m\n`);
+          },
+          onError: (error) => {
+            write(`\x1b[31m${(error as Error).message}\x1b[0m\n`);
+            toast.error((error as Error).message);
+          },
+          onSettled: () => {
+            pendingRef.current = false;
+            prompt();
+          },
+        },
+      );
+    },
+    [prompt, sandbox.id, write],
+  );
+
+  useEffect(() => {
+    if (!mountRef.current) return;
+
+    const term = new XTerm({
+      cursorBlink: true,
+      convertEol: true,
+      fontFamily:
+        "var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      fontSize: 12,
+      lineHeight: 1.45,
+      theme: {
+        background: "#050505",
+        foreground: "#e8e8e8",
+        cursor: "#ffffff",
+        selectionBackground: "#3a3a3a",
+        black: "#111111",
+        red: "#ff6b6b",
+        green: "#7bd88f",
+        yellow: "#f7d774",
+        blue: "#7aa2f7",
+        magenta: "#bb9af7",
+        cyan: "#7dcfff",
+        white: "#d7d7d7",
+        brightBlack: "#666666",
+        brightRed: "#ff8f8f",
+        brightGreen: "#a6e3a1",
+        brightYellow: "#ffe58a",
+        brightBlue: "#9dbbff",
+        brightMagenta: "#d7b4ff",
+        brightCyan: "#a5f3fc",
+        brightWhite: "#ffffff",
+      },
+    });
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    term.open(mountRef.current);
+    termRef.current = term;
+    fit.fit();
+    term.focus();
+    term.write(`\x1b[32m${sandbox.slug}\x1b[0m:\x1b[34m${cwdRef.current}\x1b[0m$ `);
+
+    const resizeObserver = new ResizeObserver(() => fit.fit());
+    resizeObserver.observe(mountRef.current);
+
+    const dataDisposable = term.onData((data) => {
+      if (pendingRef.current) {
+        if (data === "\u0003") term.write("^C\r\n\x1b[90mcommand is already running\x1b[0m");
+        return;
+      }
+
+      if (data === "\r") {
+        const current = inputRef.current;
+        inputRef.current = "";
+        runCommand(current);
+        return;
+      }
+      if (data === "\u007f") {
+        if (!inputRef.current) return;
+        inputRef.current = inputRef.current.slice(0, -1);
+        term.write("\b \b");
+        return;
+      }
+      if (data === "\u0003") {
+        inputRef.current = "";
+        term.write("^C");
+        prompt();
+        return;
+      }
+      if (data === "\u000c") {
+        term.clear();
+        inputRef.current = "";
+        term.write(`\x1b[32m${sandbox.slug}\x1b[0m:\x1b[34m${cwdRef.current}\x1b[0m$ `);
+        return;
+      }
+      if (data === "\x1b[A" || data === "\x1b[B") {
+        const history = historyRef.current;
+        if (!history.length) return;
+        const current = historyIndexRef.current;
+        if (data === "\x1b[A") {
+          historyIndexRef.current = current == null ? history.length - 1 : Math.max(0, current - 1);
+        } else {
+          historyIndexRef.current =
+            current == null ? null : current >= history.length - 1 ? null : current + 1;
+        }
+        inputRef.current =
+          historyIndexRef.current == null ? "" : (history[historyIndexRef.current] ?? "");
+        rewriteInput();
+        return;
+      }
+      if (data >= " " && data !== "\x7f") {
+        inputRef.current += data;
+        term.write(data);
+      }
+    });
+
+    return () => {
+      dataDisposable.dispose();
+      resizeObserver.disconnect();
+      term.dispose();
+      termRef.current = null;
+      inputRef.current = "";
+      pendingRef.current = false;
+    };
+  }, [prompt, rewriteInput, runCommand, sandbox.slug]);
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className="text-[12px] text-[var(--color-fg-muted)]">Command</label>
-          <Input
-            value={command}
-            onChange={(event) => setCommand(event.target.value)}
-            className={cn("mt-1.5", fieldControlClass)}
-            required
-          />
-        </div>
-        <div>
-          <label className="text-[12px] text-[var(--color-fg-muted)]">Args</label>
-          <Input
-            value={args}
-            onChange={(event) => setArgs(event.target.value)}
-            className={cn("mt-1.5", fieldControlClass)}
-            placeholder="-la /"
-          />
-        </div>
+    <div className="flex min-h-[460px] flex-1 flex-col overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[#050505] shadow-[var(--shadow-xs)]">
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-white/10 px-3 py-2">
+        <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" />
+        <span className="h-2.5 w-2.5 rounded-full bg-[#ffbd2e]" />
+        <span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
+        <span className="mono ml-2 truncate text-[11px] text-white/50">{sandbox.slug}</span>
       </div>
-      <div>
-        <label className="text-[12px] text-[var(--color-fg-muted)]">Working directory</label>
-        <Input
-          value={cwd}
-          onChange={(event) => setCwd(event.target.value)}
-          className={cn("mt-1.5", fieldControlClass)}
-          placeholder="/"
-        />
-      </div>
-      <Button type="submit" size="sm" disabled={exec.isPending || !command.trim()}>
-        {exec.isPending && <Spinner className="size-3" />}
-        Run command
-      </Button>
-      {result && (
-        <pre className="mono max-h-[420px] overflow-auto rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-sunken)] p-3 text-[12px] leading-6 text-[var(--color-fg)]">
-          {result}
-        </pre>
-      )}
-    </form>
+      <div ref={mountRef} className="min-h-0 flex-1 overflow-hidden p-3" />
+    </div>
   );
 }
 

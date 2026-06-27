@@ -122,6 +122,14 @@ pub struct LogProjectView {
     pub event_count_24h: i64,
     pub bytes_ingested_24h: i64,
     pub last_ingested_at: Option<DateTime<FixedOffset>>,
+    pub attached_service: Option<LogProjectAttachedServiceView>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct LogProjectAttachedServiceView {
+    pub id: Uuid,
+    pub slug: String,
+    pub environment: String,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -363,11 +371,17 @@ impl LogProjectView {
         project: log_project::Model,
         bucket: Option<log_storage_bucket::Model>,
         stats: LogStats24h,
+        attached_service: Option<DeployLogProjectAttachment>,
     ) -> Self {
         let (bucket_name, bucket_storage_uri) = match bucket {
             Some(b) => (Some(b.name), Some(b.storage_uri)),
             None => (None, None),
         };
+        let attached_service = attached_service.map(|attachment| LogProjectAttachedServiceView {
+            id: attachment.service_id,
+            slug: attachment.service_slug,
+            environment: attachment.environment,
+        });
         LogProjectView {
             id: project.id,
             workspace_id: project.workspace_id,
@@ -383,6 +397,7 @@ impl LogProjectView {
             event_count_24h: stats.event_count,
             bytes_ingested_24h: stats.bytes_ingested,
             last_ingested_at: stats.last_ingested_at,
+            attached_service,
         }
     }
 }
@@ -571,7 +586,14 @@ pub async fn list_projects(
     for project in projects {
         let bucket = load_bucket(&state, project.bucket_id).await?;
         let stats = project_stats_24h(&state, m.workspace.id, project.id).await;
-        views.push(LogProjectView::build(project, bucket, stats));
+        let attached_service =
+            deploy_log_project_attachment(&state, m.workspace.id, project.id).await?;
+        views.push(LogProjectView::build(
+            project,
+            bucket,
+            stats,
+            attached_service,
+        ));
     }
     Ok(Json(views))
 }
@@ -627,6 +649,7 @@ pub async fn create_project(
         project,
         None,
         LogStats24h::default(),
+        None,
     )))
 }
 
@@ -641,7 +664,14 @@ pub async fn get_project(
     let project = resolve_project(&state, m.workspace.id, &project).await?;
     let bucket = load_bucket(&state, project.bucket_id).await?;
     let stats = project_stats_24h(&state, m.workspace.id, project.id).await;
-    Ok(Json(LogProjectView::build(project, bucket, stats)))
+    let attached_service =
+        deploy_log_project_attachment(&state, m.workspace.id, project.id).await?;
+    Ok(Json(LogProjectView::build(
+        project,
+        bucket,
+        stats,
+        attached_service,
+    )))
 }
 
 pub async fn delete_project(

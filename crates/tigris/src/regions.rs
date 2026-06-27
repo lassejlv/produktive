@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// Tigris single-region codes exposed in the Produktive UI.
-pub const ALLOWED_REGION_CODES: &[&str] = &["ams", "fra", "iad", "lhr", "ord", "sin", "sjc"];
+pub const ALLOWED_REGION_CODES: &[&str] = &["ams", "arn", "sin", "iad", "sjc"];
 
 pub const DEFAULT_OBJECT_STORAGE_REGION: &str = "ams";
 
@@ -29,11 +29,9 @@ pub fn validate_allowed_region(region: &str) -> Result<(), String> {
 pub fn region_flag(code: &str) -> &'static str {
     match code {
         "ams" => "🇳🇱",
-        "fra" => "🇩🇪",
-        "iad" => "🇺🇸",
-        "lhr" => "🇬🇧",
-        "ord" => "🇺🇸",
+        "arn" => "🇸🇪",
         "sin" => "🇸🇬",
+        "iad" => "🇺🇸",
         "sjc" => "🇺🇸",
         _ => "🌍",
     }
@@ -42,11 +40,9 @@ pub fn region_flag(code: &str) -> &'static str {
 fn static_region_name(code: &str) -> String {
     match code {
         "ams" => "Amsterdam, Netherlands".into(),
-        "fra" => "Frankfurt, Germany".into(),
-        "iad" => "Ashburn, Virginia (US)".into(),
-        "lhr" => "London, United Kingdom".into(),
-        "ord" => "Chicago, Illinois (US)".into(),
+        "arn" => "Stockholm, Sweden".into(),
         "sin" => "Singapore".into(),
+        "iad" => "Ashburn, Virginia (US)".into(),
         "sjc" => "San Jose, California (US)".into(),
         _ => code.to_owned(),
     }

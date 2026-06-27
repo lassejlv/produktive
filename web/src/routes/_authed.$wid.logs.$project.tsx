@@ -179,6 +179,11 @@ function LogExplorerRoute() {
         pending={deleteProject.isPending}
         onConfirm={() => {
           if (!toDelete) return;
+          if (toDelete.attached_service) {
+            toast.error("Disconnect this log project from its deployment service before deleting it.");
+            setToDelete(null);
+            return;
+          }
           deleteProject.mutate(toDelete.slug, {
             onSuccess: () => {
               toast.success("Log project deleted");
@@ -913,6 +918,7 @@ function InspectorGroup({ rows }: { rows: Array<[string, string | null]> }) {
 }
 
 function ProjectSheet({ project, onDelete }: { project: LogProject; onDelete: () => void }) {
+  const attached = project.attached_service;
   return (
     <>
       <SheetHeader>
@@ -925,6 +931,9 @@ function ProjectSheet({ project, onDelete }: { project: LogProject; onDelete: ()
             rows={[
               ["slug", project.slug],
               ["retention", `${project.retention_days} days`],
+              attached
+                ? ["connected service", `${attached.slug} (${attached.environment})`]
+                : ["connected service", null],
               ["bucket", project.bucket_name ?? "Default log storage"],
               ["storage", project.bucket_storage_uri ?? "LOG_STORAGE_URI"],
               ["created", new Date(project.created_at).toLocaleString()],
@@ -935,7 +944,18 @@ function ProjectSheet({ project, onDelete }: { project: LogProject; onDelete: ()
             <Metric label="24h events" value={formatCompact(project.event_count_24h)} />
             <Metric label="24h bytes" value={formatBytes(project.bytes_ingested_24h)} />
           </div>
-          <Button type="button" variant="destructive-outline" size="sm" onClick={onDelete}>
+          {attached && (
+            <p className="text-[12px] leading-relaxed text-[var(--color-fg-muted)]">
+              This project is connected to a deployment service and cannot be deleted.
+            </p>
+          )}
+          <Button
+            type="button"
+            variant="destructive-outline"
+            size="sm"
+            disabled={Boolean(attached)}
+            onClick={onDelete}
+          >
             <Trash2 size={13} /> Delete project
           </Button>
         </div>
