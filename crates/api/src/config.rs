@@ -223,7 +223,8 @@ impl Config {
             .map(PathBuf::from)
             .filter(|p| p.join("index.html").is_file());
 
-        let polar_secret_key = std::env::var("POLAR_SECRET_KEY")
+        let polar_secret_key = std::env::var("POLAR_UNSTATUS_KEY")
+            .or_else(|_| std::env::var("POLAR_SECRET_KEY"))
             .ok()
             .map(|v| v.trim().to_owned())
             .filter(|v| !v.is_empty());

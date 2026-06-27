@@ -30,7 +30,7 @@ export interface BillingBalanceSummary {
   granted?: number | null;
   remaining?: number | null;
   usage?: number | null;
-  /** Estimated dollar cost of the period's usage (deploy resource meters). */
+  /** Estimated dollar cost of the period's usage (pure-overage resource meters). */
   cost?: number | null;
   unlimited: boolean;
   next_reset_at?: number | null;
@@ -221,7 +221,7 @@ export function usageNumbers(balance: BillingBalanceSummary | null | undefined):
   const remaining = balance.remaining ?? null;
   const percent = used != null && granted != null && granted > 0 ? (used / granted) * 100 : null;
 
-  // Pure-overage meters (deploy resource meters) have no included allowance:
+  // Pure-overage resource meters have no included allowance:
   // show the usage consumed this period alone, with the reset date as the sub.
   if (granted == null) {
     return {
@@ -254,6 +254,8 @@ export function featureNoun(featureId: string): string | null {
     case "deploy_cpu":
       return "vCPU-hours";
     case "deploy_volume":
+      return "GB-hours";
+    case "object_storage":
       return "GB-hours";
     default:
       return null;

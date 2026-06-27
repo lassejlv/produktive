@@ -16,6 +16,14 @@ pub const METERED_FEATURES: [&str; 3] = ["events", "monitors", "members"];
 /// zero. Tracked by the deploy usage sweep, not gated on creation.
 pub const DEPLOY_METERED_FEATURES: [&str; 3] = ["deploy_memory", "deploy_cpu", "deploy_volume"];
 
+/// All pure-overage resource meters shown as current-period usage/cost lines.
+pub const RESOURCE_METERED_FEATURES: [&str; 4] = [
+    "deploy_memory",
+    "deploy_cpu",
+    "deploy_volume",
+    "object_storage",
+];
+
 #[derive(Debug, Clone, Default)]
 pub struct PolarCatalog {
     tiers: BTreeMap<String, TierCatalog>,

@@ -18,18 +18,18 @@ use crate::{
         customer_state_for_billing, ensure_customer, feature_noun, format_thousands,
         load_owner_email, member_count, monitor_count, overage_text, perk_label,
         refresh_and_store_customer_state, trim_decimal, Billing, FeatureEntitlement, PolarCatalog,
-        TierCatalog, DEPLOY_METERED_FEATURES, METERED_FEATURES, PERK_FEATURES,
+        TierCatalog, METERED_FEATURES, PERK_FEATURES, RESOURCE_METERED_FEATURES,
     },
     error::{ApiError, ApiResult},
     middleware::Membership,
     state::AppState,
 };
 
-/// True for the pure-overage deploy resource meters (billed from zero, no
+/// True for pure-overage resource meters (billed from zero, no
 /// included allowance). They render as a usage tile + an overage-rate plan line
 /// rather than an "X / Y included" allowance.
-fn is_deploy_meter(feature: &str) -> bool {
-    DEPLOY_METERED_FEATURES.contains(&feature)
+fn is_resource_meter(feature: &str) -> bool {
+    RESOURCE_METERED_FEATURES.contains(&feature)
 }
 
 pub fn routes() -> Router<AppState> {
@@ -124,7 +124,7 @@ pub struct BillingBalanceSummary {
     pub remaining: Option<f64>,
     pub usage: Option<f64>,
     /// Estimated dollar cost of the current-period usage. Populated for the
-    /// pure-overage deploy resource meters (usage × unit price); `None` for
+    /// pure-overage resource meters (usage × unit price); `None` for
     /// allowance-based features that bill from a flat plan price.
     pub cost: Option<f64>,
     pub unlimited: bool,
@@ -701,7 +701,7 @@ fn plan_summary(tier: &TierCatalog, current: Option<&str>) -> BillingPlanSummary
             items.push(unlimited_item(feature));
         }
     }
-    for feature in DEPLOY_METERED_FEATURES {
+    for feature in RESOURCE_METERED_FEATURES {
         if let Some(ent) = tier.features.get(feature) {
             items.push(metered_item(feature, ent));
         }
@@ -735,9 +735,9 @@ fn unlimited_item(feature: &str) -> BillingPlanItemSummary {
 }
 
 fn metered_item(feature: &str, ent: &FeatureEntitlement) -> BillingPlanItemSummary {
-    // Deploy resource meters are pure-overage from zero: headline the per-unit
+    // Resource meters are pure-overage from zero: headline the per-unit
     // rate rather than "0 GB-hours".
-    if is_deploy_meter(feature) {
+    if is_resource_meter(feature) {
         return BillingPlanItemSummary {
             feature_id: feature.to_owned(),
             included: Some(ent.included),
@@ -833,10 +833,10 @@ async fn build_balances(
         );
     }
 
-    // Deploy resource meters are pure-overage (no included allowance). Surface
+    // Resource meters are pure-overage (no included allowance). Surface
     // the current-period consumption from Polar's meter balance so the billing
     // page can show "used this period" against the metered overage rate.
-    for feature in DEPLOY_METERED_FEATURES {
+    for feature in RESOURCE_METERED_FEATURES {
         let Some(ent) = catalog.entitlement(tier, feature) else {
             continue;
         };

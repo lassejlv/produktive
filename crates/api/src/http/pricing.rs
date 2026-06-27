@@ -8,8 +8,8 @@ use utoipa::ToSchema;
 use crate::{
     billing::{
         feature_display_name, feature_noun, format_thousands, overage_text, perk_label,
-        trim_decimal, FeatureEntitlement, PolarCatalog, TierCatalog, DEPLOY_METERED_FEATURES,
-        HOURS_PER_MONTH, METERED_FEATURES, PERK_FEATURES,
+        trim_decimal, FeatureEntitlement, PolarCatalog, TierCatalog, HOURS_PER_MONTH,
+        METERED_FEATURES, PERK_FEATURES, RESOURCE_METERED_FEATURES,
     },
     error::ApiResult,
     state::AppState,
@@ -177,7 +177,7 @@ fn catalog_plan(_catalog: &PolarCatalog, tier: &TierCatalog) -> PublicPricingPla
             features.push(unlimited_plan_feature(feature));
         }
     }
-    for feature in DEPLOY_METERED_FEATURES {
+    for feature in RESOURCE_METERED_FEATURES {
         if let Some(ent) = tier.features.get(feature) {
             features.push(metered_plan_feature(feature, ent));
         }
@@ -224,7 +224,7 @@ fn metered_plan_feature(feature: &str, ent: &FeatureEntitlement) -> PublicPlanFe
             "events" => (cents * 1000.0 / 100.0, 1000.0),
             // Hourly compute/storage meters: report the per-month dollar
             // equivalent (interval is "month"), mirroring `overage_text`.
-            "deploy_memory" | "deploy_cpu" | "deploy_volume" => {
+            "deploy_memory" | "deploy_cpu" | "deploy_volume" | "object_storage" => {
                 (cents * HOURS_PER_MONTH / 100.0, 1.0)
             }
             // deploy_egress and everything else are flat per-unit prices.
@@ -247,7 +247,7 @@ fn metered_plan_feature(feature: &str, ent: &FeatureEntitlement) -> PublicPlanFe
         included: Some(ent.included),
         unlimited: false,
         reset_interval: Some("month".into()),
-        primary_text: Some(if is_deploy_meter(feature) {
+        primary_text: Some(if is_resource_meter(feature) {
             // Deploy meters bill from zero; show the overage rate as the headline.
             ent.unit_amount_cents
                 .map(|c| overage_text(feature, c))
@@ -259,7 +259,7 @@ fn metered_plan_feature(feature: &str, ent: &FeatureEntitlement) -> PublicPlanFe
                 feature_noun(feature, ent.included)
             )
         }),
-        secondary_text: if is_deploy_meter(feature) {
+        secondary_text: if is_resource_meter(feature) {
             None
         } else {
             ent.unit_amount_cents.map(|c| overage_text(feature, c))
@@ -268,10 +268,10 @@ fn metered_plan_feature(feature: &str, ent: &FeatureEntitlement) -> PublicPlanFe
     }
 }
 
-/// Deploy resource meters are pure-overage from zero (no included credits), so
+/// Resource meters are pure-overage from zero (no included credits), so
 /// they render differently from allowance-based metered features.
-fn is_deploy_meter(feature: &str) -> bool {
-    DEPLOY_METERED_FEATURES.contains(&feature)
+fn is_resource_meter(feature: &str) -> bool {
+    RESOURCE_METERED_FEATURES.contains(&feature)
 }
 
 fn perk_plan_feature(feature: &str, included: bool) -> PublicPlanFeature {
@@ -300,7 +300,7 @@ fn build_public_features() -> Vec<PublicPricingFeature> {
             display_plural: Some(feature_noun(feature, 2.0).to_owned()),
         });
     }
-    for feature in DEPLOY_METERED_FEATURES {
+    for feature in RESOURCE_METERED_FEATURES {
         features.push(PublicPricingFeature {
             id: feature.to_owned(),
             name: Some(feature_display_name(feature).to_owned()),
@@ -328,7 +328,7 @@ fn build_public_features() -> Vec<PublicPricingFeature> {
 fn feature_order() -> Vec<String> {
     METERED_FEATURES
         .iter()
-        .chain(DEPLOY_METERED_FEATURES.iter())
+        .chain(RESOURCE_METERED_FEATURES.iter())
         .chain(PERK_FEATURES.iter())
         .map(|s| (*s).to_owned())
         .collect()
@@ -457,7 +457,8 @@ mod tests {
                     {"amount_type": "fixed", "price_currency": "usd", "price_amount": 4900},
                     {"amount_type": "metered_unit", "price_currency": "usd", "unit_amount": "1.3896", "meter_id": "m_deploy_mem"},
                     {"amount_type": "metered_unit", "price_currency": "usd", "unit_amount": "2.7792", "meter_id": "m_deploy_cpu"},
-                    {"amount_type": "metered_unit", "price_currency": "usd", "unit_amount": "0.0216", "meter_id": "m_deploy_vol"}
+                    {"amount_type": "metered_unit", "price_currency": "usd", "unit_amount": "0.0216", "meter_id": "m_deploy_vol"},
+                    {"amount_type": "metered_unit", "price_currency": "usd", "unit_amount": "0.002777777777777778", "meter_id": "m_object_storage"}
                 ],
                 "benefits": []
             }
@@ -466,7 +467,8 @@ mod tests {
         let meters: Vec<Meter> = serde_json::from_value(serde_json::json!([
             {"id": "m_deploy_mem", "name": "deploy_memory", "metadata": {"feature": "deploy_memory"}},
             {"id": "m_deploy_cpu", "name": "deploy_cpu", "metadata": {"feature": "deploy_cpu"}},
-            {"id": "m_deploy_vol", "name": "deploy_volume", "metadata": {"feature": "deploy_volume"}}
+            {"id": "m_deploy_vol", "name": "deploy_volume", "metadata": {"feature": "deploy_volume"}},
+            {"id": "m_object_storage", "name": "object_storage", "metadata": {"feature": "object_storage"}}
         ]))
         .unwrap();
         PolarCatalog::from_products_with_meters(products, meters)
@@ -515,6 +517,11 @@ mod tests {
             ("deploy_memory", 1.3896, "then $10.01 per GB-month"),
             ("deploy_cpu", 2.7792, "then $20.01 per vCPU-month"),
             ("deploy_volume", 0.0216, "then $0.16 per GB-month"),
+            (
+                "object_storage",
+                0.002777777777777778,
+                "then $0.02 per GB-month",
+            ),
         ] {
             let plan_feature = plan
                 .features

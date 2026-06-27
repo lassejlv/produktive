@@ -1,10 +1,10 @@
-//! Periodic deploy usage sweep. Every tick, for each billing-customer
-//! workspace, compute second-precision resource usage since the last successful
-//! ingest and report it to Polar as fractional GB-hours / vCPU-hours / volume
-//! GB-hours. This keeps Railway-style per-second metering while matching Polar's
-//! hourly unit prices.
+//! Periodic resource usage sweep. Every tick, for each billing-customer
+//! workspace, compute second-precision deployment, sandbox, and object-storage
+//! usage since the last successful ingest and report it to Polar as fractional
+//! GB-hours / vCPU-hours. This keeps Railway-style per-second metering while
+//! matching Polar's hourly unit prices.
 //!
-//! Mirrors [`super::sweep`] (the gauge re-report) but for deployment resource
+//! Mirrors [`super::sweep`] (the gauge re-report) but for resource-usage
 //! meters. The events carry a deterministic `external_id` per (feature, billing
 //! customer, window) so a re-run of the same window is deduped by Polar; if an
 //! ingest fails the marker is left untouched and the next sweep widens the
@@ -21,8 +21,10 @@ use crate::{
     billing::{
         customer_id,
         deploy_usage::{
-            billing_customer_workspaces, compute_compute_seconds, compute_volume_gb_seconds,
-            deploy_usage_event_key, ComputeKind,
+            billing_customer_workspaces, compute_compute_seconds,
+            compute_object_storage_gb_seconds, compute_sandbox_compute_seconds,
+            compute_sandbox_storage_gb_seconds, compute_volume_gb_seconds, deploy_usage_event_key,
+            ComputeKind,
         },
         Billing,
     },
@@ -35,10 +37,31 @@ fn seconds_to_hours(seconds: f64) -> f64 {
     seconds / SECONDS_PER_HOUR
 }
 
-/// Spawn the deploy usage sweep. No-op when billing is disabled or deployments
-/// are off — there's nothing to meter.
+#[derive(Clone, Copy, Debug, Default)]
+struct ResourceUsageSeconds {
+    memory: f64,
+    cpu: f64,
+    volume: f64,
+    object_storage: f64,
+}
+
+impl ResourceUsageSeconds {
+    fn is_empty(self) -> bool {
+        self.memory <= f64::EPSILON
+            && self.cpu <= f64::EPSILON
+            && self.volume <= f64::EPSILON
+            && self.object_storage <= f64::EPSILON
+    }
+}
+
+/// Spawn the resource usage sweep. No-op when billing is disabled or every
+/// resource product is off — there's nothing to meter.
 pub fn spawn(state: AppState) {
-    if state.billing.is_none() || !state.config.deployments_enabled {
+    if state.billing.is_none()
+        || (!state.config.deployments_enabled
+            && !state.config.sandboxes_enabled
+            && !state.config.object_storage_enabled)
+    {
         return;
     }
     tokio::spawn(async move {
@@ -52,7 +75,7 @@ pub fn spawn(state: AppState) {
         loop {
             interval.tick().await;
             if let Err(error) = run_once(&state).await {
-                tracing::error!(error = ?error, "deploy usage sweep failed");
+                tracing::error!(error = ?error, "resource usage sweep failed");
             }
         }
     });
@@ -84,7 +107,7 @@ async fn run_once(state: &AppState) -> anyhow::Result<()> {
             Err(error) => tracing::warn!(
                 workspace_id = %billing_workspace_id,
                 error = %error,
-                "deploy usage sweep failed for workspace"
+                "resource usage sweep failed for workspace"
             ),
         }
         // Spread Polar load across a large install.
@@ -94,7 +117,7 @@ async fn run_once(state: &AppState) -> anyhow::Result<()> {
     tracing::info!(
         swept,
         total = workspaces.len(),
-        "deploy usage sweep complete"
+        "resource usage sweep complete"
     );
     Ok(())
 }
@@ -114,7 +137,7 @@ async fn sweep_one(
         return Ok(false);
     }
 
-    let memory_seconds = compute_compute_seconds(
+    let deployment_memory_seconds = compute_compute_seconds(
         state,
         billing_workspace_id,
         window_start,
@@ -122,7 +145,16 @@ async fn sweep_one(
         ComputeKind::Memory,
     )
     .await?;
-    let cpu_seconds = compute_compute_seconds(
+    let sandbox_memory_seconds = compute_sandbox_compute_seconds(
+        state,
+        billing_workspace_id,
+        window_start,
+        window_end,
+        ComputeKind::Memory,
+    )
+    .await?;
+
+    let deployment_cpu_seconds = compute_compute_seconds(
         state,
         billing_workspace_id,
         window_start,
@@ -130,13 +162,33 @@ async fn sweep_one(
         ComputeKind::Cpu,
     )
     .await?;
-    let volume_seconds =
-        compute_volume_gb_seconds(state, billing_workspace_id, window_start, window_end).await?;
+    let sandbox_cpu_seconds = compute_sandbox_compute_seconds(
+        state,
+        billing_workspace_id,
+        window_start,
+        window_end,
+        ComputeKind::Cpu,
+    )
+    .await?;
 
-    if memory_seconds <= f64::EPSILON
-        && cpu_seconds <= f64::EPSILON
-        && volume_seconds <= f64::EPSILON
-    {
+    let deployment_volume_seconds =
+        compute_volume_gb_seconds(state, billing_workspace_id, window_start, window_end).await?;
+    let sandbox_volume_seconds =
+        compute_sandbox_storage_gb_seconds(state, billing_workspace_id, window_start, window_end)
+            .await?;
+
+    let object_storage_seconds =
+        compute_object_storage_gb_seconds(state, billing_workspace_id, window_start, window_end)
+            .await?;
+
+    let usage = ResourceUsageSeconds {
+        memory: deployment_memory_seconds + sandbox_memory_seconds,
+        cpu: deployment_cpu_seconds + sandbox_cpu_seconds,
+        volume: deployment_volume_seconds + sandbox_volume_seconds,
+        object_storage: object_storage_seconds,
+    };
+
+    if usage.is_empty() {
         // Nothing billable this window — still advance the marker so the next
         // sweep doesn't re-scan an ever-growing empty window.
         persist_last_sent_at(state, billing_workspace_id, window_end).await?;
@@ -144,15 +196,7 @@ async fn sweep_one(
     }
 
     let ext = customer_id(billing_workspace_id);
-    let events = build_events(
-        &ext,
-        billing_workspace_id,
-        window_start,
-        window_end,
-        memory_seconds,
-        cpu_seconds,
-        volume_seconds,
-    );
+    let events = build_events(&ext, billing_workspace_id, window_start, window_end, usage);
 
     match billing.client.events().ingest(events).await {
         Ok(_) => {
@@ -164,7 +208,7 @@ async fn sweep_one(
             tracing::warn!(
                 workspace_id = %billing_workspace_id,
                 error = %error,
-                "deploy usage sweep: Polar ingest failed; marker left so next sweep re-attempts"
+                "resource usage sweep: Polar ingest failed; marker left so next sweep re-attempts"
             );
             Ok(false)
         }
@@ -176,14 +220,13 @@ fn build_events(
     billing_workspace_id: Uuid,
     window_start: chrono::DateTime<Utc>,
     window_end: chrono::DateTime<Utc>,
-    memory_seconds: f64,
-    cpu_seconds: f64,
-    volume_seconds: f64,
+    usage: ResourceUsageSeconds,
 ) -> Vec<EventCreate> {
-    let mut events = Vec::with_capacity(3);
-    let memory_hours = seconds_to_hours(memory_seconds);
-    let cpu_hours = seconds_to_hours(cpu_seconds);
-    let volume_hours = seconds_to_hours(volume_seconds);
+    let mut events = Vec::with_capacity(4);
+    let memory_hours = seconds_to_hours(usage.memory);
+    let cpu_hours = seconds_to_hours(usage.cpu);
+    let volume_hours = seconds_to_hours(usage.volume);
+    let object_storage_hours = seconds_to_hours(usage.object_storage);
 
     if memory_hours > f64::EPSILON {
         events.push(
@@ -215,6 +258,18 @@ fn build_events(
                 .metadata("value", volume_hours)
                 .external_id(deploy_usage_event_key(
                     "volume",
+                    billing_workspace_id,
+                    window_start,
+                    window_end,
+                )),
+        );
+    }
+    if object_storage_hours > f64::EPSILON {
+        events.push(
+            EventCreate::new("object_storage", ext)
+                .metadata("value", object_storage_hours)
+                .external_id(deploy_usage_event_key(
+                    "object_storage",
                     billing_workspace_id,
                     window_start,
                     window_end,
@@ -271,12 +326,21 @@ mod tests {
     use super::*;
     use chrono::TimeZone;
 
+    fn usage(memory: f64, cpu: f64, volume: f64, object_storage: f64) -> ResourceUsageSeconds {
+        ResourceUsageSeconds {
+            memory,
+            cpu,
+            volume,
+            object_storage,
+        }
+    }
+
     #[test]
     fn build_events_omits_zero_deltas() {
         let ws = Uuid::nil();
         let start = Utc.timestamp_opt(0, 0).unwrap();
         let end = Utc.timestamp_opt(3600, 0).unwrap();
-        let events = build_events("cus_1", ws, start, end, 0.0, 0.0, 0.0);
+        let events = build_events("cus_1", ws, start, end, usage(0.0, 0.0, 0.0, 0.0));
         assert!(events.is_empty());
     }
 
@@ -285,7 +349,7 @@ mod tests {
         let ws = Uuid::nil();
         let start = Utc.timestamp_opt(0, 0).unwrap();
         let end = Utc.timestamp_opt(3600, 0).unwrap();
-        let events = build_events("cus_1", ws, start, end, 1.5, 0.0, 2.0);
+        let events = build_events("cus_1", ws, start, end, usage(1.5, 0.0, 2.0, 0.0));
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].name, "deploy_memory");
         assert_eq!(events[1].name, "deploy_volume");
@@ -296,7 +360,7 @@ mod tests {
         let ws = Uuid::nil();
         let start = Utc.timestamp_opt(0, 0).unwrap();
         let end = Utc.timestamp_opt(3600, 0).unwrap();
-        let events = build_events("cus_1", ws, start, end, 5_400.0, 2_520.0, 0.0);
+        let events = build_events("cus_1", ws, start, end, usage(5_400.0, 2_520.0, 0.0, 0.0));
         let mem = &events[0];
         let value = mem.metadata.get("value").and_then(|v| v.as_f64()).unwrap();
         assert!((value - 1.5).abs() < f64::EPSILON);
@@ -310,7 +374,7 @@ mod tests {
         let ws = Uuid::nil();
         let start = Utc.timestamp_opt(0, 0).unwrap();
         let end = Utc.timestamp_opt(1, 0).unwrap();
-        let events = build_events("cus_1", ws, start, end, 0.5, 1.0, 2.0);
+        let events = build_events("cus_1", ws, start, end, usage(0.5, 1.0, 2.0, 3.0));
 
         let memory_value = events[0]
             .metadata
@@ -327,10 +391,16 @@ mod tests {
             .get("value")
             .and_then(|v| v.as_f64())
             .unwrap();
+        let object_storage_value = events[3]
+            .metadata
+            .get("value")
+            .and_then(|v| v.as_f64())
+            .unwrap();
 
         assert!((memory_value - (0.5 / 3_600.0)).abs() < f64::EPSILON);
         assert!((cpu_value - (1.0 / 3_600.0)).abs() < f64::EPSILON);
         assert!((volume_value - (2.0 / 3_600.0)).abs() < f64::EPSILON);
+        assert!((object_storage_value - (3.0 / 3_600.0)).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -338,13 +408,15 @@ mod tests {
         let ws = Uuid::nil();
         let start = Utc.timestamp_opt(0, 0).unwrap();
         let end = Utc.timestamp_opt(3600, 0).unwrap();
-        let a = build_events("cus_1", ws, start, end, 1.0, 1.0, 1.0);
-        let b = build_events("cus_1", ws, start, end, 1.0, 1.0, 1.0);
+        let a = build_events("cus_1", ws, start, end, usage(1.0, 1.0, 1.0, 1.0));
+        let b = build_events("cus_1", ws, start, end, usage(1.0, 1.0, 1.0, 1.0));
         assert_eq!(a[0].external_id, b[0].external_id);
         assert_eq!(a[1].external_id, b[1].external_id);
         assert_eq!(a[2].external_id, b[2].external_id);
+        assert_eq!(a[3].external_id, b[3].external_id);
         // And distinct per meter.
         assert_ne!(a[0].external_id, a[1].external_id);
         assert_ne!(a[1].external_id, a[2].external_id);
+        assert_ne!(a[2].external_id, a[3].external_id);
     }
 }

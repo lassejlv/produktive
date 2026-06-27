@@ -1,5 +1,5 @@
-//! Deployment usage metering helpers — compute preset-allocated GB-seconds /
-//! vCPU-seconds and volume GB-seconds over a sweep window, scoped to a billing
+//! Resource usage metering helpers — compute deployment, sandbox, and object
+//! storage GB-seconds / vCPU-seconds over a sweep window, scoped to a billing
 //! customer (the owner's personal workspace, like the rest of billing).
 //!
 //! The SQL math stays second-precision so start/stop timestamps can be clipped
@@ -10,6 +10,8 @@
 //! These are pure compute + SQL helpers. The actual Polar ingest lives in
 //! [`super::deploy_sweep`], which calls these and turns the deltas into
 //! `EventCreate` events.
+
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use deploy::ResourcePreset;
@@ -28,6 +30,17 @@ const BILLABLE_DEPLOYMENT_STATUSES: [i16; 5] = [
     4, // Healthy
     5, // Live
 ];
+
+/// Sandboxes use the same resource meters as deployments, but at a premium.
+/// Without status-history rows we only meter sandboxes whose current status is
+/// warm/active, favoring underbilling over charging stopped sandboxes.
+const SANDBOX_USAGE_MULTIPLIER: f64 = 1.30;
+
+/// Object storage is sold as decimal GB-months; bytes sampled from S3 are
+/// converted into fractional decimal GB-hours before Polar ingest.
+const OBJECT_STORAGE_BYTES_PER_GB: f64 = 1_000_000_000.0;
+
+const OBJECT_STORAGE_BUCKET_SIZE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// What resource to sum for [`compute_compute_seconds`].
 #[derive(Clone, Copy, Debug)]
@@ -122,6 +135,42 @@ pub fn windowed_volume_seconds(
     (clipped_end - clipped_start).num_milliseconds() as f64 / 1_000.0
 }
 
+/// Seconds a row-level resource existed during `[window_start, window_end)`,
+/// clipped to the window. Used for sandbox and object-storage resources that
+/// have created/deleted timestamps but no dedicated provisioned timestamp.
+pub fn windowed_resource_seconds(
+    created_at: DateTime<Utc>,
+    deleted_at: Option<DateTime<Utc>>,
+    window_start: DateTime<Utc>,
+    window_end: DateTime<Utc>,
+) -> f64 {
+    let end = deleted_at.unwrap_or(window_end);
+    if end <= created_at {
+        return 0.0;
+    }
+    let clipped_start = created_at.max(window_start);
+    let clipped_end = end.min(window_end);
+    if clipped_end <= clipped_start {
+        return 0.0;
+    }
+    (clipped_end - clipped_start).num_milliseconds() as f64 / 1_000.0
+}
+
+pub fn sandbox_compute_rate(cpus: i32, ram_mb: i32, kind: ComputeKind) -> f64 {
+    match kind {
+        ComputeKind::Memory => ram_mb.max(0) as f64 / 1024.0,
+        ComputeKind::Cpu => cpus.max(0) as f64,
+    }
+}
+
+pub fn sandbox_billable_rate(base_rate: f64) -> f64 {
+    base_rate * SANDBOX_USAGE_MULTIPLIER
+}
+
+pub fn bytes_to_object_storage_gb(bytes: u64) -> f64 {
+    bytes as f64 / OBJECT_STORAGE_BYTES_PER_GB
+}
+
 /// Sum of compute seconds (GB-seconds or vCPU-seconds) across all deployments of
 /// the billing customer behind `workspace_id`, over `[window_start, window_end)`.
 /// Aggregates across every workspace the owner has, like the rest of billing.
@@ -181,6 +230,56 @@ pub async fn compute_compute_seconds(
     Ok(total)
 }
 
+/// Sum sandbox compute seconds (GB-seconds or vCPU-seconds) across all warm or
+/// active sandboxes owned by the billing customer behind `workspace_id`.
+pub async fn compute_sandbox_compute_seconds(
+    state: &AppState,
+    workspace_id: Uuid,
+    window_start: DateTime<Utc>,
+    window_end: DateTime<Utc>,
+    kind: ComputeKind,
+) -> ApiResult<f64> {
+    let billing_workspace_id = billing_customer_workspace_id(state, workspace_id).await?;
+
+    let rows = SandboxUsageRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT
+            s.cpus       AS cpus,
+            s.ram_mb     AS ram_mb,
+            s.storage_gb AS storage_gb,
+            s.created_at AS created_at,
+            s.deleted_at AS deleted_at
+        FROM deploy_sandboxes s
+        JOIN workspaces owned ON owned.id = s.workspace_id
+        JOIN workspaces billing_ws ON billing_ws.owner_id = owned.owner_id
+        WHERE billing_ws.id = $1
+          AND s.status IN ('warm', 'active')
+          AND s.created_at < $3
+          AND COALESCE(s.deleted_at, $3) > $2
+        "#,
+        [
+            billing_workspace_id.into(),
+            window_start.fixed_offset().into(),
+            window_end.fixed_offset().into(),
+        ],
+    ))
+    .all(&state.db)
+    .await?;
+
+    let mut total = 0.0;
+    for row in rows {
+        let seconds = windowed_resource_seconds(
+            row.created_at.with_timezone(&Utc),
+            row.deleted_at.map(|d| d.with_timezone(&Utc)),
+            window_start,
+            window_end,
+        );
+        total += seconds * sandbox_billable_rate(sandbox_compute_rate(row.cpus, row.ram_mb, kind));
+    }
+    Ok(total)
+}
+
 /// Sum of volume GB-seconds across all volumes owned by the billing customer
 /// behind `workspace_id`, over `[window_start, window_end)`.
 pub async fn compute_volume_gb_seconds(
@@ -225,6 +324,149 @@ pub async fn compute_volume_gb_seconds(
             window_end,
         );
         total += seconds * row.size_gb as f64;
+    }
+    Ok(total)
+}
+
+/// Sum sandbox storage GB-seconds across all warm or active sandboxes owned by
+/// the billing customer behind `workspace_id`, billed through the existing
+/// deploy storage meter with the sandbox premium applied.
+pub async fn compute_sandbox_storage_gb_seconds(
+    state: &AppState,
+    workspace_id: Uuid,
+    window_start: DateTime<Utc>,
+    window_end: DateTime<Utc>,
+) -> ApiResult<f64> {
+    let billing_workspace_id = billing_customer_workspace_id(state, workspace_id).await?;
+
+    let rows = SandboxUsageRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT
+            s.cpus       AS cpus,
+            s.ram_mb     AS ram_mb,
+            s.storage_gb AS storage_gb,
+            s.created_at AS created_at,
+            s.deleted_at AS deleted_at
+        FROM deploy_sandboxes s
+        JOIN workspaces owned ON owned.id = s.workspace_id
+        JOIN workspaces billing_ws ON billing_ws.owner_id = owned.owner_id
+        WHERE billing_ws.id = $1
+          AND s.status IN ('warm', 'active')
+          AND s.created_at < $3
+          AND COALESCE(s.deleted_at, $3) > $2
+        "#,
+        [
+            billing_workspace_id.into(),
+            window_start.fixed_offset().into(),
+            window_end.fixed_offset().into(),
+        ],
+    ))
+    .all(&state.db)
+    .await?;
+
+    let mut total = 0.0;
+    for row in rows {
+        let seconds = windowed_resource_seconds(
+            row.created_at.with_timezone(&Utc),
+            row.deleted_at.map(|d| d.with_timezone(&Utc)),
+            window_start,
+            window_end,
+        );
+        total += seconds * sandbox_billable_rate(row.storage_gb.max(0) as f64);
+    }
+    Ok(total)
+}
+
+/// Sum object-storage GB-seconds across all ready/deleting buckets owned by the
+/// billing customer behind `workspace_id`. Bucket bytes are sampled from Tigris
+/// and converted to fractional decimal GB for MB-scale billing.
+pub async fn compute_object_storage_gb_seconds(
+    state: &AppState,
+    workspace_id: Uuid,
+    window_start: DateTime<Utc>,
+    window_end: DateTime<Utc>,
+) -> ApiResult<f64> {
+    let billing_workspace_id = billing_customer_workspace_id(state, workspace_id).await?;
+
+    let rows = ObjectStorageUsageRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT
+            b.provider_bucket_name AS provider_bucket_name,
+            b.created_at           AS created_at,
+            b.deleted_at           AS deleted_at
+        FROM object_storage_buckets b
+        JOIN workspaces owned ON owned.id = b.workspace_id
+        JOIN workspaces billing_ws ON billing_ws.owner_id = owned.owner_id
+        WHERE billing_ws.id = $1
+          AND b.status IN ('ready', 'deleting')
+          AND b.created_at < $3
+          AND COALESCE(b.deleted_at, $3) > $2
+        "#,
+        [
+            billing_workspace_id.into(),
+            window_start.fixed_offset().into(),
+            window_end.fixed_offset().into(),
+        ],
+    ))
+    .all(&state.db)
+    .await?;
+
+    if rows.is_empty() {
+        return Ok(0.0);
+    }
+
+    let Some(tigris) = state.tigris.as_ref() else {
+        tracing::warn!(
+            workspace_id = %billing_workspace_id,
+            buckets = rows.len(),
+            "object storage billing skipped because Tigris is not configured"
+        );
+        return Ok(0.0);
+    };
+
+    let mut total = 0.0;
+    for row in rows {
+        let seconds = windowed_resource_seconds(
+            row.created_at.with_timezone(&Utc),
+            row.deleted_at.map(|d| d.with_timezone(&Utc)),
+            window_start,
+            window_end,
+        );
+        if seconds <= f64::EPSILON {
+            continue;
+        }
+
+        let bucket_name = row.provider_bucket_name;
+        let bytes = match tokio::time::timeout(
+            OBJECT_STORAGE_BUCKET_SIZE_TIMEOUT,
+            tigris.bucket_size_bytes(&bucket_name),
+        )
+        .await
+        {
+            Ok(Ok(bytes)) => bytes,
+            Ok(Err(error)) => {
+                tracing::warn!(
+                    workspace_id = %billing_workspace_id,
+                    bucket = %bucket_name,
+                    error = %error,
+                    "object storage billing skipped bucket after size lookup failed"
+                );
+                continue;
+            }
+            Err(_) => {
+                tracing::warn!(
+                    workspace_id = %billing_workspace_id,
+                    bucket = %bucket_name,
+                    timeout_seconds = OBJECT_STORAGE_BUCKET_SIZE_TIMEOUT.as_secs(),
+                    "object storage billing skipped bucket after size lookup timed out"
+                );
+                continue;
+            }
+        };
+
+        total += seconds * bytes_to_object_storage_gb(bytes);
     }
     Ok(total)
 }
@@ -275,6 +517,22 @@ struct VolumeUsageRow {
 }
 
 #[derive(FromQueryResult)]
+struct SandboxUsageRow {
+    cpus: i32,
+    ram_mb: i32,
+    storage_gb: i32,
+    created_at: chrono::DateTime<chrono::FixedOffset>,
+    deleted_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+}
+
+#[derive(FromQueryResult)]
+struct ObjectStorageUsageRow {
+    provider_bucket_name: String,
+    created_at: chrono::DateTime<chrono::FixedOffset>,
+    deleted_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+}
+
+#[derive(FromQueryResult)]
 struct WorkspaceIdRow {
     id: Uuid,
 }
@@ -314,6 +572,13 @@ mod tests {
             seconds * preset_rate(preset, ComputeKind::Cpu) * f64::from(machines),
             180.0
         );
+    }
+
+    #[test]
+    fn sandbox_rates_apply_thirty_percent_premium() {
+        assert!((sandbox_compute_rate(2, 1024, ComputeKind::Memory) - 1.0).abs() < 1e-9);
+        assert!((sandbox_compute_rate(2, 1024, ComputeKind::Cpu) - 2.0).abs() < 1e-9);
+        assert!((sandbox_billable_rate(10.0) - 13.0).abs() < 1e-9);
     }
 
     #[test]
@@ -411,6 +676,20 @@ mod tests {
         let end = ts(7200);
         let s = windowed_volume_seconds(Some(ts(0)), Some(ts(1800)), start, end);
         assert_eq!(s, 0.0);
+    }
+
+    #[test]
+    fn windowed_resource_seconds_clips_created_and_deleted_at() {
+        let start = ts(0);
+        let end = ts(3600);
+        let s = windowed_resource_seconds(ts(900), Some(ts(2700)), start, end);
+        assert!((s - 1800.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn bytes_to_object_storage_gb_is_fractional_decimal_gb() {
+        assert!((bytes_to_object_storage_gb(100_000_000) - 0.1).abs() < f64::EPSILON);
+        assert!((bytes_to_object_storage_gb(1_000_000_000) - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]

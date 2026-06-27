@@ -7,11 +7,12 @@ import {
   type BillingPlanSummary,
 } from "../../lib/billing";
 
-/** Pure-overage deploy resource meters, in bill-breakdown order. */
+/** Pure-overage cloud resource meters, in bill-breakdown order. */
 const DEPLOY_RESOURCES = [
   { feature: "deploy_memory", label: "Memory" },
   { feature: "deploy_cpu", label: "CPU" },
-  { feature: "deploy_volume", label: "Volumes" },
+  { feature: "deploy_volume", label: "Disk" },
+  { feature: "object_storage", label: "Object storage" },
 ] as const;
 
 interface BreakdownRow {
@@ -30,7 +31,7 @@ function rateText(plan: BillingPlanSummary | undefined, feature: string): string
 }
 
 /**
- * Itemized deployments bill, inspired by Railway's usage breakdown: each
+ * Itemized cloud resource bill, inspired by Railway's usage breakdown: each
  * compute/storage meter shows the metered quantity, its rate, and the resulting
  * dollar cost, headlined by the period total.
  */
@@ -65,7 +66,7 @@ export function DeploymentsBreakdown({
       <header className="flex items-start justify-between gap-3 border-b border-[var(--color-border)] px-5 py-4">
         <div>
           <h3 className="text-[14px] font-medium tracking-tight text-[var(--color-fg)]">
-            Deployments usage
+            Cloud usage
           </h3>
           <p className="mt-0.5 text-[12px] text-[var(--color-fg-muted)]">{periodText}</p>
         </div>

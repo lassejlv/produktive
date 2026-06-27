@@ -110,11 +110,13 @@ mod tests {
 
     /// Live integration check of the startup catalog load against the real Polar
     /// org. Ignored by default; run with:
-    ///   POLAR_SECRET_KEY=$POLAR_PRODUKTIVE_KEY cargo test -p produktive-api -- --ignored live_catalog
+    ///   POLAR_UNSTATUS_KEY=$POLAR_PRODUKTIVE_KEY cargo test -p produktive-api -- --ignored live_catalog
     #[tokio::test]
     #[ignore]
     async fn live_catalog_loads_expected_tiers() {
-        let key = std::env::var("POLAR_SECRET_KEY").expect("POLAR_SECRET_KEY");
+        let key = std::env::var("POLAR_UNSTATUS_KEY")
+            .or_else(|_| std::env::var("POLAR_SECRET_KEY"))
+            .expect("POLAR_UNSTATUS_KEY or POLAR_SECRET_KEY");
         let client = polar::Polar::new(key).unwrap();
         let billing = Billing::load(client)
             .await

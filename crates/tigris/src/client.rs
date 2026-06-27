@@ -56,6 +56,10 @@ impl TigrisClient {
         s3::delete_bucket(&self.s3, bucket_name).await
     }
 
+    pub async fn bucket_size_bytes(&self, bucket_name: &str) -> TigrisResult<u64> {
+        s3::bucket_size_bytes(&self.s3, bucket_name).await
+    }
+
     pub async fn create_access_key(
         &self,
         name: &str,

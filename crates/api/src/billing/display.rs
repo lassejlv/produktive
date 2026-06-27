@@ -38,6 +38,7 @@ pub fn feature_display_name(feature: &str) -> &'static str {
         "deploy_cpu" => "Deploy CPU",
         "deploy_volume" => "Deploy storage",
         "deploy_egress" => "Deploy egress",
+        "object_storage" => "Object storage",
         other => perk_label(other),
     }
 }
@@ -55,6 +56,7 @@ pub fn feature_noun(feature: &str, count: f64) -> &'static str {
         ("deploy_cpu", _) => "vCPU-hours",
         ("deploy_volume", _) => "GB-hours",
         ("deploy_egress", _) => "GB",
+        ("object_storage", _) => "GB-hours",
         _ => "units",
     }
 }
@@ -79,7 +81,7 @@ pub fn overage_text(feature: &str, cents_per_unit: f64) -> String {
             "then ${} per vCPU-month",
             trim_decimal(cents_per_unit * HOURS_PER_MONTH / 100.0)
         ),
-        "deploy_volume" => format!(
+        "deploy_volume" | "object_storage" => format!(
             "then ${} per GB-month",
             trim_decimal(cents_per_unit * HOURS_PER_MONTH / 100.0)
         ),
@@ -151,6 +153,10 @@ mod tests {
         assert_eq!(
             overage_text("deploy_volume", 0.0216),
             "then $0.16 per GB-month"
+        );
+        assert_eq!(
+            overage_text("object_storage", 0.002777777777777778),
+            "then $0.02 per GB-month"
         );
         // Egress is still a flat per-GB transfer rate.
         assert_eq!(overage_text("deploy_egress", 5.0), "then $0.05 per GB");

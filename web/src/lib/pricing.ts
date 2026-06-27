@@ -217,8 +217,13 @@ export function isFreePlan(plan: PublicPricingPlan): boolean {
   return plan.id === "free" || (plan.price?.amount ?? 0) === 0;
 }
 
-/** Pure-overage deploy resource meters, in display order. */
-export const DEPLOY_FEATURE_IDS = ["deploy_memory", "deploy_cpu", "deploy_volume"] as const;
+/** Pure-overage cloud resource meters, in display order. */
+export const DEPLOY_FEATURE_IDS = [
+  "deploy_memory",
+  "deploy_cpu",
+  "deploy_volume",
+  "object_storage",
+] as const;
 
 export interface DeployPricingRow {
   featureId: string;
@@ -228,7 +233,7 @@ export interface DeployPricingRow {
 }
 
 /**
- * Deploy resource meters are usage-based and identical across paid plans, so
+ * Cloud resource meters are usage-based and identical across paid plans, so
  * they render as one shared "pay as you go" panel rather than per-plan bullets.
  * Pulls the rate from the first plan that prices each meter.
  */

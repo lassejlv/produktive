@@ -109,7 +109,13 @@ function BillingPage() {
   const hasDeployUsage =
     !!billing.balances.deploy_memory ||
     !!billing.balances.deploy_cpu ||
-    !!billing.balances.deploy_volume;
+    !!billing.balances.deploy_volume ||
+    !!billing.balances.object_storage;
+  const resourcePeriodBalance =
+    billing.balances.deploy_memory ??
+    billing.balances.deploy_cpu ??
+    billing.balances.deploy_volume ??
+    billing.balances.object_storage;
   const actionPending =
     cancelSubscription.isPending || renewSubscription.isPending || cancelDowngrade.isPending;
 
@@ -217,7 +223,7 @@ function BillingPage() {
           <DeploymentsBreakdown
             balances={billing.balances}
             currentPlan={currentPlan}
-            periodText={nextResetText(billing.balances.deploy_memory)}
+            periodText={nextResetText(resourcePeriodBalance)}
           />
         )}
 

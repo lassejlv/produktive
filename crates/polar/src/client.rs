@@ -45,10 +45,11 @@ impl Polar {
         PolarBuilder::default()
     }
 
-    /// Build from `POLAR_SECRET_KEY` (+ optional `POLAR_BASE_URL`).
+    /// Build from `POLAR_UNSTATUS_KEY` or `POLAR_SECRET_KEY` (+ optional `POLAR_BASE_URL`).
     pub fn from_env() -> Result<Self> {
-        let secret_key =
-            std::env::var("POLAR_SECRET_KEY").map_err(|_| PolarError::MissingSecretKey)?;
+        let secret_key = std::env::var("POLAR_UNSTATUS_KEY")
+            .or_else(|_| std::env::var("POLAR_SECRET_KEY"))
+            .map_err(|_| PolarError::MissingSecretKey)?;
         let mut builder = Self::builder().secret_key(secret_key);
         if let Ok(base_url) = std::env::var("POLAR_BASE_URL") {
             builder = builder.base_url(base_url);

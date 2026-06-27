@@ -6,7 +6,7 @@ pub type Result<T> = std::result::Result<T, PolarError>;
 
 #[derive(Debug, Error)]
 pub enum PolarError {
-    #[error("POLAR_SECRET_KEY not set")]
+    #[error("POLAR_UNSTATUS_KEY/POLAR_SECRET_KEY not set")]
     MissingSecretKey,
     #[error("invalid Polar base URL: {0}")]
     InvalidBaseUrl(#[from] url::ParseError),
