@@ -75,8 +75,12 @@ impl Fly {
     }
 
     pub async fn list_platform_regions(&self) -> DeployResult<Vec<deploy::FlyPlatformRegion>> {
-        fetch_platform_regions(&self.inner.http, self.inner.base_url.as_str(), Some(&self.inner.api_token))
-            .await
+        fetch_platform_regions(
+            &self.inner.http,
+            self.inner.base_url.as_str(),
+            Some(&self.inner.api_token),
+        )
+        .await
     }
 
     pub async fn ensure_public_ips(&self, app_name: &str) -> DeployResult<Vec<AllocatedIpAddress>> {
@@ -410,25 +414,37 @@ impl Fly {
     {
         let url = Url::parse(&format!("{DEFAULT_PLATFORM_API_HOSTNAME}/graphql"))
             .map_err(|error| DeployError::Config(format!("invalid Fly GraphQL URL: {error}")))?;
-        let response = self
-            .inner
-            .http
-            .post(url)
-            .bearer_auth(&self.inner.api_token)
-            .json(&GraphqlRequest { query, variables })
-            .send()
-            .await
-            .map_err(|error| DeployError::Transport(error.to_string()))?;
-        let status = response.status();
-        let text = response
-            .text()
-            .await
-            .map_err(|error| DeployError::Transport(error.to_string()))?;
-        if !status.is_success() {
-            return Err(DeployError::Provider(format!(
-                "Fly GraphQL {status}: {text}"
-            )));
+        let mut last_failure = None;
+        let mut text = None;
+        for authorization in fly_authorization_headers(&self.inner.api_token) {
+            let response = self
+                .inner
+                .http
+                .post(url.clone())
+                .header("Authorization", authorization)
+                .json(&GraphqlRequest { query, variables })
+                .send()
+                .await
+                .map_err(|error| DeployError::Transport(error.to_string()))?;
+            let status = response.status();
+            let response_text = response
+                .text()
+                .await
+                .map_err(|error| DeployError::Transport(error.to_string()))?;
+            if status.is_success() {
+                text = Some(response_text);
+                break;
+            }
+            last_failure = Some(format!("Fly GraphQL {status}: {response_text}"));
+            if !matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                break;
+            }
         }
+        let text = text.ok_or_else(|| {
+            DeployError::Provider(
+                last_failure.unwrap_or_else(|| "Fly GraphQL request failed".into()),
+            )
+        })?;
         let payload: GraphqlResponse<T> =
             serde_json::from_str(&text).map_err(|error| DeployError::Decode(error.to_string()))?;
         if let Some(errors) = payload.errors.filter(|errors| !errors.is_empty()) {
@@ -456,29 +472,38 @@ impl Fly {
             .base_url
             .join(path.trim_start_matches('/'))
             .map_err(|error| DeployError::Config(format!("invalid Fly API URL: {error}")))?;
-        let mut request = self
-            .inner
-            .http
-            .request(method, url)
-            .bearer_auth(&self.inner.api_token);
-        if let Some(body) = body {
-            request = request.json(&body);
-        }
+        let mut last_failure = None;
+        for authorization in fly_authorization_headers(&self.inner.api_token) {
+            let mut request = self
+                .inner
+                .http
+                .request(method.clone(), url.clone())
+                .header("Authorization", authorization);
+            if let Some(body) = body.as_ref() {
+                request = request.json(body);
+            }
 
-        let response = request
-            .send()
-            .await
-            .map_err(|error| DeployError::Transport(error.to_string()))?;
-        let status = response.status();
-        if status == StatusCode::NO_CONTENT {
-            return serde_json::from_value(serde_json::Value::Null)
-                .map_err(|error| DeployError::Decode(error.to_string()));
-        }
-        let text = response
-            .text()
-            .await
-            .map_err(|error| DeployError::Transport(error.to_string()))?;
-        if !status.is_success() {
+            let response = request
+                .send()
+                .await
+                .map_err(|error| DeployError::Transport(error.to_string()))?;
+            let status = response.status();
+            if status == StatusCode::NO_CONTENT {
+                return serde_json::from_value(serde_json::Value::Null)
+                    .map_err(|error| DeployError::Decode(error.to_string()));
+            }
+            let text = response
+                .text()
+                .await
+                .map_err(|error| DeployError::Transport(error.to_string()))?;
+            if status.is_success() {
+                if text.trim().is_empty() {
+                    return serde_json::from_value(serde_json::Value::Null)
+                        .map_err(|error| DeployError::Decode(error.to_string()));
+                }
+                return serde_json::from_str(&text)
+                    .map_err(|error| DeployError::Decode(error.to_string()));
+            }
             if status == StatusCode::NOT_FOUND {
                 return Err(DeployError::NotFound("Fly resource not found".into()));
             }
@@ -487,13 +512,14 @@ impl Fly {
                     "Fly API rate limit exceeded".into(),
                 ));
             }
-            return Err(DeployError::Provider(format!("Fly API {status}: {text}")));
+            last_failure = Some(format!("Fly API {method} {path} {status}: {text}"));
+            if !matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
+                break;
+            }
         }
-        if text.trim().is_empty() {
-            return serde_json::from_value(serde_json::Value::Null)
-                .map_err(|error| DeployError::Decode(error.to_string()));
-        }
-        serde_json::from_str(&text).map_err(|error| DeployError::Decode(error.to_string()))
+        Err(DeployError::Provider(last_failure.unwrap_or_else(|| {
+            format!("Fly API {method} {path} request failed")
+        })))
     }
 }
 
@@ -515,10 +541,7 @@ pub async fn fetch_platform_regions(
     base_url: &str,
     api_token: Option<&str>,
 ) -> DeployResult<Vec<deploy::FlyPlatformRegion>> {
-    let url = format!(
-        "{}/v1/platform/regions",
-        base_url.trim_end_matches('/')
-    );
+    let url = format!("{}/v1/platform/regions", base_url.trim_end_matches('/'));
     let mut request = http.get(url);
     if let Some(token) = api_token.filter(|value| !value.trim().is_empty()) {
         request = request.bearer_auth(token);
@@ -629,14 +652,36 @@ fn is_not_allocatable_error(message: &str) -> bool {
 }
 
 fn fly_authorization_headers(token: &str) -> Vec<String> {
-    if token.starts_with("Bearer ") || token.starts_with("FlyV1 ") {
-        return vec![token.to_owned()];
-    }
-    if token.starts_with("fm") {
-        vec![format!("FlyV1 {token}"), format!("Bearer {token}")]
+    let token = token.trim();
+    let mut headers = Vec::new();
+    let mut push = |value: String| {
+        if !headers.iter().any(|header| header == &value) {
+            headers.push(value);
+        }
+    };
+
+    if let Some(stripped) = token.strip_prefix("Bearer ") {
+        push(token.to_owned());
+        let stripped = stripped.trim();
+        if let Some(fly_token) = stripped.strip_prefix("FlyV1 ") {
+            push(stripped.to_owned());
+            push(format!("Bearer {}", fly_token.trim()));
+        } else {
+            push(format!("FlyV1 {stripped}"));
+        }
+    } else if let Some(stripped) = token.strip_prefix("FlyV1 ") {
+        push(token.to_owned());
+        let stripped = stripped.trim();
+        push(format!("Bearer {token}"));
+        push(format!("Bearer {stripped}"));
+    } else if token.starts_with("fm") {
+        push(format!("FlyV1 {token}"));
+        push(format!("Bearer {token}"));
     } else {
-        vec![format!("Bearer {token}"), format!("FlyV1 {token}")]
+        push(format!("Bearer {token}"));
+        push(format!("FlyV1 {token}"));
     }
+    headers
 }
 
 fn prometheus_label_value(value: &str) -> String {
