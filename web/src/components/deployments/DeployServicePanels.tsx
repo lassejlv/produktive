@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowUpRight,
   CheckCircle2,
   Clock,
   Copy,
@@ -11,6 +12,7 @@ import {
   LayoutGrid,
   MemoryStick,
   Network,
+  Pencil,
   Plus,
   Rocket,
   Save,
@@ -19,7 +21,9 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { Dialog, DialogClose, DialogContent } from "../Dialog";
 import { ChartTooltip, Grid, Line, LineChart, XAxis } from "#/charts";
 import { Button } from "#/components/ui/button";
 import { ScrollArea } from "#/components/ui/scroll-area";
@@ -394,7 +398,29 @@ export function LogsPanel({ wid, service }: { wid: string; service: DeployServic
       {logs.isLoading ? (
         <PanelLoading label="Loading logs…" />
       ) : runtimeLines.length ? (
-        <LogConsole title="Runtime logs" icon={Terminal} lines={runtimeLines} />
+        <LogConsole
+          title="Runtime logs"
+          icon={Terminal}
+          lines={runtimeLines}
+          headerAction={
+            service.log_project_id ? (
+              <Button
+                render={
+                  <Link
+                    to="/$wid/logs/$project"
+                    params={{ wid, project: service.log_project_id }}
+                  />
+                }
+                type="button"
+                variant="ghost"
+                size="sm"
+              >
+                <ArrowUpRight size={13} />
+                <span className="hidden sm:inline">Open in explorer</span>
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <PanelEmpty
           icon={Terminal}
@@ -750,8 +776,6 @@ export function SettingsPanel({
         </div>
       </section>
 
-      <EnvSection wid={wid} service={service} />
-
       <section className="border-t border-[var(--color-border)] pt-4">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[12px] text-[var(--color-fg-muted)]">Delete this service</p>
@@ -771,21 +795,95 @@ export function SettingsPanel({
   );
 }
 
-function EnvSection({ wid, service }: { wid: string; service: DeployService }) {
+export function VariablesPanel({ wid, service }: { wid: string; service: DeployService }) {
   const setEnv = useSetServiceEnv(wid);
-  const entries = Object.entries(service.env ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  const [editorOpen, setEditorOpen] = useState(false);
+  const entries = useMemo(
+    () => Object.entries(service.env ?? {}).sort(([a], [b]) => a.localeCompare(b)),
+    [service.env],
+  );
+
+  return (
+    <div className="space-y-3">
+      <PanelCard
+        title="Environment variables"
+        icon={Terminal}
+        count={`${entries.length} ${entries.length === 1 ? "variable" : "variables"}`}
+        actions={
+          <Button type="button" variant="secondary" size="sm" onClick={() => setEditorOpen(true)}>
+            <Pencil size={13} /> Raw editor
+          </Button>
+        }
+        bodyClassName="p-0"
+      >
+        {entries.length ? (
+          <div className="divide-y divide-[var(--color-border)]">
+            {entries.map(([key, value]) => (
+              <div
+                key={key}
+                className="grid grid-cols-1 gap-1 px-3.5 py-2 sm:grid-cols-[minmax(0,200px)_minmax(0,1fr)] sm:gap-3"
+              >
+                <span className="mono truncate text-[11px] font-medium text-[var(--color-fg)]">
+                  {key}
+                </span>
+                <span className="mono min-w-0 truncate text-[11px] text-[var(--color-fg-muted)]">
+                  {value}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <PanelEmpty
+            icon={Terminal}
+            label="No environment variables"
+            hint="Add variables with the raw editor — they're injected into the service at deploy time."
+          />
+        )}
+      </PanelCard>
+
+      <RawEnvEditorDialog
+        open={editorOpen}
+        onOpenChange={setEditorOpen}
+        entries={entries}
+        pending={setEnv.isPending}
+        onSave={(env) =>
+          setEnv.mutate(
+            { serviceId: service.id, env },
+            {
+              onSuccess: () => {
+                toast.success("Environment variables updated");
+                setEditorOpen(false);
+              },
+              onError: (err) => toast.error((err as Error).message),
+            },
+          )
+        }
+      />
+    </div>
+  );
+}
+
+function RawEnvEditorDialog({
+  open,
+  onOpenChange,
+  entries,
+  pending,
+  onSave,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  entries: Array<[string, string]>;
+  pending: boolean;
+  onSave: (env: Record<string, string>) => void;
+}) {
   const [draft, setDraft] = useState("");
-  const [editing, setEditing] = useState(false);
 
-  // Populate the textarea when entering edit mode from the current env map.
+  // Re-seed the editor from the live env every time the dialog opens.
   useEffect(() => {
-    if (editing) {
-      setDraft(entries.map(([k, v]) => `${k}=${v}`).join("\n"));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing]);
+    if (open) setDraft(entries.map(([key, value]) => `${key}=${value}`).join("\n"));
+  }, [open, entries]);
 
-  function save(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault();
     let parsed: Record<string, string>;
     try {
@@ -794,91 +892,53 @@ function EnvSection({ wid, service }: { wid: string; service: DeployService }) {
       toast.error((err as Error).message);
       return;
     }
-    setEnv.mutate(
-      { serviceId: service.id, env: parsed },
-      {
-        onSuccess: () => {
-          toast.success("Environment variables updated");
-          setEditing(false);
-        },
-        onError: (err) => toast.error((err as Error).message),
-      },
-    );
+    onSave(parsed);
   }
 
   return (
-    <section className="border-t border-[var(--color-border)] pt-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Terminal size={14} className="text-[var(--color-fg-muted)]" />
-          <h2 className="text-[13px] font-medium text-[var(--color-fg)]">Environment variables</h2>
-        </div>
-        {!editing && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setEditing(true)}
-            disabled={setEnv.isPending}
-          >
-            Edit
-          </Button>
-        )}
-      </div>
-
-      {editing ? (
-        <form onSubmit={save} className="space-y-2">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        title="Raw editor"
+        description="One KEY=value per line. Saving replaces every variable. Surrounding quotes are stripped."
+        size="lg"
+        footer={
+          <>
+            <DialogClose asChild>
+              <Button type="button" variant="ghost" size="sm" disabled={pending}>
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              type="submit"
+              form="raw-env-editor"
+              variant="default"
+              size="sm"
+              disabled={pending}
+            >
+              {pending && <Spinner className="size-3" />}
+              <Save size={13} /> Save variables
+            </Button>
+          </>
+        }
+      >
+        <form id="raw-env-editor" onSubmit={submit} className="space-y-2">
           <textarea
-            className={cn(fieldControlClass, "mono h-40 resize-y py-2 leading-5")}
+            className={cn(fieldControlClass, "mono h-64 w-full resize-y py-2 leading-5")}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder={"KEY=value\nPORT=3000\nLOG_LEVEL=info"}
+            placeholder={"DATABASE_URL=postgres://…\nPORT=3000\nLOG_LEVEL=info"}
             spellCheck={false}
             autoCapitalize="none"
             autoCorrect="off"
+            autoFocus
           />
           <p className="text-[11px] text-[var(--color-fg-dim)]">
-            One KEY=value per line. Saving replaces all environment variables. Use the Secrets
-            endpoint for sensitive values — env vars are stored in plaintext.
+            Stored in plaintext — use the Secrets endpoint for sensitive values. Lines starting with
+            # are ignored.
           </p>
-          <div className="flex items-center gap-1.5">
-            <Button type="submit" variant="default" size="sm" disabled={setEnv.isPending}>
-              {setEnv.isPending && <Spinner className="size-3" />}
-              <Save size={13} /> Save
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setEditing(false)}
-              disabled={setEnv.isPending}
-            >
-              Cancel
-            </Button>
-          </div>
         </form>
-      ) : entries.length ? (
-        <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)]">
-          {entries.map(([key, value]) => (
-            <div
-              key={key}
-              className="grid grid-cols-1 gap-1 border-b border-[var(--color-border)] px-3 py-2 last:border-b-0 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)] sm:gap-2"
-            >
-              <span className="mono truncate text-[11px] font-medium text-[var(--color-fg)]">
-                {key}
-              </span>
-              <span className="mono min-w-0 truncate text-[11px] text-[var(--color-fg-muted)]">
-                {value}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-sunken)] px-3 py-2 text-[12px] text-[var(--color-fg-muted)]">
-          No environment variables set.
-        </p>
-      )}
-    </section>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1507,10 +1567,12 @@ function LogConsole({
   title,
   icon: Icon,
   lines,
+  headerAction,
 }: {
   title: string;
   icon: typeof Rocket;
   lines: ConsoleLine[];
+  headerAction?: ReactNode;
 }) {
   const [filter, setFilter] = useState<LevelFilter>("all");
   const visible = useMemo(
@@ -1538,6 +1600,7 @@ function LogConsole({
       live
       actions={
         <>
+          {headerAction}
           <Segmented<LevelFilter>
             size="sm"
             value={filter}

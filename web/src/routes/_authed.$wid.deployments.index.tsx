@@ -12,14 +12,13 @@ import {
   type NodeMouseHandler,
   type NodeProps,
 } from "@xyflow/react";
-import { KeyRound, LayoutGrid, LayoutList, Plus, Rocket, Search, X } from "lucide-react";
+import { KeyRound, Plus, Rocket, Search, X } from "lucide-react";
 import { toast } from "#/lib/toast";
 import { cn } from "#/lib/cn";
 import { DEPLOYMENTS_ENABLED } from "#/lib/features";
 import {
   type DeployDetailTab,
   type DeployServiceFilter,
-  type DeployView,
   type DeploymentsSearch,
   DEFAULT_DEPLOY_DETAIL_TAB,
   deployServiceFilterBucket,
@@ -31,7 +30,7 @@ import {
 import { DEPLOY_STATUS_COLOR } from "#/lib/status";
 import { Button } from "#/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "#/components/ui/input-group";
-import { DeployServiceCard, DeployServiceRow } from "../components/DeployServiceCard";
+import { DeployServiceCard } from "../components/DeployServiceCard";
 import { DeployServiceSheet } from "../components/deployments/DeployServiceSheet";
 import { EmptyState } from "../components/EmptyState";
 import {
@@ -107,7 +106,6 @@ function Canvas() {
   const filter = search.status ?? "all";
   const query = search.q ?? "";
   const selectedTab = search.tab ?? DEFAULT_DEPLOY_DETAIL_TAB;
-  const view: DeployView = search.view ?? "list";
 
   const selectedService = useMemo(
     () =>
@@ -214,15 +212,6 @@ function Canvas() {
     });
   };
 
-  const setView = (next: DeployView) => {
-    void navigate({
-      to: "/$wid/deployments",
-      params: { wid },
-      search: (prev) => ({ ...prev, view: next }),
-      replace: true,
-    });
-  };
-
   const onNodesChange = useCallback(
     (changes: NodeChange<SNode>[]) => {
       onNodesChangeBase(changes);
@@ -316,49 +305,41 @@ function Canvas() {
           services={services}
           filter={filter}
           query={query}
-          view={view}
           shown={shown.length}
           approved={approved}
           onFilter={(status) => setSearch({ status })}
           onQueryChange={(q) => setSearch({ q: q || undefined })}
           onClearFilters={() => setSearch({ q: undefined, status: "all" })}
-          onViewChange={setView}
           onCreate={() => setServiceOpen(true)}
           onCredential={() => setCredentialOpen(true)}
         />
-        {view === "canvas" && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 hidden text-center text-[11px] text-[var(--color-canvas-dim)] md:block">
-            Drag cards to arrange · drag the background to pan · click a card to open it
-          </div>
-        )}
-        {view === "canvas" ? (
-          <ReactFlow
-            nodes={nodes}
-            nodeTypes={NODE_TYPES}
-            onNodesChange={onNodesChange}
-            onNodeClick={onNodeClick}
-            snapToGrid
-            snapGrid={[24, 24]}
-            minZoom={0.4}
-            maxZoom={2}
-            fitView
-            fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-            panOnDrag={[1, 2]}
-            selectionOnDrag
-            panOnScroll
-            zoomOnPinch
-            proOptions={{ hideAttribution: true }}
-            nodesConnectable={false}
-            edgesFocusable={false}
-            nodeDragThreshold={1}
-            elevateNodesOnSelect={false}
-          >
-            <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
-            <Controls position="bottom-left" showInteractive={false} />
-          </ReactFlow>
-        ) : (
-          <DeployServiceList services={shown} />
-        )}
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 hidden text-center text-[11px] text-[var(--color-canvas-dim)] md:block">
+          Drag cards to arrange · drag the background to pan · click a card to open it
+        </div>
+        <ReactFlow
+          nodes={nodes}
+          nodeTypes={NODE_TYPES}
+          onNodesChange={onNodesChange}
+          onNodeClick={onNodeClick}
+          snapToGrid
+          snapGrid={[24, 24]}
+          minZoom={0.4}
+          maxZoom={2}
+          fitView
+          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+          panOnDrag={[1, 2]}
+          selectionOnDrag
+          panOnScroll
+          zoomOnPinch
+          proOptions={{ hideAttribution: true }}
+          nodesConnectable={false}
+          edgesFocusable={false}
+          nodeDragThreshold={1}
+          elevateNodesOnSelect={false}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
+          <Controls position="bottom-left" showInteractive={false} />
+        </ReactFlow>
       </div>
 
       <CreateCredentialDialog
@@ -412,57 +393,26 @@ function Canvas() {
   );
 }
 
-function DeployServiceList({ services }: { services: DeployService[] }) {
-  return (
-    <div className="fade-in absolute inset-0 overflow-y-auto bg-[var(--color-bg)]">
-      <div className="mx-auto w-full max-w-5xl px-4 py-6">
-        <div className="mb-2 hidden items-center gap-3 px-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-dim)] md:flex">
-          <span className="min-w-0 flex-1">Service</span>
-          <div className="hidden shrink-0 md:flex md:gap-1.5">
-            <span className="w-[42px] text-left">Region</span>
-          </div>
-          <span className="hidden w-[110px] shrink-0 text-right sm:block">Last deploy</span>
-        </div>
-        <div className="space-y-1.5">
-          {services.map((service, index) => (
-            <div
-              key={service.id}
-              className="fade-in"
-              style={{ animationDelay: `${Math.min(index, 12) * 25}ms` }}
-            >
-              <DeployServiceRow service={service} />
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function CanvasToolbar({
   services,
   filter,
   query,
-  view,
   shown,
   approved,
   onFilter,
   onQueryChange,
   onClearFilters,
-  onViewChange,
   onCreate,
   onCredential,
 }: {
   services: DeployService[];
   filter: DeployServiceFilter;
   query: string;
-  view: DeployView;
   shown: number;
   approved: boolean;
   onFilter: (filter: DeployServiceFilter) => void;
   onQueryChange: (query: string) => void;
   onClearFilters: () => void;
-  onViewChange: (view: DeployView) => void;
   onCreate: () => void;
   onCredential: () => void;
 }) {
@@ -558,41 +508,6 @@ function CanvasToolbar({
         )}
       </div>
       <div className="pointer-events-auto flex flex-wrap items-center gap-1.5">
-        <div
-          className="inline-flex items-center gap-0.5 rounded-full border border-[var(--color-canvas-border)] bg-[color-mix(in_srgb,var(--color-canvas-surface)_75%,transparent)] p-0.5"
-          role="group"
-          aria-label="View layout"
-        >
-          {(
-            [
-              { value: "list", icon: LayoutList, label: "List" },
-              { value: "canvas", icon: LayoutGrid, label: "Canvas" },
-            ] as const
-          ).map((opt) => {
-            const active = view === opt.value;
-            const Icon = opt.icon;
-            return (
-              <Button
-                key={opt.value}
-                type="button"
-                variant="ghost"
-                size="sm"
-                title={opt.label}
-                aria-pressed={active}
-                onClick={() => onViewChange(opt.value)}
-                className={cn(
-                  "h-[26px] gap-1 rounded-full px-2.5 text-[12px] font-medium shadow-none",
-                  active
-                    ? "border border-[var(--color-canvas-border-hi)] bg-[var(--color-canvas-surface)] text-[var(--color-canvas-fg)] shadow-[var(--shadow-sm)]"
-                    : "border border-transparent text-[var(--color-canvas-muted)] hover:text-[var(--color-canvas-fg)]",
-                )}
-              >
-                <Icon size={13} />
-                <span className="hidden sm:inline">{opt.label}</span>
-              </Button>
-            );
-          })}
-        </div>
         <span className="tabular rounded-full bg-[color-mix(in_srgb,var(--color-canvas-surface)_75%,transparent)] px-2.5 py-1 text-[12px] text-[var(--color-canvas-muted)]">
           {shown} shown
         </span>

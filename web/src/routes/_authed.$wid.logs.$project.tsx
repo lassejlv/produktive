@@ -15,11 +15,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { toast } from "#/lib/toast";
 import { LOGS_ENABLED } from "#/lib/features";
 import { Button } from "#/components/ui/button";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "#/components/ui/input-group";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "#/components/ui/input-group";
 import { Input as UIInput } from "#/components/ui/input";
 import {
   Select,
@@ -180,7 +176,9 @@ function LogExplorerRoute() {
         onConfirm={() => {
           if (!toDelete) return;
           if (toDelete.attached_service) {
-            toast.error("Disconnect this log project from its deployment service before deleting it.");
+            toast.error(
+              "Disconnect this log project from its deployment service before deleting it.",
+            );
             setToDelete(null);
             return;
           }
@@ -274,6 +272,17 @@ function LogExplorer({
     updateSearch({ ...draft, event: undefined }, false);
   }
 
+  const applyLevel = useCallback(
+    (level: LevelFilter) => {
+      setDraft((current) => ({ ...current, level }));
+      setSubmittedAt(Date.now());
+      updateSearch({ ...filters, level, event: undefined }, false);
+    },
+    [filters, updateSearch],
+  );
+
+  const activeRange = RANGES.find((item) => item.value === filters.range) ?? RANGES[1];
+
   return (
     <div className="fade-in flex min-h-0 flex-1 flex-col bg-[var(--color-bg)]">
       <header className="shrink-0 border-b border-[var(--color-border)] px-4 py-3">
@@ -293,7 +302,8 @@ function LogExplorer({
               </h1>
             </div>
             <p className="mt-1 text-[12px] text-[var(--color-fg-dim)]">
-              {formatCompact(project.event_count_24h)} events · {formatBytes(project.bytes_ingested_24h)}
+              {formatCompact(project.event_count_24h)} events ·{" "}
+              {formatBytes(project.bytes_ingested_24h)}
               {project.last_ingested_at
                 ? ` · last ${lastSeen(project.last_ingested_at)}`
                 : " · no events yet"}
@@ -412,6 +422,15 @@ function LogExplorer({
         </Button>
       </form>
 
+      <LogActivity
+        events={events}
+        fromMs={submittedAt - activeRange.ms}
+        toMs={submittedAt}
+        loading={search.isLoading}
+        level={filters.level}
+        onLevel={applyLevel}
+      />
+
       <div className="relative min-h-0 min-w-0 flex-1">
         <EventStream
           loading={search.isLoading}
@@ -428,10 +447,7 @@ function LogExplorer({
               onClick={() => updateSelectedEvent(undefined)}
               aria-label="Close event details"
             />
-            <EventInspector
-              event={selectedEvent}
-              onClose={() => updateSelectedEvent(undefined)}
-            />
+            <EventInspector event={selectedEvent} onClose={() => updateSelectedEvent(undefined)} />
           </>
         )}
       </div>
@@ -493,12 +509,170 @@ function EventStream({
             ))}
           </div>
         ) : (
-          <div className="flex h-full min-h-72 items-center justify-center px-6 text-center text-[13px] text-[var(--color-fg-muted)]">
-            No events matched this search.
+          <div className="flex h-full min-h-72 flex-col items-center justify-center gap-2 px-6 text-center">
+            <Search size={18} className="text-[var(--color-fg-dim)]" />
+            <p className="text-[13px] text-[var(--color-fg-muted)]">
+              No events matched this search.
+            </p>
+            <p className="text-[12px] text-[var(--color-fg-dim)]">
+              Try a wider time range, or clear the query and level filters.
+            </p>
           </div>
         )}
       </div>
     </section>
+  );
+}
+
+const ACTIVITY_BUCKETS = 56;
+const ACTIVITY_LEVELS: LevelFilter[] = ["fatal", "error", "warn", "info", "debug", "trace"];
+const LEVEL_SEVERITY: Record<string, number> = {
+  fatal: 5,
+  error: 4,
+  warn: 3,
+  warning: 3,
+  info: 2,
+  debug: 1,
+  trace: 0,
+};
+
+type ActivityBar = { t: number; count: number; severity: number; color: string };
+
+function buildActivity(events: LogSearchEvent[], fromMs: number, toMs: number) {
+  const span = Math.max(1, toMs - fromMs);
+  const bars: ActivityBar[] = Array.from({ length: ACTIVITY_BUCKETS }, (_, i) => ({
+    t: fromMs + (span * (i + 0.5)) / ACTIVITY_BUCKETS,
+    count: 0,
+    severity: -1,
+    color: "var(--color-accent)",
+  }));
+  const counts: Record<string, number> = {};
+  let total = 0;
+
+  for (const event of events) {
+    const level = (event.level || "info").toLowerCase();
+    counts[level] = (counts[level] ?? 0) + 1;
+    total += 1;
+    const ts = new Date(event.timestamp).getTime();
+    if (Number.isNaN(ts)) continue;
+    const idx = Math.min(
+      ACTIVITY_BUCKETS - 1,
+      Math.max(0, Math.floor(((ts - fromMs) / span) * ACTIVITY_BUCKETS)),
+    );
+    const bar = bars[idx];
+    bar.count += 1;
+    const severity = LEVEL_SEVERITY[level] ?? 2;
+    if (severity > bar.severity) {
+      bar.severity = severity;
+      bar.color = levelColor(level);
+    }
+  }
+
+  const peak = bars.reduce((max, bar) => Math.max(max, bar.count), 0);
+  return { bars, counts, total, peak };
+}
+
+/**
+ * Volume-over-time histogram derived from the loaded events — bars are colored
+ * by the most severe level in each time bucket so error spikes read at a glance.
+ * The legend doubles as one-click level filters. When the result is capped at
+ * the 250-event limit the bars only cover the newest slice, which is labeled.
+ */
+function LogActivity({
+  events,
+  fromMs,
+  toMs,
+  loading,
+  level,
+  onLevel,
+}: {
+  events: LogSearchEvent[];
+  fromMs: number;
+  toMs: number;
+  loading: boolean;
+  level: LevelFilter;
+  onLevel: (level: LevelFilter) => void;
+}) {
+  const { bars, counts, total, peak } = useMemo(
+    () => buildActivity(events, fromMs, toMs),
+    [events, fromMs, toMs],
+  );
+
+  const chips = useMemo(
+    () =>
+      ACTIVITY_LEVELS.filter((value) => counts[value]).map((value) => ({
+        level: value,
+        count: counts[value],
+      })),
+    [counts],
+  );
+
+  if (!loading && total === 0) return null;
+
+  const capped = events.length >= 250;
+
+  return (
+    <div className="shrink-0 border-b border-[var(--color-border)] px-4 py-2.5">
+      <div className="flex h-10 items-end gap-px" aria-hidden>
+        {bars.map((bar, index) => {
+          const filled = bar.count > 0;
+          const height = filled
+            ? Math.max(14, Math.round((Math.sqrt(bar.count) / Math.sqrt(peak || 1)) * 100))
+            : 5;
+          return (
+            <div
+              key={index}
+              className="min-w-0 flex-1 rounded-[1px] transition-[height] duration-300"
+              style={{
+                height: `${height}%`,
+                background: filled ? bar.color : "var(--color-border)",
+                opacity: filled ? 0.85 : 0.4,
+              }}
+              title={
+                filled
+                  ? `${bar.count} event${bar.count === 1 ? "" : "s"} · ${new Date(bar.t).toLocaleTimeString()}`
+                  : undefined
+              }
+            />
+          );
+        })}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <span className="text-[11px] text-[var(--color-fg-dim)]">
+          <span className="tabular text-[var(--color-fg)]">{formatCompact(total)}</span>{" "}
+          {total === 1 ? "event" : "events"} loaded
+          {capped && " · newest 250"}
+        </span>
+        {chips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1">
+            {chips.map((chip) => {
+              const active = level === chip.level;
+              return (
+                <button
+                  key={chip.level}
+                  type="button"
+                  onClick={() => onLevel(active ? "all" : chip.level)}
+                  aria-pressed={active}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+                    active
+                      ? "border-[var(--color-border-hi)] bg-[var(--color-bg-row)] text-[var(--color-fg)]"
+                      : "border-transparent text-[var(--color-fg-muted)] hover:bg-[var(--color-bg-row)]",
+                  )}
+                >
+                  <span
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ background: levelColor(chip.level) }}
+                  />
+                  {chip.level}
+                  <span className="tabular text-[var(--color-fg-dim)]">{chip.count}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -516,10 +690,15 @@ function EventRow({
       type="button"
       onClick={onClick}
       className={cn(
-        "mono flex w-full min-w-0 items-baseline gap-2 px-4 py-1.5 text-left text-[12px] transition-colors",
-        selected ? "bg-[var(--color-bg-row)]" : "hover:bg-[var(--color-bg-row)]/60",
+        "mono relative flex w-full min-w-0 items-baseline gap-2 py-1.5 pl-4 pr-4 text-left text-[12px] transition-colors",
+        selected ? "bg-[var(--color-bg-row)]" : "hover:bg-[var(--color-bg-row)]",
       )}
     >
+      <span
+        aria-hidden
+        className="absolute inset-y-0 left-0 w-[2px] transition-opacity"
+        style={{ background: levelColor(event.level), opacity: selected ? 1 : 0 }}
+      />
       <span className="shrink-0 tabular text-[var(--color-fg-dim)]">
         {new Date(event.timestamp).toLocaleTimeString()}
       </span>
@@ -532,13 +711,7 @@ function EventRow({
   );
 }
 
-function EventInspector({
-  event,
-  onClose,
-}: {
-  event: LogSearchEvent;
-  onClose: () => void;
-}) {
+function EventInspector({ event, onClose }: { event: LogSearchEvent; onClose: () => void }) {
   const payload = eventPayload(event);
   const meta = [
     ["received", new Date(event.received_at).toLocaleString()],

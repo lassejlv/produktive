@@ -1,5 +1,6 @@
 import {
   Activity,
+  Braces,
   ExternalLink,
   Gauge,
   Globe,
@@ -19,11 +20,7 @@ import {
   useRollbackDeployment,
   useStopDeployService,
 } from "#/lib/queries";
-import {
-  DEPLOY_STATUS_COLOR,
-  DEPLOY_STATUS_LABEL,
-  deployStatusActive,
-} from "#/lib/status";
+import { DEPLOY_STATUS_COLOR, DEPLOY_STATUS_LABEL, deployStatusActive } from "#/lib/status";
 import type { DeployDetailTab } from "#/lib/deployments";
 import { machineCountLabel } from "./deploy-shared";
 import type { DeployService } from "#/lib/types";
@@ -35,6 +32,7 @@ import {
   MetricsPanel,
   OverviewPanel,
   SettingsPanel,
+  VariablesPanel,
 } from "./DeployServicePanels";
 
 export function DeployServiceDetail({
@@ -65,10 +63,7 @@ export function DeployServiceDetail({
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">
               <span
-                className={cn(
-                  "inline-block h-2 w-2 shrink-0 rounded-full",
-                  active && "pulse-dot",
-                )}
+                className={cn("inline-block h-2 w-2 shrink-0 rounded-full", active && "pulse-dot")}
                 style={{
                   background: color,
                   boxShadow: active
@@ -87,14 +82,19 @@ export function DeployServiceDetail({
               </span>
             </div>
             <p className="mono mt-1 truncate text-[11px] text-[var(--color-fg-muted)]">
-              {service.image}
+              {service.source_kind === "git"
+                ? service.repo_url
+                  ? service.repo_url.replace(/^https:\/\//, "") +
+                    (service.git_ref ? ` @ ${service.git_ref}` : "")
+                  : "GitHub source"
+                : service.image}
             </p>
             <p className="mt-1.5 text-[11px] text-[var(--color-fg-dim)]">
               {formatDeployRegion(service.region, regions)}
               <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>
               {service.environment}
-              <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>
-              :{service.internal_port}
+              <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>:
+              {service.internal_port}
               <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>
               {resourcePresetLabel(service.resource_preset)}
               <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>
@@ -148,6 +148,7 @@ export function DeployServiceDetail({
               { value: "deployments", label: "Deploys", icon: Rocket },
               { value: "logs", label: "Logs", icon: Terminal },
               { value: "metrics", label: "Metrics", icon: Activity },
+              { value: "variables", label: "Variables", icon: Braces },
               { value: "configuration", label: "Config", icon: Gauge },
               { value: "settings", label: "Settings", icon: Settings },
             ]}
@@ -157,19 +158,14 @@ export function DeployServiceDetail({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {tab === "overview" && (
-          <OverviewPanel
-            wid={wid}
-            service={service}
-            onTabChange={onTabChange}
-          />
+          <OverviewPanel wid={wid} service={service} onTabChange={onTabChange} />
         )}
         {tab === "deployments" && <DeploymentsPanel wid={wid} service={service} />}
         {tab === "logs" && <LogsPanel wid={wid} service={service} />}
         {tab === "metrics" && <MetricsPanel wid={wid} service={service} />}
+        {tab === "variables" && <VariablesPanel wid={wid} service={service} />}
         {tab === "configuration" && <ConfigurationPanel wid={wid} service={service} />}
-        {tab === "settings" && (
-          <SettingsPanel wid={wid} service={service} onDeleted={onDeleted} />
-        )}
+        {tab === "settings" && <SettingsPanel wid={wid} service={service} onDeleted={onDeleted} />}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Button } from "#/components/ui/button";
+import { ThemeToggle } from "#/components/ThemeToggle";
 import { auth } from "../../lib/api";
 import { BRAND_NAME } from "../../lib/brand";
 import { useMe, useWorkspaces } from "../../lib/queries";
@@ -51,8 +52,7 @@ export function MarketingShell({
   const authed = !!auth.token;
   const me = useMe();
   const workspaces = useWorkspaces();
-  const workspace =
-    workspaces.data?.find((w) => w.is_personal) ?? workspaces.data?.[0] ?? null;
+  const workspace = workspaces.data?.find((w) => w.is_personal) ?? workspaces.data?.[0] ?? null;
   const signedIn = authed && me.isSuccess;
 
   return (
@@ -82,6 +82,7 @@ export function MarketingShell({
         <div className="mx-auto flex h-16 max-w-[1080px] items-center justify-between px-6">
           <MarketingWordmark dot={false} />
           <div className="flex items-center gap-2">
+            <ThemeToggle />
             {signedIn && workspace ? (
               <Button
                 variant="default"
@@ -122,7 +123,7 @@ export function MarketingShell({
             <Link to="/pricing" className="link">
               Pricing
             </Link>
-            <Link to="/" className="link hidden sm:inline">
+            <Link to="/home" className="link hidden sm:inline">
               Home
             </Link>
             <span className="tabular">© {new Date().getFullYear()}</span>

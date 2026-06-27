@@ -558,8 +558,13 @@ export function useCreateDeployService(wid: string) {
   return useMutation({
     mutationFn: (body: {
       name: string;
-      image: string;
-      registry_kind: DeployRegistryKind;
+      image?: string;
+      registry_kind?: DeployRegistryKind;
+      source_kind?: "image" | "git";
+      git_url?: string;
+      git_ref?: string;
+      dockerfile_path?: string;
+      root_dir?: string;
       registry_credential_id?: string | null;
       internal_port: number;
       env?: Record<string, string>;

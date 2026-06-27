@@ -3,13 +3,12 @@ import { deployStatusActive, deployStatusPending } from "./status";
 
 export type DeployServiceFilter = "all" | "live" | "deploying" | "failed" | "stopped";
 
-export type DeployView = "list" | "canvas";
-
 export type DeployDetailTab =
   | "overview"
   | "deployments"
   | "logs"
   | "metrics"
+  | "variables"
   | "configuration"
   | "settings";
 
@@ -18,6 +17,7 @@ export const DEPLOY_DETAIL_TABS: DeployDetailTab[] = [
   "deployments",
   "logs",
   "metrics",
+  "variables",
   "configuration",
   "settings",
 ];
@@ -29,7 +29,6 @@ export type DeploymentsSearch = {
   status?: DeployServiceFilter;
   service?: string;
   tab?: DeployDetailTab;
-  view?: DeployView;
 };
 
 export const EMPTY_DEPLOYMENTS_SEARCH: DeploymentsSearch = {
@@ -37,17 +36,12 @@ export const EMPTY_DEPLOYMENTS_SEARCH: DeploymentsSearch = {
   status: undefined,
   service: undefined,
   tab: undefined,
-  view: undefined,
 };
 
 export function parseDeployDetailTab(value: unknown): DeployDetailTab | undefined {
   return typeof value === "string" && (DEPLOY_DETAIL_TABS as readonly string[]).includes(value)
     ? (value as DeployDetailTab)
     : undefined;
-}
-
-export function parseDeployView(value: unknown): DeployView | undefined {
-  return value === "list" || value === "canvas" ? value : undefined;
 }
 
 export function parseDeploymentsSearch(search: Record<string, unknown>): DeploymentsSearch {
@@ -57,7 +51,6 @@ export function parseDeploymentsSearch(search: Record<string, unknown>): Deploym
     service:
       typeof search.service === "string" && search.service.trim() ? search.service : undefined,
     tab: parseDeployDetailTab(search.tab),
-    view: parseDeployView(search.view),
   };
 }
 
@@ -67,7 +60,6 @@ export function deploymentsSearchWithoutService(search: DeploymentsSearch): Depl
     status: search.status,
     service: undefined,
     tab: undefined,
-    view: search.view,
   };
 }
 
@@ -100,7 +92,7 @@ export function parseDeployServiceFilter(value: unknown): DeployServiceFilter | 
 export function deployServiceFilterBucket(status: DeployStatus): DeployServiceFilter {
   if (deployStatusActive(status)) return "live";
   if (deployStatusPending(status)) return "deploying";
-  if (status === "failed") return "failed";
+  if (status === "failed" || status === "build_failed") return "failed";
   if (status === "stopped" || status === "rolled_back") return "stopped";
   return "all";
 }
@@ -114,6 +106,7 @@ export function matchesDeploySearch(service: DeployService, query: string): bool
     service.region.toLowerCase().includes(q) ||
     service.environment.toLowerCase().includes(q) ||
     service.slug.toLowerCase().includes(q) ||
-    (service.url?.toLowerCase().includes(q) ?? false)
+    (service.url?.toLowerCase().includes(q) ?? false) ||
+    (service.repo_url?.toLowerCase().includes(q) ?? false)
   );
 }

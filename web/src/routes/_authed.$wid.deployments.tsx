@@ -3,6 +3,7 @@ import { Lock } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "#/components/ui/button";
 import { Spinner } from "#/components/ui/spinner";
+import { Segmented } from "#/components/Segmented";
 import { Dialog, DialogClose, DialogContent } from "../components/Dialog";
 import { cn } from "#/lib/cn";
 import { toast } from "#/lib/toast";
@@ -194,8 +195,13 @@ export function CreateServiceDialog({
   onOpenChange: (open: boolean) => void;
   onSubmit: (body: {
     name: string;
-    image: string;
-    registry_kind: DeployRegistryKind;
+    image?: string;
+    registry_kind?: DeployRegistryKind;
+    source_kind?: "image" | "git";
+    git_url?: string;
+    git_ref?: string;
+    dockerfile_path?: string;
+    root_dir?: string;
     registry_credential_id?: string | null;
     internal_port: number;
     env: Record<string, string>;
@@ -208,10 +214,14 @@ export function CreateServiceDialog({
   }) => void;
 }) {
   const [step, setStep] = useState<1 | 2>(1);
+  const [source, setSource] = useState<"image" | "git">("image");
   const [name, setName] = useState("");
   const [image, setImage] = useState("");
   const [registryKind, setRegistryKind] = useState<DeployRegistryKind>("ghcr");
   const [credentialId, setCredentialId] = useState("");
+  const [gitUrl, setGitUrl] = useState("");
+  const [gitRef, setGitRef] = useState("");
+  const [dockerfilePath, setDockerfilePath] = useState("");
   const [port, setPort] = useState(3000);
   const [environment, setEnvironment] = useState("production");
   const [region, setRegion] = useState(regions[0]?.code ?? "ams");
@@ -231,7 +241,10 @@ export function CreateServiceDialog({
     }
   }, [region, regions]);
 
-  const basicsValid = name.trim().length > 0 && image.trim().length > 0 && port >= 1 && port <= 65535;
+  const isPublicGithubUrl = /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/?$/.test(gitUrl.trim());
+  const sourceValid = source === "image" ? image.trim().length > 0 : isPublicGithubUrl;
+  const basicsValid =
+    name.trim().length > 0 && sourceValid && port >= 1 && port <= 65535;
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -243,9 +256,18 @@ export function CreateServiceDialog({
     try {
       onSubmit({
         name,
-        image,
-        registry_kind: registryKind,
-        registry_credential_id: credentialId || null,
+        source_kind: source,
+        ...(source === "image"
+          ? {
+              image,
+              registry_kind: registryKind,
+              registry_credential_id: credentialId || null,
+            }
+          : {
+              git_url: gitUrl.trim(),
+              git_ref: gitRef.trim() || undefined,
+              dockerfile_path: dockerfilePath.trim() || undefined,
+            }),
         internal_port: port,
         env: parseKeyValues(envText),
         secrets: parseKeyValues(secretText),
@@ -266,7 +288,7 @@ export function CreateServiceDialog({
         title="New deployment service"
         description={
           step === 1
-            ? "Step 1 of 2 — image and connectivity."
+            ? "Step 1 of 2 — source and connectivity."
             : "Step 2 of 2 — runtime, compute, and secrets."
         }
         size="lg"
@@ -314,6 +336,16 @@ export function CreateServiceDialog({
         <form id="deploy-service-form" onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
           {step === 1 ? (
             <>
+              <div className="sm:col-span-2">
+                <Segmented
+                  value={source}
+                  onChange={setSource}
+                  options={[
+                    { value: "image", label: "Container image" },
+                    { value: "git", label: "GitHub repo" },
+                  ]}
+                />
+              </div>
               <Field label="Name">
                 <input
                   className={cn(fieldControlClass, "h-9")}
@@ -322,39 +354,78 @@ export function CreateServiceDialog({
                   required
                 />
               </Field>
-              <Field label="Image">
-                <input
-                  className={cn(fieldControlClass, "h-9")}
-                  value={image}
-                  onChange={(e) => setImage(e.target.value)}
-                  placeholder="ghcr.io/acme/api:latest"
-                  required
-                />
-              </Field>
-              <Field label="Registry">
-                <select
-                  className={cn(fieldControlClass, "h-9")}
-                  value={registryKind}
-                  onChange={(e) => setRegistryKind(e.target.value as DeployRegistryKind)}
-                >
-                  <option value="ghcr">GHCR</option>
-                  <option value="docker_hub">Docker Hub</option>
-                </select>
-              </Field>
-              <Field label="Credential">
-                <select
-                  className={cn(fieldControlClass, "h-9")}
-                  value={credentialId}
-                  onChange={(e) => setCredentialId(e.target.value)}
-                >
-                  <option value="">No credential</option>
-                  {credentials.map((credential) => (
-                    <option key={credential.id} value={credential.id}>
-                      {credential.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              {source === "image" ? (
+                <>
+                  <Field label="Image">
+                    <input
+                      className={cn(fieldControlClass, "h-9")}
+                      value={image}
+                      onChange={(e) => setImage(e.target.value)}
+                      placeholder="ghcr.io/acme/api:latest"
+                      required
+                    />
+                  </Field>
+                  <Field label="Registry">
+                    <select
+                      className={cn(fieldControlClass, "h-9")}
+                      value={registryKind}
+                      onChange={(e) => setRegistryKind(e.target.value as DeployRegistryKind)}
+                    >
+                      <option value="ghcr">GHCR</option>
+                      <option value="docker_hub">Docker Hub</option>
+                    </select>
+                  </Field>
+                  <Field label="Credential">
+                    <select
+                      className={cn(fieldControlClass, "h-9")}
+                      value={credentialId}
+                      onChange={(e) => setCredentialId(e.target.value)}
+                    >
+                      <option value="">No credential</option>
+                      {credentials.map((credential) => (
+                        <option key={credential.id} value={credential.id}>
+                          {credential.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </>
+              ) : (
+                <>
+                  <div className="sm:col-span-2">
+                    <Field label="Public GitHub repository">
+                      <input
+                        className={cn(fieldControlClass, "h-9")}
+                        value={gitUrl}
+                        onChange={(e) => setGitUrl(e.target.value)}
+                        placeholder="https://github.com/acme/api"
+                        required
+                      />
+                    </Field>
+                    {gitUrl.trim().length > 0 && !isPublicGithubUrl && (
+                      <p className="mt-1 text-xs text-[var(--color-err)]">
+                        Must be a public https://github.com/owner/repo URL.
+                      </p>
+                    )}
+                  </div>
+                  <Field label="Branch / tag (optional)">
+                    <input
+                      className={cn(fieldControlClass, "h-9")}
+                      value={gitRef}
+                      onChange={(e) => setGitRef(e.target.value)}
+                      placeholder="default branch"
+                    />
+                  </Field>
+                  <Field label="Dockerfile path (optional)">
+                    <input
+                      className={cn(fieldControlClass, "h-9")}
+                      value={dockerfilePath}
+                      onChange={(e) => setDockerfilePath(e.target.value)}
+                      placeholder="auto-detect, else Railpack"
+                    />
+                  </Field>
+                </>
+              )}
               <Field label="Port">
                 <input
                   type="number"

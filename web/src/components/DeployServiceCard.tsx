@@ -1,6 +1,6 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { MapPin } from "lucide-react";
-import { memo, type ReactNode } from "react";
+import { memo } from "react";
 import { cn } from "#/lib/cn";
 import { formatDeployRegion } from "#/lib/deploy-regions";
 import { useDeployRegions } from "#/lib/queries";
@@ -158,7 +158,9 @@ export const DeployServiceCard = memo(function DeployServiceCard({ service, canv
           <span className="mono shrink-0 text-[10px] text-[var(--color-fg-dim)]">
             {service.last_deploy_at
               ? `deployed ${lastSeen(service.last_deploy_at)}`
-              : (service.url ? service.url.replace(/^https?:\/\//, "") : lastSeen(service.updated_at))}
+              : service.url
+                ? service.url.replace(/^https?:\/\//, "")
+                : lastSeen(service.updated_at)}
           </span>
         </div>
       </div>
@@ -193,76 +195,3 @@ export const DeployServiceCard = memo(function DeployServiceCard({ service, canv
     </Link>
   );
 });
-
-export function DeployCanvasHint({ children }: { children: ReactNode }) {
-  return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 hidden text-center text-[11px] text-[var(--color-canvas-dim)] md:block">
-      {children}
-    </div>
-  );
-}
-
-export function DeployServiceRow({ service }: { service: DeployService }) {
-  const { wid } = useParams({ from: "/_authed/$wid" });
-  const { data: regions } = useDeployRegions(wid);
-  const color = DEPLOY_STATUS_COLOR[service.status];
-  const active = deployStatusActive(service.status);
-  const pending = deployStatusPending(service.status);
-
-  return (
-    <Link
-      to="/$wid/deployments"
-      params={{ wid }}
-      search={{ service: service.id }}
-      className={cn(
-        "group flex items-center gap-3 rounded-[var(--radius-md)] no-underline",
-        "border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2.5",
-        "transition-colors hover:border-[var(--color-border-hi)] hover:bg-[var(--color-bg-elev)]",
-      )}
-      style={{ borderLeft: `3px solid ${color}` }}
-    >
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <span
-          className={cn(
-            "inline-block h-2 w-2 shrink-0 rounded-full",
-            active && "pulse-dot",
-            pending && "animate-pulse",
-          )}
-          style={{
-            background: color,
-            boxShadow: active ? `0 0 8px color-mix(in srgb, ${color} 50%, transparent)` : undefined,
-          }}
-        />
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-[13px] font-medium tracking-tight text-[var(--color-fg)]">
-            {service.name}
-          </span>
-          <span className="mono hidden truncate text-[11px] text-[var(--color-fg-dim)] sm:block">
-            {service.image}
-          </span>
-        </div>
-      </div>
-
-      <div className="hidden shrink-0 items-center gap-1.5 md:flex">
-        <MetaChip icon={MapPin} label={formatDeployRegion(service.region, regions, "short")} />
-        <MetaChip label={service.environment} />
-        <MetaChip label={machineCountLabel(service.machine_count)} />
-        <MetaChip label={`:${service.internal_port}`} />
-        {shortDigest(service.last_deploy_image_digest) && (
-          <MetaChip label={shortDigest(service.last_deploy_image_digest) as string} />
-        )}
-      </div>
-
-      <div className="hidden w-[110px] shrink-0 text-right sm:block">
-        <div className="text-[10px] uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
-          last deploy
-        </div>
-        <div className="mono mt-0.5 text-[11px] text-[var(--color-fg-muted)]">
-          {service.last_deploy_at
-            ? lastSeen(service.last_deploy_at)
-            : (service.url ? service.url.replace(/^https?:\/\//, "") : lastSeen(service.updated_at))}
-        </div>
-      </div>
-    </Link>
-  );
-}

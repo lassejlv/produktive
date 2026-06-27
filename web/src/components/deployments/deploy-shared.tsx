@@ -1,26 +1,12 @@
-import {
-  Copy,
-  ExternalLink,
-  MapPin,
-  Rocket,
-  RotateCcw,
-  Square,
-} from "lucide-react";
+import { Copy, ExternalLink, MapPin, Rocket, RotateCcw, Square } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "#/components/ui/button";
 import { Skeleton } from "#/components/ui/skeleton";
 import { Spinner } from "#/components/ui/spinner";
 import { cn } from "#/lib/cn";
-import {
-  DEPLOY_STATUS_COLOR,
-  DEPLOY_STATUS_LABEL,
-} from "#/lib/status";
+import { DEPLOY_STATUS_COLOR, DEPLOY_STATUS_LABEL } from "#/lib/status";
 import { toast } from "#/lib/toast";
-import {
-  useCreateDeployment,
-  useRollbackDeployment,
-  useStopDeployService,
-} from "#/lib/queries";
+import { useCreateDeployment, useRollbackDeployment, useStopDeployService } from "#/lib/queries";
 import type { DeployResourcePreset, DeployService, DeployStatus } from "#/lib/types";
 
 export const RESOURCE_PRESETS: Array<{
@@ -42,10 +28,19 @@ export function machineCountLabel(count: number): string {
 export const fieldControlClass =
   "w-full rounded-[var(--radius-md)] border border-[var(--color-border-hi)] bg-[var(--color-bg-elev)] px-3 text-[13px] text-[var(--color-fg)] shadow-[var(--shadow-xs)] outline-none transition-[border-color,box-shadow] focus:border-[var(--color-accent)] focus:shadow-[var(--ring-accent)]";
 
-export function LiveDot({ label = "Live", color = "var(--color-ok)" }: { label?: string; color?: string }) {
+export function LiveDot({
+  label = "Live",
+  color = "var(--color-ok)",
+}: {
+  label?: string;
+  color?: string;
+}) {
   return (
     <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.06em] text-[var(--color-fg-dim)]">
-      <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+      <span
+        className="pulse-dot inline-block h-1.5 w-1.5 rounded-full"
+        style={{ background: color }}
+      />
       {label}
     </span>
   );
@@ -179,7 +174,9 @@ export function ServiceActionButtons({
   compact?: boolean;
 }) {
   return (
-    <div className={cn("flex flex-wrap items-center gap-1.5", fullWidth && "w-full [&>button]:flex-1")}>
+    <div
+      className={cn("flex flex-wrap items-center gap-1.5", fullWidth && "w-full [&>button]:flex-1")}
+    >
       {service.url && (
         <Button
           render={<a href={service.url} target="_blank" rel="noreferrer" />}
@@ -311,7 +308,9 @@ export function PanelEmpty({
         <Icon size={16} />
       </div>
       <p className="text-[13px] font-medium text-[var(--color-fg)]">{label}</p>
-      {hint && <p className="max-w-sm text-[12px] leading-5 text-[var(--color-fg-muted)]">{hint}</p>}
+      {hint && (
+        <p className="max-w-sm text-[12px] leading-5 text-[var(--color-fg-muted)]">{hint}</p>
+      )}
     </div>
   );
 }
@@ -320,12 +319,23 @@ export function parseKeyValues(input: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const line of input.split("\n")) {
     const trimmed = line.trim();
-    if (!trimmed) continue;
+    if (!trimmed || trimmed.startsWith("#")) continue;
     const idx = trimmed.indexOf("=");
     if (idx <= 0) throw new Error(`Invalid KEY=value line: ${trimmed}`);
-    out[trimmed.slice(0, idx).trim()] = trimmed.slice(idx + 1);
+    out[trimmed.slice(0, idx).trim()] = stripWrappingQuotes(trimmed.slice(idx + 1).trim());
   }
   return out;
+}
+
+/** Strip a single layer of matching surrounding quotes — pasted `.env` values often arrive as KEY="value". */
+function stripWrappingQuotes(value: string): string {
+  if (value.length < 2) return value;
+  const first = value[0];
+  const last = value[value.length - 1];
+  if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+    return value.slice(1, -1);
+  }
+  return value;
 }
 
 export function normalizeResourcePreset(value: string): DeployResourcePreset {

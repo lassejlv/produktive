@@ -25,8 +25,10 @@ export const DEPLOY_STATUS_COLOR: Record<DeployStatus, string> = {
   live: "var(--color-ok)",
   healthy: "var(--color-ok)",
   failed: "var(--color-err)",
+  build_failed: "var(--color-err)",
   stopped: "var(--color-fg-muted)",
   rolled_back: "var(--color-fg-dim)",
+  building: "var(--color-warn)",
   queued: "var(--color-warn)",
   provisioning: "var(--color-warn)",
   pulling: "var(--color-warn)",
@@ -39,8 +41,10 @@ export const DEPLOY_STATUS_LABEL: Record<DeployStatus, string> = {
   live: "Live",
   healthy: "Healthy",
   failed: "Failed",
+  build_failed: "Build failed",
   stopped: "Stopped",
   rolled_back: "Rolled back",
+  building: "Building",
   queued: "Queued",
   provisioning: "Provisioning",
   pulling: "Pulling",
@@ -55,6 +59,7 @@ export function deployStatusActive(status: DeployStatus): boolean {
 
 export function deployStatusPending(status: DeployStatus): boolean {
   return (
+    status === "building" ||
     status === "queued" ||
     status === "provisioning" ||
     status === "pulling" ||
@@ -67,8 +72,10 @@ export const DEPLOY_GLOW_CLASS: Record<DeployStatus, string> = {
   live: "glow-up",
   healthy: "glow-up",
   failed: "glow-down",
+  build_failed: "glow-down",
   stopped: "glow-unknown",
   rolled_back: "glow-unknown",
+  building: "glow-warn",
   queued: "glow-warn",
   provisioning: "glow-warn",
   pulling: "glow-warn",

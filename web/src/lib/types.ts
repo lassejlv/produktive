@@ -279,6 +279,8 @@ export interface LogAccess {
 
 export type DeployAccessStatus = "none" | "pending" | "approved" | "denied" | "disabled";
 export type DeployStatus =
+  | "building"
+  | "build_failed"
   | "queued"
   | "provisioning"
   | "pulling"
@@ -290,6 +292,7 @@ export type DeployStatus =
   | "rolled_back"
   | "stopped"
   | "unknown";
+export type DeploySourceKind = "image" | "git";
 export type DeployRegistryKind = "ghcr" | "docker_hub";
 export type DeployResourcePreset = "preview_small" | "preview_medium" | "preview_large";
 
@@ -340,6 +343,11 @@ export interface DeployService {
   name: string;
   image: string;
   registry_kind: DeployRegistryKind | string;
+  source_kind: DeploySourceKind | string;
+  repo_url: string | null;
+  git_ref: string | null;
+  dockerfile_path: string | null;
+  root_dir: string | null;
   internal_port: number;
   env: Record<string, string>;
   environment: string;
@@ -364,6 +372,8 @@ export interface Deployment {
   service_id: Uuid;
   image: string;
   image_digest: string | null;
+  commit_sha: string | null;
+  build_provider: string | null;
   status: DeployStatus;
   provider: "fly" | string;
   provider_deployment_id: string | null;

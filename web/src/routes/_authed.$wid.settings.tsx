@@ -16,7 +16,7 @@ const TABS: SettingsTab[] = [
   { to: "/$wid/settings", label: "General", exact: true },
   { to: "/$wid/settings/members", label: "Members" },
   { to: "/$wid/settings/notifications", label: "Notifications" },
-  { to: "/$wid/settings/billing", label: "Billing" },
+  { to: "/$wid/settings/usage", label: "Usage" },
 ];
 
 function SettingsLayout() {
