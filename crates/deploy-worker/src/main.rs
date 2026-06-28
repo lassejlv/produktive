@@ -42,6 +42,34 @@ impl Providers {
                 }),
         }
     }
+
+    /// The `deployments.provider` / `deploy_services.provider` values this worker
+    /// can actually act on. Used to scope job claims (`claim_next`,
+    /// `claim_and_spawn_builds`) so a worker never grabs a build/deploy whose
+    /// provider it can't handle — an old binary that predates a provider, or a
+    /// worker where Cloud Run is unconfigured, leaves such jobs for a capable
+    /// worker instead of deploying them to the wrong cloud (or failing them).
+    ///
+    /// This relies on the operational invariant that at least one running worker
+    /// supports every provider the platform offers (e.g. Cloud Run is only enabled
+    /// once a Cloud-Run-configured worker exists); otherwise a job for an
+    /// unsupported provider stays `Queued` until such a worker appears.
+    fn supported_provider_kinds(&self) -> Vec<String> {
+        // Fly is always constructed; Cloud Run only when configured.
+        supported_provider_kinds(self.cloud_run.is_some())
+    }
+}
+
+/// The persisted `provider` column values a worker can claim, given whether Cloud
+/// Run is configured. Returned strings MUST equal the values stored in
+/// `deployments.provider` / `deploy_services.provider` (i.e. [`ProviderKind::as_str`])
+/// for the `= ANY(...)` claim filter to match.
+fn supported_provider_kinds(cloud_run_configured: bool) -> Vec<String> {
+    let mut kinds = vec![ProviderKind::Fly.as_str().to_owned()];
+    if cloud_run_configured {
+        kinds.push(ProviderKind::CloudRun.as_str().to_owned());
+    }
+    kinds
 }
 
 #[async_trait]
@@ -383,6 +411,9 @@ async fn main() -> Result<()> {
         fly: FlyProvider::new(fly.clone()),
         cloud_run: cloud_run.clone(),
     };
+    // Providers this worker can claim build/deploy jobs for. Computed once: the
+    // configured provider set is fixed for the process lifetime.
+    let supported_providers = provider.supported_provider_kinds();
     let build_provider = build_provider_from_config(&config);
     let health_client = reqwest::Client::builder()
         .user_agent("produktive-deploy-watch/0.1")
@@ -413,6 +444,7 @@ async fn main() -> Result<()> {
                     cloud_run.as_ref(),
                     bp,
                     &config,
+                    &supported_providers,
                     &mut inflight_builds,
                     &build_done_tx,
                 )
@@ -475,7 +507,7 @@ async fn main() -> Result<()> {
             }
             last_retention_cleanup = Instant::now();
         }
-        match claim_next(&db).await {
+        match claim_next(&db, &supported_providers).await {
             Ok(Some(job)) => {
                 if let Err(error) = run_job(&db, &cipher, &provider, job).await {
                     tracing::warn!(error = ?error, "deployment job failed");
@@ -598,7 +630,10 @@ async fn connect_log_db(config: &Config) -> Option<DatabaseConnection> {
     }
 }
 
-async fn claim_next(db: &DatabaseConnection) -> Result<Option<DeploymentJob>> {
+async fn claim_next(
+    db: &DatabaseConnection,
+    supported_providers: &[String],
+) -> Result<Option<DeploymentJob>> {
     let row = DeploymentJob::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
@@ -608,6 +643,9 @@ async fn claim_next(db: &DatabaseConnection) -> Result<Option<DeploymentJob>> {
             SELECT d.id
             FROM deployments d
             WHERE d.status = $1
+              -- Only claim deployments this worker can route to a provider; jobs
+              -- for an unsupported provider are left for a capable worker.
+              AND d.provider = ANY($8)
               AND EXISTS (
                 SELECT 1
                 FROM deploy_services s
@@ -638,6 +676,7 @@ async fn claim_next(db: &DatabaseConnection) -> Result<Option<DeploymentJob>> {
             DeploymentStatus::RollingBack.code().into(),
             // A service mid-build must block a concurrent deploy claim.
             DeploymentStatus::Building.code().into(),
+            supported_providers.to_vec().into(),
         ],
     ))
     .one(db)
@@ -722,6 +761,7 @@ async fn claim_and_spawn_builds(
     cloud_run: Option<&CloudRunProvider>,
     provider: &DepotProvider,
     config: &Config,
+    supported_providers: &[String],
     inflight: &mut HashSet<Uuid>,
     done_tx: &tokio::sync::mpsc::UnboundedSender<Uuid>,
 ) -> Result<()> {
@@ -738,10 +778,16 @@ async fn claim_and_spawn_builds(
         WHERE d.status = $1
           AND s.disabled_at IS NULL
           AND s.deleted_at IS NULL
+          -- Only build for a provider this worker can publish to (Cloud Run builds
+          -- need its Artifact Registry token); leave others for a capable worker.
+          AND s.provider = ANY($2)
         ORDER BY d.created_at ASC
         LIMIT 2
         "#,
-        [DeploymentStatus::Building.code().into()],
+        [
+            DeploymentStatus::Building.code().into(),
+            supported_providers.to_vec().into(),
+        ],
     ))
     .all(db)
     .await?;
@@ -3538,6 +3584,30 @@ mod tests {
             Some(("info", "deployment health recovered"))
         );
         assert_eq!(health_transition_event("healthy", 0, "healthy", 0), None);
+    }
+
+    #[test]
+    fn supported_provider_kinds_scope_by_cloud_run_config() {
+        // Fly-only worker (Cloud Run unconfigured) must not claim Cloud Run jobs.
+        assert_eq!(supported_provider_kinds(false), vec!["fly".to_owned()]);
+        // With Cloud Run configured it claims both.
+        assert_eq!(
+            supported_provider_kinds(true),
+            vec!["fly".to_owned(), "cloud_run".to_owned()]
+        );
+    }
+
+    #[test]
+    fn supported_provider_kinds_match_persisted_provider_values() {
+        // The `= ANY(...)` claim filter compares against the stored `provider`
+        // column, so every advertised kind must round-trip through the same
+        // parser the rest of the system uses.
+        for kind in supported_provider_kinds(true) {
+            assert!(
+                ProviderKind::parse(&kind).is_ok(),
+                "claim allowlist value {kind:?} is not a valid persisted provider"
+            );
+        }
     }
 }
 
