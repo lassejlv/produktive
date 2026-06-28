@@ -77,7 +77,7 @@ export function PageContent() {
 
   if (layout === "bleed") {
     return (
-      <main className="relative flex min-h-0 flex-1 flex-col">
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <Outlet />
       </main>
     );

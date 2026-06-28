@@ -3,10 +3,16 @@ import { deployStatusActive, deployStatusPending } from "./status";
 
 export type DeployServiceFilter = "all" | "live" | "deploying" | "failed" | "stopped";
 
-export type DeployDetailTab = "deployments" | "variables" | "logs" | "settings";
+export type DeployDetailTab =
+  | "deployments"
+  | "metrics"
+  | "variables"
+  | "logs"
+  | "settings";
 
 export const DEPLOY_DETAIL_TABS: DeployDetailTab[] = [
   "deployments",
+  "metrics",
   "variables",
   "logs",
   "settings",
@@ -43,7 +49,6 @@ export const EMPTY_DEPLOYMENTS_SEARCH: DeploymentsSearch = {
 
 const LEGACY_TAB_MAP: Record<string, DeployDetailTab> = {
   overview: "deployments",
-  metrics: "deployments",
   configuration: "settings",
 };
 

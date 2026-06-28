@@ -4,3 +4,9 @@ export { LineChart, Line, type LineProps, type LineChartProps } from "./line-cha
 export { Grid } from "./grid";
 export { XAxis } from "./x-axis";
 export { ChartTooltip, type ChartTooltipProps } from "./tooltip";
+export {
+  ChartConfigProvider,
+  useChartConfig,
+  type ChartConfigValue,
+  type SpringConfig,
+} from "./chart-config-context";

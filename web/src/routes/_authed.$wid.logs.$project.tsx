@@ -56,9 +56,9 @@ import { cn } from "#/lib/cn";
 const toolbarControlClass = cn(
   "h-8 min-w-0 rounded-[var(--radius-md)]",
   "border-[var(--color-border-hi)] bg-[var(--color-bg-elev)]",
-  "!shadow-none !before:hidden",
-  "focus-within:border-[var(--color-accent)] focus-within:!ring-2 focus-within:ring-[var(--ring-accent)]",
-  "focus-visible:border-[var(--color-accent)] focus-visible:!ring-2 focus-visible:ring-[var(--ring-accent)]",
+  "!shadow-none",
+  "focus-within:border-[var(--color-accent)] focus-within:shadow-[var(--ring-accent)]",
+  "focus-visible:border-[var(--color-accent)] focus-visible:shadow-[var(--ring-accent)]",
 );
 
 const fieldControlClass = cn(
@@ -284,7 +284,7 @@ function LogExplorer({
   const activeRange = RANGES.find((item) => item.value === filters.range) ?? RANGES[1];
 
   return (
-    <div className="fade-in flex min-h-0 flex-1 flex-col bg-[var(--color-bg)]">
+    <div className="fade-in flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg)]">
       <header className="shrink-0 border-b border-[var(--color-border)] px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -357,7 +357,7 @@ function LogExplorer({
             setDraft((current) => ({ ...current, level: value }));
           }}
         >
-          <SelectTrigger size="sm" className={cn(toolbarControlClass, "w-full")}>
+          <SelectTrigger size="sm" className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -385,7 +385,7 @@ function LogExplorer({
             setDraft((current) => ({ ...current, range: value }));
           }}
         >
-          <SelectTrigger size="sm" className={cn(toolbarControlClass, "w-full")}>
+          <SelectTrigger size="sm" className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -431,7 +431,7 @@ function LogExplorer({
         onLevel={applyLevel}
       />
 
-      <div className="relative min-h-0 min-w-0 flex-1">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <EventStream
           loading={search.isLoading}
           fetching={search.isFetching}
@@ -488,8 +488,8 @@ function EventStream({
   onSelect: (id: string) => void;
 }) {
   return (
-    <section className="flex min-h-0 min-w-0 flex-col">
-      <div className="relative min-h-0 flex-1 overflow-y-auto">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
         {fetching && !loading && (
           <div className="absolute right-3 top-2 z-10 text-[11px] text-[var(--color-fg-dim)]">
             updating…
@@ -1220,7 +1220,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function LogExplorerSkeleton() {
   return (
-    <div className="fade-in flex min-h-0 flex-1 flex-col bg-[var(--color-bg)]">
+    <div className="fade-in flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg)]">
       <header className="shrink-0 border-b border-[var(--color-border)] px-4 py-3">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-2">
@@ -1242,7 +1242,7 @@ function LogExplorerSkeleton() {
         <Skeleton className="col-span-2 h-8 rounded-[var(--radius-md)] sm:col-span-1" />
         <Skeleton className="size-8 justify-self-end rounded-[var(--radius-md)] sm:justify-self-auto" />
       </div>
-      <div className="relative min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <EventStreamSkeleton />
       </div>
     </div>

@@ -13,7 +13,12 @@ import type { DeployDetailTab, DeploySettingsSection } from "#/lib/deployments";
 import type { DeployService } from "#/lib/types";
 import { ServiceActionButtons } from "./deploy-shared";
 import { DeployServiceSettings } from "./DeployServiceSettings";
-import { DeploymentsPanel, LogsPanel, VariablesPanel } from "./DeployServicePanels";
+import {
+  DeploymentsPanel,
+  LogsPanel,
+  MetricsPanel,
+  VariablesPanel,
+} from "./DeployServicePanels";
 
 export function DeployServiceDetail({
   wid,
@@ -134,6 +139,7 @@ export function DeployServiceDetail({
             size="sm"
             options={[
               { value: "deployments", label: "Deployments" },
+              { value: "metrics", label: "Metrics" },
               { value: "variables", label: "Variables" },
               { value: "logs", label: "Logs" },
               { value: "settings", label: "Settings" },
@@ -149,6 +155,7 @@ export function DeployServiceDetail({
         )}
       >
         {tab === "deployments" && <DeploymentsPanel wid={wid} service={service} />}
+        {tab === "metrics" && <MetricsPanel wid={wid} service={service} />}
         {tab === "variables" && <VariablesPanel wid={wid} service={service} />}
         {tab === "logs" && <LogsPanel wid={wid} service={service} />}
         {tab === "settings" && (

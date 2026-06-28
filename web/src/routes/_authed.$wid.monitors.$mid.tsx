@@ -221,10 +221,7 @@ function MonitorDetail() {
                 value={selectedRegion}
                 onValueChange={(value) => value != null && setSelectedRegion(value)}
               >
-                <SelectTrigger
-                  size="sm"
-                  className="h-8 w-auto min-w-0 rounded-[var(--radius-sm)] border-[var(--color-border)] bg-[var(--color-bg-elev)] px-2 text-[12px] text-[var(--color-fg)]"
-                >
+                <SelectTrigger size="sm" className="h-8 w-auto min-w-[7rem] px-2">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

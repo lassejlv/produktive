@@ -24,6 +24,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Dialog, DialogClose, DialogContent } from "../Dialog";
 import { ChartTooltip, Grid, Line, LineChart, XAxis } from "#/charts";
+import { ChartConfigProvider } from "#/charts/chart-config-context";
 import { Button } from "#/components/ui/button";
 import { ScrollArea } from "#/components/ui/scroll-area";
 import { Skeleton } from "#/components/ui/skeleton";
@@ -412,36 +413,55 @@ export function MetricsPanel({ wid, service }: { wid: string; service: DeploySer
   const metrics = useDeployMetrics(wid, service.id);
   const [chartKind, setChartKind] = useState<MetricChartKind>("cpu");
 
-  if (metrics.isLoading) {
-    return (
-      <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
-        <div className="grid grid-cols-1 divide-y divide-[var(--color-border)] border-b border-[var(--color-border)] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="space-y-2 px-3.5 py-3">
-              <Skeleton className="h-2.5 w-14" />
-              <Skeleton className="h-5 w-16" />
-              <Skeleton className="h-2.5 w-12" />
-            </div>
-          ))}
+  return (
+    <ChartConfigProvider
+      value={{
+        tooltipSpring: { stiffness: 320, damping: 32 },
+        tooltipBoxSpring: { stiffness: 120, damping: 22 },
+        highlightSpring: { stiffness: 200, damping: 30 },
+      }}
+    >
+      {metrics.isLoading ? (
+        <div className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-elev)]">
+          <div className="grid grid-cols-1 divide-y divide-[var(--color-border)] border-b border-[var(--color-border)] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="space-y-2 px-3.5 py-3">
+                <Skeleton className="h-2.5 w-14" />
+                <Skeleton className="h-5 w-16" />
+                <Skeleton className="h-2.5 w-12" />
+              </div>
+            ))}
+          </div>
+          <div className="p-3 sm:p-4">
+            <MetricsLineChart points={[]} metric="cpu" loading />
+          </div>
         </div>
-        <div className="p-3 sm:p-4">
-          <MetricsLineChart points={[]} metric="cpu" loading />
-        </div>
-      </div>
-    );
-  }
+      ) : !metrics.data?.length ? (
+        <PanelEmpty
+          icon={Activity}
+          label="No metrics collected yet"
+          hint="CPU, memory, and request counts appear after the service is live."
+        />
+      ) : (
+        <MetricsPanelBody
+          points={metrics.data}
+          chartKind={chartKind}
+          onChartKindChange={setChartKind}
+        />
+      )}
+    </ChartConfigProvider>
+  );
+}
 
-  if (!metrics.data?.length) {
-    return (
-      <PanelEmpty
-        icon={Activity}
-        label="No metrics collected yet"
-        hint="CPU, memory, and request counts appear after the service is live."
-      />
-    );
-  }
-
-  const points = metrics.data;
+function MetricsPanelBody({
+  points,
+  chartKind,
+  onChartKindChange,
+}: {
+  points: DeployMetricPoint[];
+  chartKind: MetricChartKind;
+  onChartKindChange: (kind: MetricChartKind) => void;
+}) {
   const lastBucket = points[points.length - 1].bucket_start;
   const selected = metricStats(points, chartKind);
 
@@ -464,7 +484,7 @@ export function MetricsPanel({ wid, service }: { wid: string; service: DeploySer
               }
               active={chartKind === tile.kind}
               accent={high ? "var(--color-warn)" : undefined}
-              onClick={() => setChartKind(tile.kind)}
+              onClick={() => onChartKindChange(tile.kind)}
             />
           );
         })}
