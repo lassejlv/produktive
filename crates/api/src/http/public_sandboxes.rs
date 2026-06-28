@@ -278,13 +278,8 @@ pub async fn restore_checkpoint(
     Extension(auth): Extension<SandboxApiAuth>,
     Path((sandbox_id, checkpoint_id)): Path<(Uuid, String)>,
 ) -> ApiResult<Json<OkResponse>> {
-    sandbox_service::restore_checkpoint(
-        &state,
-        auth.workspace_id,
-        sandbox_id,
-        &checkpoint_id,
-    )
-    .await?;
+    sandbox_service::restore_checkpoint(&state, auth.workspace_id, sandbox_id, &checkpoint_id)
+        .await?;
     Ok(Json(OkResponse { ok: true }))
 }
 
@@ -300,13 +295,8 @@ pub async fn delete_checkpoint(
     Extension(auth): Extension<SandboxApiAuth>,
     Path((sandbox_id, checkpoint_id)): Path<(Uuid, String)>,
 ) -> ApiResult<Json<OkResponse>> {
-    sandbox_service::delete_checkpoint(
-        &state,
-        auth.workspace_id,
-        sandbox_id,
-        &checkpoint_id,
-    )
-    .await?;
+    sandbox_service::delete_checkpoint(&state, auth.workspace_id, sandbox_id, &checkpoint_id)
+        .await?;
     Ok(Json(OkResponse { ok: true }))
 }
 
@@ -329,7 +319,10 @@ fn extract_sandbox_token(headers: &HeaderMap) -> Option<String> {
             return Some(token.to_owned());
         }
     }
-    let value = headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
+    let value = headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
     value
         .strip_prefix("Bearer ")
         .map(str::trim)

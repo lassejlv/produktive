@@ -73,8 +73,9 @@ impl DepotProvider {
             .work_root
             .join(spec.deployment_id.simple().to_string());
         let _ = std::fs::remove_dir_all(&work);
-        std::fs::create_dir_all(&work)
-            .map_err(|error| DeployError::Provider(format!("failed to create build dir: {error}")))?;
+        std::fs::create_dir_all(&work).map_err(|error| {
+            DeployError::Provider(format!("failed to create build dir: {error}"))
+        })?;
         let _guard = WorkDirGuard(work.clone());
 
         // 1. Clone the source and resolve the commit SHA.
@@ -89,13 +90,27 @@ impl DepotProvider {
         ensure_context_size(&context, self.config.max_context_bytes)?;
         let plan = detect_build_plan(&context, spec.source.dockerfile_path.as_deref())?;
 
-        // 3. Write registry credentials into an isolated docker config dir.
+        // 3. Write registry credentials into an isolated docker config dir. A
+        //    per-build `registry_auth` (e.g. a Google Artifact Registry token for a
+        //    Cloud Run service) overrides the provider's default Fly registry creds.
         let docker_config_dir = work.join("docker");
+        let (registry_host, registry_username, registry_password) = match &spec.registry_auth {
+            Some(auth) => (
+                auth.host.as_str(),
+                auth.username.as_str(),
+                auth.password.as_str(),
+            ),
+            None => (
+                self.config.registry_host.as_str(),
+                self.config.registry_username.as_str(),
+                self.config.registry_password.as_str(),
+            ),
+        };
         write_docker_config(
             &docker_config_dir,
-            &self.config.registry_host,
-            &self.config.registry_username,
-            &self.config.registry_password,
+            registry_host,
+            registry_username,
+            registry_password,
         )?;
 
         // 4. Tag with the short commit SHA (falling back to the deployment id) and build.
@@ -117,7 +132,9 @@ impl DepotProvider {
                 (BuildEngine::Dockerfile, digest)
             }
             BuildPlan::Railpack => {
-                on_log(&format!("No Dockerfile found; building with Railpack -> {image_ref}"));
+                on_log(&format!(
+                    "No Dockerfile found; building with Railpack -> {image_ref}"
+                ));
                 let digest = self
                     .run_railpack_build(&context, &work, &image_ref, &envs, on_log)
                     .await?;
@@ -163,8 +180,14 @@ impl DepotProvider {
                     .await?;
                 let mut checkout = git_hardening_args();
                 checkout.extend(str_args(&["checkout", "--detach", reference]));
-                self.run(&self.config.git_bin, &checkout, Some(repo_dir), &envs, on_log)
-                    .await?;
+                self.run(
+                    &self.config.git_bin,
+                    &checkout,
+                    Some(repo_dir),
+                    &envs,
+                    on_log,
+                )
+                .await?;
             }
             // A branch or tag: a shallow single-branch clone is enough.
             Some(reference) => {
@@ -292,7 +315,15 @@ impl DepotProvider {
         envs: &[(String, String)],
         on_log: &mut BuildLogSink<'_>,
     ) -> DeployResult<(String, Option<String>)> {
-        run_command(program, args, cwd, envs, self.config.command_timeout, on_log).await
+        run_command(
+            program,
+            args,
+            cwd,
+            envs,
+            self.config.command_timeout,
+            on_log,
+        )
+        .await
     }
 
     /// Capture a command's stdout bounded by the configured per-command timeout.
@@ -362,7 +393,10 @@ fn resolve_context(repo_dir: &Path, root_dir: Option<&str>) -> DeployResult<Path
 /// (non-symlink) file contained within the context; with none, a regular
 /// `Dockerfile` at the context root selects the Dockerfile path, otherwise Railpack.
 fn detect_build_plan(context: &Path, dockerfile_path: Option<&str>) -> DeployResult<BuildPlan> {
-    match dockerfile_path.map(str::trim).filter(|value| !value.is_empty()) {
+    match dockerfile_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         Some(path) => {
             let candidate = context.join(safe_relative(path)?);
             if is_symlink(&candidate) {
@@ -425,8 +459,9 @@ fn ensure_context_size(context: &Path, max: Option<u64>) -> DeployResult<()> {
     let mut total: u64 = 0;
     let mut stack = vec![context.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let entries = std::fs::read_dir(&dir)
-            .map_err(|error| DeployError::Provider(format!("failed to read build context: {error}")))?;
+        let entries = std::fs::read_dir(&dir).map_err(|error| {
+            DeployError::Provider(format!("failed to read build context: {error}"))
+        })?;
         for entry in entries {
             let entry = entry.map_err(|error| {
                 DeployError::Provider(format!("failed to read build context: {error}"))
@@ -494,8 +529,7 @@ fn write_docker_config(
     std::fs::create_dir_all(dir).map_err(|error| {
         DeployError::Provider(format!("failed to create docker config dir: {error}"))
     })?;
-    let auth =
-        base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"));
+    let auth = base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"));
     let config = serde_json::json!({
         "auths": {
             registry_host: { "auth": auth }
@@ -788,7 +822,9 @@ mod tests {
 
     #[test]
     fn detects_commit_sha_refs() {
-        assert!(looks_like_commit_sha("0123456789abcdef0123456789abcdef01234567"));
+        assert!(looks_like_commit_sha(
+            "0123456789abcdef0123456789abcdef01234567"
+        ));
         assert!(looks_like_commit_sha("abc1234"));
         assert!(!looks_like_commit_sha("main"));
         assert!(!looks_like_commit_sha("v1.2.3"));
@@ -816,7 +852,11 @@ mod tests {
     fn track_digest_prefers_manifest_over_layer() {
         let mut manifest = None;
         let mut fallback = None;
-        track_digest(&format!("layer sha256:{}", "1".repeat(64)), &mut manifest, &mut fallback);
+        track_digest(
+            &format!("layer sha256:{}", "1".repeat(64)),
+            &mut manifest,
+            &mut fallback,
+        );
         track_digest(
             &format!("exporting manifest sha256:{}", "2".repeat(64)),
             &mut manifest,
@@ -832,13 +872,17 @@ mod tests {
         assert!(safe_relative("../secrets").is_err());
         assert!(safe_relative("app/../../etc").is_err());
         assert!(safe_relative("").is_err());
-        assert_eq!(safe_relative("./services/api").unwrap(), PathBuf::from("services/api"));
+        assert_eq!(
+            safe_relative("./services/api").unwrap(),
+            PathBuf::from("services/api")
+        );
         assert_eq!(safe_relative("api").unwrap(), PathBuf::from("api"));
     }
 
     #[test]
     fn ensure_within_blocks_escapes() {
-        let base = std::env::temp_dir().join(format!("depot-within-{}", uuid::Uuid::now_v7().simple()));
+        let base =
+            std::env::temp_dir().join(format!("depot-within-{}", uuid::Uuid::now_v7().simple()));
         let inside = base.join("sub");
         std::fs::create_dir_all(&inside).unwrap();
         // A real path inside the base resolves and is contained.
@@ -850,7 +894,8 @@ mod tests {
 
     #[test]
     fn context_size_limit_trips() {
-        let dir = std::env::temp_dir().join(format!("depot-size-{}", uuid::Uuid::now_v7().simple()));
+        let dir =
+            std::env::temp_dir().join(format!("depot-size-{}", uuid::Uuid::now_v7().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("big"), vec![0u8; 1024]).unwrap();
         assert!(ensure_context_size(&dir, Some(100)).is_err());
@@ -907,7 +952,8 @@ mod tests {
 
     #[test]
     fn docker_config_writes_base64_auth() {
-        let dir = std::env::temp_dir().join(format!("depot-test-{}", uuid::Uuid::now_v7().simple()));
+        let dir =
+            std::env::temp_dir().join(format!("depot-test-{}", uuid::Uuid::now_v7().simple()));
         write_docker_config(&dir, "registry.fly.io", "x", "tok").unwrap();
         let written = std::fs::read_to_string(dir.join("config.json")).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&written).unwrap();
@@ -921,8 +967,14 @@ mod tests {
 
     #[test]
     fn requires_credentials() {
-        assert!(DepotProvider::new(DepotConfig::new("", "proj", "registry.fly.io", "tok")).is_err());
-        assert!(DepotProvider::new(DepotConfig::new("tok", "proj", "registry.fly.io", "")).is_err());
-        assert!(DepotProvider::new(DepotConfig::new("tok", "proj", "registry.fly.io", "pw")).is_ok());
+        assert!(
+            DepotProvider::new(DepotConfig::new("", "proj", "registry.fly.io", "tok")).is_err()
+        );
+        assert!(
+            DepotProvider::new(DepotConfig::new("tok", "proj", "registry.fly.io", "")).is_err()
+        );
+        assert!(
+            DepotProvider::new(DepotConfig::new("tok", "proj", "registry.fly.io", "pw")).is_ok()
+        );
     }
 }

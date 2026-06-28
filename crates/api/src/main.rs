@@ -4,9 +4,9 @@ mod config;
 mod custom_domain_sweep;
 mod error;
 mod http;
-mod logstore;
 mod log_db;
 mod log_retention_sweep;
+mod logstore;
 mod middleware;
 mod notification_webhook;
 mod openapi;
@@ -22,8 +22,8 @@ use anyhow::Result;
 use axum::{http::HeaderValue, routing::get, Router};
 use log_migration::Migrator as LogMigrator;
 use migration::Migrator;
-use sea_orm_migration::MigratorTrait;
 use sea_orm::{ConnectOptions, Database};
+use sea_orm_migration::MigratorTrait;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tower_http::{
@@ -83,7 +83,10 @@ async fn main() -> Result<()> {
         .nest("/logs", http::logs::workspace_routes(state.clone()))
         .nest("/custom-domains", http::custom_domains::routes())
         .nest("/deployments", http::deployments::routes(state.clone()))
-        .nest("/object-storage", http::object_storage::routes(state.clone()))
+        .nest(
+            "/object-storage",
+            http::object_storage::routes(state.clone()),
+        )
         .nest("/billing", http::billing::routes())
         .nest("/regions", http::regions::routes())
         .merge(http::checks::routes())
@@ -103,7 +106,10 @@ async fn main() -> Result<()> {
         .nest("/public", http::public_status::routes())
         .nest("/pricing", http::pricing::routes())
         .nest("/logs", http::logs::ingest_routes())
-        .nest("/v1/sandboxes", http::public_sandboxes::routes(state.clone()))
+        .nest(
+            "/v1/sandboxes",
+            http::public_sandboxes::routes(state.clone()),
+        )
         .nest("/webhooks", http::webhooks::routes())
         .nest("/internal/workers", http::internal_workers::routes());
 

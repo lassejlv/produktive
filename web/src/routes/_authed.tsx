@@ -1,4 +1,5 @@
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
+import { EmailVerificationGate } from "#/components/EmailVerificationGate";
 import { LegalTermsGate } from "#/components/LegalTermsGate";
 import { auth } from "../lib/api";
 import { authRedirectTarget } from "../lib/redirect";
@@ -30,6 +31,7 @@ function AuthedLayout() {
     <>
       <Outlet />
       <LegalTermsGate />
+      <EmailVerificationGate />
     </>
   );
 }

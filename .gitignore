@@ -11,3 +11,6 @@ docs/
 specific.local
 opencode.json
 .env.prod
+# GCP service-account keys (Cloud Run deploy provider) — never commit
+cloud-run-sa.json
+*-sa.json

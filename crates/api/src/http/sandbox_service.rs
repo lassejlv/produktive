@@ -191,12 +191,8 @@ pub async fn create_sandbox(
     let storage_gb = body.storage_gb.unwrap_or(10).clamp(1, 100);
 
     let id = Uuid::now_v7();
-    let provider_name = provider_app_name(
-        &state.config.sprite_name_prefix,
-        workspace_id,
-        id,
-        &slug,
-    );
+    let provider_name =
+        provider_app_name(&state.config.sprite_name_prefix, workspace_id, id, &slug);
     let config = SpriteConfig {
         ram_mb: Some(ram_mb as u32),
         cpus: Some(cpus as u32),
@@ -412,10 +408,7 @@ pub async fn restore_checkpoint(
     let row = ensure_sandbox(state, workspace_id, sandbox_id).await?;
     validate_checkpoint_id(checkpoint_id)?;
     let sprite = sprites.sprite(&row.provider_name);
-    sprite
-        .restore(checkpoint_id)
-        .await
-        .map_err(sandbox_error)?;
+    sprite.restore(checkpoint_id).await.map_err(sandbox_error)?;
     Ok(())
 }
 
@@ -524,7 +517,10 @@ pub async fn create_api_token(
         created_at: now,
     };
 
-    Ok(CreatedSandboxApiToken { token, token_view: view })
+    Ok(CreatedSandboxApiToken {
+        token,
+        token_view: view,
+    })
 }
 
 pub async fn revoke_api_token(
@@ -552,10 +548,7 @@ pub async fn revoke_api_token(
     Ok(())
 }
 
-pub async fn authenticate_api_token(
-    state: &AppState,
-    token: &str,
-) -> ApiResult<SandboxApiAuth> {
+pub async fn authenticate_api_token(state: &AppState, token: &str) -> ApiResult<SandboxApiAuth> {
     ensure_sandboxes_enabled(state)?;
     if !token.starts_with(SANDBOX_API_TOKEN_PREFIX) {
         return Err(ApiError::Unauthorized);
@@ -684,11 +677,7 @@ async fn ensure_sandbox(
     .ok_or_else(|| ApiError::not_found("sandbox not found"))
 }
 
-async fn refresh_sandbox(
-    state: &AppState,
-    workspace_id: Uuid,
-    sandbox_id: Uuid,
-) -> ApiResult<()> {
+async fn refresh_sandbox(state: &AppState, workspace_id: Uuid, sandbox_id: Uuid) -> ApiResult<()> {
     let Some(sprites) = state.sprites.as_ref() else {
         return Ok(());
     };

@@ -98,7 +98,10 @@ impl IamClient {
             .map_err(|e| TigrisError::Iam(e.to_string()))?;
         Ok(CreatedAccessKey {
             id: payload.create_access_key_result.access_key.access_key_id,
-            secret: payload.create_access_key_result.access_key.secret_access_key,
+            secret: payload
+                .create_access_key_result
+                .access_key
+                .secret_access_key,
             name: payload.create_access_key_result.access_key.user_name,
         })
     }
@@ -193,21 +196,14 @@ fn sign_request(
             value.to_str().unwrap_or_default().to_owned(),
         ));
     }
-    signable_headers_vec.push((
-        "x-amz-content-sha256".to_owned(),
-        payload_hash.clone(),
-    ));
+    signable_headers_vec.push(("x-amz-content-sha256".to_owned(), payload_hash.clone()));
     let signable_headers = signable_headers_vec
         .iter()
         .map(|(name, value)| (name.as_str(), value.as_str()));
 
-    let signable_request = SignableRequest::new(
-        method,
-        url,
-        signable_headers,
-        SignableBody::Bytes(body),
-    )
-    .map_err(|e| TigrisError::Iam(e.to_string()))?;
+    let signable_request =
+        SignableRequest::new(method, url, signable_headers, SignableBody::Bytes(body))
+            .map_err(|e| TigrisError::Iam(e.to_string()))?;
 
     let (instructions, _signature) = sign(signable_request, &signing_params)
         .map_err(|e| TigrisError::Iam(e.to_string()))?
@@ -223,8 +219,7 @@ fn sign_request(
     ));
     for (key, value) in instructions.headers() {
         signed.push((
-            HeaderName::from_bytes(key.as_bytes())
-                .map_err(|e| TigrisError::Iam(e.to_string()))?,
+            HeaderName::from_bytes(key.as_bytes()).map_err(|e| TigrisError::Iam(e.to_string()))?,
             HeaderValue::from_str(value).map_err(|e| TigrisError::Iam(e.to_string()))?,
         ));
     }

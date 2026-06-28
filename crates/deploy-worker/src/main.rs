@@ -4,16 +4,140 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use chrono::{DateTime, FixedOffset, TimeDelta, Utc};
+use cloudrun::{CloudRun, CloudRunConfig, CloudRunProvider};
 use deploy::{
     provider_app_name, validate_machine_count, BuildOutcome, BuildProvider, BuildProviderKind,
-    BuildSpec, DeployError, DeployProvider, DeploymentConfigSnapshot, DeploymentSpec,
-    DeploymentStatus, LogLine, LogQuery, MetricPoint, MetricQuery, ProviderServiceRef,
-    ProviderVolume, ResourcePreset, SecretCipher, SourceKind, SourceSpec, VolumeSpec,
-    DEFAULT_MACHINE_COUNT,
+    BuildSpec, DeployError, DeployProvider, DeployResult, DeploymentConfigSnapshot, DeploymentSpec,
+    DeploymentStatus, LogLine, LogQuery, MetricPoint, MetricQuery, ProviderDeployment,
+    ProviderDomain, ProviderKind, ProviderService, ProviderServiceRef, ProviderVolume,
+    RegistryAuth, ResourcePreset, SecretCipher, SourceKind, SourceSpec, VolumeSpec,
+    DEFAULT_MACHINE_COUNT, DEFAULT_PROVIDER,
 };
 use depot::{DepotConfig, DepotProvider};
 use fly::{Fly, FlyConfig, FlyProvider};
+
+/// Registry of configured deploy providers. Implements [`DeployProvider`] by
+/// dispatching each call to the concrete provider named on the spec / service ref
+/// / query, so the reconciler loop can stay provider-agnostic. Fly is always
+/// present; Cloud Run is optional (configured via `CLOUD_RUN_*` env).
+struct Providers {
+    fly: FlyProvider,
+    cloud_run: Option<CloudRunProvider>,
+}
+
+impl Providers {
+    fn resolve(&self, kind: ProviderKind) -> DeployResult<&dyn DeployProvider> {
+        match kind {
+            ProviderKind::Fly => Ok(&self.fly),
+            ProviderKind::CloudRun => self
+                .cloud_run
+                .as_ref()
+                .map(|provider| provider as &dyn DeployProvider)
+                .ok_or_else(|| {
+                    DeployError::Config(
+                        "Cloud Run provider is not configured on this worker (set CLOUD_RUN_SERVICE_ACCOUNT_JSON)".into(),
+                    )
+                }),
+        }
+    }
+}
+
+#[async_trait]
+impl DeployProvider for Providers {
+    fn provider(&self) -> ProviderKind {
+        // The registry is not a single provider; callers must not depend on this.
+        DEFAULT_PROVIDER
+    }
+
+    async fn ensure_service(&self, deployment: &DeploymentSpec) -> DeployResult<ProviderService> {
+        self.resolve(deployment.provider)?
+            .ensure_service(deployment)
+            .await
+    }
+
+    async fn deploy_image(&self, deployment: &DeploymentSpec) -> DeployResult<ProviderDeployment> {
+        self.resolve(deployment.provider)?
+            .deploy_image(deployment)
+            .await
+    }
+
+    async fn refresh_deployment(
+        &self,
+        deployment: &DeploymentSpec,
+    ) -> DeployResult<ProviderDeployment> {
+        self.resolve(deployment.provider)?
+            .refresh_deployment(deployment)
+            .await
+    }
+
+    async fn stop_service(&self, deployment: &DeploymentSpec) -> DeployResult<()> {
+        self.resolve(deployment.provider)?
+            .stop_service(deployment)
+            .await
+    }
+
+    async fn destroy_deployment(&self, deployment: &DeploymentSpec) -> DeployResult<()> {
+        self.resolve(deployment.provider)?
+            .destroy_deployment(deployment)
+            .await
+    }
+
+    async fn destroy_service(&self, service: &ProviderServiceRef) -> DeployResult<()> {
+        self.resolve(service.provider)?
+            .destroy_service(service)
+            .await
+    }
+
+    async fn delete_volume(
+        &self,
+        service: &ProviderServiceRef,
+        provider_volume_id: &str,
+    ) -> DeployResult<()> {
+        self.resolve(service.provider)?
+            .delete_volume(service, provider_volume_id)
+            .await
+    }
+
+    async fn ensure_domain(
+        &self,
+        service: &ProviderServiceRef,
+        hostname: &str,
+    ) -> DeployResult<ProviderDomain> {
+        self.resolve(service.provider)?
+            .ensure_domain(service, hostname)
+            .await
+    }
+
+    async fn check_domain(
+        &self,
+        service: &ProviderServiceRef,
+        hostname: &str,
+    ) -> DeployResult<ProviderDomain> {
+        self.resolve(service.provider)?
+            .check_domain(service, hostname)
+            .await
+    }
+
+    async fn delete_domain(
+        &self,
+        service: &ProviderServiceRef,
+        hostname: &str,
+    ) -> DeployResult<()> {
+        self.resolve(service.provider)?
+            .delete_domain(service, hostname)
+            .await
+    }
+
+    async fn logs(&self, query: &LogQuery) -> DeployResult<Vec<LogLine>> {
+        self.resolve(query.provider)?.logs(query).await
+    }
+
+    async fn metrics(&self, query: &MetricQuery) -> DeployResult<Vec<MetricPoint>> {
+        self.resolve(query.provider)?.metrics(query).await
+    }
+}
 use sea_orm::{
     ConnectOptions, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection,
     FromQueryResult, Statement,
@@ -32,6 +156,10 @@ struct Config {
     fly_org_slug: String,
     fly_api_hostname: String,
     fly_app_name_prefix: String,
+    cloud_run_service_account_json: Option<String>,
+    cloud_run_project_id: Option<String>,
+    cloud_run_artifact_registry: Option<String>,
+    cloud_run_app_name_prefix: String,
     depot_token: Option<String>,
     depot_project_id: Option<String>,
     build_registry_host: String,
@@ -53,6 +181,7 @@ struct DeploymentJob {
     id: Uuid,
     workspace_id: Uuid,
     service_id: Uuid,
+    provider: String,
     image: String,
     image_digest: Option<String>,
     provider_instance_id: Option<String>,
@@ -73,6 +202,7 @@ struct BuildJob {
     slug: String,
     name: String,
     environment: String,
+    provider: String,
     provider_service_id: Option<String>,
     build_log_project_id: Option<Uuid>,
 }
@@ -121,6 +251,7 @@ struct SecretRow {
 struct LogTarget {
     workspace_id: Uuid,
     service_id: Uuid,
+    provider: String,
     deployment_id: Option<Uuid>,
     provider_service_id: String,
     provider_instance_id: Option<String>,
@@ -133,6 +264,7 @@ struct LogTarget {
 struct MetricTarget {
     workspace_id: Uuid,
     service_id: Uuid,
+    provider: String,
     provider_service_id: String,
 }
 
@@ -161,6 +293,7 @@ struct DomainJob {
     id: Uuid,
     workspace_id: Uuid,
     service_id: Uuid,
+    provider: String,
     provider_service_id: String,
     slug: String,
     hostname: String,
@@ -181,6 +314,7 @@ struct VolumeRow {
 struct DeletedServiceRow {
     workspace_id: Uuid,
     service_id: Uuid,
+    provider: String,
     provider_service_id: Option<String>,
     slug: String,
 }
@@ -190,6 +324,7 @@ struct DeletedVolumeRow {
     id: Uuid,
     workspace_id: Uuid,
     service_id: Uuid,
+    provider: String,
     provider_service_id: Option<String>,
     slug: String,
     provider_volume_id: Option<String>,
@@ -243,7 +378,11 @@ async fn main() -> Result<()> {
         app_name_prefix: config.fly_app_name_prefix.clone(),
     })
     .map_err(|error| anyhow::anyhow!(error))?;
-    let provider = FlyProvider::new(fly.clone());
+    let cloud_run = build_cloud_run_provider(&config);
+    let provider = Providers {
+        fly: FlyProvider::new(fly.clone()),
+        cloud_run: cloud_run.clone(),
+    };
     let build_provider = build_provider_from_config(&config);
     let health_client = reqwest::Client::builder()
         .user_agent("produktive-deploy-watch/0.1")
@@ -271,6 +410,7 @@ async fn main() -> Result<()> {
                     &db,
                     log_db.as_ref(),
                     &fly,
+                    cloud_run.as_ref(),
                     bp,
                     &config,
                     &mut inflight_builds,
@@ -318,9 +458,7 @@ async fn main() -> Result<()> {
             tracing::warn!(error = ?error, "deployment log collection failed");
         }
         if last_deploy_watch.elapsed() >= config.deploy_watch_interval {
-            if let Err(error) =
-                watch_deployment_health(&db, &provider, &health_client, &config).await
-            {
+            if let Err(error) = watch_deployment_health(&db, &health_client, &config).await {
                 tracing::warn!(error = ?error, "deployment health watch failed");
             }
             last_deploy_watch = Instant::now();
@@ -381,6 +519,11 @@ impl Config {
             fly_api_hostname: optional_env("FLY_API_HOSTNAME")
                 .unwrap_or_else(|| "https://api.machines.dev".into()),
             fly_app_name_prefix: optional_env("FLY_APP_NAME_PREFIX")
+                .unwrap_or_else(|| "prd".into()),
+            cloud_run_service_account_json: cloud_run_service_account_from_env(),
+            cloud_run_project_id: optional_env("CLOUD_RUN_PROJECT_ID"),
+            cloud_run_artifact_registry: optional_env("CLOUD_RUN_ARTIFACT_REGISTRY"),
+            cloud_run_app_name_prefix: optional_env("CLOUD_RUN_APP_NAME_PREFIX")
                 .unwrap_or_else(|| "prd".into()),
             depot_token: optional_env("DEPOT_TOKEN"),
             depot_project_id: optional_env("DEPOT_PROJECT_ID"),
@@ -484,7 +627,7 @@ async fn claim_next(db: &DatabaseConnection) -> Result<Option<DeploymentJob>> {
             LIMIT 1
             FOR UPDATE SKIP LOCKED
         )
-        RETURNING id, workspace_id, service_id, image, image_digest, provider_instance_id, config_snapshot
+        RETURNING id, workspace_id, service_id, provider, image, image_digest, provider_instance_id, config_snapshot
         "#,
         [
             DeploymentStatus::Queued.code().into(),
@@ -500,6 +643,45 @@ async fn claim_next(db: &DatabaseConnection) -> Result<Option<DeploymentJob>> {
     .one(db)
     .await?;
     Ok(row)
+}
+
+/// Read the Cloud Run service-account key from `CLOUD_RUN_SERVICE_ACCOUNT_JSON`
+/// (raw JSON) or, failing that, the file at `CLOUD_RUN_SERVICE_ACCOUNT_FILE`.
+fn cloud_run_service_account_from_env() -> Option<String> {
+    if let Some(json) = optional_env("CLOUD_RUN_SERVICE_ACCOUNT_JSON") {
+        return Some(json);
+    }
+    let path = optional_env("CLOUD_RUN_SERVICE_ACCOUNT_FILE")?;
+    match std::fs::read_to_string(&path) {
+        Ok(contents) => Some(contents),
+        Err(error) => {
+            tracing::warn!(path = %path, error = ?error, "failed to read Cloud Run service account file");
+            None
+        }
+    }
+}
+
+/// Build the optional Cloud Run provider. Returns `None` (with a log) when the
+/// service account is unset or invalid, so the worker keeps running Fly-only.
+fn build_cloud_run_provider(config: &Config) -> Option<CloudRunProvider> {
+    let service_account_json = config.cloud_run_service_account_json.clone()?;
+    match CloudRun::from_config(CloudRunConfig {
+        service_account_json,
+        project_id: config.cloud_run_project_id.clone(),
+        app_name_prefix: config.cloud_run_app_name_prefix.clone(),
+        artifact_registry: config.cloud_run_artifact_registry.clone(),
+        api_hostname: None,
+        logging_hostname: None,
+    }) {
+        Ok(client) => {
+            tracing::info!("cloud run provider initialized");
+            Some(CloudRunProvider::new(client))
+        }
+        Err(error) => {
+            tracing::warn!(error = ?error, "cloud run provider disabled");
+            None
+        }
+    }
 }
 
 fn build_provider_from_config(config: &Config) -> Option<DepotProvider> {
@@ -532,10 +714,12 @@ fn build_provider_from_config(config: &Config) -> Option<DepotProvider> {
 
 /// Claim `Building` deployments not already building in this process and spawn a
 /// detached task per build, so the reconciler loop never blocks on a build.
+#[allow(clippy::too_many_arguments)]
 async fn claim_and_spawn_builds(
     db: &DatabaseConnection,
     log_db: Option<&DatabaseConnection>,
     fly: &Fly,
+    cloud_run: Option<&CloudRunProvider>,
     provider: &DepotProvider,
     config: &Config,
     inflight: &mut HashSet<Uuid>,
@@ -547,7 +731,7 @@ async fn claim_and_spawn_builds(
         SELECT d.id, d.workspace_id, d.service_id,
                s.source_kind, COALESCE(d.source_repo_url, s.repo_url) AS repo_url,
                COALESCE(d.git_ref, s.git_ref) AS git_ref, s.dockerfile_path, s.root_dir,
-               s.slug, s.name, s.environment, s.provider_service_id, s.build_log_project_id
+               s.slug, s.name, s.environment, s.provider, s.provider_service_id, s.build_log_project_id
         FROM deployments d
         INNER JOIN deploy_services s
             ON s.workspace_id = d.workspace_id AND s.id = d.service_id
@@ -569,6 +753,7 @@ async fn claim_and_spawn_builds(
         let db = db.clone();
         let log_db = log_db.cloned();
         let fly = fly.clone();
+        let cloud_run = cloud_run.cloned();
         let provider = provider.clone();
         let prefix = config.fly_app_name_prefix.clone();
         let registry_host = config.build_registry_host.clone();
@@ -578,17 +763,28 @@ async fn claim_and_spawn_builds(
         };
         tokio::spawn(async move {
             let _guard = guard; // frees the in-flight id on every exit path
-            run_build_job(&db, log_db.as_ref(), &fly, &provider, &prefix, &registry_host, job)
-                .await;
+            run_build_job(
+                &db,
+                log_db.as_ref(),
+                &fly,
+                cloud_run.as_ref(),
+                &provider,
+                &prefix,
+                &registry_host,
+                job,
+            )
+            .await;
         });
     }
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_build_job(
     db: &DatabaseConnection,
     log_db: Option<&DatabaseConnection>,
     fly: &Fly,
+    cloud_run: Option<&CloudRunProvider>,
     provider: &DepotProvider,
     prefix: &str,
     registry_host: &str,
@@ -601,6 +797,7 @@ async fn run_build_job(
     let db_inner = db.clone();
     let log_db = log_db.cloned();
     let fly = fly.clone();
+    let cloud_run = cloud_run.cloned();
     let provider = provider.clone();
     let prefix = prefix.to_owned();
     let registry_host = registry_host.to_owned();
@@ -609,6 +806,7 @@ async fn run_build_job(
             &db_inner,
             log_db.as_ref(),
             &fly,
+            cloud_run.as_ref(),
             &provider,
             &prefix,
             &registry_host,
@@ -634,10 +832,12 @@ async fn run_build_job(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_build_job_inner(
     db: &DatabaseConnection,
     log_db: Option<&DatabaseConnection>,
     fly: &Fly,
+    cloud_run: Option<&CloudRunProvider>,
     provider: &DepotProvider,
     prefix: &str,
     registry_host: &str,
@@ -673,17 +873,49 @@ async fn run_build_job_inner(
         .clone()
         .context("git-source deployment is missing a repository URL")?;
 
-    // Ensure the Fly app exists *before* pushing to its registry namespace. The
-    // app is otherwise created inside deploy_image (after the build), so a first
-    // deploy would push to a non-existent app. ensure_app is idempotent.
+    let provider_kind = ProviderKind::parse(&job.provider).unwrap_or(DEFAULT_PROVIDER);
     let app_name = job
         .provider_service_id
         .clone()
         .unwrap_or_else(|| provider_app_name(prefix, job.workspace_id, job.service_id, &job.slug));
-    let network = format!("{app_name}-network");
-    fly.ensure_app(&app_name, &network)
-        .await
-        .map_err(|error| anyhow::anyhow!(error))?;
+
+    // Choose where the built image is published so the deploy target can pull it.
+    // Fly pushes to the Fly registry under the app namespace (the app must exist
+    // first). Cloud Run pushes to Google Artifact Registry, authed with a
+    // short-lived GCP token, since Cloud Run cannot pull from the Fly registry.
+    let (image_repository, registry_auth) = match provider_kind {
+        ProviderKind::Fly => {
+            let network = format!("{app_name}-network");
+            fly.ensure_app(&app_name, &network)
+                .await
+                .map_err(|error| anyhow::anyhow!(error))?;
+            (format!("{registry_host}/{app_name}"), None)
+        }
+        ProviderKind::CloudRun => {
+            let cloud_run =
+                cloud_run.context("Cloud Run provider is not configured on this worker")?;
+            let artifact_registry = cloud_run.artifact_registry().context(
+                "CLOUD_RUN_ARTIFACT_REGISTRY is not set; cannot publish Cloud Run image",
+            )?;
+            let host = artifact_registry
+                .split('/')
+                .next()
+                .unwrap_or(artifact_registry)
+                .to_owned();
+            let token = cloud_run
+                .access_token()
+                .await
+                .map_err(|error| anyhow::anyhow!(error))?;
+            (
+                format!("{artifact_registry}/{app_name}"),
+                Some(RegistryAuth {
+                    host,
+                    username: "oauth2accesstoken".to_owned(),
+                    password: token,
+                }),
+            )
+        }
+    };
 
     let spec = BuildSpec {
         workspace_id: job.workspace_id,
@@ -696,7 +928,8 @@ async fn run_build_job_inner(
             dockerfile_path: job.dockerfile_path.clone(),
             root_dir: job.root_dir.clone(),
         },
-        image_repository: format!("{registry_host}/{app_name}"),
+        image_repository,
+        registry_auth,
     };
 
     // Bridge the synchronous log sink to async ingest via a bounded channel;
@@ -987,6 +1220,9 @@ async fn build_spec(
     cipher: &SecretCipher,
     job: &DeploymentJob,
 ) -> Result<DeploymentSpec> {
+    // The deployment row's `provider` column is authoritative (set at deploy
+    // creation from the service); it routes the spec to the right cloud adapter.
+    let provider = ProviderKind::parse(&job.provider).unwrap_or(DEFAULT_PROVIDER);
     let provider_instance_ids = deployment_provider_instance_ids(db, job).await?;
     if let Some(snapshot) = job
         .config_snapshot
@@ -995,7 +1231,7 @@ async fn build_spec(
     {
         let snapshot: DeploymentConfigSnapshot = serde_json::from_value(snapshot.clone())
             .context("invalid deployment config snapshot")?;
-        return snapshot
+        let mut spec = snapshot
             .to_deployment_spec(
                 job.workspace_id,
                 job.service_id,
@@ -1006,7 +1242,9 @@ async fn build_spec(
                 job.image_digest.clone(),
                 cipher,
             )
-            .map_err(|error| anyhow::anyhow!(error));
+            .map_err(|error| anyhow::anyhow!(error))?;
+        spec.provider = provider;
+        return Ok(spec);
     }
 
     let service = ServiceRow::find_by_statement(Statement::from_sql_and_values(
@@ -1074,6 +1312,7 @@ async fn build_spec(
         workspace_id: job.workspace_id,
         service_id: job.service_id,
         deployment_id: job.id,
+        provider,
         provider_service_id: service.provider_service_id,
         provider_instance_id: job.provider_instance_id.clone(),
         provider_instance_ids,
@@ -1145,7 +1384,7 @@ async fn refresh_inflight(
     let rows = DeploymentJob::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
-        SELECT id, workspace_id, service_id, image, image_digest, provider_instance_id, config_snapshot
+        SELECT id, workspace_id, service_id, provider, image, image_digest, provider_instance_id, config_snapshot
         FROM deployments
         WHERE status IN ($1, $2, $3, $4)
           AND provider_instance_id IS NOT NULL
@@ -1222,7 +1461,7 @@ async fn cleanup_cancelled_deployments(
     let rows = DeploymentJob::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
-        SELECT id, workspace_id, service_id, image, image_digest, provider_instance_id, config_snapshot
+        SELECT id, workspace_id, service_id, provider, image, image_digest, provider_instance_id, config_snapshot
         FROM deployments
         WHERE status = $1
           AND provider_instance_id IS NOT NULL
@@ -1268,7 +1507,7 @@ async fn stop_disabled_services(
     let rows = DeploymentJob::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
-        SELECT d.id, d.workspace_id, d.service_id, d.image, d.image_digest, d.provider_instance_id, d.config_snapshot
+        SELECT d.id, d.workspace_id, d.service_id, d.provider, d.image, d.image_digest, d.provider_instance_id, d.config_snapshot
         FROM deployments d
         INNER JOIN deploy_services s
             ON s.workspace_id = d.workspace_id AND s.id = d.service_id
@@ -1320,6 +1559,7 @@ async fn cleanup_deleted_volumes(
         SELECT v.id,
                v.workspace_id,
                v.service_id,
+               s.provider,
                s.provider_service_id,
                s.slug,
                v.provider_volume_id
@@ -1344,6 +1584,7 @@ async fn cleanup_deleted_volumes(
             let service = ProviderServiceRef {
                 workspace_id: row.workspace_id,
                 service_id: row.service_id,
+                provider: ProviderKind::parse(&row.provider).unwrap_or(DEFAULT_PROVIDER),
                 provider_service_id: Some(provider_service_id.to_owned()),
                 app_name: row.slug.clone(),
             };
@@ -1371,6 +1612,7 @@ async fn cleanup_deleted_services(
         r#"
         SELECT workspace_id,
                id AS service_id,
+               provider,
                provider_service_id,
                slug
         FROM deploy_services
@@ -1387,7 +1629,7 @@ async fn cleanup_deleted_services(
         let deployments = DeploymentJob::find_by_statement(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"
-            SELECT id, workspace_id, service_id, image, image_digest, provider_instance_id, config_snapshot
+            SELECT id, workspace_id, service_id, provider, image, image_digest, provider_instance_id, config_snapshot
             FROM deployments
             WHERE workspace_id = $1
               AND service_id = $2
@@ -1413,6 +1655,7 @@ async fn cleanup_deleted_services(
             let service = ProviderServiceRef {
                 workspace_id: row.workspace_id,
                 service_id: row.service_id,
+                provider: ProviderKind::parse(&row.provider).unwrap_or(DEFAULT_PROVIDER),
                 provider_service_id: Some(provider_service_id),
                 app_name: row.slug.clone(),
             };
@@ -1442,7 +1685,7 @@ async fn delete_all_service_volumes(
     let rows = DeletedVolumeRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
-        SELECT id, workspace_id, service_id, $3 AS provider_service_id, $4 AS slug, provider_volume_id
+        SELECT id, workspace_id, service_id, provider, $3 AS provider_service_id, $4 AS slug, provider_volume_id
         FROM deploy_service_volumes
         WHERE workspace_id = $1 AND service_id = $2
         ORDER BY updated_at ASC
@@ -1487,7 +1730,7 @@ async fn stop_superseded_deployments(
         // guard additionally protects any even-newer in-flight deployment from
         // being torn down by an older deploy that happens to reach Live.
         r#"
-        SELECT id, workspace_id, service_id, image, image_digest, provider_instance_id, config_snapshot
+        SELECT id, workspace_id, service_id, provider, image, image_digest, provider_instance_id, config_snapshot
         FROM deployments
         WHERE workspace_id = $1
           AND service_id = $2
@@ -1528,28 +1771,28 @@ async fn cleanup_superseded_provider_deployments(
         // guard this reaper killed the brand-new machine whenever it had not yet
         // reached Healthy/Live, leaving the old deployment serving.
         r#"
+        -- Keeper is per (workspace, service); a service has exactly one provider,
+        -- so this is provider-agnostic. The concrete cloud adapter is resolved
+        -- per row by the registry via the deployment's `provider` column.
         WITH keeper AS (
             SELECT DISTINCT ON (workspace_id, service_id)
                    id, workspace_id, service_id, created_at
             FROM deployments
-            WHERE provider = $1
-              AND provider_instance_id IS NOT NULL
-              AND status IN ($2, $3)
+            WHERE provider_instance_id IS NOT NULL
+              AND status IN ($1, $2)
             ORDER BY workspace_id, service_id, created_at DESC
         )
-        SELECT d.id, d.workspace_id, d.service_id, d.image, d.image_digest, d.provider_instance_id, d.config_snapshot
+        SELECT d.id, d.workspace_id, d.service_id, d.provider, d.image, d.image_digest, d.provider_instance_id, d.config_snapshot
         FROM deployments d
         INNER JOIN keeper
             ON keeper.workspace_id = d.workspace_id AND keeper.service_id = d.service_id
         WHERE d.id <> keeper.id
-          AND d.provider = $1
           AND d.provider_instance_id IS NOT NULL
           AND d.created_at < keeper.created_at
         ORDER BY d.created_at ASC
         LIMIT 20
         "#,
         [
-            provider.provider().as_str().into(),
             DeploymentStatus::Healthy.code().into(),
             DeploymentStatus::Live.code().into(),
         ],
@@ -1614,6 +1857,7 @@ async fn reconcile_domains(db: &DatabaseConnection, provider: &impl DeployProvid
         SELECT d.id,
                d.workspace_id,
                d.service_id,
+               s.provider,
                s.provider_service_id AS provider_service_id,
                s.slug,
                d.hostname,
@@ -1621,13 +1865,12 @@ async fn reconcile_domains(db: &DatabaseConnection, provider: &impl DeployProvid
         FROM deploy_service_domains d
         INNER JOIN deploy_services s
             ON s.workspace_id = d.workspace_id AND s.id = d.service_id
-        WHERE s.provider = $1
-          AND s.provider_service_id IS NOT NULL
+        WHERE s.provider_service_id IS NOT NULL
           AND d.status IN ('queued', 'pending_validation', 'checking', 'failed', 'removing')
         ORDER BY d.updated_at ASC
         LIMIT 20
         "#,
-        [provider.provider().as_str().into()],
+        [],
     ))
     .all(db)
     .await?;
@@ -1636,6 +1879,7 @@ async fn reconcile_domains(db: &DatabaseConnection, provider: &impl DeployProvid
         let service = ProviderServiceRef {
             workspace_id: row.workspace_id,
             service_id: row.service_id,
+            provider: ProviderKind::parse(&row.provider).unwrap_or(DEFAULT_PROVIDER),
             provider_service_id: Some(row.provider_service_id.clone()),
             app_name: row.slug.clone(),
         };
@@ -1731,6 +1975,7 @@ async fn collect_logs(
         r#"
         SELECT s.workspace_id,
                s.id AS service_id,
+               s.provider,
                d.id AS deployment_id,
                s.provider_service_id AS provider_service_id,
                d.provider_instance_id AS provider_instance_id,
@@ -1749,7 +1994,6 @@ async fn collect_logs(
             LIMIT 1
         ) d ON TRUE
         WHERE s.disabled_at IS NULL
-          AND s.provider = $6
           AND s.provider_service_id IS NOT NULL
         ORDER BY s.updated_at DESC
         LIMIT 25
@@ -1764,7 +2008,6 @@ async fn collect_logs(
             DeploymentStatus::Starting.code().into(),
             DeploymentStatus::Healthy.code().into(),
             DeploymentStatus::Live.code().into(),
-            provider.provider().as_str().into(),
         ],
     ))
     .all(db)
@@ -1789,6 +2032,7 @@ async fn collect_logs(
         let logs = match provider
             .logs(&LogQuery {
                 service_id: target.service_id,
+                provider: ProviderKind::parse(&target.provider).unwrap_or(DEFAULT_PROVIDER),
                 deployment_id: target.deployment_id,
                 provider_service_id: Some(target.provider_service_id.clone()),
                 provider_instance_id: target.provider_instance_id.clone(),
@@ -1832,7 +2076,6 @@ async fn collect_logs(
 
 async fn watch_deployment_health(
     db: &DatabaseConnection,
-    provider: &impl DeployProvider,
     http: &reqwest::Client,
     config: &Config,
 ) -> Result<()> {
@@ -1867,20 +2110,18 @@ async fn watch_deployment_health(
         ) d ON TRUE
         WHERE s.disabled_at IS NULL
           AND s.deleted_at IS NULL
-          AND s.provider = $3
           AND s.provider_service_id IS NOT NULL
           AND COALESCE(d.url, s.url) IS NOT NULL
           AND (
               s.last_health_checked_at IS NULL
-              OR s.last_health_checked_at <= now() - ($4::BIGINT * INTERVAL '1 second')
+              OR s.last_health_checked_at <= now() - ($3::BIGINT * INTERVAL '1 second')
           )
         ORDER BY s.last_health_checked_at ASC NULLS FIRST, s.updated_at DESC
-        LIMIT $5
+        LIMIT $4
         "#,
         [
             DeploymentStatus::Healthy.code().into(),
             DeploymentStatus::Live.code().into(),
-            provider.provider().as_str().into(),
             watch_interval_seconds.into(),
             config.deploy_watch_batch_size.into(),
         ],
@@ -2330,6 +2571,7 @@ async fn ensure_build_log_project(
     Ok(linked)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn insert_build_log_event(
     log_db: &DatabaseConnection,
     workspace_id: Uuid,
@@ -2577,15 +2819,15 @@ async fn collect_metrics(db: &DatabaseConnection, provider: &impl DeployProvider
         r#"
         SELECT workspace_id,
                id AS service_id,
+               provider,
                provider_service_id AS provider_service_id
         FROM deploy_services
         WHERE disabled_at IS NULL
-          AND provider = $1
           AND provider_service_id IS NOT NULL
         ORDER BY updated_at DESC
         LIMIT 25
         "#,
-        [provider.provider().as_str().into()],
+        [],
     ))
     .all(db)
     .await?;
@@ -2596,6 +2838,7 @@ async fn collect_metrics(db: &DatabaseConnection, provider: &impl DeployProvider
         let metrics = match provider
             .metrics(&MetricQuery {
                 service_id: target.service_id,
+                provider: ProviderKind::parse(&target.provider).unwrap_or(DEFAULT_PROVIDER),
                 provider_service_id: Some(target.provider_service_id.clone()),
                 from,
                 to,

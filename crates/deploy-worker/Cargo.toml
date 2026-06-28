@@ -13,9 +13,11 @@ path = "src/main.rs"
 produktive-deploy = { path = "../deploy" }
 produktive-entity = { path = "../entity" }
 fly = { path = "../fly" }
+cloudrun = { path = "../cloudrun" }
 depot = { path = "../depot" }
 
 anyhow.workspace = true
+async-trait.workspace = true
 chrono.workspace = true
 dotenvy.workspace = true
 reqwest.workspace = true

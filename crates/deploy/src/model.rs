@@ -12,15 +12,47 @@ pub const DEFAULT_MACHINE_COUNT: u16 = 1;
 pub const MAX_MACHINE_COUNT: u16 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
     Fly,
+    CloudRun,
 }
 
 impl ProviderKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Fly => "fly",
+            Self::CloudRun => "cloud_run",
+        }
+    }
+
+    /// Parse the persisted provider string (the `deploy_services.provider` /
+    /// `deployments.provider` column). Unknown values are rejected so a typo can't
+    /// silently route a deployment to the wrong cloud.
+    pub fn parse(value: &str) -> DeployResult<Self> {
+        match value.trim() {
+            "fly" => Ok(Self::Fly),
+            "cloud_run" | "cloudrun" => Ok(Self::CloudRun),
+            other => Err(DeployError::Validation(format!(
+                "unknown deploy provider '{other}'"
+            ))),
+        }
+    }
+
+    /// Whether this provider supports attaching persistent volumes. Cloud Run is
+    /// stateless and rejects volume specs.
+    pub fn supports_volumes(self) -> bool {
+        match self {
+            Self::Fly => true,
+            Self::CloudRun => false,
+        }
+    }
+
+    /// Human label for UI/log surfaces.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Fly => "Fly.io",
+            Self::CloudRun => "Google Cloud Run",
         }
     }
 }
@@ -149,6 +181,12 @@ fn default_machine_count() -> u16 {
     DEFAULT_MACHINE_COUNT
 }
 
+/// Serde default for the `provider` field on specs deserialized from older
+/// snapshots that predate multi-provider support — they are all Fly.
+fn default_provider() -> ProviderKind {
+    DEFAULT_PROVIDER
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceSpec {
     pub workspace_id: Uuid,
@@ -171,6 +209,8 @@ pub struct DeploymentSpec {
     pub workspace_id: Uuid,
     pub service_id: Uuid,
     pub deployment_id: Uuid,
+    #[serde(default = "default_provider")]
+    pub provider: ProviderKind,
     pub provider_service_id: Option<String>,
     pub provider_instance_id: Option<String>,
     pub provider_instance_ids: Vec<String>,
@@ -191,6 +231,8 @@ pub struct DeploymentSpec {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeploymentConfigSnapshot {
+    #[serde(default = "default_provider")]
+    pub provider: ProviderKind,
     pub provider_service_id: Option<String>,
     pub app_name: String,
     pub internal_port: u16,
@@ -227,6 +269,7 @@ impl DeploymentConfigSnapshot {
             workspace_id,
             service_id,
             deployment_id,
+            provider: self.provider,
             provider_service_id: self.provider_service_id.clone(),
             provider_instance_id,
             provider_instance_ids,
@@ -263,6 +306,20 @@ impl BuildEngine {
     }
 }
 
+/// Registry credentials a build provider should authenticate with when pushing
+/// the built image. When present this overrides the build provider's own default
+/// registry config — used so a Cloud Run service's image is pushed to Google
+/// Artifact Registry (authed with a short-lived GCP token) instead of the default
+/// Fly registry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegistryAuth {
+    /// Registry host the credentials authenticate against, e.g.
+    /// `europe-west4-docker.pkg.dev` — must match the host of `image_repository`.
+    pub host: String,
+    pub username: String,
+    pub password: String,
+}
+
 /// Input to a [`crate::BuildProvider`]: a source to build and the registry image
 /// name to push the result to.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -274,6 +331,10 @@ pub struct BuildSpec {
     /// Fully-qualified target image repository (without a tag), e.g.
     /// `registry.fly.io/<app>`. The provider appends the resolved tag.
     pub image_repository: String,
+    /// Optional per-build registry credentials. `None` falls back to the build
+    /// provider's configured default registry.
+    #[serde(default)]
+    pub registry_auth: Option<RegistryAuth>,
 }
 
 /// Result of a successful build: the pushed image plus build provenance that the
@@ -312,6 +373,8 @@ pub struct ProviderService {
 pub struct ProviderServiceRef {
     pub workspace_id: Uuid,
     pub service_id: Uuid,
+    #[serde(default = "default_provider")]
+    pub provider: ProviderKind,
     pub provider_service_id: Option<String>,
     pub app_name: String,
 }
@@ -376,6 +439,8 @@ pub struct LogLine {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogQuery {
     pub service_id: Uuid,
+    #[serde(default = "default_provider")]
+    pub provider: ProviderKind,
     pub deployment_id: Option<Uuid>,
     pub provider_service_id: Option<String>,
     pub provider_instance_id: Option<String>,
@@ -393,6 +458,8 @@ pub struct MetricPoint {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricQuery {
     pub service_id: Uuid,
+    #[serde(default = "default_provider")]
+    pub provider: ProviderKind,
     pub provider_service_id: Option<String>,
     pub from: DateTime<FixedOffset>,
     pub to: DateTime<FixedOffset>,
@@ -524,7 +591,9 @@ pub fn validate_public_github_url(url: &str) -> DeployResult<String> {
     }
 
     let rest = raw.strip_prefix("https://").ok_or_else(|| {
-        DeployError::Validation("repository URL must start with https:// (SSH is not supported)".into())
+        DeployError::Validation(
+            "repository URL must start with https:// (SSH is not supported)".into(),
+        )
     })?;
 
     // Reject credentials-in-URL (user:pass@host) and any userinfo component.
@@ -646,6 +715,26 @@ mod tests {
     }
 
     #[test]
+    fn provider_kind_parses_and_round_trips() {
+        for kind in [ProviderKind::Fly, ProviderKind::CloudRun] {
+            assert_eq!(ProviderKind::parse(kind.as_str()).unwrap(), kind);
+        }
+        assert_eq!(
+            ProviderKind::parse("cloudrun").unwrap(),
+            ProviderKind::CloudRun
+        );
+        assert_eq!(ProviderKind::as_str(ProviderKind::CloudRun), "cloud_run");
+        assert!(ProviderKind::parse("gcp").is_err());
+        // Serde wire format must match the persisted column strings.
+        assert_eq!(
+            serde_json::to_string(&ProviderKind::CloudRun).unwrap(),
+            "\"cloud_run\""
+        );
+        assert!(ProviderKind::Fly.supports_volumes());
+        assert!(!ProviderKind::CloudRun.supports_volumes());
+    }
+
+    #[test]
     fn validates_env_names() {
         assert!(validate_env_name("DATABASE_URL").is_ok());
         assert!(validate_env_name("FLY_SECRET").is_err());
@@ -704,6 +793,7 @@ mod tests {
         let service_id = Uuid::now_v7();
         let deployment_id = Uuid::now_v7();
         let snapshot = DeploymentConfigSnapshot {
+            provider: ProviderKind::Fly,
             provider_service_id: Some("prd-service".into()),
             app_name: "api".into(),
             internal_port: 3000,

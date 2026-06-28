@@ -17,7 +17,7 @@ pub use error::{DeployError, DeployResult};
 pub use model::*;
 pub use provider::*;
 pub use regions::{
-    catalog_from_fly, lookup_region_label, region_flag, static_allowed_regions,
+    catalog_from_fly, cloud_run_region, lookup_region_label, region_flag, static_allowed_regions,
     validate_allowed_region, DeployRegion, FlyPlatformRegion, ALLOWED_REGION_CODES,
     DEFAULT_DEPLOY_REGION,
 };

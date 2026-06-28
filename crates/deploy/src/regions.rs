@@ -4,9 +4,7 @@ use utoipa::ToSchema;
 use crate::{DeployError, DeployResult};
 
 /// Fly region codes enabled for Produktive deployments (order preserved for UI).
-pub const ALLOWED_REGION_CODES: &[&str] = &[
-    "ams", "arn", "sin", "iad", "sjc",
-];
+pub const ALLOWED_REGION_CODES: &[&str] = &["ams", "arn", "sin", "iad", "sjc"];
 
 pub const DEFAULT_DEPLOY_REGION: &str = "ams";
 
@@ -33,6 +31,28 @@ pub fn validate_allowed_region(region: &str) -> DeployResult<()> {
         )));
     }
     Ok(())
+}
+
+/// Map a Produktive (Fly-style) region code to the nearest Google Cloud Run
+/// region. The product exposes one region vocabulary across providers, so the
+/// Cloud Run adapter translates the selected code to a GCP location at deploy
+/// time. Falls back to `europe-west1` for any unmapped code.
+pub fn cloud_run_region(code: &str) -> &'static str {
+    match code.trim() {
+        "ams" => "europe-west4",            // Amsterdam, Netherlands
+        "arn" => "europe-north1",           // Stockholm → Finland
+        "sin" => "asia-southeast1",         // Singapore
+        "iad" => "us-east4",                // Ashburn, N. Virginia
+        "sjc" => "us-west1",                // San Jose → Oregon (nearest GCP)
+        "fra" => "europe-west3",            // Frankfurt
+        "cdg" => "europe-west9",            // Paris
+        "lhr" => "europe-west2",            // London
+        "ord" => "us-central1",             // Chicago → Iowa
+        "yyz" => "northamerica-northeast2", // Toronto
+        "nrt" => "asia-northeast1",         // Tokyo
+        "syd" => "australia-southeast1",    // Sydney
+        _ => "europe-west1",
+    }
 }
 
 pub fn region_flag(code: &str) -> &'static str {
@@ -139,6 +159,19 @@ mod tests {
         assert!(validate_allowed_region("sin").is_ok());
         assert!(validate_allowed_region("fra").is_err());
         assert!(validate_allowed_region("ams").is_ok());
+    }
+
+    #[test]
+    fn maps_allowed_regions_to_gcp() {
+        // Every enabled region must resolve to a real GCP location (not the fallback
+        // by accident) for the listed codes.
+        assert_eq!(cloud_run_region("ams"), "europe-west4");
+        assert_eq!(cloud_run_region("arn"), "europe-north1");
+        assert_eq!(cloud_run_region("sin"), "asia-southeast1");
+        assert_eq!(cloud_run_region("iad"), "us-east4");
+        assert_eq!(cloud_run_region("sjc"), "us-west1");
+        // Unknown codes fall back rather than panicking.
+        assert_eq!(cloud_run_region("zzz"), "europe-west1");
     }
 
     #[test]

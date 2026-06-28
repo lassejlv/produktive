@@ -13,6 +13,8 @@ pub struct Config {
     pub jwt_ttl_hours: i64,
     /// How long a password reset token is valid for, in minutes.
     pub password_reset_ttl_minutes: i64,
+    /// How long an email verification token is valid for, in minutes.
+    pub email_verification_ttl_minutes: i64,
     pub scheduler_tick_ms: u64,
     pub scheduler_max_concurrent_checks: usize,
     pub scheduler_max_due_per_tick: u64,
@@ -23,6 +25,8 @@ pub struct Config {
     pub auth_rate_limit_register_global_per_hour: u32,
     pub auth_rate_limit_password_reset_per_hour: u32,
     pub auth_rate_limit_password_reset_global_per_hour: u32,
+    pub auth_rate_limit_email_verification_per_hour: u32,
+    pub auth_rate_limit_email_verification_global_per_hour: u32,
     pub cors_allowed_origins: Vec<String>,
     pub session_cleanup_tick_seconds: u64,
     pub custom_domain_cname_target: String,
@@ -123,6 +127,13 @@ impl Config {
         if password_reset_ttl_minutes < 1 {
             return Err(anyhow!("PASSWORD_RESET_TTL_MINUTES must be at least 1"));
         }
+        let email_verification_ttl_minutes = std::env::var("EMAIL_VERIFICATION_TTL_MINUTES")
+            .unwrap_or_else(|_| "1440".into())
+            .parse()
+            .context("EMAIL_VERIFICATION_TTL_MINUTES must be i64")?;
+        if email_verification_ttl_minutes < 1 {
+            return Err(anyhow!("EMAIL_VERIFICATION_TTL_MINUTES must be at least 1"));
+        }
         let scheduler_tick_ms = std::env::var("SCHEDULER_TICK_MS")
             .unwrap_or_else(|_| "5000".into())
             .parse()
@@ -176,6 +187,16 @@ impl Config {
                 .unwrap_or_else(|_| "100".into())
                 .parse()
                 .context("AUTH_RATE_LIMIT_PASSWORD_RESET_GLOBAL_PER_HOUR must be u32")?;
+        let auth_rate_limit_email_verification_per_hour =
+            std::env::var("AUTH_RATE_LIMIT_EMAIL_VERIFICATION_PER_HOUR")
+                .unwrap_or_else(|_| "5".into())
+                .parse()
+                .context("AUTH_RATE_LIMIT_EMAIL_VERIFICATION_PER_HOUR must be u32")?;
+        let auth_rate_limit_email_verification_global_per_hour =
+            std::env::var("AUTH_RATE_LIMIT_EMAIL_VERIFICATION_GLOBAL_PER_HOUR")
+                .unwrap_or_else(|_| "200".into())
+                .parse()
+                .context("AUTH_RATE_LIMIT_EMAIL_VERIFICATION_GLOBAL_PER_HOUR must be u32")?;
         let cors_allowed_origins = std::env::var("CORS_ALLOWED_ORIGINS")
             .unwrap_or_default()
             .split(',')
@@ -417,6 +438,7 @@ impl Config {
             jwt_secret,
             jwt_ttl_hours,
             password_reset_ttl_minutes,
+            email_verification_ttl_minutes,
             scheduler_tick_ms,
             scheduler_max_concurrent_checks,
             scheduler_max_due_per_tick,
@@ -427,6 +449,8 @@ impl Config {
             auth_rate_limit_register_global_per_hour,
             auth_rate_limit_password_reset_per_hour,
             auth_rate_limit_password_reset_global_per_hour,
+            auth_rate_limit_email_verification_per_hour,
+            auth_rate_limit_email_verification_global_per_hour,
             cors_allowed_origins,
             session_cleanup_tick_seconds,
             custom_domain_cname_target,

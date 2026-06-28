@@ -4,7 +4,9 @@
 //! Metadata (projects, tokens) stays on the main app database.
 
 use chrono::{DateTime, Duration, FixedOffset, TimeZone, Utc};
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait, Value};
+use sea_orm::{
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait, Value,
+};
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
@@ -173,11 +175,15 @@ impl LogStore {
             let fields: JsonValue = row.try_get("", "fields").unwrap_or(JsonValue::Null);
             events.push(LogSearchEvent {
                 event_id: row.try_get("", "event_id").unwrap_or_default(),
-                timestamp: row.try_get("", "time").unwrap_or_else(|_| Utc::now().fixed_offset()),
+                timestamp: row
+                    .try_get("", "time")
+                    .unwrap_or_else(|_| Utc::now().fixed_offset()),
                 received_at: row
                     .try_get("", "received_at")
                     .unwrap_or_else(|_| Utc::now().fixed_offset()),
-                level: row.try_get("", "level").unwrap_or_else(|_| "info".to_owned()),
+                level: row
+                    .try_get("", "level")
+                    .unwrap_or_else(|_| "info".to_owned()),
                 message: row.try_get("", "message").unwrap_or_default(),
                 service: row.try_get("", "service").ok(),
                 environment: row.try_get("", "environment").ok(),
@@ -340,6 +346,7 @@ mod tests {
             q: None,
             level: None,
             service: None,
+            deployment_id: None,
             limit: None,
         };
         let (from, to) = search_time_range(&params);

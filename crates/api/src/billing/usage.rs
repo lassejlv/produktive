@@ -787,7 +787,11 @@ mod tests {
 
     #[test]
     fn subscription_has_deploy_meters_detects_grandfathered_sub() {
-        let deploy_meters = vec!["mtr_memory".to_owned(), "mtr_cpu".to_owned(), "mtr_volume".to_owned()];
+        let deploy_meters = vec![
+            "mtr_memory".to_owned(),
+            "mtr_cpu".to_owned(),
+            "mtr_volume".to_owned(),
+        ];
 
         // Current pricing: the deploy meters are tracked against the customer.
         let current: CustomerState = serde_json::from_value(serde_json::json!({
@@ -809,7 +813,10 @@ mod tests {
             ]
         }))
         .unwrap();
-        assert!(!subscription_has_deploy_meters(&grandfathered, &deploy_meters));
+        assert!(!subscription_has_deploy_meters(
+            &grandfathered,
+            &deploy_meters
+        ));
 
         // No meters at all (e.g. a fresh sub with no usage yet) → not current.
         let empty: CustomerState = serde_json::from_value(serde_json::json!({

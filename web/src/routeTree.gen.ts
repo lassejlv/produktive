@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SRouteImport } from './routes/s'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
@@ -61,6 +62,11 @@ import { Route as AuthedWidAdminLogBucketsRouteImport } from './routes/_authed.$
 import { Route as AuthedWidAdminLogAccessRouteImport } from './routes/_authed.$wid.admin.log-access'
 import { Route as AuthedWidAdminDeployAccessRouteImport } from './routes/_authed.$wid.admin.deploy-access'
 
+const VerifyEmailRoute = VerifyEmailRouteImport.update({
+  id: '/verify-email',
+  path: '/verify-email',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
@@ -339,6 +345,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/s': typeof SRoute
   '/signup': typeof SignupRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/$wid': typeof AuthedWidRouteWithChildren
   '/incidents/$id': typeof IncidentsIdRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -391,6 +398,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/s': typeof SRoute
   '/signup': typeof SignupRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/incidents/$id': typeof IncidentsIdRoute
   '/invite/$token': typeof InviteTokenRoute
   '/legal/$doc': typeof LegalDocRoute
@@ -440,6 +448,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/s': typeof SRoute
   '/signup': typeof SignupRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/_authed/$wid': typeof AuthedWidRouteWithChildren
   '/incidents/$id': typeof IncidentsIdRoute
   '/invite/$token': typeof InviteTokenRoute
@@ -494,6 +503,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/s'
     | '/signup'
+    | '/verify-email'
     | '/$wid'
     | '/incidents/$id'
     | '/invite/$token'
@@ -546,6 +556,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/s'
     | '/signup'
+    | '/verify-email'
     | '/incidents/$id'
     | '/invite/$token'
     | '/legal/$doc'
@@ -594,6 +605,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/s'
     | '/signup'
+    | '/verify-email'
     | '/_authed/$wid'
     | '/incidents/$id'
     | '/invite/$token'
@@ -648,6 +660,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SRoute: typeof SRoute
   SignupRoute: typeof SignupRoute
+  VerifyEmailRoute: typeof VerifyEmailRoute
   InviteTokenRoute: typeof InviteTokenRoute
   LegalDocRoute: typeof LegalDocRoute
   SSlugRoute: typeof SSlugRouteWithChildren
@@ -655,6 +668,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/verify-email': {
+      id: '/verify-email'
+      path: '/verify-email'
+      fullPath: '/verify-email'
+      preLoaderRoute: typeof VerifyEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/signup': {
       id: '/signup'
       path: '/signup'
@@ -1186,6 +1206,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SRoute: SRoute,
   SignupRoute: SignupRoute,
+  VerifyEmailRoute: VerifyEmailRoute,
   InviteTokenRoute: InviteTokenRoute,
   LegalDocRoute: LegalDocRoute,
   SSlugRoute: SSlugRouteWithChildren,

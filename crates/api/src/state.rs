@@ -77,8 +77,7 @@ impl AppState {
         // Ensure the Cloudflare for SaaS fallback origin is configured. Idempotent
         // and best-effort: a failure only means the one-time origin wasn't
         // re-asserted, so log and carry on rather than failing startup.
-        if let (Some(cf), Some(origin)) =
-            (cloudflare.as_ref(), config.cf_fallback_origin.as_ref())
+        if let (Some(cf), Some(origin)) = (cloudflare.as_ref(), config.cf_fallback_origin.as_ref())
         {
             if let Err(e) = cf.set_fallback_origin(origin).await {
                 tracing::warn!(error = %e, "failed to set Cloudflare fallback origin");
@@ -196,13 +195,8 @@ async fn build_sprites(config: &Config) -> Option<Arc<SpritesClient>> {
     } else if let (Some(fly_token), Some(org)) =
         (config.fly_api_token.as_ref(), config.sprites_org.as_ref())
     {
-        match SpritesClient::create_token_with_url(
-            fly_token,
-            org,
-            None,
-            &config.sprites_api_url,
-        )
-        .await
+        match SpritesClient::create_token_with_url(fly_token, org, None, &config.sprites_api_url)
+            .await
         {
             Ok(token) => token,
             Err(e) => {

@@ -41,6 +41,7 @@ import {
   useDeployCredentials,
   useDeployRegions,
   useDeployServices,
+  useMe,
   useUpdateDeployService,
 } from "../lib/queries";
 import type { DeployService } from "../lib/types";
@@ -141,6 +142,8 @@ function Canvas() {
   const search = Route.useSearch();
   const navigate = deploymentsIndexRoute.useNavigate();
   const access = useDeployAccess(wid);
+  const me = useMe();
+  const isAdmin = me.data?.is_admin ?? false;
   const approved = access.data?.status === "approved";
   const { data: services = [], isLoading } = useDeployServices(wid, approved);
   const credentials = useDeployCredentials(wid, approved);
@@ -308,6 +311,7 @@ function Canvas() {
           credentials={credentials.data ?? []}
           regions={regions}
           pending={createService.isPending}
+          isAdmin={isAdmin}
           onOpenChange={(open) => {
             if (!open && createService.isPending) return;
             setServiceOpen(open);
@@ -393,6 +397,7 @@ function Canvas() {
         credentials={credentials.data ?? []}
         regions={regions}
         pending={createService.isPending}
+        isAdmin={isAdmin}
         onOpenChange={(open) => {
           if (!open && createService.isPending) return;
           setServiceOpen(open);

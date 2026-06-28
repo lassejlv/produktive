@@ -10,6 +10,7 @@ pub mod deploy_sandbox_api_token;
 pub mod deploy_service;
 pub mod deploy_service_secret;
 pub mod deployment;
+pub mod email_verification_token;
 pub mod incident;
 pub mod incident_update;
 pub mod log_access_request;

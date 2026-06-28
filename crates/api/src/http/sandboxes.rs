@@ -11,9 +11,7 @@ use uuid::Uuid;
 use crate::{
     auth::AuthUser,
     error::ApiResult,
-    http::sandbox_service::{
-        self, CreateSandboxInput, ExecSandboxInput, UpdateSandboxInput,
-    },
+    http::sandbox_service::{self, CreateSandboxInput, ExecSandboxInput, UpdateSandboxInput},
     middleware::Membership,
     state::AppState,
 };
@@ -24,7 +22,10 @@ pub use sandbox_service::{
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/sandboxes/tokens", get(list_api_tokens).post(create_api_token))
+        .route(
+            "/sandboxes/tokens",
+            get(list_api_tokens).post(create_api_token),
+        )
         .route("/sandboxes/tokens/{token_id}", delete(revoke_api_token))
         .route("/sandboxes", get(list_sandboxes).post(create_sandbox))
         .route(
@@ -197,9 +198,7 @@ pub async fn update_sandbox(
         &state,
         m.workspace.id,
         sandbox_id,
-        UpdateSandboxInput {
-            name: body.name,
-        },
+        UpdateSandboxInput { name: body.name },
     )
     .await
     .map(Json)
@@ -275,8 +274,7 @@ pub async fn restore_checkpoint(
     Path((_wid, sandbox_id, checkpoint_id)): Path<(String, Uuid, String)>,
 ) -> ApiResult<Json<crate::auth::routes::OkResponse>> {
     m.require_owner()?;
-    sandbox_service::restore_checkpoint(&state, m.workspace.id, sandbox_id, &checkpoint_id)
-        .await?;
+    sandbox_service::restore_checkpoint(&state, m.workspace.id, sandbox_id, &checkpoint_id).await?;
     Ok(Json(crate::auth::routes::OkResponse { ok: true }))
 }
 
@@ -287,7 +285,6 @@ pub async fn delete_checkpoint(
     Path((_wid, sandbox_id, checkpoint_id)): Path<(String, Uuid, String)>,
 ) -> ApiResult<Json<crate::auth::routes::OkResponse>> {
     m.require_owner()?;
-    sandbox_service::delete_checkpoint(&state, m.workspace.id, sandbox_id, &checkpoint_id)
-        .await?;
+    sandbox_service::delete_checkpoint(&state, m.workspace.id, sandbox_id, &checkpoint_id).await?;
     Ok(Json(crate::auth::routes::OkResponse { ok: true }))
 }

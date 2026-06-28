@@ -88,7 +88,11 @@ impl Cloudflare {
             }
         });
         let envelope: CfEnvelope<CustomHostname> = self
-            .request(Method::POST, &self.zone_path("/custom_hostnames"), Some(body))
+            .request(
+                Method::POST,
+                &self.zone_path("/custom_hostnames"),
+                Some(body),
+            )
             .await?;
         envelope.into_result()
     }
@@ -135,7 +139,11 @@ impl Cloudflare {
     /// `GET /zones/{zone}/dcv_delegation/uuid` — returns `result.uuid`.
     pub async fn dcv_delegation_uuid(&self) -> Result<String> {
         let envelope: CfEnvelope<DcvDelegation> = self
-            .request(Method::GET, &self.zone_path("/dcv_delegation/uuid"), None::<()>)
+            .request(
+                Method::GET,
+                &self.zone_path("/dcv_delegation/uuid"),
+                None::<()>,
+            )
             .await?;
         Ok(envelope.into_result()?.uuid)
     }

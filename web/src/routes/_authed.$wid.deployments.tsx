@@ -185,6 +185,7 @@ export function CreateServiceDialog({
   credentials,
   regions,
   pending,
+  isAdmin,
   onOpenChange,
   onSubmit,
 }: {
@@ -192,9 +193,12 @@ export function CreateServiceDialog({
   credentials: DeployRegistryCredential[];
   regions: DeployRegion[];
   pending: boolean;
+  /** Whether the current user is an app admin. Gates the cloud-provider selector. */
+  isAdmin: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (body: {
     name: string;
+    provider?: "fly" | "cloud_run";
     image?: string;
     registry_kind?: DeployRegistryKind;
     source_kind?: "image" | "git";
@@ -215,6 +219,7 @@ export function CreateServiceDialog({
 }) {
   const [step, setStep] = useState<1 | 2>(1);
   const [source, setSource] = useState<"image" | "git">("image");
+  const [provider, setProvider] = useState<"fly" | "cloud_run">("fly");
   const [name, setName] = useState("");
   const [image, setImage] = useState("");
   const [registryKind, setRegistryKind] = useState<DeployRegistryKind>("ghcr");
@@ -256,6 +261,9 @@ export function CreateServiceDialog({
     try {
       onSubmit({
         name,
+        // Provider selection is an admin-only capability; non-admins always
+        // create on the default provider.
+        ...(isAdmin ? { provider } : {}),
         source_kind: source,
         ...(source === "image"
           ? {
@@ -448,6 +456,18 @@ export function CreateServiceDialog({
             </>
           ) : (
             <>
+              {isAdmin ? (
+                <Field label="Cloud provider">
+                  <select
+                    className={cn(fieldControlClass, "h-9")}
+                    value={provider}
+                    onChange={(e) => setProvider(e.target.value as "fly" | "cloud_run")}
+                  >
+                    <option value="fly">Fly.io</option>
+                    <option value="cloud_run">Google Cloud Run</option>
+                  </select>
+                </Field>
+              ) : null}
               <Field label="Region">
                 <select
                   className={cn(fieldControlClass, "h-9")}

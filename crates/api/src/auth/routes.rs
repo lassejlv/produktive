@@ -8,7 +8,7 @@ use axum::{
 use chrono::{Duration, Utc};
 use email::OutboundEmail;
 use entity::{
-    password_reset_token, session, user, workspace,
+    email_verification_token, password_reset_token, session, user, workspace,
     workspace_member::{self, WorkspaceRole},
 };
 use rand::RngCore;
@@ -39,6 +39,11 @@ pub fn routes() -> Router<AppState> {
         .route("/github/callback", get(github_callback))
         .route("/logout", post(logout))
         .route("/accept-legal-terms", post(accept_legal_terms))
+        .route("/verify-email", post(verify_email))
+        .route(
+            "/resend-verification-email",
+            post(resend_verification_email),
+        )
         .route("/me", get(me))
 }
 
@@ -80,6 +85,7 @@ pub struct UserView {
     pub email: String,
     pub is_admin: bool,
     pub legal_terms_accepted_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    pub email_verified_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
 }
 
@@ -90,6 +96,7 @@ impl From<user::Model> for UserView {
             email: u.email,
             is_admin: u.is_admin,
             legal_terms_accepted_at: u.legal_terms_accepted_at,
+            email_verified_at: u.email_verified_at,
             created_at: u.created_at,
         }
     }
@@ -107,6 +114,7 @@ pub struct MeResponse {
     pub email: String,
     pub is_admin: bool,
     pub legal_terms_accepted_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    pub email_verified_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
     pub personal_workspace_id: Option<Uuid>,
 }
@@ -131,6 +139,11 @@ pub struct ForgotPasswordPayload {
 pub struct ResetPasswordPayload {
     pub token: String,
     pub password: String,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct VerifyEmailPayload {
+    pub token: String,
 }
 
 #[derive(Deserialize, IntoParams, ToSchema)]
@@ -218,6 +231,7 @@ pub async fn register(
         password_hash: Set(password::hash(&body.password)?),
         is_admin: Set(registration_admin_flag(&email)),
         legal_terms_accepted_at: Set(Some(now)),
+        email_verified_at: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     }
@@ -254,6 +268,15 @@ pub async fn register(
     .await?;
 
     txn.commit().await?;
+
+    // Kick off email verification. A failure here must not fail registration —
+    // the account exists and the user can resend from the verification gate.
+    match issue_verification_token(&state, user_model.id).await {
+        Ok(token) => dispatch_verification_email(&state, user_model.email.clone(), &token),
+        Err(err) => {
+            tracing::error!(%err, user_id = %user_model.id, "failed to issue email verification token")
+        }
+    }
 
     Ok(Json(RegisterResponse {
         user: user_model.into(),
@@ -736,8 +759,14 @@ async fn find_or_create_github_user(
         .one(&state.db)
         .await?
     {
+        let already_verified = existing.email_verified_at.is_some();
         let mut active: user::ActiveModel = existing.into();
         active.github_id = Set(Some(github_id.to_owned()));
+        // GitHub only returns verified emails, so linking confirms ownership —
+        // promote a previously unverified email to verified.
+        if !already_verified {
+            active.email_verified_at = Set(Some(Utc::now().fixed_offset()));
+        }
         return active.update(&state.db).await.map_err(ApiError::from);
     }
 
@@ -750,6 +779,8 @@ async fn find_or_create_github_user(
         password_hash: Set(password::hash(&Uuid::now_v7().to_string())?),
         is_admin: Set(registration_admin_flag(email)),
         legal_terms_accepted_at: Set(None),
+        // GitHub only surfaces verified emails, so OAuth signups start verified.
+        email_verified_at: Set(Some(now)),
         created_at: Set(now),
         updated_at: Set(now),
     }
@@ -864,9 +895,190 @@ pub async fn accept_legal_terms(
         email: user_model.email,
         is_admin: user_model.is_admin,
         legal_terms_accepted_at: user_model.legal_terms_accepted_at,
+        email_verified_at: user_model.email_verified_at,
         created_at: user_model.created_at,
         personal_workspace_id: pid,
     }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/auth/verify-email",
+    request_body = VerifyEmailPayload,
+    responses(
+        (status = 200, body = OkResponse, description = "Email verified (idempotent)"),
+        (status = 400, description = "Invalid/expired/used token"),
+    ),
+    tag = "auth"
+)]
+pub async fn verify_email(
+    State(state): State<AppState>,
+    Json(body): Json<VerifyEmailPayload>,
+) -> ApiResult<Json<OkResponse>> {
+    // A single generic message for not-found, expired, and used tokens avoids
+    // leaking which failure occurred (token-probing oracle).
+    let invalid = || ApiError::bad_request("invalid or expired verification token");
+
+    let token_hash = sha256_hex(&body.token);
+    let row = email_verification_token::Entity::find()
+        .filter(email_verification_token::Column::TokenHash.eq(token_hash))
+        .one(&state.db)
+        .await?
+        .ok_or_else(invalid)?;
+
+    if row.used_at.is_some() {
+        return Err(invalid());
+    }
+    if row.expires_at < Utc::now().fixed_offset() {
+        return Err(invalid());
+    }
+
+    let user_model = user::Entity::find_by_id(row.user_id)
+        .one(&state.db)
+        .await?
+        .ok_or_else(invalid)?;
+
+    let now = Utc::now().fixed_offset();
+    let txn = state.db.begin().await?;
+
+    // Stamp the verification only the first time; re-running keeps the original
+    // timestamp and skips the no-op update SeaORM would reject.
+    if user_model.email_verified_at.is_none() {
+        let mut user_active: user::ActiveModel = user_model.into();
+        user_active.email_verified_at = Set(Some(now));
+        user_active.updated_at = Set(now);
+        user_active.update(&txn).await?;
+    }
+
+    let mut token_active: email_verification_token::ActiveModel = row.into();
+    token_active.used_at = Set(Some(now));
+    token_active.update(&txn).await?;
+
+    txn.commit().await?;
+
+    Ok(Json(OkResponse { ok: true }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/auth/resend-verification-email",
+    responses(
+        (status = 200, body = OkResponse, description = "Verification email re-sent (or no-op if already verified)"),
+        (status = 401, description = "Missing or invalid token"),
+        (status = 429, description = "Rate limit exceeded"),
+    ),
+    security(("bearerAuth" = [])),
+    tag = "auth"
+)]
+pub async fn resend_verification_email(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    auth: AuthUser,
+) -> ApiResult<Json<OkResponse>> {
+    // Already verified — nothing to do. Return ok without consuming the quota.
+    if auth.user.email_verified_at.is_some() {
+        return Ok(Json(OkResponse { ok: true }));
+    }
+
+    rate_limit::check_auth(
+        &state,
+        &headers,
+        &auth.user.email,
+        AuthLimitKind::EmailVerification,
+    )
+    .await?;
+
+    let token = issue_verification_token(&state, auth.user.id).await?;
+    dispatch_verification_email(&state, auth.user.email.clone(), &token);
+
+    Ok(Json(OkResponse { ok: true }))
+}
+
+/// Rotate the user's email-verification token: drop any prior unused token so
+/// only the latest link works, then mint and store a fresh one. Returns the
+/// plaintext token (only the SHA-256 hash is persisted).
+async fn issue_verification_token(state: &AppState, user_id: Uuid) -> ApiResult<String> {
+    email_verification_token::Entity::delete_many()
+        .filter(email_verification_token::Column::UserId.eq(user_id))
+        .filter(email_verification_token::Column::UsedAt.is_null())
+        .exec(&state.db)
+        .await?;
+
+    let mut buf = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut buf);
+    let token = hex::encode(buf);
+    let token_hash = sha256_hex(&token);
+
+    let now = Utc::now();
+    let expires_at =
+        (now + Duration::minutes(state.config.email_verification_ttl_minutes)).fixed_offset();
+
+    email_verification_token::ActiveModel {
+        id: Set(Uuid::now_v7()),
+        user_id: Set(user_id),
+        token_hash: Set(token_hash),
+        expires_at: Set(expires_at),
+        used_at: Set(None),
+        created_at: Set(now.fixed_offset()),
+    }
+    .insert(&state.db)
+    .await?;
+
+    Ok(token)
+}
+
+/// Send the verification email on a detached task so the SMTP round-trip stays
+/// off the response path.
+fn dispatch_verification_email(state: &AppState, to: String, token: &str) {
+    let ttl_minutes = state.config.email_verification_ttl_minutes;
+    let verify_url = email_verification_url(state.config.app_url.as_deref(), token);
+    let state = state.clone();
+    tokio::spawn(async move {
+        send_verification_email(&state, &to, &verify_url, ttl_minutes).await;
+    });
+}
+
+/// Build the verification link. Uses `APP_URL` when set (so the link is absolute
+/// and clickable in an email); falls back to a relative path otherwise — mirrors
+/// `password_reset_url`, so a missing `APP_URL` never silently drops the email.
+fn email_verification_url(app_url: Option<&str>, token: &str) -> String {
+    let path = format!("/verify-email?token={token}");
+    match app_url {
+        Some(base) => format!("{}{}", base.trim_end_matches('/'), path),
+        None => path,
+    }
+}
+
+async fn send_verification_email(state: &AppState, to: &str, verify_url: &str, ttl_minutes: i64) {
+    let subject = "Verify your produktive email".to_owned();
+    let text_body = format!(
+        "Welcome to produktive! Confirm your email address to finish setting up your account.\n\nVerify your email:\n{verify_url}\n\nThis link expires in {ttl_minutes} minutes. If you did not create a produktive account, you can safely ignore this email."
+    );
+    let verify_url_html = escape_html(verify_url);
+    let html_body = format!(
+        r#"<p>Welcome to produktive! Confirm your email address to finish setting up your account.</p>
+<p><a href="{verify_url}">Verify your email</a></p>
+<p>This link expires in {ttl_minutes} minutes. If you did not create a produktive account, you can safely ignore this email.</p>"#,
+        verify_url = verify_url_html,
+    );
+
+    match state
+        .email
+        .send(OutboundEmail {
+            to: to.to_owned(),
+            subject,
+            text_body,
+            html_body: Some(html_body),
+        })
+        .await
+    {
+        Ok(true) => tracing::info!(email = %to, "verification email sent"),
+        Ok(false) => tracing::warn!(
+            email = %to,
+            "verification email NOT sent: email client disabled (SMTP not configured)"
+        ),
+        Err(err) => tracing::error!(%err, email = %to, "failed to send verification email"),
+    }
 }
 
 #[utoipa::path(
@@ -886,6 +1098,7 @@ pub async fn me(State(state): State<AppState>, auth: AuthUser) -> ApiResult<Json
         email: auth.user.email,
         is_admin: auth.user.is_admin,
         legal_terms_accepted_at: auth.user.legal_terms_accepted_at,
+        email_verified_at: auth.user.email_verified_at,
         created_at: auth.user.created_at,
         personal_workspace_id: pid,
     }))
@@ -897,7 +1110,7 @@ fn registration_admin_flag(_email: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{password_reset_url, registration_admin_flag};
+    use super::{email_verification_url, password_reset_url, registration_admin_flag};
 
     #[test]
     fn self_service_registration_never_grants_admin_from_email() {
@@ -924,6 +1137,27 @@ mod tests {
         assert_eq!(
             password_reset_url(None, "abc123"),
             "/reset-password?token=abc123"
+        );
+    }
+
+    #[test]
+    fn email_verification_url_uses_app_url_when_set() {
+        assert_eq!(
+            email_verification_url(Some("https://app.example.com"), "abc123"),
+            "https://app.example.com/verify-email?token=abc123"
+        );
+        // trailing slash on the base is trimmed (no double slash)
+        assert_eq!(
+            email_verification_url(Some("https://app.example.com/"), "abc123"),
+            "https://app.example.com/verify-email?token=abc123"
+        );
+    }
+
+    #[test]
+    fn email_verification_url_falls_back_to_relative_when_app_url_unset() {
+        assert_eq!(
+            email_verification_url(None, "abc123"),
+            "/verify-email?token=abc123"
         );
     }
 }

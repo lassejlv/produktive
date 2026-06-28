@@ -558,6 +558,7 @@ export function useCreateDeployService(wid: string) {
   return useMutation({
     mutationFn: (body: {
       name: string;
+      provider?: "fly" | "cloud_run";
       image?: string;
       registry_kind?: DeployRegistryKind;
       source_kind?: "image" | "git";

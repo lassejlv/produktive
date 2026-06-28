@@ -1,3 +1,4 @@
+use axum::extract::Request;
 use axum::{
     extract::{Path, State},
     middleware::{from_fn_with_state, Next},
@@ -5,7 +6,6 @@ use axum::{
     routing::get,
     Extension, Json, Router,
 };
-use axum::extract::Request;
 use sea_orm::ConnectionTrait;
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -27,7 +27,10 @@ const ACCESS_APPROVED: i16 = 1;
 pub fn routes(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/buckets", get(list_buckets).post(create_bucket))
-        .route("/buckets/{bucket_id}", get(get_bucket).delete(delete_bucket))
+        .route(
+            "/buckets/{bucket_id}",
+            get(get_bucket).delete(delete_bucket),
+        )
         .route("/regions", get(list_regions))
         .route_layer(from_fn_with_state(state, object_storage_access_guard))
 }

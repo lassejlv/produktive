@@ -13,9 +13,8 @@ use deploy::{
     validate_health_path, validate_image_for_registry, validate_internal_port,
     validate_machine_count, validate_public_github_url, validate_volume_mount_path,
     validate_volume_name, validate_volume_size_gb, DeployRegion, DeploymentConfigSnapshot,
-    DeploymentStatus,
-    RegistryKind, ResourcePreset, SecretCipher, VolumeSpec, DEFAULT_DEPLOY_REGION,
-    DEFAULT_MACHINE_COUNT,
+    DeploymentStatus, RegistryKind, ResourcePreset, SecretCipher, VolumeSpec,
+    DEFAULT_DEPLOY_REGION, DEFAULT_MACHINE_COUNT,
 };
 use fly::fetch_platform_regions;
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement, Value as DbValue};
@@ -332,6 +331,10 @@ pub struct CreateServiceBody {
     pub root_dir: Option<String>,
     #[serde(default)]
     pub registry_credential_id: Option<Uuid>,
+    /// Cloud provider to deploy to: `fly` (default) or `cloud_run`. Selecting a
+    /// non-default provider is restricted to app admins.
+    #[serde(default)]
+    pub provider: Option<String>,
     pub internal_port: u16,
     #[serde(default)]
     pub env: BTreeMap<String, String>,
@@ -665,7 +668,8 @@ pub async fn create_service(
                     .filter(|value| !value.is_empty())
                     .ok_or_else(|| ApiError::bad_request("image is required for an image source"))?
                     .to_owned();
-                let registry = parse_registry_kind(body.registry_kind.as_deref().unwrap_or("ghcr"))?;
+                let registry =
+                    parse_registry_kind(body.registry_kind.as_deref().unwrap_or("ghcr"))?;
                 validate_image_for_registry(registry, &image).map_err(deploy_error)?;
                 (image, registry.as_str().to_owned(), None, None, None, None)
             }
@@ -718,6 +722,26 @@ pub async fn create_service(
         ensure_credential(&state, m.workspace.id, credential_id).await?;
     }
 
+    // Provider selection is admin-only: non-admins always deploy to the default
+    // (Fly) provider, regardless of what they request or their deploy access.
+    let provider = match body
+        .provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(value) => {
+            let kind = deploy::ProviderKind::parse(value).map_err(deploy_error)?;
+            // Selecting a non-default provider is restricted to app admins,
+            // independent of workspace deploy access.
+            if kind != deploy::DEFAULT_PROVIDER && !auth.user.is_admin {
+                return Err(ApiError::Forbidden);
+            }
+            kind
+        }
+        None => deploy::DEFAULT_PROVIDER,
+    };
+
     let name = clean_text(body.name, 1, 120, "name")?;
     let environment = body
         .environment
@@ -740,7 +764,7 @@ pub async fn create_service(
                 dockerfile_path, root_dir, internal_port, env, environment,
                 health_check_path, region, resource_preset, machine_count, status, created_by, created_at, updated_at
             )
-            VALUES ($1, $2, $3, 'fly', '{}', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $22)
+            VALUES ($1, $2, $3, $23, '{}', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $22)
             "#,
             [
                 id.into(),
@@ -765,6 +789,7 @@ pub async fn create_service(
                 DeploymentStatus::Stopped.code().into(),
                 auth.user.id.into(),
                 now.into(),
+                provider.as_str().into(),
             ],
         ))
     .await?;
@@ -1225,6 +1250,14 @@ pub async fn create_service_volume(
 ) -> ApiResult<Json<DeployServiceVolumeView>> {
     m.require_owner()?;
     let service = load_service(&state, m.workspace.id, service_id).await?;
+    if !deploy::ProviderKind::parse(&service.provider)
+        .map(deploy::ProviderKind::supports_volumes)
+        .unwrap_or(true)
+    {
+        return Err(ApiError::bad_request(
+            "this provider does not support persistent volumes",
+        ));
+    }
     if service_volume_count(&state, m.workspace.id, service_id).await? >= 1 {
         return Err(ApiError::conflict(
             "Fly Machines support one volume per service",
@@ -1478,9 +1511,10 @@ pub async fn create_deployment(
     // A git service re-builds from source: enqueue Building with a placeholder image
     // the build overwrites. An image service deploys the given/current image directly.
     let (image, image_digest, status, source_repo_url, source_git_ref) = if is_git {
-        let repo_url = service.repo_url.clone().ok_or_else(|| {
-            ApiError::bad_request("git service is missing a repository URL")
-        })?;
+        let repo_url = service
+            .repo_url
+            .clone()
+            .ok_or_else(|| ApiError::bad_request("git service is missing a repository URL"))?;
         (
             "pending-build".to_owned(),
             None,
@@ -1492,7 +1526,13 @@ pub async fn create_deployment(
         let registry = parse_registry_kind(&service.registry_kind)?;
         let image = body.image.unwrap_or_else(|| service.image.clone());
         validate_image_for_registry(registry, &image).map_err(deploy_error)?;
-        (image, body.image_digest, DeploymentStatus::Queued, None, None)
+        (
+            image,
+            body.image_digest,
+            DeploymentStatus::Queued,
+            None,
+            None,
+        )
     };
     let config_snapshot = deployment_config_snapshot(&state, &service).await?;
 
@@ -1504,7 +1544,11 @@ pub async fn create_deployment(
         image,
         image_digest,
         config_snapshot,
-        if is_git { "build queued" } else { "deployment queued" },
+        if is_git {
+            "build queued"
+        } else {
+            "deployment queued"
+        },
         status,
         source_repo_url,
         source_git_ref,
@@ -1822,6 +1866,14 @@ pub async fn create_service_domain(
 ) -> ApiResult<Json<DeployServiceDomainView>> {
     m.require_owner()?;
     let service = load_service(&state, m.workspace.id, service_id).await?;
+    if matches!(
+        deploy::ProviderKind::parse(&service.provider),
+        Ok(deploy::ProviderKind::CloudRun)
+    ) {
+        return Err(ApiError::bad_request(
+            "custom domains are not supported on Cloud Run services yet",
+        ));
+    }
     if service.provider_service_id.is_none() {
         return Err(ApiError::bad_request(
             "deploy the service once before adding a custom domain",
@@ -2733,11 +2785,7 @@ async fn load_deployment(
         WHERE workspace_id = $1 AND service_id = $2 AND id = $3
         LIMIT 1
         "#,
-        [
-            workspace_id.into(),
-            service_id.into(),
-            deployment_id.into(),
-        ],
+        [workspace_id.into(), service_id.into(), deployment_id.into()],
     ))
     .all(&state.db)
     .await?;
@@ -2855,6 +2903,8 @@ async fn deployment_config_snapshot(
         .collect();
 
     Ok(DeploymentConfigSnapshot {
+        provider: deploy::ProviderKind::parse(&service.provider)
+            .unwrap_or(deploy::DEFAULT_PROVIDER),
         provider_service_id: service.provider_service_id.clone(),
         app_name: service.slug.clone(),
         internal_port,
@@ -2961,6 +3011,9 @@ async fn insert_deployment(
 ) -> ApiResult<DeployDeploymentView> {
     let now = Utc::now().fixed_offset();
     let id = Uuid::now_v7();
+    // The deployment inherits the service's provider so the worker routes it to
+    // the right cloud adapter.
+    let provider = config_snapshot.provider;
     let config_snapshot =
         serde_json::to_value(config_snapshot).map_err(|error| ApiError::Internal(error.into()))?;
     state
@@ -2972,7 +3025,7 @@ async fn insert_deployment(
                 id, workspace_id, service_id, image, image_digest, source_repo_url, git_ref,
                 status, requested_by, provider, provider_metadata, config_snapshot, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'fly', '{}', $10, $11, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $12, '{}', $10, $11, $11)
             "#,
             [
                 id.into(),
@@ -2986,6 +3039,7 @@ async fn insert_deployment(
                 user_id.into(),
                 config_snapshot.into(),
                 now.into(),
+                provider.as_str().into(),
             ],
         ))
         .await?;

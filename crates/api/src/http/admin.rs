@@ -608,6 +608,7 @@ mod tests {
                 password_hash: "hash".to_owned(),
                 is_admin,
                 legal_terms_accepted_at: Some(now),
+                email_verified_at: Some(now),
                 created_at: now,
                 updated_at: now,
             },

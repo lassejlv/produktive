@@ -42,6 +42,7 @@ pub enum Users {
     Email,
     PasswordHash,
     IsAdmin,
+    EmailVerifiedAt,
     CreatedAt,
     UpdatedAt,
 }

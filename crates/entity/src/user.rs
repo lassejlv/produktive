@@ -15,6 +15,7 @@ pub struct Model {
     pub password_hash: String,
     pub is_admin: bool,
     pub legal_terms_accepted_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    pub email_verified_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
     pub updated_at: chrono::DateTime<chrono::FixedOffset>,
 }

@@ -1,7 +1,7 @@
 use chrono::{DateTime, FixedOffset, Utc};
 use deploy::{provider_app_name, SecretCipher};
 use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
-use tigris::{BucketAccess, DEFAULT_OBJECT_STORAGE_REGION, TigrisClient};
+use tigris::{BucketAccess, TigrisClient, DEFAULT_OBJECT_STORAGE_REGION};
 use uuid::Uuid;
 
 use crate::{
@@ -115,7 +115,9 @@ pub async fn create_bucket(
 
     let count = workspace_bucket_count(state, workspace_id).await?;
     if count >= state.config.object_storage_max_buckets_per_workspace {
-        return Err(ApiError::payment_required("object storage bucket limit reached"));
+        return Err(ApiError::payment_required(
+            "object storage bucket limit reached",
+        ));
     }
 
     let name = clean_text(body.name, 1, 120, "name")?;
@@ -135,15 +137,10 @@ pub async fn create_bucket(
         .unwrap_or_else(|| DEFAULT_OBJECT_STORAGE_REGION.into())
         .trim()
         .to_lowercase();
-    tigris::validate_allowed_region(&region)
-        .map_err(|message| ApiError::bad_request(message))?;
+    tigris::validate_allowed_region(&region).map_err(|message| ApiError::bad_request(message))?;
 
-    let access = BucketAccess::parse(
-        body.access
-            .unwrap_or_else(|| "private".into())
-            .as_str(),
-    )
-    .map_err(|e| ApiError::bad_request(e.to_string()))?;
+    let access = BucketAccess::parse(body.access.unwrap_or_else(|| "private".into()).as_str())
+        .map_err(|e| ApiError::bad_request(e.to_string()))?;
 
     let id = Uuid::now_v7();
     let provider_bucket_name = provider_app_name(
@@ -242,7 +239,12 @@ pub async fn create_bucket(
                     SET status = 'failed', failure_message = $1, updated_at = $2
                     WHERE id = $3 AND workspace_id = $4
                     "#,
-                    [message.clone().into(), Utc::now().fixed_offset().into(), id.into(), workspace_id.into()],
+                    [
+                        message.clone().into(),
+                        Utc::now().fixed_offset().into(),
+                        id.into(),
+                        workspace_id.into(),
+                    ],
                 ))
                 .await?;
             Err(err)
@@ -250,11 +252,7 @@ pub async fn create_bucket(
     }
 }
 
-pub async fn delete_bucket(
-    state: &AppState,
-    workspace_id: Uuid,
-    bucket_id: Uuid,
-) -> ApiResult<()> {
+pub async fn delete_bucket(state: &AppState, workspace_id: Uuid, bucket_id: Uuid) -> ApiResult<()> {
     ensure_object_storage_access(state, workspace_id).await?;
 
     let row = load_bucket_row(state, workspace_id, bucket_id).await?;
@@ -271,7 +269,11 @@ pub async fn delete_bucket(
             SET status = 'deleting', updated_at = $1
             WHERE id = $2 AND workspace_id = $3 AND deleted_at IS NULL
             "#,
-            [Utc::now().fixed_offset().into(), bucket_id.into(), workspace_id.into()],
+            [
+                Utc::now().fixed_offset().into(),
+                bucket_id.into(),
+                workspace_id.into(),
+            ],
         ))
         .await?;
 
@@ -291,7 +293,11 @@ pub async fn delete_bucket(
             SET deleted_at = $1, updated_at = $1
             WHERE id = $2 AND workspace_id = $3
             "#,
-            [Utc::now().fixed_offset().into(), bucket_id.into(), workspace_id.into()],
+            [
+                Utc::now().fixed_offset().into(),
+                bucket_id.into(),
+                workspace_id.into(),
+            ],
         ))
         .await?;
 
@@ -434,7 +440,9 @@ fn ensure_object_storage_enabled(state: &AppState) -> ApiResult<()> {
         return Err(ApiError::service_unavailable("object storage is disabled"));
     }
     if state.tigris.is_none() {
-        return Err(ApiError::service_unavailable("object storage is not configured"));
+        return Err(ApiError::service_unavailable(
+            "object storage is not configured",
+        ));
     }
     Ok(())
 }
@@ -449,11 +457,9 @@ fn tigris_client(state: &AppState) -> ApiResult<&TigrisClient> {
 }
 
 fn storage_cipher(state: &AppState) -> ApiResult<SecretCipher> {
-    let key = state
-        .config
-        .deploy_secrets_key
-        .as_deref()
-        .ok_or_else(|| ApiError::service_unavailable("object storage encryption is not configured"))?;
+    let key = state.config.deploy_secrets_key.as_deref().ok_or_else(|| {
+        ApiError::service_unavailable("object storage encryption is not configured")
+    })?;
     SecretCipher::from_hex_key(key).map_err(storage_error)
 }
 
