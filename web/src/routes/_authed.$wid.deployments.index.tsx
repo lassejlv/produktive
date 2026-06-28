@@ -302,17 +302,15 @@ function Canvas() {
   }
 
   return (
-    <>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row md:items-start">
-        <div
-          className="relative min-h-0 min-w-0 flex-1 transition-[flex] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
-        >
-          {!selectedService && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 hidden text-center text-[11px] text-[var(--color-canvas-dim)] md:block">
-              Drag cards to arrange · drag the background to pan · click a card to open it
-            </div>
-          )}
-          <ReactFlow
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+      <div className="relative min-h-0 min-w-0 flex-1">
+        {!selectedService && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 hidden text-center text-[11px] text-[var(--color-canvas-dim)] md:block">
+            Drag cards to arrange · drag the background to pan · click a card to open it
+          </div>
+        )}
+        <ReactFlow
+          className="h-full w-full"
             nodes={nodes}
             nodeTypes={NODE_TYPES}
             onNodesChange={onNodesChange}
@@ -352,18 +350,17 @@ function Canvas() {
               </Panel>
             )}
           </ReactFlow>
-        </div>
-
-        {selectedService && (
-          <DeployServiceRail
-            wid={wid}
-            service={selectedService}
-            tab={selectedTab}
-            onClose={closeService}
-            onTabChange={setTab}
-          />
-        )}
       </div>
+
+      {selectedService && (
+        <DeployServiceRail
+          wid={wid}
+          service={selectedService}
+          tab={selectedTab}
+          onClose={closeService}
+          onTabChange={setTab}
+        />
+      )}
 
       <CreateServiceDialog
         open={serviceOpen}
@@ -385,8 +382,7 @@ function Canvas() {
           })
         }
       />
-
-    </>
+    </div>
   );
 }
 

@@ -26,7 +26,7 @@ export function DeployServiceRail({
         "border border-[var(--color-border)] bg-[var(--color-bg-elev)]",
         "max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-30 max-md:w-full max-md:max-w-lg",
         "max-md:border-l max-md:shadow-[var(--shadow-pop)]",
-        "md:mb-3 md:mr-3 md:mt-3 md:w-[min(42rem,50%)] md:max-h-[calc(100%-1.5rem)]",
+        "md:mb-3 md:mr-3 md:mt-3 md:self-start md:w-[min(42rem,50%)] md:max-h-[calc(100%-1.5rem)]",
         "md:rounded-[var(--radius-lg)] md:shadow-[var(--shadow-md)]",
       )}
       aria-label={`${service.name} details`}
