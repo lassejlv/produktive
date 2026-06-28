@@ -81,9 +81,14 @@ interface Props {
   service: DeployService;
   /** Rendered as a draggable node on the canvas (fixed width, propagation guards). */
   canvas?: boolean;
+  selected?: boolean;
 }
 
-export const DeployServiceCard = memo(function DeployServiceCard({ service, canvas }: Props) {
+export const DeployServiceCard = memo(function DeployServiceCard({
+  service,
+  canvas,
+  selected,
+}: Props) {
   const { wid } = useParams({ from: "/_authed/$wid" });
   const { data: regions } = useDeployRegions(wid);
   const color = DEPLOY_STATUS_COLOR[service.status];
@@ -173,6 +178,9 @@ export const DeployServiceCard = memo(function DeployServiceCard({ service, canv
     "transition-all duration-200 hover:-translate-y-[1px]",
     glow,
     canvas ? "w-[300px] cursor-pointer select-none no-underline" : "w-full no-underline",
+    canvas &&
+      selected &&
+      "ring-2 ring-[color-mix(in_srgb,var(--color-accent)_45%,transparent)] border-[var(--color-border-hi)]",
   );
 
   if (canvas) {

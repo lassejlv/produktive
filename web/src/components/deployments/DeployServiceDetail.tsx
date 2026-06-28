@@ -9,9 +9,11 @@ import {
   Settings,
   Terminal,
 } from "lucide-react";
+import { X } from "lucide-react";
 import { useParams } from "@tanstack/react-router";
 import { resourcePresetLabel } from "#/components/DeployServiceCard";
 import { Segmented } from "#/components/Segmented";
+import { Button } from "#/components/ui/button";
 import { cn } from "#/lib/cn";
 import { formatDeployRegion } from "#/lib/deploy-regions";
 import {
@@ -40,12 +42,14 @@ export function DeployServiceDetail({
   service,
   tab,
   onTabChange,
+  onClose,
   onDeleted,
 }: {
   wid: string;
   service: DeployService;
   tab: DeployDetailTab;
   onTabChange: (tab: DeployDetailTab) => void;
+  onClose?: () => void;
   onDeleted?: () => void;
 }) {
   const { wid: routeWid } = useParams({ from: "/_authed/$wid" });
@@ -114,14 +118,28 @@ export function DeployServiceDetail({
             )}
           </div>
 
-          <div className="hidden shrink-0 sm:block">
-            <ServiceActionButtons
-              service={service}
-              createDeployment={createDeployment}
-              rollback={rollback}
-              stop={stop}
-              compact
-            />
+          <div className="flex shrink-0 items-center gap-1">
+            <div className="hidden sm:block">
+              <ServiceActionButtons
+                service={service}
+                createDeployment={createDeployment}
+                rollback={rollback}
+                stop={stop}
+                compact
+              />
+            </div>
+            {onClose && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={onClose}
+                aria-label="Close panel"
+                className="text-[var(--color-fg-muted)]"
+              >
+                <X size={16} />
+              </Button>
+            )}
           </div>
         </div>
 

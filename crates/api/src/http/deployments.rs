@@ -67,6 +67,10 @@ pub fn routes(state: AppState) -> Router<AppState> {
             "/services/{service_id}/deployments",
             get(list_deployments).post(create_deployment),
         )
+        .route(
+            "/services/{service_id}/deployments/{deployment_id}/cancel",
+            post(cancel_deployment),
+        )
         .route("/services/{service_id}/rollback", post(rollback_service))
         .route("/services/{service_id}/stop", post(stop_service))
         .route(
@@ -398,6 +402,14 @@ pub struct CreateServiceDomainBody {
 pub struct LimitQuery {
     pub limit: Option<u64>,
     pub deployment_id: Option<Uuid>,
+}
+
+#[derive(Deserialize)]
+pub struct ServiceDeploymentPath {
+    #[serde(rename = "wid")]
+    pub _wid: String,
+    pub service_id: Uuid,
+    pub deployment_id: Uuid,
 }
 
 #[derive(Deserialize)]
@@ -1515,6 +1527,91 @@ pub async fn create_deployment(
 
 #[utoipa::path(
     post,
+    path = "/api/workspaces/{wid}/deployments/services/{service_id}/deployments/{deployment_id}/cancel",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("service_id" = Uuid, Path, description = "deployment service id"),
+        ("deployment_id" = Uuid, Path, description = "deployment id"),
+    ),
+    responses((status = 200, body = DeployDeploymentView)),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn cancel_deployment(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path(path): Path<ServiceDeploymentPath>,
+) -> ApiResult<Json<DeployDeploymentView>> {
+    m.require_owner()?;
+    ensure_service(&state, m.workspace.id, path.service_id).await?;
+    let now = Utc::now().fixed_offset();
+    let cancelled = state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deployments
+            SET status = $4, finished_at = $5, updated_at = $5
+            WHERE workspace_id = $1
+              AND service_id = $2
+              AND id = $3
+              AND status IN (0, 1, 2, 3, 4, 7, 10)
+            "#,
+            [
+                m.workspace.id.into(),
+                path.service_id.into(),
+                path.deployment_id.into(),
+                DeploymentStatus::Cancelled.code().into(),
+                now.into(),
+            ],
+        ))
+        .await?;
+    if cancelled.rows_affected() == 0 {
+        return Err(ApiError::bad_request(
+            "deployment not found or cannot be cancelled",
+        ));
+    }
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_instances
+            SET status = $4,
+                stopped_at = COALESCE(stopped_at, $5),
+                updated_at = $5
+            WHERE workspace_id = $1
+              AND service_id = $2
+              AND deployment_id = $3
+              AND stopped_at IS NULL
+            "#,
+            [
+                m.workspace.id.into(),
+                path.service_id.into(),
+                path.deployment_id.into(),
+                DeploymentStatus::Cancelled.code().into(),
+                now.into(),
+            ],
+        ))
+        .await?;
+    insert_event(
+        &state,
+        m.workspace.id,
+        path.service_id,
+        Some(path.deployment_id),
+        "warn",
+        "deployment cancelled",
+        json!({}),
+    )
+    .await?;
+    sync_service_status_from_deployments(&state, m.workspace.id, path.service_id).await?;
+    load_deployment(&state, m.workspace.id, path.service_id, path.deployment_id)
+        .await
+        .map(Json)
+}
+
+#[utoipa::path(
+    post,
     path = "/api/workspaces/{wid}/deployments/services/{service_id}/rollback",
     params(
         ("wid" = String, Path, description = "workspace id or slug"),
@@ -1558,6 +1655,7 @@ pub async fn rollback_service(
                     WHEN 9 THEN 'stopped'
                     WHEN 10 THEN 'building'
                     WHEN 11 THEN 'build_failed'
+                    WHEN 12 THEN 'cancelled'
                     ELSE 'unknown'
                END AS status,
                provider, provider_deployment_id, provider_instance_id, provider_metadata,
@@ -2188,6 +2286,7 @@ async fn service_rows(
                     WHEN 9 THEN 'stopped'
                     WHEN 10 THEN 'building'
                     WHEN 11 THEN 'build_failed'
+                    WHEN 12 THEN 'cancelled'
                     ELSE 'unknown'
                END AS status,
                s.canvas_x, s.canvas_y,
@@ -2585,6 +2684,7 @@ async fn deployment_rows(
                     WHEN 9 THEN 'stopped'
                     WHEN 10 THEN 'building'
                     WHEN 11 THEN 'build_failed'
+                    WHEN 12 THEN 'cancelled'
                     ELSE 'unknown'
                END AS status,
                provider, provider_deployment_id, provider_instance_id, provider_metadata,
@@ -2599,6 +2699,99 @@ async fn deployment_rows(
     .all(&state.db)
     .await?;
     Ok(rows)
+}
+
+async fn load_deployment(
+    state: &AppState,
+    workspace_id: Uuid,
+    service_id: Uuid,
+    deployment_id: Uuid,
+) -> ApiResult<DeployDeploymentView> {
+    let rows = DeployDeploymentView::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT id, workspace_id, service_id, image, image_digest, commit_sha, build_provider,
+               CASE status
+                    WHEN 0 THEN 'queued'
+                    WHEN 1 THEN 'provisioning'
+                    WHEN 2 THEN 'pulling'
+                    WHEN 3 THEN 'starting'
+                    WHEN 4 THEN 'healthy'
+                    WHEN 5 THEN 'live'
+                    WHEN 6 THEN 'failed'
+                    WHEN 7 THEN 'rolling_back'
+                    WHEN 8 THEN 'rolled_back'
+                    WHEN 9 THEN 'stopped'
+                    WHEN 10 THEN 'building'
+                    WHEN 11 THEN 'build_failed'
+                    WHEN 12 THEN 'cancelled'
+                    ELSE 'unknown'
+               END AS status,
+               provider, provider_deployment_id, provider_instance_id, provider_metadata,
+               failure_message, url, started_at, finished_at, created_at, updated_at
+        FROM deployments
+        WHERE workspace_id = $1 AND service_id = $2 AND id = $3
+        LIMIT 1
+        "#,
+        [
+            workspace_id.into(),
+            service_id.into(),
+            deployment_id.into(),
+        ],
+    ))
+    .all(&state.db)
+    .await?;
+    rows.into_iter()
+        .next()
+        .ok_or_else(|| ApiError::not_found("deployment not found"))
+}
+
+async fn sync_service_status_from_deployments(
+    state: &AppState,
+    workspace_id: Uuid,
+    service_id: Uuid,
+) -> ApiResult<()> {
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_services s
+            SET status = CASE
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM deployments d
+                    WHERE d.workspace_id = s.workspace_id
+                      AND d.service_id = s.id
+                      AND d.status = $3
+                ) THEN $3
+                WHEN s.disabled_at IS NOT NULL THEN $4
+                ELSE COALESCE(
+                    (
+                        SELECT d.status
+                        FROM deployments d
+                        WHERE d.workspace_id = s.workspace_id
+                          AND d.service_id = s.id
+                          AND d.status <> $5
+                        ORDER BY d.created_at DESC
+                        LIMIT 1
+                    ),
+                    $4
+                )
+            END,
+            updated_at = now()
+            WHERE s.workspace_id = $1 AND s.id = $2
+            "#,
+            [
+                workspace_id.into(),
+                service_id.into(),
+                DeploymentStatus::Live.code().into(),
+                DeploymentStatus::Stopped.code().into(),
+                DeploymentStatus::Cancelled.code().into(),
+            ],
+        ))
+        .await?;
+    Ok(())
 }
 
 async fn deployment_config_snapshot(

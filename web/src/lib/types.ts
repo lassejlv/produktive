@@ -291,6 +291,7 @@ export type DeployStatus =
   | "rolling_back"
   | "rolled_back"
   | "stopped"
+  | "cancelled"
   | "unknown";
 export type DeploySourceKind = "image" | "git";
 export type DeployRegistryKind = "ghcr" | "docker_hub";

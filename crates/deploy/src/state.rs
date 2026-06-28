@@ -17,9 +17,23 @@ pub enum DeploymentStatus {
     Stopped,
     Building,
     BuildFailed,
+    Cancelled,
 }
 
 impl DeploymentStatus {
+    pub fn is_cancellable(self) -> bool {
+        matches!(
+            self,
+            Self::Queued
+                | Self::Provisioning
+                | Self::Pulling
+                | Self::Starting
+                | Self::Healthy
+                | Self::RollingBack
+                | Self::Building
+        )
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Queued => "queued",
@@ -34,6 +48,7 @@ impl DeploymentStatus {
             Self::Stopped => "stopped",
             Self::Building => "building",
             Self::BuildFailed => "build_failed",
+            Self::Cancelled => "cancelled",
         }
     }
 
@@ -51,6 +66,7 @@ impl DeploymentStatus {
             Self::Stopped => 9,
             Self::Building => 10,
             Self::BuildFailed => 11,
+            Self::Cancelled => 12,
         }
     }
 
@@ -68,6 +84,7 @@ impl DeploymentStatus {
             9 => Ok(Self::Stopped),
             10 => Ok(Self::Building),
             11 => Ok(Self::BuildFailed),
+            12 => Ok(Self::Cancelled),
             _ => Err(DeployError::Validation(format!(
                 "unknown deployment status code {code}"
             ))),
@@ -112,6 +129,7 @@ mod tests {
             DeploymentStatus::Stopped,
             DeploymentStatus::Building,
             DeploymentStatus::BuildFailed,
+            DeploymentStatus::Cancelled,
         ] {
             assert_eq!(DeploymentStatus::from_code(status.code()).unwrap(), status);
         }

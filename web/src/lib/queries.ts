@@ -672,6 +672,27 @@ export function useRollbackDeployment(wid: string) {
   });
 }
 
+export function useCancelDeployment(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      serviceId,
+      deploymentId,
+    }: {
+      serviceId: string;
+      deploymentId: string;
+    }) =>
+      api.post<Deployment>(
+        `/workspaces/${wid}/deployments/services/${serviceId}/deployments/${deploymentId}/cancel`,
+      ),
+    onSuccess: (_deployment, input) => {
+      qc.invalidateQueries({ queryKey: ["deployments", wid, "services"] });
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId] });
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "events"] });
+    },
+  });
+}
+
 export function useStopDeployService(wid: string) {
   const qc = useQueryClient();
   return useMutation({

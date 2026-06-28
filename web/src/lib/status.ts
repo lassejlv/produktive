@@ -27,6 +27,7 @@ export const DEPLOY_STATUS_COLOR: Record<DeployStatus, string> = {
   failed: "var(--color-err)",
   build_failed: "var(--color-err)",
   stopped: "var(--color-fg-muted)",
+  cancelled: "var(--color-fg-dim)",
   rolled_back: "var(--color-fg-dim)",
   building: "var(--color-warn)",
   queued: "var(--color-warn)",
@@ -43,6 +44,7 @@ export const DEPLOY_STATUS_LABEL: Record<DeployStatus, string> = {
   failed: "Failed",
   build_failed: "Build failed",
   stopped: "Stopped",
+  cancelled: "Cancelled",
   rolled_back: "Rolled back",
   building: "Building",
   queued: "Queued",
@@ -68,12 +70,17 @@ export function deployStatusPending(status: DeployStatus): boolean {
   );
 }
 
+export function deployStatusCancellable(status: DeployStatus): boolean {
+  return deployStatusPending(status) || status === "healthy";
+}
+
 export const DEPLOY_GLOW_CLASS: Record<DeployStatus, string> = {
   live: "glow-up",
   healthy: "glow-up",
   failed: "glow-down",
   build_failed: "glow-down",
   stopped: "glow-unknown",
+  cancelled: "glow-unknown",
   rolled_back: "glow-unknown",
   building: "glow-warn",
   queued: "glow-warn",

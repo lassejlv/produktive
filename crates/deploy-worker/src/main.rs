@@ -293,6 +293,9 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        if let Err(error) = cleanup_cancelled_deployments(&db, &cipher, &provider).await {
+            tracing::warn!(error = ?error, "cleanup cancelled deployments failed");
+        }
         if let Err(error) = stop_disabled_services(&db, &cipher, &provider).await {
             tracing::warn!(error = ?error, "stop disabled deployment services failed");
         }
@@ -921,6 +924,9 @@ async fn run_job(
     provider: &impl DeployProvider,
     job: DeploymentJob,
 ) -> Result<()> {
+    if deployment_is_cancelled(db, job.id).await? {
+        return Ok(());
+    }
     insert_event(
         db,
         job.workspace_id,
@@ -1157,6 +1163,9 @@ async fn refresh_inflight(
     .await?;
 
     for job in rows {
+        if deployment_is_cancelled(db, job.id).await? {
+            continue;
+        }
         let spec = build_spec(db, cipher, &job).await?;
         match provider.refresh_deployment(&spec).await {
             Ok(provider_deployment) => {
@@ -1182,6 +1191,71 @@ async fn refresh_inflight(
             }
             Err(error) => tracing::warn!(deployment_id = %job.id, error = ?error, "refresh failed"),
         }
+    }
+    Ok(())
+}
+
+async fn deployment_is_cancelled(db: &DatabaseConnection, deployment_id: Uuid) -> Result<bool> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT status
+            FROM deployments
+            WHERE id = $1
+            LIMIT 1
+            "#,
+            [deployment_id.into()],
+        ))
+        .await?;
+    Ok(row
+        .and_then(|row| row.try_get::<i16>("", "status").ok())
+        .map(|code| code == DeploymentStatus::Cancelled.code())
+        .unwrap_or(false))
+}
+
+async fn cleanup_cancelled_deployments(
+    db: &DatabaseConnection,
+    cipher: &SecretCipher,
+    provider: &impl DeployProvider,
+) -> Result<()> {
+    let rows = DeploymentJob::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT id, workspace_id, service_id, image, image_digest, provider_instance_id, config_snapshot
+        FROM deployments
+        WHERE status = $1
+          AND provider_instance_id IS NOT NULL
+        ORDER BY updated_at ASC
+        LIMIT 20
+        "#,
+        [DeploymentStatus::Cancelled.code().into()],
+    ))
+    .all(db)
+    .await?;
+
+    for job in rows {
+        let spec = build_spec(db, cipher, &job).await?;
+        if let Err(error) = provider.stop_service(&spec).await {
+            tracing::warn!(
+                deployment_id = %job.id,
+                error = ?error,
+                "failed to stop cancelled deployment provider instance"
+            );
+            continue;
+        }
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deployments
+            SET provider_instance_id = NULL,
+                updated_at = now()
+            WHERE id = $1
+              AND status = $2
+            "#,
+            [job.id.into(), DeploymentStatus::Cancelled.code().into()],
+        ))
+        .await?;
     }
     Ok(())
 }
@@ -2860,9 +2934,10 @@ async fn update_deployment_from_provider(
     provider_deployment: deploy::ProviderDeployment,
 ) -> Result<()> {
     let finished_at: Option<DateTime<FixedOffset>> = match provider_deployment.status {
-        DeploymentStatus::Failed | DeploymentStatus::RolledBack | DeploymentStatus::Stopped => {
-            Some(Utc::now().fixed_offset())
-        }
+        DeploymentStatus::Failed
+        | DeploymentStatus::RolledBack
+        | DeploymentStatus::Stopped
+        | DeploymentStatus::Cancelled => Some(Utc::now().fixed_offset()),
         _ => None,
     };
     db.execute(Statement::from_sql_and_values(
@@ -2878,6 +2953,7 @@ async fn update_deployment_from_provider(
             finished_at = $8,
             updated_at = now()
         WHERE id = $1
+          AND status <> $9
         "#,
         [
             job.id.into(),
@@ -2888,6 +2964,7 @@ async fn update_deployment_from_provider(
             provider_deployment.image_digest.into(),
             provider_deployment.url.into(),
             finished_at.into(),
+            DeploymentStatus::Cancelled.code().into(),
         ],
     ))
     .await?;

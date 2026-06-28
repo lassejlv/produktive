@@ -31,7 +31,7 @@ import { DEPLOY_STATUS_COLOR } from "#/lib/status";
 import { Button } from "#/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "#/components/ui/input-group";
 import { DeployServiceCard } from "../components/DeployServiceCard";
-import { DeployServiceSheet } from "../components/deployments/DeployServiceSheet";
+import { DeployServiceRail } from "../components/deployments/DeployServiceRail";
 import { EmptyState } from "../components/EmptyState";
 import {
   CreateCredentialDialog,
@@ -185,10 +185,11 @@ function Canvas() {
           position,
           data: { service },
           draggable: true,
+          selected: service.id === search.service,
         } satisfies SNode;
       });
     });
-  }, [shown, setNodes]);
+  }, [shown, setNodes, search.service]);
 
   useEffect(() => {
     const timers = saveTimers.current;
@@ -300,46 +301,58 @@ function Canvas() {
 
   return (
     <>
-      <div className="relative min-h-0 flex-1">
-        <CanvasToolbar
-          services={services}
-          filter={filter}
-          query={query}
-          shown={shown.length}
-          approved={approved}
-          onFilter={(status) => setSearch({ status })}
-          onQueryChange={(q) => setSearch({ q: q || undefined })}
-          onClearFilters={() => setSearch({ q: undefined, status: "all" })}
-          onCreate={() => setServiceOpen(true)}
-          onCredential={() => setCredentialOpen(true)}
-        />
-        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 hidden text-center text-[11px] text-[var(--color-canvas-dim)] md:block">
-          Drag cards to arrange · drag the background to pan · click a card to open it
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <div className="relative min-h-0 min-w-0 flex-1">
+          <CanvasToolbar
+            services={services}
+            filter={filter}
+            query={query}
+            shown={shown.length}
+            approved={approved}
+            onFilter={(status) => setSearch({ status })}
+            onQueryChange={(q) => setSearch({ q: q || undefined })}
+            onClearFilters={() => setSearch({ q: undefined, status: "all" })}
+            onCreate={() => setServiceOpen(true)}
+            onCredential={() => setCredentialOpen(true)}
+          />
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 hidden text-center text-[11px] text-[var(--color-canvas-dim)] md:block">
+            Drag cards to arrange · drag the background to pan · click a card to open it
+          </div>
+          <ReactFlow
+            nodes={nodes}
+            nodeTypes={NODE_TYPES}
+            onNodesChange={onNodesChange}
+            onNodeClick={onNodeClick}
+            snapToGrid
+            snapGrid={[24, 24]}
+            minZoom={0.4}
+            maxZoom={2}
+            fitView
+            fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+            panOnDrag={[1, 2]}
+            selectionOnDrag
+            panOnScroll
+            zoomOnPinch
+            proOptions={{ hideAttribution: true }}
+            nodesConnectable={false}
+            edgesFocusable={false}
+            nodeDragThreshold={1}
+            elevateNodesOnSelect={false}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
+            <Controls position="bottom-left" showInteractive={false} />
+          </ReactFlow>
         </div>
-        <ReactFlow
-          nodes={nodes}
-          nodeTypes={NODE_TYPES}
-          onNodesChange={onNodesChange}
-          onNodeClick={onNodeClick}
-          snapToGrid
-          snapGrid={[24, 24]}
-          minZoom={0.4}
-          maxZoom={2}
-          fitView
-          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-          panOnDrag={[1, 2]}
-          selectionOnDrag
-          panOnScroll
-          zoomOnPinch
-          proOptions={{ hideAttribution: true }}
-          nodesConnectable={false}
-          edgesFocusable={false}
-          nodeDragThreshold={1}
-          elevateNodesOnSelect={false}
-        >
-          <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
-          <Controls position="bottom-left" showInteractive={false} />
-        </ReactFlow>
+
+        {selectedService && (
+          <DeployServiceRail
+            wid={wid}
+            service={selectedService}
+            tab={selectedTab}
+            onClose={closeService}
+            onTabChange={setTab}
+          />
+        )}
       </div>
 
       <CreateCredentialDialog
@@ -381,14 +394,6 @@ function Canvas() {
         }
       />
 
-      <DeployServiceSheet
-        open={Boolean(selectedService)}
-        wid={wid}
-        service={selectedService}
-        tab={selectedTab}
-        onClose={closeService}
-        onTabChange={setTab}
-      />
     </>
   );
 }
@@ -540,7 +545,7 @@ function CanvasToolbar({
 
 const ServiceNode = memo(function ServiceNode(props: NodeProps) {
   const service = (props.data as ServiceNodeData).service;
-  return <DeployServiceCard service={service} canvas />;
+  return <DeployServiceCard service={service} canvas selected={props.selected} />;
 });
 
 const NODE_TYPES = { service: ServiceNode };

@@ -36,6 +36,7 @@ import {
   DEPLOY_STATUS_COLOR,
   DEPLOY_STATUS_LABEL,
   deployStatusActive,
+  deployStatusCancellable,
   deployStatusPending,
   lastSeen,
   shortDigest,
@@ -43,6 +44,7 @@ import {
 import type { DeployDetailTab } from "#/lib/deployments";
 import { toast } from "#/lib/toast";
 import {
+  useCancelDeployment,
   useCreateDeployServiceVolume,
   useCreateDeployServiceDomain,
   useDeleteDeployService,
@@ -88,6 +90,7 @@ type MetricChartKind = "cpu" | "memory" | "requests";
 
 export function DeploymentsPanel({ wid, service }: { wid: string; service: DeployService }) {
   const deployments = useDeployments(wid, service.id);
+  const cancelDeployment = useCancelDeployment(wid);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   if (deployments.isLoading) return <PanelLoading label="Loading deployments…" />;
@@ -116,9 +119,27 @@ export function DeploymentsPanel({ wid, service }: { wid: string; service: Deplo
             <DeploymentRow
               deployment={deployment}
               selected={selectedId === deployment.id}
+              cancelPending={
+                cancelDeployment.isPending &&
+                cancelDeployment.variables?.deploymentId === deployment.id
+              }
               onSelect={() =>
                 setSelectedId((current) =>
                   current === deployment.id ? null : deployment.id,
+                )
+              }
+              onCancel={() =>
+                cancelDeployment.mutate(
+                  { serviceId: service.id, deploymentId: deployment.id },
+                  {
+                    onSuccess: () => {
+                      toast.success("Deployment cancelled");
+                      if (selectedId === deployment.id) {
+                        setSelectedId(null);
+                      }
+                    },
+                    onError: (err) => toast.error((err as Error).message),
+                  },
                 )
               }
             />
@@ -136,23 +157,25 @@ export function DeploymentsPanel({ wid, service }: { wid: string; service: Deplo
 function DeploymentRow({
   deployment,
   selected,
+  cancelPending,
   onSelect,
+  onCancel,
 }: {
   deployment: Deployment;
   selected: boolean;
+  cancelPending?: boolean;
   onSelect: () => void;
+  onCancel: () => void;
 }) {
   const color = DEPLOY_STATUS_COLOR[deployment.status];
   const active = deployStatusActive(deployment.status);
   const pending = deployStatusPending(deployment.status);
+  const cancellable = deployStatusCancellable(deployment.status);
 
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
+    <div
       className={cn(
-        "group relative w-full overflow-hidden rounded-[var(--radius-md)] border bg-[var(--color-bg-row)] text-left transition-colors",
+        "group relative overflow-hidden rounded-[var(--radius-md)] border bg-[var(--color-bg-row)] transition-colors",
         selected
           ? "border-[var(--color-border-hi)] ring-1 ring-[color-mix(in_srgb,var(--color-accent)_25%,transparent)]"
           : "border-[var(--color-border)] hover:border-[var(--color-border-hi)]",
@@ -160,7 +183,12 @@ function DeploymentRow({
       style={{ borderLeft: `3px solid ${color}` }}
     >
       <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-pressed={selected}
+          className="min-w-0 flex-1 text-left"
+        >
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={cn(
@@ -190,16 +218,32 @@ function DeploymentRow({
             {deployment.started_at && <span>started {lastSeen(deployment.started_at)}</span>}
             {deployment.finished_at && <span>finished {lastSeen(deployment.finished_at)}</span>}
           </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
+        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {cancellable && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={cancelPending}
+              onClick={onCancel}
+            >
+              {cancelPending ? <Spinner className="size-3" /> : <X size={13} />}
+              <span className="hidden sm:inline">Cancel</span>
+            </Button>
+          )}
           <StatusBadge status={deployment.status} />
-          <ChevronRight
-            size={14}
-            className={cn(
-              "text-[var(--color-fg-dim)] transition-transform",
-              selected && "rotate-90 text-[var(--color-fg-muted)]",
-            )}
-          />
+          <button
+            type="button"
+            onClick={onSelect}
+            aria-label={selected ? "Collapse deployment logs" : "Expand deployment logs"}
+            className="rounded-[var(--radius-sm)] p-1 text-[var(--color-fg-dim)] transition-colors hover:text-[var(--color-fg-muted)]"
+          >
+            <ChevronRight
+              size={14}
+              className={cn("transition-transform", selected && "rotate-90")}
+            />
+          </button>
         </div>
       </div>
       {deployment.failure_message && (
@@ -209,7 +253,7 @@ function DeploymentRow({
           </p>
         </div>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -287,7 +331,7 @@ function DeploymentLogsPanel({
         <PanelEmpty
           icon={ScrollText}
           label="No build logs"
-          hint="Depot build output for git-source deployments appears here."
+          hint="Build output for git-source deployments appears here."
         />
       )}
 
