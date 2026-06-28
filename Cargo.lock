@@ -996,6 +996,8 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
+ "urlencoding",
  "uuid",
 ]
 
@@ -3047,6 +3049,7 @@ dependencies = [
  "depot",
  "dotenvy",
  "fly",
+ "produktive-cloudflare",
  "produktive-deploy",
  "produktive-entity",
  "reqwest",

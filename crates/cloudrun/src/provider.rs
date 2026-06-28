@@ -31,6 +31,20 @@ impl CloudRunProvider {
         Self { client }
     }
 
+    pub fn service_name_for(
+        &self,
+        workspace_id: uuid::Uuid,
+        service_id: uuid::Uuid,
+        slug: &str,
+    ) -> String {
+        cloud_run_service_name(
+            self.client.app_name_prefix(),
+            workspace_id,
+            service_id,
+            slug,
+        )
+    }
+
     /// The underlying Artifact Registry base for git builds, if configured.
     pub fn artifact_registry(&self) -> Option<&str> {
         self.client.artifact_registry()
@@ -54,13 +68,63 @@ impl CloudRunProvider {
 
     fn ref_service_name(&self, service: &ProviderServiceRef) -> String {
         service.provider_service_id.clone().unwrap_or_else(|| {
-            cloud_run_service_name(
-                self.client.app_name_prefix(),
-                service.workspace_id,
-                service.service_id,
-                &service.app_name,
-            )
+            self.service_name_for(service.workspace_id, service.service_id, &service.app_name)
         })
+    }
+
+    pub async fn destroy_service_with_images(
+        &self,
+        service: &ProviderServiceRef,
+        image_refs: &[String],
+    ) -> DeployResult<()> {
+        let service_name = self.ref_service_name(service);
+        // The service ref carries no region, so attempt deletion across every
+        // enabled location; a missing service in a location is a no-op.
+        let mut first_error = None;
+        for code in deploy::ALLOWED_REGION_CODES {
+            let location = cloud_run_region(code);
+            match self.client.delete_service(location, &service_name).await {
+                Ok(()) => {}
+                Err(error) if first_error.is_none() => first_error = Some(error),
+                Err(_) => {}
+            }
+        }
+
+        let mut artifact_error = None;
+        for image_ref in image_refs {
+            if let Err(error) = self.client.delete_artifact_image_ref(image_ref).await {
+                tracing::warn!(
+                    image = %image_ref,
+                    error = ?error,
+                    "failed to delete Cloud Run Artifact Registry image package from deployment image"
+                );
+                if artifact_error.is_none() {
+                    artifact_error = Some(error);
+                }
+            }
+        }
+        if let Err(error) = self
+            .client
+            .delete_artifact_image_package(&service_name)
+            .await
+        {
+            tracing::warn!(
+                service_name = %service_name,
+                error = ?error,
+                "failed to delete Cloud Run Artifact Registry image package by service name"
+            );
+            if artifact_error.is_none() {
+                artifact_error = Some(error);
+            }
+        }
+
+        if let Some(error) = first_error {
+            return Err(error);
+        }
+        if let Some(error) = artifact_error {
+            return Err(error);
+        }
+        Ok(())
     }
 }
 
@@ -251,22 +315,7 @@ impl DeployProvider for CloudRunProvider {
     }
 
     async fn destroy_service(&self, service: &ProviderServiceRef) -> DeployResult<()> {
-        // The service ref carries no region, so attempt deletion across every
-        // enabled location; a missing service in a location is a no-op.
-        let service_name = self.ref_service_name(service);
-        let mut first_error = None;
-        for code in deploy::ALLOWED_REGION_CODES {
-            let location = cloud_run_region(code);
-            match self.client.delete_service(location, &service_name).await {
-                Ok(()) => {}
-                Err(error) if first_error.is_none() => first_error = Some(error),
-                Err(_) => {}
-            }
-        }
-        match first_error {
-            Some(error) => Err(error),
-            None => Ok(()),
-        }
+        self.destroy_service_with_images(service, &[]).await
     }
 
     async fn delete_volume(

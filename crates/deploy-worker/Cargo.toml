@@ -15,6 +15,7 @@ produktive-entity = { path = "../entity" }
 fly = { path = "../fly" }
 cloudrun = { path = "../cloudrun" }
 depot = { path = "../depot" }
+produktive-cloudflare = { path = "../cloudflare" }
 
 anyhow.workspace = true
 async-trait.workspace = true

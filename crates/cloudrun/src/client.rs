@@ -12,6 +12,7 @@ use crate::models::{
 
 const DEFAULT_RUN_HOST: &str = "https://run.googleapis.com";
 const DEFAULT_LOGGING_HOST: &str = "https://logging.googleapis.com";
+const DEFAULT_ARTIFACT_REGISTRY_HOST: &str = "https://artifactregistry.googleapis.com";
 
 /// Configuration for the Cloud Run provider. `service_account_json` is the raw
 /// JSON service-account key (file contents); the remaining fields are resolved
@@ -40,6 +41,7 @@ pub struct CloudRun {
     project_id: String,
     run_base: String,
     logging_base: String,
+    artifact_registry_base: String,
     app_name_prefix: String,
     artifact_registry: Option<String>,
 }
@@ -77,6 +79,7 @@ impl CloudRun {
             project_id,
             run_base: format!("{}/v2", host.trim_end_matches('/')),
             logging_base: format!("{}/v2", logging_host.trim_end_matches('/')),
+            artifact_registry_base: format!("{}/v1", DEFAULT_ARTIFACT_REGISTRY_HOST),
             app_name_prefix: config.app_name_prefix,
             artifact_registry: config.artifact_registry,
         })
@@ -161,10 +164,49 @@ impl CloudRun {
     /// Delete a service. A missing service is treated as success.
     pub async fn delete_service(&self, location: &str, service_id: &str) -> DeployResult<()> {
         let request = self.http.delete(self.service_path(location, service_id));
-        match self.send_ignore(request).await {
-            Ok(()) | Err(DeployError::NotFound(_)) => Ok(()),
+        match self.send_operation(request).await {
+            Ok(operation) => self.wait_operation(&self.run_base, operation).await,
+            Err(DeployError::NotFound(_)) => Ok(()),
             Err(error) => Err(error),
         }
+    }
+
+    /// Delete all tags/versions for an image package in the configured Artifact
+    /// Registry repository. Missing package/repository is treated as success.
+    pub async fn delete_artifact_image_package(&self, image_name: &str) -> DeployResult<()> {
+        let Some(target) = self.artifact_target(image_name)? else {
+            return Ok(());
+        };
+        let package = urlencoding::encode(&target.package).into_owned();
+        let url = format!(
+            "{}/projects/{}/locations/{}/repositories/{}/packages/{}",
+            self.artifact_registry_base,
+            target.project,
+            target.location,
+            target.repository,
+            package
+        );
+        let request = self.http.delete(url);
+        match self.send_operation(request).await {
+            Ok(operation) => {
+                self.wait_operation(&self.artifact_registry_base, operation)
+                    .await
+            }
+            Err(DeployError::NotFound(_)) => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Delete the Artifact Registry package that backs a pushed image reference.
+    /// References outside the configured `CLOUD_RUN_ARTIFACT_REGISTRY` are ignored.
+    pub async fn delete_artifact_image_ref(&self, image_ref: &str) -> DeployResult<()> {
+        let Some(registry) = self.artifact_registry.as_deref() else {
+            return Ok(());
+        };
+        let Some(package) = artifact_package_from_image_ref(registry, image_ref) else {
+            return Ok(());
+        };
+        self.delete_artifact_image_package(&package).await
     }
 
     /// Best-effort delete of a single (superseded, non-serving) revision.
@@ -229,6 +271,10 @@ impl CloudRun {
         })
     }
 
+    async fn send_operation(&self, request: RequestBuilder) -> DeployResult<Operation> {
+        self.send_json::<Operation>(request).await
+    }
+
     async fn send_ignore(&self, request: RequestBuilder) -> DeployResult<()> {
         self.send_text(request).await.map(|_| ())
     }
@@ -256,5 +302,123 @@ impl CloudRun {
                 status.as_u16()
             ))),
         }
+    }
+
+    async fn wait_operation(&self, base: &str, operation: Operation) -> DeployResult<()> {
+        if let Some(error) = operation.error {
+            return Err(DeployError::Provider(format!(
+                "Google operation failed: {}",
+                error.message
+            )));
+        }
+        if operation.done {
+            return Ok(());
+        }
+        let Some(name) = operation.name else {
+            return Ok(());
+        };
+        for _ in 0..30 {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let url = if name.starts_with("http://") || name.starts_with("https://") {
+                name.clone()
+            } else {
+                format!("{}/{}", base.trim_end_matches('/'), name)
+            };
+            let request = self.http.get(url);
+            let operation = self.send_json::<Operation>(request).await?;
+            if let Some(error) = operation.error {
+                return Err(DeployError::Provider(format!(
+                    "Google operation failed: {}",
+                    error.message
+                )));
+            }
+            if operation.done {
+                return Ok(());
+            }
+        }
+        Err(DeployError::Provider(format!(
+            "Google operation {name} did not finish before timeout"
+        )))
+    }
+
+    fn artifact_target(&self, image_name: &str) -> DeployResult<Option<ArtifactTarget>> {
+        let Some(registry) = self.artifact_registry.as_deref() else {
+            return Ok(None);
+        };
+        let mut parts = registry.trim_matches('/').split('/');
+        let host = parts.next().unwrap_or_default();
+        let project = parts.next().unwrap_or_default();
+        let repository = parts.next().unwrap_or_default();
+        if host.is_empty() || project.is_empty() || repository.is_empty() {
+            return Err(DeployError::Config(
+                "CLOUD_RUN_ARTIFACT_REGISTRY must look like REGION-docker.pkg.dev/PROJECT/REPOSITORY"
+                    .into(),
+            ));
+        }
+        let location = host
+            .strip_suffix("-docker.pkg.dev")
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                DeployError::Config(
+                    "CLOUD_RUN_ARTIFACT_REGISTRY host must look like REGION-docker.pkg.dev".into(),
+                )
+            })?;
+        Ok(Some(ArtifactTarget {
+            project: project.to_owned(),
+            location: location.to_owned(),
+            repository: repository.to_owned(),
+            package: image_name.to_owned(),
+        }))
+    }
+}
+
+struct ArtifactTarget {
+    project: String,
+    location: String,
+    repository: String,
+    package: String,
+}
+
+fn artifact_package_from_image_ref(registry: &str, image_ref: &str) -> Option<String> {
+    let registry = registry.trim_end_matches('/');
+    let image_ref = image_ref.trim();
+    let rest = image_ref.strip_prefix(&format!("{registry}/"))?;
+    let digestless = rest.split_once('@').map(|(name, _)| name).unwrap_or(rest);
+    let package = match digestless.rsplit_once(':') {
+        Some((name, tag)) if !tag.contains('/') => name,
+        _ => digestless,
+    };
+    (!package.is_empty()).then(|| package.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::artifact_package_from_image_ref;
+
+    #[test]
+    fn parses_artifact_package_from_tagged_image_ref() {
+        let package = artifact_package_from_image_ref(
+            "europe-west4-docker.pkg.dev/prod/produktive",
+            "europe-west4-docker.pkg.dev/prod/produktive/prd-api:abc123",
+        );
+        assert_eq!(package.as_deref(), Some("prd-api"));
+    }
+
+    #[test]
+    fn parses_artifact_package_from_digest_image_ref() {
+        let package = artifact_package_from_image_ref(
+            "europe-west4-docker.pkg.dev/prod/produktive/",
+            "europe-west4-docker.pkg.dev/prod/produktive/prd-api@sha256:deadbeef",
+        );
+        assert_eq!(package.as_deref(), Some("prd-api"));
+    }
+
+    #[test]
+    fn ignores_images_outside_configured_artifact_registry() {
+        let package = artifact_package_from_image_ref(
+            "europe-west4-docker.pkg.dev/prod/produktive",
+            "registry.fly.io/prd-api:abc123",
+        );
+        assert!(package.is_none());
     }
 }

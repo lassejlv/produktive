@@ -17,6 +17,7 @@ use deploy::{
 };
 use depot::{DepotConfig, DepotProvider};
 use fly::{Fly, FlyConfig, FlyProvider};
+use produktive_cloudflare::{Cloudflare, CustomHostname};
 
 /// Registry of configured deploy providers. Implements [`DeployProvider`] by
 /// dispatching each call to the concrete provider named on the spec / service ref
@@ -57,6 +58,26 @@ impl Providers {
     fn supported_provider_kinds(&self) -> Vec<String> {
         // Fly is always constructed; Cloud Run only when configured.
         supported_provider_kinds(self.cloud_run.is_some())
+    }
+
+    async fn destroy_service_app(
+        &self,
+        service: &ProviderServiceRef,
+        image_refs: &[String],
+    ) -> DeployResult<()> {
+        match service.provider {
+            ProviderKind::Fly => self.fly.destroy_service(service).await,
+            ProviderKind::CloudRun => self
+                .cloud_run
+                .as_ref()
+                .ok_or_else(|| {
+                    DeployError::Config(
+                        "Cloud Run provider is not configured on this worker (set CLOUD_RUN_SERVICE_ACCOUNT_JSON)".into(),
+                    )
+                })?
+                .destroy_service_with_images(service, image_refs)
+                .await,
+        }
     }
 }
 
@@ -188,6 +209,7 @@ struct Config {
     cloud_run_project_id: Option<String>,
     cloud_run_artifact_registry: Option<String>,
     cloud_run_app_name_prefix: String,
+    custom_domain_cname_target: String,
     depot_token: Option<String>,
     depot_project_id: Option<String>,
     build_registry_host: String,
@@ -323,6 +345,7 @@ struct DomainJob {
     service_id: Uuid,
     provider: String,
     provider_service_id: String,
+    provider_domain_id: Option<String>,
     slug: String,
     hostname: String,
     status: String,
@@ -345,6 +368,11 @@ struct DeletedServiceRow {
     provider: String,
     provider_service_id: Option<String>,
     slug: String,
+}
+
+#[derive(Debug, FromQueryResult)]
+struct ImageRefRow {
+    image: String,
 }
 
 #[derive(Debug, FromQueryResult)]
@@ -407,6 +435,7 @@ async fn main() -> Result<()> {
     })
     .map_err(|error| anyhow::anyhow!(error))?;
     let cloud_run = build_cloud_run_provider(&config);
+    let cloudflare = build_cloudflare();
     let provider = Providers {
         fly: FlyProvider::new(fly.clone()),
         cloud_run: cloud_run.clone(),
@@ -486,7 +515,14 @@ async fn main() -> Result<()> {
         if let Err(error) = cleanup_superseded_provider_deployments(&db, &cipher, &provider).await {
             tracing::warn!(error = ?error, "cleanup superseded provider deployments failed");
         }
-        if let Err(error) = reconcile_domains(&db, &provider).await {
+        if let Err(error) = reconcile_domains(
+            &db,
+            &provider,
+            cloudflare.as_ref(),
+            &config.custom_domain_cname_target,
+        )
+        .await
+        {
             tracing::warn!(error = ?error, "deployment domain reconciliation failed");
         }
         if let Err(error) = collect_logs(&db, log_db.as_ref(), &provider).await {
@@ -560,6 +596,11 @@ impl Config {
             cloud_run_artifact_registry: optional_env("CLOUD_RUN_ARTIFACT_REGISTRY"),
             cloud_run_app_name_prefix: optional_env("CLOUD_RUN_APP_NAME_PREFIX")
                 .unwrap_or_else(|| "prd".into()),
+            custom_domain_cname_target: optional_env("CUSTOM_DOMAIN_CNAME_TARGET")
+                .unwrap_or_else(|| "cname.produktive.app".into())
+                .trim()
+                .trim_end_matches('.')
+                .to_lowercase(),
             depot_token: optional_env("DEPOT_TOKEN"),
             depot_project_id: optional_env("DEPOT_PROJECT_ID"),
             build_registry_host: optional_env("BUILD_REGISTRY_HOST")
@@ -728,6 +769,14 @@ fn build_cloud_run_provider(config: &Config) -> Option<CloudRunProvider> {
     }
 }
 
+fn build_cloudflare() -> Option<Cloudflare> {
+    let cloudflare = Cloudflare::from_env();
+    if cloudflare.is_none() {
+        tracing::warn!("CF_API_TOKEN/CF_ZONE_ID not set; Cloudflare deploy domains disabled");
+    }
+    cloudflare
+}
+
 fn build_provider_from_config(config: &Config) -> Option<DepotProvider> {
     let (Some(token), Some(project_id), Some(registry_password)) = (
         config.depot_token.clone(),
@@ -807,7 +856,7 @@ async fn claim_and_spawn_builds(
         let fly = fly.clone();
         let cloud_run = cloud_run.cloned();
         let provider = provider.clone();
-        let prefix = config.fly_app_name_prefix.clone();
+        let fly_prefix = config.fly_app_name_prefix.clone();
         let registry_host = config.build_registry_host.clone();
         let guard = BuildDoneGuard {
             id: job.id,
@@ -821,7 +870,7 @@ async fn claim_and_spawn_builds(
                 &fly,
                 cloud_run.as_ref(),
                 &provider,
-                &prefix,
+                &fly_prefix,
                 &registry_host,
                 job,
             )
@@ -838,7 +887,7 @@ async fn run_build_job(
     fly: &Fly,
     cloud_run: Option<&CloudRunProvider>,
     provider: &DepotProvider,
-    prefix: &str,
+    fly_prefix: &str,
     registry_host: &str,
     job: BuildJob,
 ) {
@@ -851,7 +900,7 @@ async fn run_build_job(
     let fly = fly.clone();
     let cloud_run = cloud_run.cloned();
     let provider = provider.clone();
-    let prefix = prefix.to_owned();
+    let fly_prefix = fly_prefix.to_owned();
     let registry_host = registry_host.to_owned();
     let result = tokio::spawn(async move {
         run_build_job_inner(
@@ -860,7 +909,7 @@ async fn run_build_job(
             &fly,
             cloud_run.as_ref(),
             &provider,
-            &prefix,
+            &fly_prefix,
             &registry_host,
             &job,
         )
@@ -891,7 +940,7 @@ async fn run_build_job_inner(
     fly: &Fly,
     cloud_run: Option<&CloudRunProvider>,
     provider: &DepotProvider,
-    prefix: &str,
+    fly_prefix: &str,
     registry_host: &str,
     job: &BuildJob,
 ) -> Result<()> {
@@ -926,10 +975,6 @@ async fn run_build_job_inner(
         .context("git-source deployment is missing a repository URL")?;
 
     let provider_kind = ProviderKind::parse(&job.provider).unwrap_or(DEFAULT_PROVIDER);
-    let app_name = job
-        .provider_service_id
-        .clone()
-        .unwrap_or_else(|| provider_app_name(prefix, job.workspace_id, job.service_id, &job.slug));
 
     // Choose where the built image is published so the deploy target can pull it.
     // Fly pushes to the Fly registry under the app namespace (the app must exist
@@ -937,6 +982,9 @@ async fn run_build_job_inner(
     // short-lived GCP token, since Cloud Run cannot pull from the Fly registry.
     let (image_repository, registry_auth) = match provider_kind {
         ProviderKind::Fly => {
+            let app_name = job.provider_service_id.clone().unwrap_or_else(|| {
+                provider_app_name(fly_prefix, job.workspace_id, job.service_id, &job.slug)
+            });
             let network = format!("{app_name}-network");
             fly.ensure_app(&app_name, &network)
                 .await
@@ -946,6 +994,9 @@ async fn run_build_job_inner(
         ProviderKind::CloudRun => {
             let cloud_run =
                 cloud_run.context("Cloud Run provider is not configured on this worker")?;
+            let app_name = job.provider_service_id.clone().unwrap_or_else(|| {
+                cloud_run.service_name_for(job.workspace_id, job.service_id, &job.slug)
+            });
             let artifact_registry = cloud_run.artifact_registry().context(
                 "CLOUD_RUN_ARTIFACT_REGISTRY is not set; cannot publish Cloud Run image",
             )?;
@@ -1689,7 +1740,7 @@ async fn cleanup_deleted_volumes(
 async fn cleanup_deleted_services(
     db: &DatabaseConnection,
     cipher: &SecretCipher,
-    provider: &impl DeployProvider,
+    provider: &Providers,
 ) -> Result<()> {
     let rows = DeletedServiceRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
@@ -1710,6 +1761,7 @@ async fn cleanup_deleted_services(
     .await?;
 
     for row in rows {
+        let image_refs = deployment_image_refs(db, row.workspace_id, row.service_id).await?;
         let deployments = DeploymentJob::find_by_statement(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"
@@ -1735,30 +1787,49 @@ async fn cleanup_deleted_services(
             continue;
         }
 
-        if let Some(provider_service_id) = row.provider_service_id.clone() {
-            let service = ProviderServiceRef {
-                workspace_id: row.workspace_id,
-                service_id: row.service_id,
-                provider: ProviderKind::parse(&row.provider).unwrap_or(DEFAULT_PROVIDER),
-                provider_service_id: Some(provider_service_id),
-                app_name: row.slug.clone(),
-            };
-            if !delete_all_service_volumes(db, provider, &service).await? {
-                continue;
-            }
-            if let Err(error) = provider.destroy_service(&service).await {
-                tracing::warn!(
-                    service_id = %row.service_id,
-                    error = ?error,
-                    "failed to delete provider service app"
-                );
-                continue;
-            }
+        let service = ProviderServiceRef {
+            workspace_id: row.workspace_id,
+            service_id: row.service_id,
+            provider: ProviderKind::parse(&row.provider).unwrap_or(DEFAULT_PROVIDER),
+            provider_service_id: row.provider_service_id.clone(),
+            app_name: row.slug.clone(),
+        };
+        if !delete_all_service_volumes(db, provider, &service).await? {
+            continue;
+        }
+        if let Err(error) = provider.destroy_service_app(&service, &image_refs).await {
+            tracing::warn!(
+                service_id = %row.service_id,
+                error = ?error,
+                "failed to delete provider service app"
+            );
+            continue;
         }
 
         hard_delete_service(db, row.workspace_id, row.service_id).await?;
     }
     Ok(())
+}
+
+async fn deployment_image_refs(
+    db: &DatabaseConnection,
+    workspace_id: Uuid,
+    service_id: Uuid,
+) -> Result<Vec<String>> {
+    let rows = ImageRefRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT DISTINCT image
+        FROM deployments
+        WHERE workspace_id = $1
+          AND service_id = $2
+          AND image IS NOT NULL
+        "#,
+        [workspace_id.into(), service_id.into()],
+    ))
+    .all(db)
+    .await?;
+    Ok(rows.into_iter().map(|row| row.image).collect())
 }
 
 async fn delete_all_service_volumes(
@@ -1937,7 +2008,12 @@ async fn destroy_provider_deployment(
     Ok(())
 }
 
-async fn reconcile_domains(db: &DatabaseConnection, provider: &impl DeployProvider) -> Result<()> {
+async fn reconcile_domains(
+    db: &DatabaseConnection,
+    provider: &impl DeployProvider,
+    cloudflare: Option<&Cloudflare>,
+    cname_target: &str,
+) -> Result<()> {
     let rows = DomainJob::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"
@@ -1946,6 +2022,7 @@ async fn reconcile_domains(db: &DatabaseConnection, provider: &impl DeployProvid
                d.service_id,
                s.provider,
                s.provider_service_id AS provider_service_id,
+               d.provider_domain_id AS provider_domain_id,
                s.slug,
                d.hostname,
                d.status
@@ -1963,6 +2040,12 @@ async fn reconcile_domains(db: &DatabaseConnection, provider: &impl DeployProvid
     .await?;
 
     for row in rows {
+        if ProviderKind::parse(&row.provider).unwrap_or(DEFAULT_PROVIDER) == ProviderKind::CloudRun
+        {
+            reconcile_cloudflare_domain(db, cloudflare, cname_target, &row).await?;
+            continue;
+        }
+
         let service = ProviderServiceRef {
             workspace_id: row.workspace_id,
             service_id: row.service_id,
@@ -2031,6 +2114,133 @@ async fn reconcile_domains(db: &DatabaseConnection, provider: &impl DeployProvid
         }
     }
     Ok(())
+}
+
+async fn reconcile_cloudflare_domain(
+    db: &DatabaseConnection,
+    cloudflare: Option<&Cloudflare>,
+    cname_target: &str,
+    row: &DomainJob,
+) -> Result<()> {
+    let Some(cloudflare) = cloudflare else {
+        mark_domain_failed(
+            db,
+            row,
+            "Cloudflare for SaaS is not configured on this deploy worker",
+        )
+        .await?;
+        return Ok(());
+    };
+
+    if row.status == "removing" {
+        if let Some(id) = row.provider_domain_id.as_deref() {
+            if let Err(error) = cloudflare.delete_custom_hostname(id).await {
+                tracing::warn!(
+                    domain_id = %row.id,
+                    hostname = %row.hostname,
+                    error = ?error,
+                    "failed to delete Cloudflare custom hostname"
+                );
+                return Ok(());
+            }
+        }
+        delete_domain_row(db, row).await?;
+        insert_event(
+            db,
+            row.workspace_id,
+            row.service_id,
+            None,
+            "warn",
+            "custom domain removed",
+            json!({ "hostname": row.hostname, "provider": "cloudflare_for_saas" }),
+        )
+        .await?;
+        return Ok(());
+    }
+
+    let hostname = match row.provider_domain_id.as_deref() {
+        Some(id) => match cloudflare.get_custom_hostname(id).await {
+            Ok(Some(hostname)) => hostname,
+            Ok(None) => {
+                mark_domain_failed(db, row, "Cloudflare custom hostname is missing").await?;
+                return Ok(());
+            }
+            Err(error) => {
+                tracing::warn!(
+                    domain_id = %row.id,
+                    hostname = %row.hostname,
+                    error = ?error,
+                    "failed to fetch Cloudflare custom hostname"
+                );
+                return Ok(());
+            }
+        },
+        None => match cloudflare
+            .create_custom_hostname(&row.hostname, "http")
+            .await
+        {
+            Ok(hostname) => hostname,
+            Err(error) => {
+                mark_domain_failed(db, row, &error.to_string()).await?;
+                return Ok(());
+            }
+        },
+    };
+
+    let status = cloudflare_domain_status(&hostname);
+    let domain = ProviderDomain {
+        provider: ProviderKind::CloudRun,
+        hostname: row.hostname.clone(),
+        provider_domain_id: Some(hostname.id.clone()),
+        status,
+        configured: cloudflare_domain_active(&hostname),
+        dns_requirements: json!({
+            "cname": cname_target,
+            "cloudflare_for_saas": true,
+        }),
+        validation_errors: json!([]),
+        metadata: json!({
+            "provider": "cloudflare_for_saas",
+            "custom_hostname_id": hostname.id,
+            "hostname_status": hostname.status,
+            "ssl_status": hostname.ssl_status(),
+            "ssl_method": hostname.ssl.as_ref().and_then(|ssl| ssl.method.as_deref()),
+        }),
+    };
+    let active = domain.configured || domain.status == "active";
+    update_domain_from_provider(db, row, domain).await?;
+    if active {
+        insert_event(
+            db,
+            row.workspace_id,
+            row.service_id,
+            None,
+            "info",
+            "custom domain active",
+            json!({ "hostname": row.hostname, "provider": "cloudflare_for_saas" }),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+fn cloudflare_domain_active(hostname: &CustomHostname) -> bool {
+    hostname.status.as_deref() == Some("active")
+        && hostname
+            .ssl_status()
+            .map(|status| status == "active")
+            .unwrap_or(true)
+}
+
+fn cloudflare_domain_status(hostname: &CustomHostname) -> String {
+    if cloudflare_domain_active(hostname) {
+        return "active".into();
+    }
+    hostname
+        .ssl_status()
+        .or(hostname.status.as_deref())
+        .unwrap_or("pending_validation")
+        .to_owned()
 }
 
 async fn collect_logs(

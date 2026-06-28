@@ -50,6 +50,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 redis = { version = "0.32", features = ["aio", "tokio-rustls-comp", "connection-manager"] }
 tokio-postgres = "0.7"
 url = "2"
+urlencoding = "2"
 futures-util = "0.3"
 object_store = { version = "0.12", features = ["aws"] }
 surge-ping = "0.8"
