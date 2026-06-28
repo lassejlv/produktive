@@ -1,13 +1,4 @@
-import {
-  Activity,
-  Braces,
-  ExternalLink,
-  Gauge,
-  LayoutGrid,
-  Rocket,
-  Settings,
-  Terminal,
-} from "lucide-react";
+import { Braces, ExternalLink, Rocket, Settings, Terminal } from "lucide-react";
 import { X } from "lucide-react";
 import { Segmented } from "#/components/Segmented";
 import { Button } from "#/components/ui/button";
@@ -18,31 +9,28 @@ import {
   useStopDeployService,
 } from "#/lib/queries";
 import { DEPLOY_STATUS_COLOR, DEPLOY_STATUS_LABEL, deployStatusActive } from "#/lib/status";
-import type { DeployDetailTab } from "#/lib/deployments";
+import type { DeployDetailTab, DeploySettingsSection } from "#/lib/deployments";
 import type { DeployService } from "#/lib/types";
 import { ServiceActionButtons } from "./deploy-shared";
-import {
-  ConfigurationPanel,
-  DeploymentsPanel,
-  LogsPanel,
-  MetricsPanel,
-  OverviewPanel,
-  SettingsPanel,
-  VariablesPanel,
-} from "./DeployServicePanels";
+import { DeployServiceSettings } from "./DeployServiceSettings";
+import { DeploymentsPanel, LogsPanel, VariablesPanel } from "./DeployServicePanels";
 
 export function DeployServiceDetail({
   wid,
   service,
   tab,
+  settingsSection,
   onTabChange,
+  onSettingsSectionChange,
   onClose,
   onDeleted,
 }: {
   wid: string;
   service: DeployService;
   tab: DeployDetailTab;
+  settingsSection: DeploySettingsSection;
   onTabChange: (tab: DeployDetailTab) => void;
+  onSettingsSectionChange: (section: DeploySettingsSection) => void;
   onClose?: () => void;
   onDeleted?: () => void;
 }) {
@@ -145,28 +133,33 @@ export function DeployServiceDetail({
             onChange={onTabChange}
             size="sm"
             options={[
-              { value: "overview", label: "Overview", icon: LayoutGrid },
-              { value: "deployments", label: "Deploys", icon: Rocket },
-              { value: "logs", label: "Logs", icon: Terminal },
-              { value: "metrics", label: "Metrics", icon: Activity },
+              { value: "deployments", label: "Deployments", icon: Rocket },
               { value: "variables", label: "Variables", icon: Braces },
-              { value: "configuration", label: "Config", icon: Gauge },
+              { value: "logs", label: "Logs", icon: Terminal },
               { value: "settings", label: "Settings", icon: Settings },
             ]}
           />
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        {tab === "overview" && (
-          <OverviewPanel wid={wid} service={service} onTabChange={onTabChange} />
+      <div
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto px-4 py-3",
+          tab === "settings" && "flex flex-col overflow-hidden py-3",
         )}
+      >
         {tab === "deployments" && <DeploymentsPanel wid={wid} service={service} />}
-        {tab === "logs" && <LogsPanel wid={wid} service={service} />}
-        {tab === "metrics" && <MetricsPanel wid={wid} service={service} />}
         {tab === "variables" && <VariablesPanel wid={wid} service={service} />}
-        {tab === "configuration" && <ConfigurationPanel wid={wid} service={service} />}
-        {tab === "settings" && <SettingsPanel wid={wid} service={service} onDeleted={onDeleted} />}
+        {tab === "logs" && <LogsPanel wid={wid} service={service} />}
+        {tab === "settings" && (
+          <DeployServiceSettings
+            wid={wid}
+            service={service}
+            section={settingsSection}
+            onSectionChange={onSettingsSectionChange}
+            onDeleted={onDeleted}
+          />
+        )}
       </div>
     </div>
   );

@@ -7,10 +7,8 @@ import {
   Copy,
   Cpu,
   Download,
-  Gauge,
   Globe,
   HardDrive,
-  LayoutGrid,
   MemoryStick,
   Network,
   Pencil,
@@ -34,14 +32,12 @@ import { Segmented } from "#/components/Segmented";
 import { cn } from "#/lib/cn";
 import {
   DEPLOY_STATUS_COLOR,
-  DEPLOY_STATUS_LABEL,
   deployStatusActive,
   deployStatusCancellable,
   deployStatusPending,
   lastSeen,
   shortDigest,
 } from "#/lib/status";
-import type { DeployDetailTab } from "#/lib/deployments";
 import { toast } from "#/lib/toast";
 import {
   useCancelDeployment,
@@ -50,7 +46,6 @@ import {
   useDeleteDeployService,
   useDeleteDeployServiceVolume,
   useDeployBuildLogs,
-  useDeployEvents,
   useDeployLogs,
   useDeployMetrics,
   useDeployServiceDomains,
@@ -72,7 +67,6 @@ import type {
 } from "#/lib/types";
 import {
   CopyChip,
-  DetailStat,
   MACHINE_COUNT_OPTIONS,
   PanelCard,
   PanelEmpty,
@@ -83,7 +77,6 @@ import {
   machineCountLabel,
   normalizeResourcePreset,
   parseKeyValues,
-  resourcePresetDetail,
 } from "./deploy-shared";
 
 type MetricChartKind = "cpu" | "memory" | "requests";
@@ -109,42 +102,59 @@ export function DeploymentsPanel({ wid, service }: { wid: string; service: Deplo
 
   return (
     <div className="space-y-4">
-      <div className="space-y-2">
-        {deployments.data.map((deployment, index) => (
-          <div
-            key={deployment.id}
-            className="fade-in"
-            style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
-          >
-            <DeploymentRow
-              deployment={deployment}
-              selected={selectedId === deployment.id}
-              cancelPending={
-                cancelDeployment.isPending &&
-                cancelDeployment.variables?.deploymentId === deployment.id
-              }
-              onSelect={() =>
-                setSelectedId((current) =>
-                  current === deployment.id ? null : deployment.id,
-                )
-              }
-              onCancel={() =>
-                cancelDeployment.mutate(
-                  { serviceId: service.id, deploymentId: deployment.id },
-                  {
-                    onSuccess: () => {
-                      toast.success("Deployment cancelled");
-                      if (selectedId === deployment.id) {
-                        setSelectedId(null);
-                      }
-                    },
-                    onError: (err) => toast.error((err as Error).message),
-                  },
-                )
-              }
-            />
-          </div>
-        ))}
+      <div className="relative pl-1">
+        <div
+          className="pointer-events-none absolute bottom-4 left-[11px] top-4 w-px bg-[var(--color-border-hi)]"
+          aria-hidden
+        />
+        <div className="space-y-3">
+          {deployments.data.map((deployment, index) => (
+            <div
+              key={deployment.id}
+              className="fade-in relative flex gap-3"
+              style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
+            >
+              <div className="relative z-[1] flex w-[22px] shrink-0 justify-center pt-4">
+                <span
+                  className="h-2.5 w-2.5 rounded-full border-2 border-[var(--color-bg-elev)]"
+                  style={{
+                    background: DEPLOY_STATUS_COLOR[deployment.status],
+                    boxShadow: `0 0 0 1px color-mix(in srgb, ${DEPLOY_STATUS_COLOR[deployment.status]} 40%, transparent)`,
+                  }}
+                />
+              </div>
+              <div className="min-w-0 flex-1 pb-1">
+                <DeploymentRow
+                  deployment={deployment}
+                  selected={selectedId === deployment.id}
+                  cancelPending={
+                    cancelDeployment.isPending &&
+                    cancelDeployment.variables?.deploymentId === deployment.id
+                  }
+                  onSelect={() =>
+                    setSelectedId((current) =>
+                      current === deployment.id ? null : deployment.id,
+                    )
+                  }
+                  onCancel={() =>
+                    cancelDeployment.mutate(
+                      { serviceId: service.id, deploymentId: deployment.id },
+                      {
+                        onSuccess: () => {
+                          toast.success("Deployment cancelled");
+                          if (selectedId === deployment.id) {
+                            setSelectedId(null);
+                          }
+                        },
+                        onError: (err) => toast.error((err as Error).message),
+                      },
+                    )
+                  }
+                />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {selected && (
@@ -268,7 +278,6 @@ function DeploymentLogsPanel({
 }) {
   const logs = useDeployLogs(wid, service.id, deployment.id);
   const buildLogs = useDeployBuildLogs(wid, service.id, deployment.id);
-  const events = useDeployEvents(wid, service.id, deployment.id);
 
   const runtimeLines = (logs.data ?? []).map((line, index) => ({
     id: `${line.timestamp}-${index}`,
@@ -281,12 +290,6 @@ function DeploymentLogsPanel({
     level: line.level,
     message: line.message,
     timestamp: line.timestamp,
-  }));
-  const eventLines = (events.data ?? []).map((event) => ({
-    id: event.id,
-    level: event.level,
-    message: event.message,
-    timestamp: event.created_at,
   }));
 
   const digest = deployment.image_digest ? shortDigest(deployment.image_digest) : null;
@@ -335,18 +338,6 @@ function DeploymentLogsPanel({
         />
       )}
 
-      {events.isLoading ? (
-        <PanelLoading label="Loading lifecycle events…" />
-      ) : eventLines.length ? (
-        <LogConsole title="Lifecycle events" icon={ScrollText} lines={eventLines} />
-      ) : (
-        <PanelEmpty
-          icon={ScrollText}
-          label="No lifecycle events"
-          hint="Deploy steps like provisioning and health checks appear here."
-        />
-      )}
-
       {logs.isLoading ? (
         <PanelLoading label="Loading runtime logs…" />
       ) : runtimeLines.length ? (
@@ -359,216 +350,6 @@ function DeploymentLogsPanel({
         />
       )}
     </div>
-  );
-}
-
-export function OverviewPanel({
-  wid,
-  service,
-  onTabChange,
-}: {
-  wid: string;
-  service: DeployService;
-  onTabChange: (tab: DeployDetailTab) => void;
-}) {
-  const deployments = useDeployments(wid, service.id);
-  const events = useDeployEvents(wid, service.id);
-  const latest = deployments.data?.[0] ?? null;
-  const digest = shortDigest(latest?.image_digest ?? service.last_deploy_image_digest);
-
-  const recentEvents = (events.data ?? []).slice(0, 4);
-  const statusColor = DEPLOY_STATUS_COLOR[service.status];
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <DetailStat
-          label="Status"
-          value={DEPLOY_STATUS_LABEL[service.status]}
-          sub={deployStatusActive(service.status) ? "healthy" : undefined}
-          icon={LayoutGrid}
-        />
-        <DetailStat
-          label="Last deploy"
-          value={service.last_deploy_at ? lastSeen(service.last_deploy_at) : "never"}
-          sub={latest ? `deploy ${latest.status}` : undefined}
-          icon={Rocket}
-        />
-        <DetailStat
-          label="Compute"
-          value={resourcePresetDetail(service.resource_preset)}
-          sub={machineCountLabel(service.machine_count)}
-          icon={Gauge}
-        />
-        <DetailStat
-          label="Image digest"
-          value={digest ?? "—"}
-          sub={service.internal_port ? `:${service.internal_port}` : undefined}
-          icon={ScrollText}
-          mono
-        />
-      </div>
-
-      <PanelCard
-        title="Latest deployment"
-        icon={Rocket}
-        count={deployments.data ? `${deployments.data.length} total` : undefined}
-      >
-        {deployments.isLoading ? (
-          <PanelLoading label="Loading deployments…" />
-        ) : latest ? (
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="mono truncate text-[12px] font-medium text-[var(--color-fg)]">
-                  {latest.image}
-                </div>
-                {latest.image_digest && (
-                  <div className="mt-1.5">
-                    <CopyChip
-                      value={latest.image_digest}
-                      label={digest ?? latest.image_digest.slice(0, 24)}
-                    />
-                  </div>
-                )}
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[var(--color-fg-muted)]">
-                  <span className="inline-flex items-center gap-1">
-                    <Clock size={10} className="text-[var(--color-fg-dim)]" />
-                    queued {lastSeen(latest.created_at)}
-                  </span>
-                  {latest.finished_at && <span>finished {lastSeen(latest.finished_at)}</span>}
-                </div>
-              </div>
-              <StatusBadge status={latest.status} />
-            </div>
-            {latest.failure_message && (
-              <p className="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-err)_20%,var(--color-border))] bg-[color-mix(in_srgb,var(--color-err)_6%,transparent)] px-3 py-2 text-[12px] leading-5 text-[var(--color-err)]">
-                {latest.failure_message}
-              </p>
-            )}
-          </div>
-        ) : (
-          <PanelEmpty
-            icon={Rocket}
-            label="No deployments yet"
-            hint="Deploy pushes the current image and starts a new release."
-          />
-        )}
-      </PanelCard>
-
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <QuickLink
-          icon={Rocket}
-          label="Deploys"
-          hint={deployments.data?.length ? `${deployments.data.length} releases` : "view history"}
-          onClick={() => onTabChange("deployments")}
-        />
-        <QuickLink
-          icon={Terminal}
-          label="Logs"
-          hint="runtime output"
-          onClick={() => onTabChange("logs")}
-        />
-        <QuickLink
-          icon={Activity}
-          label="Metrics"
-          hint="CPU · memory · requests"
-          onClick={() => onTabChange("metrics")}
-        />
-      </div>
-
-      <PanelCard
-        title="Recent activity"
-        icon={ScrollText}
-        count={events.data ? `${events.data.length} events` : undefined}
-      >
-        {events.isLoading ? (
-          <PanelLoading label="Loading events…" />
-        ) : recentEvents.length ? (
-          <ul className="space-y-1.5">
-            {recentEvents.map((event) => (
-              <li key={event.id} className="flex items-baseline gap-2 text-[12px]">
-                <span className="tabular shrink-0 text-[10px] text-[var(--color-fg-dim)]">
-                  {lastSeen(event.created_at)}
-                </span>
-                <span
-                  className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.04em]"
-                  style={{ color: levelColor(event.level) }}
-                >
-                  {event.level}
-                </span>
-                <span className="min-w-0 truncate text-[var(--color-fg-muted)]">
-                  {event.message}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="py-2 text-[12px] text-[var(--color-fg-muted)]">No lifecycle events yet.</p>
-        )}
-      </PanelCard>
-
-      {service.status === "failed" && (
-        <div
-          className="rounded-[var(--radius-md)] border px-3 py-2.5 text-[12px] text-[var(--color-err)]"
-          style={{
-            borderColor: `color-mix(in srgb, ${statusColor} 25%, transparent)`,
-            background: `color-mix(in srgb, ${statusColor} 6%, transparent)`,
-          }}
-        >
-          This service is currently failing. Check Logs for runtime errors or Deploys for the
-          failure message.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function QuickLink({
-  icon: Icon,
-  label,
-  hint,
-  onClick,
-}: {
-  icon: typeof Rocket;
-  label: string;
-  hint: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group flex items-center gap-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-row)] px-3 py-2.5 text-left transition-colors hover:border-[var(--color-border-hi)] hover:bg-[var(--color-bg-elev)]"
-    >
-      <Icon size={16} className="shrink-0 text-[var(--color-fg-muted)]" />
-      <div className="min-w-0 flex-1">
-        <div className="text-[12px] font-medium text-[var(--color-fg)]">{label}</div>
-        <div className="truncate text-[10px] text-[var(--color-fg-dim)]">{hint}</div>
-      </div>
-    </button>
-  );
-}
-
-export function EventsPanel({ wid, service }: { wid: string; service: DeployService }) {
-  const events = useDeployEvents(wid, service.id);
-  if (events.isLoading) return <PanelLoading label="Loading events…" />;
-  if (!events.data?.length) {
-    return (
-      <PanelEmpty icon={ScrollText} label="No events yet" hint="Lifecycle events appear here." />
-    );
-  }
-  return (
-    <LogConsole
-      title="Lifecycle events"
-      icon={ScrollText}
-      lines={events.data.map((event) => ({
-        id: event.id,
-        level: event.level,
-        message: event.message,
-        timestamp: event.created_at,
-      }))}
-    />
   );
 }
 
@@ -614,7 +395,7 @@ export function LogsPanel({ wid, service }: { wid: string; service: DeployServic
         <PanelEmpty
           icon={Terminal}
           label="No logs ingested yet"
-          hint="Runtime logs from the service will stream here. Open a deployment on the Deploys tab for lifecycle events."
+          hint="Runtime stdout and stderr from live machines stream here."
         />
       )}
     </div>
@@ -1134,7 +915,7 @@ export function ConfigurationPanel({ wid, service }: { wid: string; service: Dep
   );
 }
 
-function VolumesSection({ wid, service }: { wid: string; service: DeployService }) {
+export function VolumesSection({ wid, service }: { wid: string; service: DeployService }) {
   const volumes = useDeployServiceVolumes(wid, service.id);
   const createVolume = useCreateDeployServiceVolume(wid);
   const updateVolume = useUpdateDeployServiceVolume(wid);

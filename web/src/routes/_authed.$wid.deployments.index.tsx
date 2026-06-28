@@ -19,7 +19,9 @@ import { toast } from "#/lib/toast";
 import { DEPLOYMENTS_ENABLED } from "#/lib/features";
 import {
   type DeployDetailTab,
+  type DeploySettingsSection,
   DEFAULT_DEPLOY_DETAIL_TAB,
+  DEFAULT_DEPLOY_SETTINGS_SECTION,
   deploymentsSearchWithoutService,
   openServiceSearch,
   parseDeploymentsSearch,
@@ -151,6 +153,7 @@ function Canvas() {
   const [serviceOpen, setServiceOpen] = useState(false);
 
   const selectedTab = search.tab ?? DEFAULT_DEPLOY_DETAIL_TAB;
+  const selectedSettingsSection = search.section ?? DEFAULT_DEPLOY_SETTINGS_SECTION;
 
   const selectedService = useMemo(
     () =>
@@ -186,6 +189,23 @@ function Canvas() {
         search: (prev) => ({
           ...prev,
           tab: tab === DEFAULT_DEPLOY_DETAIL_TAB ? undefined : tab,
+          section: tab === "settings" ? prev.section : undefined,
+        }),
+        replace: true,
+      });
+    },
+    [navigate, wid],
+  );
+
+  const setSettingsSection = useCallback(
+    (section: DeploySettingsSection) => {
+      void navigate({
+        to: "/$wid/deployments",
+        params: { wid },
+        search: (prev) => ({
+          ...prev,
+          tab: "settings",
+          section: section === DEFAULT_DEPLOY_SETTINGS_SECTION ? undefined : section,
         }),
         replace: true,
       });
@@ -361,8 +381,10 @@ function Canvas() {
           wid={wid}
           service={selectedService}
           tab={selectedTab}
+          settingsSection={selectedSettingsSection}
           onClose={closeService}
           onTabChange={setTab}
+          onSettingsSectionChange={setSettingsSection}
         />
       )}
 
