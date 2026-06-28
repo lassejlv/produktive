@@ -45,6 +45,7 @@ import {
   useCreateDeployServiceVolume,
   useCreateDeployServiceDomain,
   useDeleteDeployService,
+  useDeleteDeployment,
   useDeleteDeployServiceVolume,
   useDeployBuildLogs,
   useDeployLogs,
@@ -85,6 +86,7 @@ type MetricChartKind = "cpu" | "memory" | "requests";
 export function DeploymentsPanel({ wid, service }: { wid: string; service: DeployService }) {
   const deployments = useDeployments(wid, service.id);
   const cancelDeployment = useCancelDeployment(wid);
+  const deleteDeployment = useDeleteDeployment(wid);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   if (deployments.isLoading) return <PanelLoading label="Loading deployments…" />;
@@ -132,6 +134,10 @@ export function DeploymentsPanel({ wid, service }: { wid: string; service: Deplo
                     cancelDeployment.isPending &&
                     cancelDeployment.variables?.deploymentId === deployment.id
                   }
+                  deletePending={
+                    deleteDeployment.isPending &&
+                    deleteDeployment.variables?.deploymentId === deployment.id
+                  }
                   onSelect={() =>
                     setSelectedId((current) =>
                       current === deployment.id ? null : deployment.id,
@@ -151,6 +157,27 @@ export function DeploymentsPanel({ wid, service }: { wid: string; service: Deplo
                       },
                     )
                   }
+                  onDelete={() => {
+                    if (
+                      !window.confirm(
+                        "Delete this deployment? This removes its history row and destroys any provider instance.",
+                      )
+                    ) {
+                      return;
+                    }
+                    deleteDeployment.mutate(
+                      { serviceId: service.id, deploymentId: deployment.id },
+                      {
+                        onSuccess: () => {
+                          toast.success("Deployment deletion queued");
+                          if (selectedId === deployment.id) {
+                            setSelectedId(null);
+                          }
+                        },
+                        onError: (err) => toast.error((err as Error).message),
+                      },
+                    );
+                  }}
                 />
               </div>
             </div>
@@ -169,14 +196,18 @@ function DeploymentRow({
   deployment,
   selected,
   cancelPending,
+  deletePending,
   onSelect,
   onCancel,
+  onDelete,
 }: {
   deployment: Deployment;
   selected: boolean;
   cancelPending?: boolean;
+  deletePending?: boolean;
   onSelect: () => void;
   onCancel: () => void;
+  onDelete: () => void;
 }) {
   const color = DEPLOY_STATUS_COLOR[deployment.status];
   const active = deployStatusActive(deployment.status);
@@ -243,6 +274,17 @@ function DeploymentRow({
               <span className="hidden sm:inline">Cancel</span>
             </Button>
           )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={deletePending}
+            onClick={onDelete}
+            className="text-[var(--color-err)] hover:bg-[color-mix(in_srgb,var(--color-err)_10%,transparent)] hover:text-[var(--color-err)]"
+          >
+            {deletePending ? <Spinner className="size-3" /> : <Trash2 size={13} />}
+            <span className="hidden sm:inline">Delete</span>
+          </Button>
           <StatusBadge status={deployment.status} />
           <button
             type="button"

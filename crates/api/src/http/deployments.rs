@@ -70,6 +70,10 @@ pub fn routes(state: AppState) -> Router<AppState> {
             "/services/{service_id}/deployments/{deployment_id}/cancel",
             post(cancel_deployment),
         )
+        .route(
+            "/services/{service_id}/deployments/{deployment_id}",
+            delete(delete_deployment),
+        )
         .route("/services/{service_id}/rollback", post(rollback_service))
         .route("/services/{service_id}/stop", post(stop_service))
         .route(
@@ -1655,6 +1659,90 @@ pub async fn cancel_deployment(
 }
 
 #[utoipa::path(
+    delete,
+    path = "/api/workspaces/{wid}/deployments/services/{service_id}/deployments/{deployment_id}",
+    params(
+        ("wid" = String, Path, description = "workspace id or slug"),
+        ("service_id" = Uuid, Path, description = "deployment service id"),
+        ("deployment_id" = Uuid, Path, description = "deployment id"),
+    ),
+    responses((status = 200, body = crate::http::workspaces::OkResponse)),
+    security(("bearerAuth" = [])),
+    tag = "deployments"
+)]
+pub async fn delete_deployment(
+    State(state): State<AppState>,
+    Extension(m): Extension<Membership>,
+    Path(path): Path<ServiceDeploymentPath>,
+) -> ApiResult<Json<crate::http::workspaces::OkResponse>> {
+    m.require_owner()?;
+    ensure_service(&state, m.workspace.id, path.service_id).await?;
+    let now = Utc::now().fixed_offset();
+    let deleted = state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deployments
+            SET status = $4,
+                deleted_at = COALESCE(deleted_at, $5),
+                finished_at = COALESCE(finished_at, $5),
+                updated_at = $5
+            WHERE workspace_id = $1
+              AND service_id = $2
+              AND id = $3
+              AND deleted_at IS NULL
+            "#,
+            [
+                m.workspace.id.into(),
+                path.service_id.into(),
+                path.deployment_id.into(),
+                DeploymentStatus::Stopped.code().into(),
+                now.into(),
+            ],
+        ))
+        .await?;
+    if deleted.rows_affected() == 0 {
+        return Err(ApiError::not_found("deployment not found"));
+    }
+    state
+        .db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            UPDATE deploy_instances
+            SET status = $4,
+                stopped_at = COALESCE(stopped_at, $5),
+                updated_at = $5
+            WHERE workspace_id = $1
+              AND service_id = $2
+              AND deployment_id = $3
+              AND stopped_at IS NULL
+            "#,
+            [
+                m.workspace.id.into(),
+                path.service_id.into(),
+                path.deployment_id.into(),
+                DeploymentStatus::Stopped.code().into(),
+                now.into(),
+            ],
+        ))
+        .await?;
+    insert_event(
+        &state,
+        m.workspace.id,
+        path.service_id,
+        Some(path.deployment_id),
+        "warn",
+        "deployment deletion requested",
+        json!({}),
+    )
+    .await?;
+    sync_service_status_from_deployments(&state, m.workspace.id, path.service_id).await?;
+    Ok(Json(crate::http::workspaces::OkResponse { ok: true }))
+}
+
+#[utoipa::path(
     post,
     path = "/api/workspaces/{wid}/deployments/services/{service_id}/rollback",
     params(
@@ -1707,6 +1795,7 @@ pub async fn rollback_service(
         FROM deployments
         WHERE workspace_id = $1
           AND service_id = $2
+          AND deleted_at IS NULL
           AND status IN (4, 5, 9)
           AND failure_message IS NULL
           AND provider_deployment_id IS NOT NULL
@@ -2350,6 +2439,7 @@ async fn service_rows(
             SELECT d.created_at, d.image_digest
             FROM deployments d
             WHERE d.workspace_id = s.workspace_id AND d.service_id = s.id
+              AND d.deleted_at IS NULL
             ORDER BY d.created_at DESC
             LIMIT 1
         ) ld ON true
@@ -2743,6 +2833,7 @@ async fn deployment_rows(
                failure_message, url, started_at, finished_at, created_at, updated_at
         FROM deployments
         WHERE workspace_id = $1 AND service_id = $2
+          AND deleted_at IS NULL
         ORDER BY created_at DESC
         LIMIT $3
         "#,
@@ -2783,6 +2874,7 @@ async fn load_deployment(
                failure_message, url, started_at, finished_at, created_at, updated_at
         FROM deployments
         WHERE workspace_id = $1 AND service_id = $2 AND id = $3
+          AND deleted_at IS NULL
         LIMIT 1
         "#,
         [workspace_id.into(), service_id.into(), deployment_id.into()],
@@ -2811,6 +2903,7 @@ async fn sync_service_status_from_deployments(
                     FROM deployments d
                     WHERE d.workspace_id = s.workspace_id
                       AND d.service_id = s.id
+                      AND d.deleted_at IS NULL
                       AND d.status = $3
                 ) THEN $3
                 WHEN s.disabled_at IS NOT NULL THEN $4
@@ -2820,6 +2913,7 @@ async fn sync_service_status_from_deployments(
                         FROM deployments d
                         WHERE d.workspace_id = s.workspace_id
                           AND d.service_id = s.id
+                          AND d.deleted_at IS NULL
                           AND d.status <> $5
                         ORDER BY d.created_at DESC
                         LIMIT 1
@@ -3237,7 +3331,9 @@ async fn active_deployment_count(state: &AppState, workspace_id: Uuid) -> ApiRes
             r#"
             SELECT COUNT(*)::BIGINT AS count
             FROM deployments
-            WHERE workspace_id = $1 AND status IN (0, 1, 2, 3, 4, 5, 7, 10)
+            WHERE workspace_id = $1
+              AND deleted_at IS NULL
+              AND status IN (0, 1, 2, 3, 4, 5, 7, 10)
             "#,
             [workspace_id.into()],
         ))

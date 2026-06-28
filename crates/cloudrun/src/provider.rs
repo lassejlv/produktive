@@ -364,9 +364,22 @@ fn map_status(service: &ServiceResponse, our_revision: &str) -> DeploymentStatus
         .terminal_condition
         .as_ref()
         .and_then(|condition| condition.state.as_deref())
+        .or_else(|| {
+            service
+                .conditions
+                .iter()
+                .find(|condition| condition.type_.as_deref() == Some("Ready"))
+                .and_then(|condition| condition.state.as_deref())
+        })
         .unwrap_or("");
-    let ready_is_ours = service.latest_ready_revision.as_deref() == Some(our_revision);
-    let created_is_ours = service.latest_created_revision.as_deref() == Some(our_revision);
+    let ready_is_ours = service
+        .latest_ready_revision
+        .as_deref()
+        .is_some_and(|revision| revision_matches(revision, our_revision));
+    let created_is_ours = service
+        .latest_created_revision
+        .as_deref()
+        .is_some_and(|revision| revision_matches(revision, our_revision));
     match state {
         "CONDITION_SUCCEEDED" if ready_is_ours => DeploymentStatus::Live,
         // Only surface a failure for the revision we just created; a failure on a
@@ -374,6 +387,10 @@ fn map_status(service: &ServiceResponse, our_revision: &str) -> DeploymentStatus
         "CONDITION_FAILED" if created_is_ours => DeploymentStatus::Failed,
         _ => DeploymentStatus::Provisioning,
     }
+}
+
+fn revision_matches(value: &str, revision: &str) -> bool {
+    value == revision || value.rsplit('/').next() == Some(revision)
 }
 
 fn instance(
@@ -518,8 +535,12 @@ mod tests {
     fn maps_terminal_conditions_to_status() {
         let revision = "svc-abcd1234";
         let mut service = ServiceResponse {
-            latest_ready_revision: Some(revision.to_owned()),
-            latest_created_revision: Some(revision.to_owned()),
+            latest_ready_revision: Some(format!(
+                "projects/test/locations/europe-west4/services/svc/revisions/{revision}"
+            )),
+            latest_created_revision: Some(format!(
+                "projects/test/locations/europe-west4/services/svc/revisions/{revision}"
+            )),
             ..Default::default()
         };
         service.terminal_condition = Some(crate::models::Condition {
@@ -548,6 +569,23 @@ mod tests {
             map_status(&service, revision),
             DeploymentStatus::Provisioning
         );
+    }
+
+    #[test]
+    fn maps_ready_condition_to_live_without_terminal_condition() {
+        let revision = "svc-abcd1234";
+        let service = ServiceResponse {
+            latest_ready_revision: Some(format!(
+                "projects/test/locations/europe-west4/services/svc/revisions/{revision}"
+            )),
+            conditions: vec![crate::models::Condition {
+                type_: Some("Ready".into()),
+                state: Some("CONDITION_SUCCEEDED".into()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert_eq!(map_status(&service, revision), DeploymentStatus::Live);
     }
 
     #[tokio::test]

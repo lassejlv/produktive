@@ -712,6 +712,27 @@ export function useCancelDeployment(wid: string) {
   });
 }
 
+export function useDeleteDeployment(wid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      serviceId,
+      deploymentId,
+    }: {
+      serviceId: string;
+      deploymentId: string;
+    }) =>
+      api.del<OkResponse>(
+        `/workspaces/${wid}/deployments/services/${serviceId}/deployments/${deploymentId}`,
+      ),
+    onSuccess: (_response, input) => {
+      qc.invalidateQueries({ queryKey: ["deployments", wid, "services"] });
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId] });
+      qc.invalidateQueries({ queryKey: ["deployments", wid, input.serviceId, "events"] });
+    },
+  });
+}
+
 export function useStopDeployService(wid: string) {
   const qc = useQueryClient();
   return useMutation({

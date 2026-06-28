@@ -468,6 +468,9 @@ async fn main() -> Result<()> {
         if let Err(error) = cleanup_cancelled_deployments(&db, &cipher, &provider).await {
             tracing::warn!(error = ?error, "cleanup cancelled deployments failed");
         }
+        if let Err(error) = cleanup_deleted_deployments(&db, &cipher, &provider).await {
+            tracing::warn!(error = ?error, "cleanup deleted deployments failed");
+        }
         if let Err(error) = stop_disabled_services(&db, &cipher, &provider).await {
             tracing::warn!(error = ?error, "stop disabled deployment services failed");
         }
@@ -643,6 +646,7 @@ async fn claim_next(
             SELECT d.id
             FROM deployments d
             WHERE d.status = $1
+              AND d.deleted_at IS NULL
               -- Only claim deployments this worker can route to a provider; jobs
               -- for an unsupported provider are left for a capable worker.
               AND d.provider = ANY($8)
@@ -659,6 +663,7 @@ async fn claim_next(
                 WHERE active.workspace_id = d.workspace_id
                   AND active.service_id = d.service_id
                   AND active.id <> d.id
+                  AND active.deleted_at IS NULL
                   AND active.status IN ($2, $3, $4, $5, $6, $7)
               )
             ORDER BY d.created_at ASC
@@ -776,6 +781,7 @@ async fn claim_and_spawn_builds(
         INNER JOIN deploy_services s
             ON s.workspace_id = d.workspace_id AND s.id = d.service_id
         WHERE d.status = $1
+          AND d.deleted_at IS NULL
           AND s.disabled_at IS NULL
           AND s.deleted_at IS NULL
           -- Only build for a provider this worker can publish to (Cloud Run builds
@@ -1433,6 +1439,7 @@ async fn refresh_inflight(
         SELECT id, workspace_id, service_id, provider, image, image_digest, provider_instance_id, config_snapshot
         FROM deployments
         WHERE status IN ($1, $2, $3, $4)
+          AND deleted_at IS NULL
           AND provider_instance_id IS NOT NULL
         ORDER BY updated_at ASC
         LIMIT 10
@@ -1510,6 +1517,7 @@ async fn cleanup_cancelled_deployments(
         SELECT id, workspace_id, service_id, provider, image, image_digest, provider_instance_id, config_snapshot
         FROM deployments
         WHERE status = $1
+          AND deleted_at IS NULL
           AND provider_instance_id IS NOT NULL
         ORDER BY updated_at ASC
         LIMIT 20
@@ -1541,6 +1549,36 @@ async fn cleanup_cancelled_deployments(
             [job.id.into(), DeploymentStatus::Cancelled.code().into()],
         ))
         .await?;
+    }
+    Ok(())
+}
+
+async fn cleanup_deleted_deployments(
+    db: &DatabaseConnection,
+    cipher: &SecretCipher,
+    provider: &impl DeployProvider,
+) -> Result<()> {
+    let rows = DeploymentJob::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT id, workspace_id, service_id, provider, image, image_digest, provider_instance_id, config_snapshot
+        FROM deployments
+        WHERE deleted_at IS NOT NULL
+        ORDER BY deleted_at ASC
+        LIMIT 20
+        "#,
+        [],
+    ))
+    .all(db)
+    .await?;
+
+    for job in rows {
+        if job.provider_instance_id.is_some() {
+            destroy_provider_deployment(db, cipher, provider, &job, "deleted deployment destroyed")
+                .await?;
+            continue;
+        }
+        hard_delete_deployment(db, job.workspace_id, job.service_id, job.id).await?;
     }
     Ok(())
 }
@@ -1781,8 +1819,9 @@ async fn stop_superseded_deployments(
         WHERE workspace_id = $1
           AND service_id = $2
           AND id <> $3
+          AND deleted_at IS NULL
           AND provider_instance_id IS NOT NULL
-          AND created_at < (SELECT created_at FROM deployments WHERE id = $3)
+          AND created_at < (SELECT created_at FROM deployments WHERE id = $3 AND deleted_at IS NULL)
         ORDER BY created_at ASC
         "#,
         [
@@ -1825,6 +1864,7 @@ async fn cleanup_superseded_provider_deployments(
                    id, workspace_id, service_id, created_at
             FROM deployments
             WHERE provider_instance_id IS NOT NULL
+              AND deleted_at IS NULL
               AND status IN ($1, $2)
             ORDER BY workspace_id, service_id, created_at DESC
         )
@@ -1833,6 +1873,7 @@ async fn cleanup_superseded_provider_deployments(
         INNER JOIN keeper
             ON keeper.workspace_id = d.workspace_id AND keeper.service_id = d.service_id
         WHERE d.id <> keeper.id
+          AND d.deleted_at IS NULL
           AND d.provider_instance_id IS NOT NULL
           AND d.created_at < keeper.created_at
         ORDER BY d.created_at ASC
@@ -3078,6 +3119,27 @@ async fn delete_volume_row(db: &DatabaseConnection, volume_id: Uuid) -> Result<(
     Ok(())
 }
 
+async fn hard_delete_deployment(
+    db: &DatabaseConnection,
+    workspace_id: Uuid,
+    service_id: Uuid,
+    deployment_id: Uuid,
+) -> Result<()> {
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        DELETE FROM deployments
+        WHERE workspace_id = $1
+          AND service_id = $2
+          AND id = $3
+          AND deleted_at IS NOT NULL
+        "#,
+        [workspace_id.into(), service_id.into(), deployment_id.into()],
+    ))
+    .await?;
+    Ok(())
+}
+
 async fn hard_delete_service(
     db: &DatabaseConnection,
     workspace_id: Uuid,
@@ -3243,6 +3305,7 @@ async fn update_deployment_from_provider(
             updated_at = now()
         WHERE id = $1
           AND status <> $9
+          AND deleted_at IS NULL
         "#,
         [
             job.id.into(),
@@ -3275,6 +3338,7 @@ async fn update_service_after_deploy(
                 SELECT provider_metadata->>'app_name'
                 FROM deployments
                 WHERE service_id = $2
+                  AND deleted_at IS NULL
                 ORDER BY updated_at DESC
                 LIMIT 1
             )),
@@ -3282,6 +3346,7 @@ async fn update_service_after_deploy(
                 SELECT url
                 FROM deployments
                 WHERE service_id = $2
+                  AND deleted_at IS NULL
                 ORDER BY updated_at DESC
                 LIMIT 1
             )),

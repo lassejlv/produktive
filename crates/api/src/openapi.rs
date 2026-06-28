@@ -65,6 +65,7 @@ use crate::state::AppState;
         crate::http::deployments::list_deployments,
         crate::http::deployments::create_deployment,
         crate::http::deployments::cancel_deployment,
+        crate::http::deployments::delete_deployment,
         crate::http::deployments::rollback_service,
         crate::http::deployments::stop_service,
         crate::http::deployments::list_service_domains,
