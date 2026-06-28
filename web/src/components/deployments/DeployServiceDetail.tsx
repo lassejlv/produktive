@@ -1,4 +1,4 @@
-import { Braces, ExternalLink, Rocket, Settings, Terminal } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { X } from "lucide-react";
 import { Segmented } from "#/components/Segmented";
 import { Button } from "#/components/ui/button";
@@ -133,10 +133,10 @@ export function DeployServiceDetail({
             onChange={onTabChange}
             size="sm"
             options={[
-              { value: "deployments", label: "Deployments", icon: Rocket },
-              { value: "variables", label: "Variables", icon: Braces },
-              { value: "logs", label: "Logs", icon: Terminal },
-              { value: "settings", label: "Settings", icon: Settings },
+              { value: "deployments", label: "Deployments" },
+              { value: "variables", label: "Variables" },
+              { value: "logs", label: "Logs" },
+              { value: "settings", label: "Settings" },
             ]}
           />
         </div>
