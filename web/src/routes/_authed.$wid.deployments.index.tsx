@@ -114,7 +114,13 @@ function CanvasViewportSync({
       const node = getNode(serviceId);
       if (!node) return;
       const zoom = Math.min(getZoom(), 1);
-      const cx = node.position.x + CANVAS_CARD_WIDTH / 2;
+      let offsetX = 0;
+      if (railOpen) {
+        const rail = document.querySelector(".deploy-service-rail");
+        const railWidth = rail?.getBoundingClientRect().width ?? 0;
+        offsetX = railWidth > 0 ? railWidth / 2 / zoom : 0;
+      }
+      const cx = node.position.x + CANVAS_CARD_WIDTH / 2 + offsetX;
       const cy = node.position.y + CANVAS_CARD_HEIGHT / 2;
       setCenter(cx, cy, { zoom, duration: 450 });
     };
@@ -302,55 +308,53 @@ function Canvas() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
-      <div className="relative min-h-0 min-w-0 flex-1">
-        {!selectedService && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 hidden text-center text-[11px] text-[var(--color-canvas-dim)] md:block">
-            Drag cards to arrange · drag the background to pan · click a card to open it
-          </div>
+    <div className="relative min-h-0 flex-1 overflow-hidden">
+      {!selectedService && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 hidden text-center text-[11px] text-[var(--color-canvas-dim)] md:block">
+          Drag cards to arrange · drag the background to pan · click a card to open it
+        </div>
+      )}
+      <ReactFlow
+        className="h-full w-full"
+        nodes={nodes}
+        nodeTypes={NODE_TYPES}
+        onNodesChange={onNodesChange}
+        onNodeClick={onNodeClick}
+        snapToGrid
+        snapGrid={[24, 24]}
+        minZoom={0.4}
+        maxZoom={2}
+        panOnDrag={[1, 2]}
+        selectionOnDrag
+        panOnScroll
+        zoomOnPinch
+        proOptions={{ hideAttribution: true }}
+        nodesConnectable={false}
+        edgesFocusable={false}
+        nodeDragThreshold={1}
+        elevateNodesOnSelect={false}
+      >
+        <CanvasViewportSync
+          serviceId={search.service ?? null}
+          railOpen={!!selectedService}
+          nodesReady={nodes.length > 0}
+        />
+        <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
+        <Controls position="bottom-left" showInteractive={false} />
+        {approved && !selectedService && (
+          <Panel position="top-right" className="m-3">
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={() => setServiceOpen(true)}
+              className="h-[30px] rounded-full px-3 text-[12px] shadow-[var(--shadow-md)]"
+            >
+              <Plus size={13} /> New service
+            </Button>
+          </Panel>
         )}
-        <ReactFlow
-          className="h-full w-full"
-            nodes={nodes}
-            nodeTypes={NODE_TYPES}
-            onNodesChange={onNodesChange}
-            onNodeClick={onNodeClick}
-            snapToGrid
-            snapGrid={[24, 24]}
-            minZoom={0.4}
-            maxZoom={2}
-            panOnDrag={[1, 2]}
-            selectionOnDrag
-            panOnScroll
-            zoomOnPinch
-            proOptions={{ hideAttribution: true }}
-            nodesConnectable={false}
-            edgesFocusable={false}
-            nodeDragThreshold={1}
-            elevateNodesOnSelect={false}
-          >
-            <CanvasViewportSync
-              serviceId={search.service ?? null}
-              railOpen={!!selectedService}
-              nodesReady={nodes.length > 0}
-            />
-            <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
-            <Controls position="bottom-left" showInteractive={false} />
-            {approved && (
-              <Panel position="top-right" className="m-3">
-                <Button
-                  type="button"
-                  variant="default"
-                  size="sm"
-                  onClick={() => setServiceOpen(true)}
-                  className="h-[30px] rounded-full px-3 text-[12px] shadow-[var(--shadow-md)]"
-                >
-                  <Plus size={13} /> New service
-                </Button>
-              </Panel>
-            )}
-          </ReactFlow>
-      </div>
+      </ReactFlow>
 
       {selectedService && (
         <DeployServiceRail

@@ -4,7 +4,7 @@ import { cn } from "#/lib/cn";
 import { DeployServiceDetail } from "./DeployServiceDetail";
 
 /**
- * Inline service detail rail — inset floating panel beside the canvas (Railway-style).
+ * Service detail panel overlaid on the canvas (Railway-style) — canvas stays full bleed behind.
  */
 export function DeployServiceRail({
   wid,
@@ -22,12 +22,12 @@ export function DeployServiceRail({
   return (
     <aside
       className={cn(
-        "deploy-service-rail flex min-h-0 shrink-0 flex-col overflow-hidden",
+        "deploy-service-rail flex flex-col overflow-hidden",
         "border border-[var(--color-border)] bg-[var(--color-bg-elev)]",
         "max-md:fixed max-md:inset-y-0 max-md:right-0 max-md:z-30 max-md:w-full max-md:max-w-lg",
         "max-md:border-l max-md:shadow-[var(--shadow-pop)]",
-        "md:mb-3 md:mr-3 md:mt-3 md:self-start md:w-[min(42rem,50%)] md:max-h-[calc(100%-1.5rem)]",
-        "md:rounded-[var(--radius-lg)] md:shadow-[var(--shadow-md)]",
+        "md:absolute md:bottom-3 md:right-3 md:top-3 md:z-20 md:min-h-0",
+        "md:w-[min(42rem,46%)] md:rounded-[var(--radius-lg)] md:shadow-[var(--shadow-pop)]",
       )}
       aria-label={`${service.name} details`}
     >
