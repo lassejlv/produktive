@@ -175,8 +175,8 @@ function Canvas() {
         const position = existing
           ? existing.position
           : {
-              x: service.canvas_x || (i % 4) * 320 + 60,
-              y: service.canvas_y || Math.floor(i / 4) * 200 + 60,
+              x: service.canvas_x || (i % 5) * 248 + 48,
+              y: service.canvas_y || Math.floor(i / 5) * 96 + 48,
             };
         i += 1;
         return {
@@ -545,7 +545,7 @@ function CanvasToolbar({
 
 const ServiceNode = memo(function ServiceNode(props: NodeProps) {
   const service = (props.data as ServiceNodeData).service;
-  return <DeployServiceCard service={service} canvas selected={props.selected} />;
+  return <DeployServiceCard service={service} selected={props.selected} />;
 });
 
 const NODE_TYPES = { service: ServiceNode };

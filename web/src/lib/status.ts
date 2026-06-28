@@ -74,6 +74,34 @@ export function deployStatusCancellable(status: DeployStatus): boolean {
   return deployStatusPending(status) || status === "healthy";
 }
 
+/** Short, Railway-style labels for canvas service tiles. */
+export function deployCanvasStatusLabel(status: DeployStatus): string {
+  switch (status) {
+    case "live":
+    case "healthy":
+      return "Active";
+    case "building":
+    case "queued":
+    case "provisioning":
+    case "pulling":
+    case "starting":
+      return "Building";
+    case "failed":
+    case "build_failed":
+      return "Crashed";
+    case "stopped":
+      return "Stopped";
+    case "cancelled":
+      return "Cancelled";
+    case "rolling_back":
+      return "Rolling back";
+    case "rolled_back":
+      return "Rolled back";
+    default:
+      return "Unknown";
+  }
+}
+
 export const DEPLOY_GLOW_CLASS: Record<DeployStatus, string> = {
   live: "glow-up",
   healthy: "glow-up",
