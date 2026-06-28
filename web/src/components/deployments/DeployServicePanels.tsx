@@ -1231,7 +1231,7 @@ export function DomainsPanel({ wid, service }: { wid: string; service: DeploySer
       <PanelEmpty
         icon={Globe}
         label="Deploy before adding domains"
-        hint="Fly needs a provisioned app before Produktive can request certificates."
+        hint="Deploy once before Produktive can request certificates."
       />
     );
   }
@@ -1264,7 +1264,7 @@ export function DomainsPanel({ wid, service }: { wid: string; service: DeploySer
         <PanelEmpty
           icon={Globe}
           label="No custom domains"
-          hint="Add a hostname to request a Fly certificate and DNS records."
+          hint="Add a hostname to request a provider certificate and DNS records."
         />
       ) : (
         <div className="space-y-3">
@@ -1376,7 +1376,7 @@ function DomainRow({
         </div>
       ) : (
         <p className="mt-3 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-bg-sunken)] px-3 py-2 text-[12px] text-[var(--color-fg-muted)]">
-          Waiting for Fly DNS requirements.
+          Waiting for DNS requirements.
         </p>
       )}
 
@@ -1443,7 +1443,7 @@ type DnsRecord = {
   value: string;
 };
 
-type FlyDnsRequirements = {
+type DnsRequirements = {
   a?: string[];
   aaaa?: string[];
   cname?: string;
@@ -1452,7 +1452,7 @@ type FlyDnsRequirements = {
 };
 
 function dnsRecords(domain: DeployServiceDomain): DnsRecord[] {
-  const req = flyDnsRequirements(domain.dns_requirements);
+  const req = dnsRequirements(domain.dns_requirements);
   const records: DnsRecord[] = [];
   if (req.cname) {
     records.push({ type: "CNAME", name: domain.hostname, value: req.cname });
@@ -1541,9 +1541,9 @@ function absoluteDnsName(value: string): string {
   return trimmed.endsWith(".") ? trimmed : `${trimmed}.`;
 }
 
-function flyDnsRequirements(value: unknown): FlyDnsRequirements {
+function dnsRequirements(value: unknown): DnsRequirements {
   if (!value || typeof value !== "object") return {};
-  return value as FlyDnsRequirements;
+  return value as DnsRequirements;
 }
 
 function validationErrors(value: unknown): string[] {

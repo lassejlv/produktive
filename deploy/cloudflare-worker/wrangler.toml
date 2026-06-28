@@ -1,4 +1,6 @@
 # Produktive custom-domain edge proxy — Cloudflare for SaaS "Workers as origin".
+# Handles status-page domains through the app origin and deployment domains by
+# resolving the hostname to a provider service URL.
 # Deploy:  cd deploy/cloudflare-worker && wrangler deploy
 # Tail:    wrangler tail
 
@@ -7,13 +9,13 @@ main = "worker.js"
 compatibility_date = "2026-06-01"
 
 # Smoke-test URL: produktive-custom-domains.<your-subdomain>.workers.dev
-# Lets us verify the Host-rewrite/forwarding logic BEFORE touching production routing.
+# Lets us verify the Host-rewrite/provider-forwarding logic before touching production routing.
 workers_dev = true
 
 # PRODUCTION ROUTE — LIVE (cutover complete). `*/*` catches the whole zone; the Worker
 # passes produktive.app + every *.produktive.app subdomain straight through and only
-# rewrites external customer domains. Cloudflare's Worker loop-prevention sends the
-# in-zone subrequest to the origin, so the main app does not loop.
+# resolves/re-writes external customer domains. Cloudflare's Worker loop-prevention
+# sends the in-zone app-origin subrequest to the origin, so the main app does not loop.
 routes = [
   { pattern = "*/*", zone_name = "produktive.app" },
 ]
@@ -23,11 +25,9 @@ routes = [
 APP_HOST = "produktive.app"
 # The app's own zone. produktive.app + every *.produktive.app subdomain (cdn, www,
 # the SaaS records, future subdomains) passes through untouched; only external
-# customer domains get rewritten to the app origin.
+# customer domains are resolved as deploy domains or rewritten to the app origin.
 APP_ZONE = "produktive.app"
-# Origin the Worker connects to. MUST be produktive.app: Cloudflare Workers force the
-# outgoing Host header to match the fetch URL's hostname, so you cannot point this at a
-# *.up.railway.app host (Railway then 404s on the wrong Host). produktive.app is proxied,
-# and Cloudflare's Worker loop-prevention sends the in-zone subrequest to the origin
-# rather than re-invoking this Worker, so the */* route does not loop.
+# App/API origin the Worker connects to for hostname resolution and status-page
+# fallback. No new env is needed for deployment domains; the API returns the target
+# provider URL (for example, Cloud Run *.run.app) per hostname.
 RAILWAY_ORIGIN_HOST = "produktive.app"

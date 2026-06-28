@@ -1,19 +1,22 @@
 # Custom domains via Cloudflare for SaaS — setup runbook
 
-This replaces the self-hosted Caddy on-demand-TLS proxy (`deploy/caddy/`). Cloudflare
-issues and **auto-renews** a TLS cert per customer hostname; a Cloudflare **Worker**
-(`worker.js`) forwards the request to Railway, rewriting `Host` exactly like Caddy did.
+This replaces the self-hosted Caddy on-demand-TLS proxy (`deploy/caddy/`) for status
+domains and also fronts deployment custom domains. Cloudflare issues and
+**auto-renews** a TLS cert per customer hostname; a Cloudflare **Worker**
+(`worker.js`) first asks the API whether the hostname is an active deployment domain.
+If it is, the Worker proxies directly to that provider service URL, such as a Cloud
+Run `*.run.app` URL. Otherwise it falls back to the status-page app-origin path,
+rewriting `Host` exactly like Caddy did.
 
 You can run this **in parallel with Caddy** during testing — the test domain points at a
 **new** CNAME target, so existing custom domains keep flowing through Caddy until you
 deliberately cut over.
 
 ```
-status.acme.com ─CNAME→ cname.produktive.app ─→ [Cloudflare edge: TLS + */* Worker]
-                                                        │ Host: produktive.app
-                                                        │ X-Forwarded-Host: status.acme.com
-                                                        ▼
-                                                 Railway origin → Axum app
+app.acme.com ─CNAME→ cname.produktive.app ─→ [Cloudflare edge: TLS + */* Worker]
+                                                    │ GET /api/public/deployments/by-domain/app.acme.com
+                                                    ├─ deployment domain → Cloud Run / provider URL
+                                                    └─ status domain     → app origin with X-Forwarded-Host
 ```
 
 Customers add **one** DNS record (HTTP DCV validates and renews automatically for
@@ -26,8 +29,8 @@ proxied hostnames — no `_acme-challenge`, no TXT).
 - `produktive.app` is on Cloudflare (it is).
 - `bun` installed (you already use it); we call wrangler via `bunx`.
 - Your **Zone ID** (Cloudflare dashboard → `produktive.app` → Overview → API section).
-- The Railway **origin host** for the API service (Railway → API service → Settings →
-  Networking → Public Networking → the `*.up.railway.app` domain).
+- The app/API origin host used by the Worker to resolve deployment domains and serve
+  status-page fallbacks.
 
 Set shell vars for the API calls below:
 
@@ -80,7 +83,7 @@ Save it as `CF_API_TOKEN` (this is what the backend will use later, too).
 
 ## Step 5 — Deploy the Worker + bind the route
 
-1. Edit `wrangler.toml`: set `RAILWAY_ORIGIN_HOST` to your `*.up.railway.app` host.
+1. Edit `wrangler.toml`: set `RAILWAY_ORIGIN_HOST` to the app/API origin host.
 2. Deploy:
    ```sh
    cd deploy/cloudflare-worker
@@ -132,8 +135,8 @@ curl -sS -i https://status.<yourtestdomain>/api/health
 # "application not found" page (that would mean Host wasn't rewritten correctly).
 ```
 
-**6e. Validate the FULL page render** (proves `X-Forwarded-Host` resolution end-to-end).
-Because the backend isn't wired to Cloudflare yet, insert a temporary `custom_domains`
+**6e. Validate status-domain fallback** (proves `X-Forwarded-Host` resolution end-to-end).
+If you are testing a status page hostname manually, insert a temporary `custom_domains`
 row mapping the test host to a workspace whose status page is enabled:
 
 ```sql
@@ -153,11 +156,16 @@ should return that workspace's summary. **Clean up** the row afterward:
 DELETE FROM custom_domains WHERE hostname = 'status.<yourtestdomain>';
 ```
 
-> Note: `summary.json` currently has a latent host-resolution bug (`summary_by_host`
-> reads only `Host`, which the Worker rewrites). If it 404s while the page renders fine,
-> that's the known bug to fix in the backend slice (shared `request_host` helper).
+**6f. Validate a deployment domain** (proves the hostname resolver and provider proxy):
 
-**6f. Tidy up the test hostname:**
+1. Deploy a Cloud Run-backed service once so it has a provider URL.
+2. Add the test hostname in Produktive Deployments -> Domains.
+3. Point the hostname CNAME at `cname.produktive.app`.
+4. Wait until the domain is active, then open `https://status.<yourtestdomain>/`.
+   The Worker should resolve `/api/public/deployments/by-domain/<host>` and proxy to
+   the service URL returned by the API.
+
+**6g. Tidy up the test hostname:**
 
 ```sh
 cf -X DELETE "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/custom_hostnames/<id>"
@@ -167,19 +175,17 @@ cf -X DELETE "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/custom_host
 
 ## Troubleshooting
 
-- **Railway "application not found" / wrong app:** the `Host` rewrite didn't take. Confirm
-  `RAILWAY_ORIGIN_HOST` is the API service's `*.up.railway.app` host and that
-  `produktive.app` is a configured custom domain on that Railway service. If Workers won't
-  forward a custom `Host` to the railway.app origin, use the **grey-cloud alternative**:
-  create `origin.produktive.app` as a **DNS-only (grey)** record to Railway and set
-  `RAILWAY_ORIGIN_HOST=origin.produktive.app` (Railway must have that as a custom domain).
+- **Status fallback hits the wrong app:** the app-origin rewrite did not reach the API
+  service. Confirm `RAILWAY_ORIGIN_HOST` points at the app/API origin and that
+  `APP_HOST` is the host the app origin expects.
+- **Deployment domain hits the wrong app:** confirm `/api/public/deployments/by-domain/<host>`
+  returns the provider URL you expect, then check the service's provider URL directly.
 - **Infinite loop / 1042 errors:** the Worker is fetching a host still inside this zone that
-  re-triggers `*/*`. The origin must be outside the zone (the `*.up.railway.app` host) or a
-  grey-clouded record.
+  re-triggers `*/*`. Use the app origin host from `wrangler.toml`; if you switch to an
+  alternate in-zone origin, make it DNS-only or verify Cloudflare loop prevention still sends
+  that subrequest to origin.
 - **Cert stuck `pending_validation`:** DNS hasn't propagated, or the hostname isn't yet
   pointing at `cname.produktive.app`. HTTP DCV needs the proxied CNAME live first.
-- **`summary.json` 404 on a custom domain but page renders:** expected until the backend
-  `request_host` fix lands (see the migration plan).
 
 ## Rollback
 

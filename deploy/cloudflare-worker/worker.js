@@ -2,11 +2,14 @@
  * Produktive — custom-domain edge proxy ("Workers as origin" for Cloudflare for SaaS).
  *
  * Replaces the self-hosted Caddy on-demand-TLS box (deploy/caddy/). Cloudflare for
- * SaaS terminates TLS for each registered custom hostname (e.g. status.acme.com)
- * using a certificate Cloudflare issues and auto-renews. This Worker — bound to a
- * zone-wide Worker route on the produktive.app zone — then forwards the request to
- * the Railway origin, rewriting Host so Railway routes it and preserving the real
- * hostname so the Axum backend can resolve the right status page.
+ * SaaS terminates TLS for each registered custom hostname using a certificate
+ * Cloudflare issues and auto-renews. This Worker is bound to a zone-wide route on
+ * produktive.app and handles two custom-domain products:
+ *
+ * - deployment domains: resolve the hostname through the API, then proxy directly
+ *   to the provider service URL (Cloud Run `*.run.app`, etc.).
+ * - status-page domains: fall back to the main app origin, rewriting Host so the
+ *   backend can resolve the public status page from X-Forwarded-Host.
  *
  * Header contract — MUST match the backend host resolution
  * (crates/api/src/http/spa_meta.rs `host_domain`, and the shared `request_host`
@@ -35,26 +38,84 @@ export default {
       return fetch(request);
     }
 
-    // Custom-domain traffic -> Railway origin, with Host rewritten so Railway routes
-    // it to the produktive app. We connect to the Railway service host (outside this
-    // Cloudflare zone, so there is no Worker loop) and override the Host header.
-    url.hostname = env.RAILWAY_ORIGIN_HOST; // e.g. produktive-api.up.railway.app
-    url.protocol = "https:";
-    url.port = "";
+    const deployTarget = await resolveDeployTarget(incomingHost, env);
+    if (deployTarget) {
+      return proxyToDeployTarget(request, incomingHost, deployTarget);
+    }
 
-    const headers = new Headers(request.headers);
-    headers.set("Host", env.APP_HOST);
-    headers.set("X-Forwarded-Host", incomingHost);
-    headers.set("X-Forwarded-Proto", "https");
-    headers.set("X-Produktive-Is-Custom-Domain", "true");
+    return proxyToAppOrigin(request, incomingHost, env);
+  },
+};
 
-    const proxied = new Request(url.toString(), {
+async function resolveDeployTarget(incomingHost, env) {
+  const originHost = env.RAILWAY_ORIGIN_HOST || env.APP_HOST;
+  if (!originHost || !env.APP_HOST) {
+    return null;
+  }
+
+  const url = new URL(
+    `/api/public/deployments/by-domain/${encodeURIComponent(incomingHost)}`,
+    `https://${originHost}`,
+  );
+  const headers = new Headers({ Accept: "application/json" });
+  headers.set("Host", env.APP_HOST);
+
+  try {
+    const response = await fetch(url.toString(), {
+      headers,
+      cf: { cacheTtl: 15, cacheEverything: true },
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const data = await response.json();
+    return typeof data.url === "string" && data.url.length > 0 ? data.url : null;
+  } catch {
+    return null;
+  }
+}
+
+function proxyToDeployTarget(request, incomingHost, deployTarget) {
+  const url = new URL(request.url);
+  const target = new URL(deployTarget);
+  url.protocol = target.protocol;
+  url.hostname = target.hostname;
+  url.port = target.port;
+
+  const headers = new Headers(request.headers);
+  headers.set("Host", target.host);
+  headers.set("X-Forwarded-Host", incomingHost);
+  headers.set("X-Forwarded-Proto", "https");
+  headers.set("X-Produktive-Deploy-Custom-Domain", "true");
+
+  return fetch(
+    new Request(url.toString(), {
       method: request.method,
       headers,
       body: request.body,
-      redirect: "manual", // pass the app's own redirects through to the visitor
-    });
+      redirect: "manual",
+    }),
+  );
+}
 
-    return fetch(proxied);
-  },
-};
+function proxyToAppOrigin(request, incomingHost, env) {
+  const url = new URL(request.url);
+  url.hostname = env.RAILWAY_ORIGIN_HOST;
+  url.protocol = "https:";
+  url.port = "";
+
+  const headers = new Headers(request.headers);
+  headers.set("Host", env.APP_HOST);
+  headers.set("X-Forwarded-Host", incomingHost);
+  headers.set("X-Forwarded-Proto", "https");
+  headers.set("X-Produktive-Is-Custom-Domain", "true");
+
+  return fetch(
+    new Request(url.toString(), {
+      method: request.method,
+      headers,
+      body: request.body,
+      redirect: "manual",
+    }),
+  );
+}

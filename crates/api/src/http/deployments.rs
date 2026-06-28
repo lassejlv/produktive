@@ -102,6 +102,13 @@ pub fn routes(state: AppState) -> Router<AppState> {
         .merge(gated)
 }
 
+pub fn public_routes() -> Router<AppState> {
+    Router::new().route(
+        "/deployments/by-domain/{hostname}",
+        get(resolve_deploy_domain),
+    )
+}
+
 async fn deploy_access_guard(
     State(state): State<AppState>,
     Extension(m): Extension<Membership>,
@@ -236,6 +243,13 @@ pub struct DeployServiceDomainView {
     pub verified_at: Option<DateTime<FixedOffset>>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
+}
+
+#[derive(Serialize, FromQueryResult, ToSchema, Clone)]
+pub struct DeployDomainTargetView {
+    pub hostname: String,
+    pub provider: String,
+    pub url: String,
 }
 
 #[derive(Serialize, FromQueryResult, ToSchema, Clone)]
@@ -1955,14 +1969,6 @@ pub async fn create_service_domain(
 ) -> ApiResult<Json<DeployServiceDomainView>> {
     m.require_owner()?;
     let service = load_service(&state, m.workspace.id, service_id).await?;
-    if matches!(
-        deploy::ProviderKind::parse(&service.provider),
-        Ok(deploy::ProviderKind::CloudRun)
-    ) {
-        return Err(ApiError::bad_request(
-            "custom domains are not supported on Cloud Run services yet",
-        ));
-    }
     if service.provider_service_id.is_none() {
         return Err(ApiError::bad_request(
             "deploy the service once before adding a custom domain",
@@ -1970,8 +1976,10 @@ pub async fn create_service_domain(
     }
     let hostname = normalize_domain(&body.hostname)
         .ok_or_else(|| ApiError::bad_request("hostname must be a valid domain"))?;
-    if hostname.ends_with(".fly.dev") {
-        return Err(ApiError::bad_request("use the generated Fly URL directly"));
+    if hostname.ends_with(".fly.dev") || hostname.ends_with(".run.app") {
+        return Err(ApiError::bad_request(
+            "use the generated provider URL directly",
+        ));
     }
 
     let now = Utc::now().fixed_offset();
@@ -1985,12 +1993,13 @@ pub async fn create_service_domain(
                 id, workspace_id, service_id, provider, hostname, status,
                 created_by, created_at, updated_at
             )
-            VALUES ($1, $2, $3, 'fly', $4, 'queued', $5, $6, $6)
+            VALUES ($1, $2, $3, $4, $5, 'queued', $6, $7, $7)
             "#,
             [
                 id.into(),
                 m.workspace.id.into(),
                 service_id.into(),
+                service.provider.clone().into(),
                 hostname.clone().into(),
                 auth.user.id.into(),
                 now.into(),
@@ -2309,6 +2318,54 @@ pub async fn list_metrics(
     .all(&state.db)
     .await?;
     Ok(Json(rows))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/public/deployments/by-domain/{hostname}",
+    params(("hostname" = String, Path, description = "custom deployment domain hostname")),
+    responses((status = 200, body = DeployDomainTargetView)),
+    tag = "deployments"
+)]
+pub async fn resolve_deploy_domain(
+    State(state): State<AppState>,
+    Path(hostname): Path<String>,
+) -> ApiResult<Json<DeployDomainTargetView>> {
+    let hostname = normalize_domain(&hostname)
+        .ok_or_else(|| ApiError::bad_request("hostname must be a valid domain"))?;
+    let target = DeployDomainTargetView::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+        SELECT d.hostname,
+               s.provider,
+               COALESCE(latest.url, s.url) AS url
+        FROM deploy_service_domains d
+        INNER JOIN deploy_services s
+            ON s.workspace_id = d.workspace_id AND s.id = d.service_id
+        LEFT JOIN LATERAL (
+            SELECT dep.url
+            FROM deployments dep
+            WHERE dep.workspace_id = s.workspace_id
+              AND dep.service_id = s.id
+              AND dep.deleted_at IS NULL
+              AND dep.url IS NOT NULL
+            ORDER BY dep.created_at DESC
+            LIMIT 1
+        ) latest ON TRUE
+        WHERE d.hostname = $1
+          AND d.deleted_at IS NULL
+          AND (d.status = 'active' OR d.verified_at IS NOT NULL)
+          AND s.deleted_at IS NULL
+          AND s.disabled_at IS NULL
+          AND COALESCE(latest.url, s.url) IS NOT NULL
+        LIMIT 1
+        "#,
+        [hostname.into()],
+    ))
+    .one(&state.db)
+    .await?
+    .ok_or_else(|| ApiError::not_found("deployment domain not found"))?;
+    Ok(Json(target))
 }
 
 async fn load_access(state: &AppState, workspace_id: Uuid) -> ApiResult<Option<DeployAccessRow>> {
