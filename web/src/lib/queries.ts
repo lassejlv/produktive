@@ -99,6 +99,24 @@ export function useAcceptLegalTerms() {
   });
 }
 
+/// Confirm an email address from the link token. Idempotent on the backend; on
+/// success the cached `me` is refreshed so the verification gate clears.
+export function useVerifyEmail() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string) =>
+      api.post<{ ok: boolean }>("/auth/verify-email", { token }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
+  });
+}
+
+/// Re-send the verification email to the signed-in user (no body; auth required).
+export function useResendVerificationEmail() {
+  return useMutation({
+    mutationFn: () => api.post<{ ok: boolean }>("/auth/resend-verification-email", {}),
+  });
+}
+
 export interface AuthConfig {
   github_enabled: boolean;
 }

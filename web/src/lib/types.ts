@@ -249,6 +249,7 @@ export interface User {
   id: Uuid;
   email: string;
   is_admin: boolean;
+  email_verified_at: Iso | null;
   legal_terms_accepted_at: Iso | null;
   created_at: Iso;
   personal_workspace_id: Uuid | null;
