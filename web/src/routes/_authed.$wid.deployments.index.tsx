@@ -4,6 +4,7 @@ import {
   Background,
   BackgroundVariant,
   Controls,
+  Panel,
   ReactFlow,
   ReactFlowProvider,
   useNodesState,
@@ -12,35 +13,26 @@ import {
   type NodeMouseHandler,
   type NodeProps,
 } from "@xyflow/react";
-import { KeyRound, Plus, Rocket, Search, X } from "lucide-react";
+import { Plus, Rocket } from "lucide-react";
 import { toast } from "#/lib/toast";
-import { cn } from "#/lib/cn";
 import { DEPLOYMENTS_ENABLED } from "#/lib/features";
 import {
   type DeployDetailTab,
-  type DeployServiceFilter,
-  type DeploymentsSearch,
   DEFAULT_DEPLOY_DETAIL_TAB,
-  deployServiceFilterBucket,
   deploymentsSearchWithoutService,
-  matchesDeploySearch,
   openServiceSearch,
   parseDeploymentsSearch,
 } from "#/lib/deployments";
-import { DEPLOY_STATUS_COLOR } from "#/lib/status";
 import { Button } from "#/components/ui/button";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "#/components/ui/input-group";
 import { DeployServiceCard } from "../components/DeployServiceCard";
 import { DeployServiceRail } from "../components/deployments/DeployServiceRail";
 import { EmptyState } from "../components/EmptyState";
 import {
-  CreateCredentialDialog,
   CreateServiceDialog,
   RequestAccessOverlay,
 } from "./_authed.$wid.deployments";
 import {
   deployAccessQuery,
-  useCreateDeployCredential,
   useCreateDeployService,
   useDeployAccess,
   useDeployCredentials,
@@ -97,14 +89,10 @@ function Canvas() {
   const regions = deployRegions.data ?? [];
   const update = useUpdateDeployService(wid);
   const createService = useCreateDeployService(wid);
-  const createCredential = useCreateDeployCredential(wid);
   const draggingRef = useRef(false);
   const saveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [serviceOpen, setServiceOpen] = useState(false);
-  const [credentialOpen, setCredentialOpen] = useState(false);
 
-  const filter = search.status ?? "all";
-  const query = search.q ?? "";
   const selectedTab = search.tab ?? DEFAULT_DEPLOY_DETAIL_TAB;
 
   const selectedService = useMemo(
@@ -156,13 +144,7 @@ function Canvas() {
     [openService],
   );
 
-  const shown = useMemo(() => {
-    return services.filter((service) => {
-      const bucket = deployServiceFilterBucket(service.status);
-      const statusMatch = filter === "all" || bucket === filter;
-      return statusMatch && matchesDeploySearch(service, query);
-    });
-  }, [services, filter, query]);
+  const shown = services;
 
   const [nodes, setNodes, onNodesChangeBase] = useNodesState<SNode>([]);
 
@@ -198,20 +180,6 @@ function Canvas() {
       timers.clear();
     };
   }, []);
-
-  const setSearch = (patch: Partial<DeploymentsSearch>) => {
-    void navigate({
-      to: "/$wid/deployments",
-      params: { wid },
-      search: (prev) => ({
-        ...prev,
-        q: "q" in patch ? patch.q : prev.q,
-        status:
-          "status" in patch ? (patch.status === "all" ? undefined : patch.status) : prev.status,
-      }),
-      replace: true,
-    });
-  };
 
   const onNodesChange = useCallback(
     (changes: NodeChange<SNode>[]) => {
@@ -258,23 +226,6 @@ function Canvas() {
     return (
       <>
         <EmptyCanvas onCreate={() => setServiceOpen(true)} />
-        <CreateCredentialDialog
-          open={credentialOpen}
-          pending={createCredential.isPending}
-          onOpenChange={(open) => {
-            if (!open && createCredential.isPending) return;
-            setCredentialOpen(open);
-          }}
-          onSubmit={(body) =>
-            createCredential.mutate(body, {
-              onSuccess: () => {
-                toast.success("Registry credential saved");
-                setCredentialOpen(false);
-              },
-              onError: (err) => toast.error((err as Error).message),
-            })
-          }
-        />
         <CreateServiceDialog
           open={serviceOpen}
           credentials={credentials.data ?? []}
@@ -303,18 +254,6 @@ function Canvas() {
     <>
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <div className="relative min-h-0 min-w-0 flex-1">
-          <CanvasToolbar
-            services={services}
-            filter={filter}
-            query={query}
-            shown={shown.length}
-            approved={approved}
-            onFilter={(status) => setSearch({ status })}
-            onQueryChange={(q) => setSearch({ q: q || undefined })}
-            onClearFilters={() => setSearch({ q: undefined, status: "all" })}
-            onCreate={() => setServiceOpen(true)}
-            onCredential={() => setCredentialOpen(true)}
-          />
           <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 hidden text-center text-[11px] text-[var(--color-canvas-dim)] md:block">
             Drag cards to arrange · drag the background to pan · click a card to open it
           </div>
@@ -341,6 +280,19 @@ function Canvas() {
           >
             <Background variant={BackgroundVariant.Dots} gap={24} size={1} />
             <Controls position="bottom-left" showInteractive={false} />
+            {approved && (
+              <Panel position="top-right" className="m-3">
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={() => setServiceOpen(true)}
+                  className="h-[30px] rounded-full px-3 text-[12px] shadow-[var(--shadow-md)]"
+                >
+                  <Plus size={13} /> New service
+                </Button>
+              </Panel>
+            )}
           </ReactFlow>
         </div>
 
@@ -354,24 +306,6 @@ function Canvas() {
           />
         )}
       </div>
-
-      <CreateCredentialDialog
-        open={credentialOpen}
-        pending={createCredential.isPending}
-        onOpenChange={(open) => {
-          if (!open && createCredential.isPending) return;
-          setCredentialOpen(open);
-        }}
-        onSubmit={(body) =>
-          createCredential.mutate(body, {
-            onSuccess: () => {
-              toast.success("Registry credential saved");
-              setCredentialOpen(false);
-            },
-            onError: (err) => toast.error((err as Error).message),
-          })
-        }
-      />
 
       <CreateServiceDialog
         open={serviceOpen}
@@ -395,151 +329,6 @@ function Canvas() {
       />
 
     </>
-  );
-}
-
-function CanvasToolbar({
-  services,
-  filter,
-  query,
-  shown,
-  approved,
-  onFilter,
-  onQueryChange,
-  onClearFilters,
-  onCreate,
-  onCredential,
-}: {
-  services: DeployService[];
-  filter: DeployServiceFilter;
-  query: string;
-  shown: number;
-  approved: boolean;
-  onFilter: (filter: DeployServiceFilter) => void;
-  onQueryChange: (query: string) => void;
-  onClearFilters: () => void;
-  onCreate: () => void;
-  onCredential: () => void;
-}) {
-  const counts = useMemo(() => {
-    const tallies = { all: services.length, live: 0, deploying: 0, failed: 0, stopped: 0 };
-    for (const service of services) {
-      const bucket = deployServiceFilterBucket(service.status);
-      if (bucket !== "all") tallies[bucket] += 1;
-    }
-    return tallies;
-  }, [services]);
-
-  const pills: Array<{ value: DeployServiceFilter; label: string; n: number; color?: string }> = [
-    { value: "all", label: "All", n: counts.all },
-    { value: "live", label: "Live", n: counts.live, color: DEPLOY_STATUS_COLOR.live },
-    {
-      value: "deploying",
-      label: "Deploying",
-      n: counts.deploying,
-      color: DEPLOY_STATUS_COLOR.starting,
-    },
-    { value: "failed", label: "Failed", n: counts.failed, color: DEPLOY_STATUS_COLOR.failed },
-    { value: "stopped", label: "Stopped", n: counts.stopped },
-  ];
-
-  return (
-    <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex flex-wrap items-start justify-between gap-2">
-      <div className="pointer-events-auto flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {pills.map((pill) => {
-            const active = filter === pill.value;
-            return (
-              <Button
-                key={pill.value}
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onFilter(active && pill.value !== "all" ? "all" : pill.value)}
-                className={cn(
-                  "h-[30px] rounded-full px-3 text-[12px] font-medium shadow-none",
-                  active
-                    ? "border-[var(--color-canvas-border-hi)] bg-[var(--color-canvas-surface)] text-[var(--color-canvas-fg)] shadow-[var(--shadow-md)]"
-                    : "border-transparent bg-[color-mix(in_srgb,var(--color-canvas-surface)_75%,transparent)] text-[var(--color-canvas-muted)] hover:text-[var(--color-canvas-fg)]",
-                )}
-              >
-                {pill.color && (
-                  <span
-                    className="h-[7px] w-[7px] rounded-full"
-                    style={{ background: pill.color }}
-                  />
-                )}
-                {pill.label}
-                <span className="tabular text-[11px] text-[var(--color-canvas-dim)]">{pill.n}</span>
-              </Button>
-            );
-          })}
-        </div>
-        <InputGroup className="h-[30px] max-w-xs rounded-full border-[var(--color-canvas-border)] bg-[color-mix(in_srgb,var(--color-canvas-surface)_75%,transparent)] shadow-none">
-          <InputGroupAddon>
-            <Search size={13} className="text-[var(--color-canvas-dim)]" />
-          </InputGroupAddon>
-          <InputGroupInput
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="Search services…"
-            className="text-[12px] text-[var(--color-canvas-fg)] placeholder:text-[var(--color-canvas-dim)]"
-          />
-          {query && (
-            <InputGroupAddon align="inline-end">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Clear search"
-                onClick={() => onQueryChange("")}
-                className="text-[var(--color-canvas-muted)] hover:text-[var(--color-canvas-fg)]"
-              >
-                <X size={12} />
-              </Button>
-            </InputGroupAddon>
-          )}
-        </InputGroup>
-        {shown === 0 && services.length > 0 && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onClearFilters}
-            className="h-[30px] rounded-full text-[12px] text-[var(--color-canvas-muted)] hover:text-[var(--color-canvas-fg)]"
-          >
-            Clear filters
-          </Button>
-        )}
-      </div>
-      <div className="pointer-events-auto flex flex-wrap items-center gap-1.5">
-        <span className="tabular rounded-full bg-[color-mix(in_srgb,var(--color-canvas-surface)_75%,transparent)] px-2.5 py-1 text-[12px] text-[var(--color-canvas-muted)]">
-          {shown} shown
-        </span>
-        {approved && (
-          <>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onCredential}
-              className="h-[30px] rounded-full border-transparent bg-[color-mix(in_srgb,var(--color-canvas-surface)_75%,transparent)] text-[12px] text-[var(--color-canvas-muted)] hover:text-[var(--color-canvas-fg)]"
-            >
-              <KeyRound size={13} /> Credential
-            </Button>
-            <Button
-              type="button"
-              variant="default"
-              size="sm"
-              onClick={onCreate}
-              className="h-[30px] rounded-full px-3 text-[12px]"
-            >
-              <Plus size={13} /> New service
-            </Button>
-          </>
-        )}
-      </div>
-    </div>
   );
 }
 
