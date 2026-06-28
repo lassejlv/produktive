@@ -3,28 +3,22 @@ import {
   Braces,
   ExternalLink,
   Gauge,
-  Globe,
   LayoutGrid,
   Rocket,
   Settings,
   Terminal,
 } from "lucide-react";
 import { X } from "lucide-react";
-import { useParams } from "@tanstack/react-router";
-import { resourcePresetLabel } from "#/components/DeployServiceCard";
 import { Segmented } from "#/components/Segmented";
 import { Button } from "#/components/ui/button";
 import { cn } from "#/lib/cn";
-import { formatDeployRegion } from "#/lib/deploy-regions";
 import {
   useCreateDeployment,
-  useDeployRegions,
   useRollbackDeployment,
   useStopDeployService,
 } from "#/lib/queries";
 import { DEPLOY_STATUS_COLOR, DEPLOY_STATUS_LABEL, deployStatusActive } from "#/lib/status";
 import type { DeployDetailTab } from "#/lib/deployments";
-import { machineCountLabel } from "./deploy-shared";
 import type { DeployService } from "#/lib/types";
 import { ServiceActionButtons } from "./deploy-shared";
 import {
@@ -52,8 +46,6 @@ export function DeployServiceDetail({
   onClose?: () => void;
   onDeleted?: () => void;
 }) {
-  const { wid: routeWid } = useParams({ from: "/_authed/$wid" });
-  const { data: regions } = useDeployRegions(routeWid);
   const createDeployment = useCreateDeployment(wid);
   const rollback = useRollbackDeployment(wid);
   const stop = useStopDeployService(wid);
@@ -61,9 +53,9 @@ export function DeployServiceDetail({
   const active = deployStatusActive(service.status);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-elev)]">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div className="shrink-0 border-b border-[var(--color-border)] px-4 py-3">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">
               <span
@@ -79,8 +71,11 @@ export function DeployServiceDetail({
                 {service.name}
               </h2>
               <span
-                className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.06em]"
-                style={{ color }}
+                className="shrink-0 rounded-[var(--radius-sm)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]"
+                style={{
+                  color,
+                  background: `color-mix(in srgb, ${color} 12%, transparent)`,
+                }}
               >
                 {DEPLOY_STATUS_LABEL[service.status]}
               </span>
@@ -93,32 +88,20 @@ export function DeployServiceDetail({
                   : "GitHub source"
                 : service.image}
             </p>
-            <p className="mt-1.5 text-[11px] text-[var(--color-fg-dim)]">
-              {formatDeployRegion(service.region, regions)}
-              <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>
-              {service.environment}
-              <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>:
-              {service.internal_port}
-              <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>
-              {resourcePresetLabel(service.resource_preset)}
-              <span className="mx-1.5 text-[var(--color-border-hi)]">·</span>
-              {machineCountLabel(service.machine_count)}
-            </p>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-0.5">
             {service.url && (
               <a
                 href={service.url}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-1.5 inline-flex max-w-full items-center gap-1 text-[11px] text-[var(--color-link)] no-underline hover:underline"
+                aria-label="Open service URL"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-fg-muted)] no-underline transition-colors hover:bg-[var(--color-bg-row)] hover:text-[var(--color-fg)]"
               >
-                <Globe size={11} className="shrink-0" />
-                <span className="truncate">{service.url.replace(/^https?:\/\//, "")}</span>
-                <ExternalLink size={10} className="shrink-0 opacity-60" />
+                <ExternalLink size={15} />
               </a>
             )}
-          </div>
-
-          <div className="flex shrink-0 items-center gap-1">
             <div className="hidden sm:block">
               <ServiceActionButtons
                 service={service}
@@ -143,7 +126,7 @@ export function DeployServiceDetail({
           </div>
         </div>
 
-        <div className="mt-3 sm:hidden">
+        <div className="mt-2.5 sm:hidden">
           <ServiceActionButtons
             service={service}
             createDeployment={createDeployment}
